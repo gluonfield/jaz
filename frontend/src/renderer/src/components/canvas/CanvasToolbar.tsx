@@ -5,6 +5,7 @@ import type { CanvasItem } from '@/lib/api/canvas'
 import { ALIGNMENTS, alignItems, layerItems, styleOf, type Alignment } from './arrange'
 import { bounds, newId, padded, rectOfNode, rounded, type BoardEdge, type BoardNode } from './board'
 import { useCanvas } from './canvasContext'
+import { Comments } from './CanvasComments'
 
 // Pressing a control must not take the focus from the text being edited.
 export const hold = (event: MouseEvent) => event.preventDefault()
@@ -31,6 +32,7 @@ export function ItemToolbar({ label, item, offset = 16, children }: { label: str
             <span className="canvas-toolbar-rule" />
           </>
         )}
+        <Comments item={item} />
         <ArrangeControls ids={[item.id]} menu />
       </Menus>
     </NodeToolbar>
@@ -45,7 +47,8 @@ export function ToolButton({ label, on, onClick, children }: { label: string; on
   )
 }
 
-export function Menu({ label, face, children }: { label: string; face: ReactNode; children: ReactNode }) {
+// A menu closes on a choice, unless it is told to stay for more.
+export function Menu({ label, face, stay, children }: { label: string; face: ReactNode; stay?: boolean; children: ReactNode }) {
   const [current, setCurrent] = use(OpenMenu)
   const open = current === label
   return (
@@ -53,7 +56,7 @@ export function Menu({ label, face, children }: { label: string; face: ReactNode
       <button type="button" className={open ? 'on' : ''} aria-label={label} aria-expanded={open} title={label} onClick={() => setCurrent(open ? null : label)}>
         {face}
       </button>
-      {open ? <div className="canvas-toolbar-panel" role="menu" aria-label={label} onClick={() => setCurrent(null)}>{children}</div> : null}
+      {open ? <div className="canvas-toolbar-panel" role="menu" aria-label={label} onClick={() => stay || setCurrent(null)}>{children}</div> : null}
     </div>
   )
 }

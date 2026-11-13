@@ -10,6 +10,7 @@ import {
   useNodesState,
   useReactFlow,
   useViewport,
+  ViewportPortal,
   type Connection,
   type OnSelectionChangeParams,
   type Viewport,
@@ -55,6 +56,8 @@ import { FileNode, GroupNode, LinkNode, TextNode } from './CanvasNodes'
 import { StickerLayer } from './CanvasStickers'
 import { EraserLayer, PenLayer, StrokeNode } from './CanvasStroke'
 import { TableNode } from './CanvasTable'
+import { TimerNode } from './CanvasTimer'
+import { commentsOf } from './CanvasComments'
 import { SelectionToolbar } from './CanvasToolbar'
 import { fitPadding, useAgentFollow } from './useAgentFollow'
 import { CanvasPages } from '@/components/canvas/CanvasPages'
@@ -79,15 +82,16 @@ interface Props {
   onPrompt: (text: string) => void
 }
 
-const nodeTypes = { text: TextNode, file: FileNode, link: LinkNode, group: GroupNode, table: TableNode, stroke: StrokeNode }
+const nodeTypes = { text: TextNode, file: FileNode, link: LinkNode, group: GroupNode, table: TableNode, stroke: StrokeNode, timer: TimerNode }
 const edgeTypes = { connector: ConnectorEdge }
-const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector', P: 'pen', E: 'eraser', K: 'sticker' }
+const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector', P: 'pen', E: 'eraser', K: 'sticker', M: 'timer' }
 // What each tool puts down, around the point clicked. Text and tables grow
 // with what is written, so they start without a height.
 const NEW_ITEMS: Partial<Record<Tool, (x: number, y: number) => Partial<CanvasItem> & Rect>> = {
   sticky: (x, y) => ({ type: 'text', text: '', color: 'yellow', x: x - 100, y: y - 100, width: 200, height: 200 }),
   text: (x, y) => ({ type: 'text', text: '', x, y: y - 20, width: 240, height: 48 }),
   shape: (x, y) => ({ type: 'text', text: '', shape: 'rounded', x: x - 100, y: y - 60, width: 200, height: 120 }),
+  timer: (x, y) => ({ type: 'timer', seconds: 300, x: x - 110, y: y - 60, width: 220, height: 120 }),
   table: (x, y) => ({ type: 'table', rows: [['', '', ''], ['', '', ''], ['', '', '']], x, y, width: 420, height: 132 }),
 }
 const HINTS: Record<string, string> = { link: 'Use the page', cad: 'Drag to rotate, scroll to zoom', dxf: 'Drag to pan, scroll to zoom', pdf: 'Scroll and use the page controls' }
@@ -426,6 +430,12 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
           proOptions={{ hideAttribution: true }}
         >
           {picked.length > 1 ? <SelectionToolbar ids={picked} /> : null}
+          <ViewportPortal>
+            {nodes.map((node) => {
+              const count = commentsOf(node.data.item).length
+              return count ? <div key={node.id} className="canvas-comment-badge" title="Comments" style={{ left: node.position.x + rectOfNode(node).width, top: node.position.y }}>{count}</div> : null
+            })}
+          </ViewportPortal>
           <Background variant={BackgroundVariant.Dots} gap={22} size={1.6} color="var(--canvas-dot)" bgColor="var(--color-bg)" />
           <Panel position="bottom-right" className="canvas-map canvas-overlay">
             <MiniMap

@@ -486,3 +486,108 @@
   border-color: var(--canvas-accent);
   background: var(--canvas-accent) center / 80% no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.5l2.5 2.5 4.5-5.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
+
+.canvas-timer {
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  height: 100%;
+}
+
+.canvas-timer-face {
+  font-size: 34px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: center;
+  color: var(--color-ink);
+}
+
+.canvas-timer.done .canvas-timer-face {
+  color: var(--canvas-accent);
+}
+
+.canvas-timer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.canvas-timer-controls button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: var(--color-ink-2);
+  transition: background-color 150ms;
+}
+
+.canvas-timer-controls button:hover {
+  background: var(--color-list-hover);
+}
+
+.canvas-timer-controls button.main {
+  width: 34px;
+  height: 34px;
+  color: white;
+  background: var(--canvas-accent);
+}
+
+.canvas-toolbar-count {
+  margin-left: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-comments {
+  display: grid;
+  gap: 6px;
+  width: 240px;
+  padding: 4px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--color-ink);
+}
+
+.canvas-comments p b {
+  margin-right: 6px;
+  color: var(--color-ink-2);
+}
+
+.canvas-comments p.agent b {
+  color: var(--canvas-accent);
+}
+
+.canvas-comments input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--canvas-line);
+  border-radius: 7px;
+  background: transparent;
+  outline: none;
+}
+
+.canvas-comments input:focus {
+  border-color: var(--canvas-accent);
+}
+
+.canvas-comment-badge {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px 10px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  background: var(--canvas-accent);
+  translate: -6px -14px;
+  scale: calc(1 / var(--canvas-zoom, 1));
+  transform-origin: 0 100%;
+  pointer-events: none;
+}

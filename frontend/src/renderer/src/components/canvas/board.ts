@@ -5,14 +5,14 @@ import { edgeLookOf, inkColor, lookOf, tableRows, type EdgeLook } from './format
 
 export type Side = 'top' | 'right' | 'bottom' | 'left'
 export type Rect = { x: number; y: number; width: number; height: number }
-export type Kind = 'text' | 'file' | 'link' | 'group' | 'table' | 'stroke'
+export type Kind = 'text' | 'file' | 'link' | 'group' | 'table' | 'stroke' | 'timer'
 
 export type BoardNode = Node<{ item: CanvasItem }, Kind>
 export type BoardEdge = Edge<{ label?: string; look: EdgeLook }, 'connector'>
 export type Clip = { nodes: CanvasItem[]; edges: CanvasItem[] }
 
 export const SECTION_PAD = 36
-const KINDS: Kind[] = ['text', 'file', 'link', 'group', 'table', 'stroke']
+const KINDS: Kind[] = ['text', 'file', 'link', 'group', 'table', 'stroke', 'timer']
 const SIDES: Side[] = ['top', 'right', 'bottom', 'left']
 
 function number(value: unknown): number {
@@ -263,6 +263,7 @@ export function itemLabel(item: CanvasItem): string {
   if (item.type === 'link' && typeof item.url === 'string') return item.url
   if (item.type === 'table') return tableRows(item)[0].filter(Boolean).join(', ') || 'Table'
   if (item.type === 'stroke') return 'Drawing'
+  if (item.type === 'timer') return 'Timer'
   const text = typeof item.text === 'string' ? item.text.trim().split('\n')[0].replace(/^#+\s*/, '') : ''
   return text.length > 48 ? `${text.slice(0, 47)}…` : text || 'Text'
 }

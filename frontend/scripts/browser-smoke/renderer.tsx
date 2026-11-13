@@ -262,12 +262,12 @@ function Fixture() {
       }
       progress('canvas resizing, scrolling and viewer controls')
       await exerciseCanvas()
-      progress('canvas text formatting, shapes and tables')
+      progress('canvas formatting, drawing, layout and item tools')
       await exerciseCanvasFormat()
       progress('canvas pages, persistence and item navigation')
       await exerciseCanvasPages()
       if (new URLSearchParams(location.search).get('suite') === 'canvas') {
-        window.smoke.result({ ok: true, checks: ['canvas pages clear the titlebar; right-click, keyboard and touch page actions, rename/delete persistence, last-page protection and page-target isolation; page creation, user/agent renaming, legacy persistence, isolated selection/viewports and page/item links; pinch and pan over content; notes, documents and sandboxed cards fit without scrollbars; text and documents take the height of their content within the room reserved; corners and edges resize at multiple zoom levels; filenames, Focus and Escape remain accessible; text sizes, colours, shapes and tables render and their toolbars, cell editing and dock tools save'] })
+        window.smoke.result({ ok: true, checks: ['canvas pages clear the titlebar; right-click, keyboard and touch page actions, rename/delete persistence, last-page protection and page-target isolation; page creation, user/agent renaming, legacy persistence, isolated selection/viewports and page/item links; pinch and pan over content; notes, documents and sandboxed cards fit without scrollbars; text and documents take the height of their content within the room reserved; corners and edges resize at multiple zoom levels; filenames, Focus and Escape remain accessible; text sizes, colours, shapes, tables and connectors render and their toolbars, formatted typing, checklists, cell editing and dock tools save; alignment, grouping, locking, stacking, style copying, pen, highlighter, eraser, stickers, timer and comments work; cards keep saved data; placed items and the measured layout report reach the agent'] })
         return
       }
       progress('app page navigation across Jaz history')

@@ -1,6 +1,6 @@
-import { Eraser, Hand, Hash, MousePointer2, Pen, Smile, Spline, Square, StickyNote, Table2, Type, type LucideIcon } from 'lucide-react'
+import { Eraser, Hand, Hash, MousePointer2, Pen, Smile, Spline, Square, StickyNote, Table2, Timer, Type, type LucideIcon } from 'lucide-react'
 
-export type Tool = 'select' | 'hand' | 'sticky' | 'text' | 'shape' | 'table' | 'section' | 'connector' | 'pen' | 'eraser' | 'sticker'
+export type Tool = 'select' | 'hand' | 'sticky' | 'text' | 'shape' | 'table' | 'section' | 'connector' | 'pen' | 'eraser' | 'sticker' | 'timer'
 
 const GROUPS: { tool: Tool; label: string; key: string; Icon: LucideIcon }[][] = [
   [
@@ -19,6 +19,7 @@ const GROUPS: { tool: Tool; label: string; key: string; Icon: LucideIcon }[][] =
     { tool: 'pen', label: 'Pen', key: 'P', Icon: Pen },
     { tool: 'eraser', label: 'Eraser', key: 'E', Icon: Eraser },
     { tool: 'sticker', label: 'Sticker', key: 'K', Icon: Smile },
+    { tool: 'timer', label: 'Timer', key: 'M', Icon: Timer },
   ],
 ]
 
