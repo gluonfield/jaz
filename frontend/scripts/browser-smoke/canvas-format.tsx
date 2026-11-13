@@ -264,8 +264,60 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await until(() => saved(block).text === 'k', 'Words typed in a new shape were not saved')
     const table = await place('Table', [0, 430, 0, 140], (item) => item.type === 'table' && item.height === undefined)
     await until(() => node(table)?.querySelectorAll('th, td').length === 9, 'A new table did not show its nine cells')
+
+    const dock = (tool: string) => element.querySelector(`.canvas-dock [aria-label="${tool}"]`)
+    const draw = async (from: number[], to: number[]) => {
+      const known = new Set(view.nodes.map((item) => item.id))
+      await window.smoke.pointer('mouseMove', from[0], from[1])
+      await window.smoke.pointer('mouseDown', from[0], from[1])
+      for (let step = 1; step <= 8; step++) {
+        await window.smoke.pointer('mouseMove', Math.round(from[0] + (to[0] - from[0]) * step / 8), Math.round(from[1] + (to[1] - from[1]) * step / 8))
+      }
+      await window.smoke.pointer('mouseUp', to[0], to[1])
+      await until(() => view.nodes.some((item) => !known.has(item.id) && item.type === 'stroke'), 'The pen did not leave a line')
+      return view.nodes.find((item) => !known.has(item.id))!.id
+    }
+    const board = element.getBoundingClientRect()
+    const from = [Math.round(board.x + 90), Math.round(board.y + 150)]
+    const to = [from[0] + 240, from[1] + 80]
+    await press(dock('Pen'), 'Pen tool')
+    const pen = () => element.querySelector('.canvas-pen-options')
+    await until(() => Boolean(pen()), 'The pen did not show its inks')
+    const scribble = await draw(from, to)
+    const zoom = Number(new DOMMatrix(getComputedStyle(element.querySelector('.react-flow__viewport')!).transform).a)
+    const drawn = saved(scribble)
+    if (Math.abs(Number(drawn.width) - 240 / zoom) > 3 || Math.abs(Number(drawn.height) - 80 / zoom) > 3 || (drawn.points as number[][]).length < 5 || drawn.color !== undefined) {
+      throw new Error('Canvas format: the line was not saved where it was drawn: ' + JSON.stringify(drawn))
+    }
+    const ink = (id: string) => getComputedStyle(node(id).querySelector('.canvas-stroke path')!)
+    await until(() => Math.abs(node(scribble).getBoundingClientRect().x - from[0]) < 3 && Math.abs(node(scribble).getBoundingClientRect().width - 240) < 4, 'The line was not shown where it was drawn')
+    await press(pen()!.querySelector('[aria-label="Red"]'), 'Red ink')
+    await press(pen()!.querySelector('[aria-label="Highlighter"]'), 'Highlighter')
+    const marker = await draw([from[0], from[1] + 120], [to[0], from[1] + 120])
+    await until(() => saved(marker).color === 'red' && saved(marker).highlight === true && ink(marker).opacity === '0.4' && ink(marker).stroke !== ink(scribble).stroke, 'The highlighter did not draw in its ink')
+    if (dock('Pen')?.getAttribute('aria-pressed') !== 'true') {
+      throw new Error('Canvas format: the pen was put down after a line')
+    }
+    await press(dock('Select'), 'Select tool')
+    await window.smoke.pointer('mouseMove', from[0] + 120, from[1] + 40)
+    await window.smoke.pointer('mouseDown', from[0] + 120, from[1] + 40)
+    await window.smoke.pointer('mouseUp', from[0] + 120, from[1] + 40)
+    await until(() => node(scribble).classList.contains('selected') && Boolean(control('Ink')), 'A click on the ink did not select the line')
+    await pick('Ink', 'Blue')
+    await until(() => saved(scribble).color === 'blue', 'The line did not take a new ink')
+    await press(control('Weight: 4'), 'Weight')
+    await until(() => saved(scribble).weight === 8 && ink(scribble).strokeWidth === '8px', 'The line did not take a new weight')
     await new Promise((resolve) => setTimeout(resolve, 500))
     await window.smoke.capture('canvas-format-edited')
+    await press(dock('Eraser'), 'Eraser tool')
+    await window.smoke.pointer('mouseMove', from[0] + 120, from[1] + 100)
+    await window.smoke.pointer('mouseDown', from[0] + 120, from[1] + 100)
+    await window.smoke.pointer('mouseMove', from[0] + 120, from[1] + 70)
+    await window.smoke.pointer('mouseMove', from[0] + 120, from[1] + 40)
+    await window.smoke.pointer('mouseMove', from[0] + 120, from[1] + 20)
+    await window.smoke.pointer('mouseUp', from[0] + 120, from[1] + 20)
+    await until(() => !view.nodes.some((item) => item.id === scribble) && view.nodes.some((item) => item.id === marker), 'The eraser did not remove the line it crossed, and only that scribble')
+    await press(dock('Select'), 'Select tool')
   } finally {
     root.unmount()
     client.clear()

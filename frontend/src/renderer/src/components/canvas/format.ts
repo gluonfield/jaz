@@ -27,7 +27,7 @@ export interface Tint {
   custom?: string
 }
 
-function tint(options: readonly string[], value: unknown): Tint | undefined {
+export function tint(options: readonly string[], value: unknown): Tint | undefined {
   if (typeof value !== 'string' || !value) return undefined
   const name = pick(options, PRESETS[value] ?? value)
   return name ? { name } : { custom: value }

@@ -398,3 +398,58 @@
 .canvas-edge-dot {
   fill: var(--canvas-bg);
 }
+
+/* A drawn line takes the pointer on its ink alone. */
+.canvas .react-flow__node-stroke {
+  pointer-events: none !important;
+}
+
+.canvas .react-flow__node-stroke .react-flow__resize-control {
+  pointer-events: all;
+}
+
+.canvas-stroke {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.canvas-stroke path,
+.canvas-pen-trail path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.canvas .canvas-stroke-hit {
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+}
+
+.react-flow__node.selected .canvas-stroke-hit {
+  stroke: color-mix(in oklab, var(--canvas-accent) 22%, transparent);
+}
+
+.canvas-pen-layer,
+.canvas-eraser-layer {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.canvas-pen-trail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.canvas-pen-options {
+  position: absolute;
+  bottom: 74px;
+  left: calc(50% + var(--canvas-inset) / 2);
+  translate: -50% 0;
+}

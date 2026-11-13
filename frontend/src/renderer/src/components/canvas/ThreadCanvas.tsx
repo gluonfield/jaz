@@ -52,6 +52,7 @@ import { CanvasContext, type CanvasBoard } from './canvasContext'
 import { CanvasDock, type Tool } from './CanvasDock'
 import { ConnectorEdge } from './CanvasEdges'
 import { FileNode, GroupNode, LinkNode, TextNode } from './CanvasNodes'
+import { EraserLayer, PenLayer, StrokeNode } from './CanvasStroke'
 import { TableNode } from './CanvasTable'
 import { SelectionToolbar } from './CanvasToolbar'
 import { fitPadding, useAgentFollow } from './useAgentFollow'
@@ -76,9 +77,9 @@ interface Props {
   onPrompt: (text: string) => void
 }
 
-const nodeTypes = { text: TextNode, file: FileNode, link: LinkNode, group: GroupNode, table: TableNode }
+const nodeTypes = { text: TextNode, file: FileNode, link: LinkNode, group: GroupNode, table: TableNode, stroke: StrokeNode }
 const edgeTypes = { connector: ConnectorEdge }
-const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector' }
+const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector', P: 'pen', E: 'eraser' }
 // What each tool puts down, around the point clicked. Text and tables grow
 // with what is written, so they start without a height.
 const NEW_ITEMS: Partial<Record<Tool, (x: number, y: number) => Partial<CanvasItem> & Rect>> = {
@@ -446,6 +447,8 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
         </ReactFlow>
       </CanvasContext.Provider>
 
+      {tool === 'pen' ? <PenLayer onStroke={(item) => commit({ nodes: [{ id: newId('stroke'), ...item }, ...sectionFor(item)] })} /> : null}
+      {tool === 'eraser' ? <EraserLayer onErase={(id) => local.nodes.find((item) => item.id === id)?.locked !== true && commit({ remove: [id] })} /> : null}
       {tool === 'section' || NEW_ITEMS[tool] ? (
         <div
           className="canvas-tool-layer"
