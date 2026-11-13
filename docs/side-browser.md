@@ -129,10 +129,10 @@ subsequently use the signed-in side browser and observe its pages.
 
 ### Google sign-in
 
-Google rejects Chromium pages that lack Chrome's `chrome.app` API with “This browser
-or app may not be secure.” Jaz restores that API in side-browser tabs and popups,
-so Google sign-in, including “Sign in with Google” popups, continues to Google's
-password or passkey step. Google's [supported-browser policy](https://support.google.com/accounts/answer/7675428)
+Google rejects Chromium pages that lack Chrome's `chrome.app`, `chrome.csi` and
+`chrome.loadTimes` APIs with “This browser or app may not be secure.” Jaz restores
+those APIs in side-browser tabs and popups, so Google sign-in, including “Sign in
+with Google” popups, continues to Google's password or passkey step. Google's [supported-browser policy](https://support.google.com/accounts/answer/7675428)
 can still change; if it rejects again, sign in with Chrome and use
 **Import cookies and passwords** with **Cookies** enabled.
 
@@ -155,8 +155,8 @@ and other request headers itself; page
 and worker JavaScript observe the same User-Agent as network requests.
 This uses [Electron's native app default](https://www.electronjs.org/docs/latest/api/app#appuseragentfallback)
 without per-request identity rewriting. A preview-session preload adds Chrome's
-`chrome.app` API to each side-browser page's main world, as Chrome does; it is the
-only browser-property change.
+`chrome.app`, `chrome.csi` and `chrome.loadTimes` APIs to each side-browser page's
+main world, as Chrome does; they are the only browser-property changes.
 
 Side-browser navigation, remote images, favicons and canvas link frames omit the app referrer. The app's
 privileged bridge stays out of side-browser pages and popups; agent control state

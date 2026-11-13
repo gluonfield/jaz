@@ -16,7 +16,7 @@ export async function exerciseBrowserIdentity(evaluate: (expression: string) => 
       workerUserAgent, webdriver: navigator.webdriver, referrer: document.referrer,
       pageGlobals: Object.getOwnPropertyNames(window).filter(name => /jaz/i.test(name)),
       hints: await navigator.userAgentData.getHighEntropyValues(['architecture', 'bitness', 'model', 'platformVersion', 'fullVersionList']),
-      chromeApp: chrome.app.runningState() }
+      chromeApp: chrome.app.runningState(), chromeTiming: chrome.csi().startE > 0 && chrome.loadTimes().requestTime > 0 }
   })()`) as {
     firstNavigation: Record<string, string>
     request: Record<string, string>
@@ -28,6 +28,7 @@ export async function exerciseBrowserIdentity(evaluate: (expression: string) => 
     referrer: string
     pageGlobals: string[]
     chromeApp: string
+    chromeTiming: boolean
     language: string
     hints: { brands: { brand: string; version: string }[]; platform: string; mobile: boolean; fullVersionList: { brand: string; version: string }[] }
   }
@@ -53,8 +54,8 @@ export async function exerciseBrowserIdentity(evaluate: (expression: string) => 
     || request['sec-ch-ua'] !== hints.brands.map(({ brand, version }) => `${JSON.stringify(brand)};v=${JSON.stringify(version)}`).join(', ')) {
     throw new Error('Native Chromium client hints disagree with browser headers')
   }
-  if (observed.chromeApp !== 'cannot_run') {
-    throw new Error('Side-browser pages must expose Chrome\'s chrome.app API for Google sign-in')
+  if (observed.chromeApp !== 'cannot_run' || !observed.chromeTiming) {
+    throw new Error('Side-browser pages must expose Chrome\'s chrome.app, chrome.csi and chrome.loadTimes APIs for Google sign-in')
   }
   if (request['accept-language'].split(',')[0].split(';')[0] !== observed.language || observed.webdriver) {
     throw new Error('The normal browser language or driver state changed')
