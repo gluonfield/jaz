@@ -1,6 +1,6 @@
 // The part of Markdown a board item can be typed in as formatted words:
-// paragraphs, bulleted and numbered lists, bold, italic, strikethrough, code
-// and links. Text using anything else is edited as Markdown source.
+// paragraphs, bulleted and numbered lists, checklists, bold, italic,
+// strikethrough, code and links. Text using anything else is edited as Markdown source.
 
 export const MARKS = ['bold', 'italic', 'strike', 'code'] as const
 export type Mark = (typeof MARKS)[number]
@@ -11,8 +11,10 @@ export interface Block {
   kind: 'p' | 'ul' | 'ol'
   depth: number
   runs: Run[]
+  // Set on a bullet that is a task.
+  checked?: boolean
 }
-export type TextFormat = Mark | 'list' | 'numbered'
+export type TextFormat = Mark | 'list' | 'numbered' | 'checklist'
 
 const ALNUM = /[\p{L}\p{N}]/u
 const PUNCTUATION = /[!-/:-@[-`{-~]/
@@ -128,9 +130,11 @@ export function parseRich(source: string): Block[] | null {
     if (RULE.test(raw)) return null
     const item = ITEM.exec(raw)
     if (item) {
-      const runs = /^\[[ xX]\]\s/.test(item[3]) ? null : inline(item[3])
+      const kind = /\d/.test(item[2]) ? 'ol' : 'ul'
+      const task = /^\[([ xX])\]\s+(.*)$/.exec(item[3])
+      const runs = task && kind === 'ol' ? null : inline(task ? task[2] : item[3])
       if (!runs) return null
-      blocks.push({ kind: /\d/.test(item[2]) ? 'ol' : 'ul', depth: Math.floor(item[1].length / 2), runs })
+      blocks.push({ kind, depth: Math.floor(item[1].length / 2), runs, ...(task ? { checked: task[1] !== ' ' } : {}) })
       paragraph = null
       blank = false
       continue
@@ -203,7 +207,8 @@ export function writeRich(blocks: Block[]): string {
     counts.length = block.depth + 1
     counts[block.depth] = block.kind === 'ol' ? (counts[block.depth] ?? 0) + 1 : 0
     const line = block.runs.map((run) => (run.text === '\n' ? { text: ' ' } : run))
-    out += `${'  '.repeat(block.depth)}${block.kind === 'ol' ? `${counts[block.depth]}.` : '-'} ${writeRuns(line)}`
+    const box = block.checked === undefined ? '' : block.checked ? '[x] ' : '[ ] '
+    out += `${'  '.repeat(block.depth)}${block.kind === 'ol' ? `${counts[block.depth]}.` : '-'} ${box}${writeRuns(line)}`
   })
   return out
 }
@@ -238,9 +243,10 @@ export function richHTML(blocks: Block[]): string {
     const depth = Math.min(block.depth, lists.length)
     close(depth + 1)
     if (lists.length === depth + 1 && lists[depth] !== block.kind) close(depth)
-    if (lists.length === depth + 1) out += '</li><li>'
+    const item = block.checked === undefined ? '<li>' : `<li data-checked="${block.checked}">`
+    if (lists.length === depth + 1) out += `</li>${item}`
     else {
-      out += `<${block.kind}><li>`
+      out += `<${block.kind}>${item}`
       lists.push(block.kind)
     }
     out += runsHTML(block.runs)
@@ -286,7 +292,8 @@ export function readRich(root: Node): Block[] {
     for (const child of list.childNodes) {
       if (isList(child)) readList(child, depth + 1)
       if (child.nodeName !== 'LI') continue
-      const block: Block = { kind: list.tagName === 'OL' ? 'ol' : 'ul', depth, runs: [] }
+      const checked = list.tagName === 'UL' ? (child as HTMLElement).dataset.checked : undefined
+      const block: Block = { kind: list.tagName === 'OL' ? 'ol' : 'ul', depth, runs: [], ...(checked === undefined ? {} : { checked: checked === 'true' }) }
       blocks.push(block)
       child.childNodes.forEach((node) => (isList(node) ? readList(node, depth + 1) : readInline(node, {}, block.runs)))
     }
@@ -322,8 +329,14 @@ export function toggleRichMark(blocks: Block[], mark: Mark): Block[] {
   }))
 }
 
-// Every block becomes an item of that list, or a paragraph when all are.
-export function toggleRichList(blocks: Block[], kind: 'ul' | 'ol'): Block[] {
-  const all = blocks.every((block) => block.kind === kind)
-  return blocks.map((block) => ({ ...block, kind: all ? 'p' : kind, depth: all ? 0 : block.depth }))
+// Every block becomes an item of that list, or a paragraph when all are. A
+// checklist is a bulleted list of tasks.
+export function toggleRichList(blocks: Block[], kind: 'ul' | 'ol', tasks = false): Block[] {
+  const all = blocks.every((block) => block.kind === kind && (block.checked !== undefined) === tasks)
+  return blocks.map(({ checked, ...block }) => ({
+    ...block,
+    kind: all ? 'p' : kind,
+    depth: all ? 0 : block.depth,
+    ...(tasks && !all ? { checked: checked ?? false } : {}),
+  }))
 }

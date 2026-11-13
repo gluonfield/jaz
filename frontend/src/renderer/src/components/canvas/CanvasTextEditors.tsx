@@ -7,7 +7,7 @@ export interface TextEditorHandle {
 }
 
 const SOURCE_MARKS: Record<Mark, string> = { bold: '**', italic: '*', strike: '~~', code: '`' }
-const COMMANDS: Record<Exclude<TextFormat, 'code'>, string> = { bold: 'bold', italic: 'italic', strike: 'strikeThrough', list: 'insertUnorderedList', numbered: 'insertOrderedList' }
+const COMMANDS: Record<Exclude<TextFormat, 'code' | 'checklist'>, string> = { bold: 'bold', italic: 'italic', strike: 'strikeThrough', list: 'insertUnorderedList', numbered: 'insertOrderedList' }
 
 // React Flow mounts a new node hidden until it is measured, so focus waits
 // for it to become visible.
@@ -43,6 +43,19 @@ function toggleCode() {
   selection.selectAllChildren(code)
 }
 
+// The bullets in the selection become tasks, or plain bullets when all are.
+function toggleTasks(root: HTMLElement) {
+  const selection = getSelection()!
+  const picked = () => [...root.querySelectorAll('li')].filter((item) => selection.containsNode(item, true))
+  if (!picked().length || picked().some((item) => item.parentElement!.tagName === 'OL')) document.execCommand('insertUnorderedList')
+  const items = picked()
+  const all = items.every((item) => item.dataset.checked !== undefined)
+  for (const item of items) {
+    if (all) delete item.dataset.checked
+    else item.dataset.checked ??= 'false'
+  }
+}
+
 // Words typed as they will look. The element is the browser's to edit; it is
 // read back into Markdown when the user leaves it.
 export function RichEditor({ ref, blocks, onDone }: { ref: Ref<TextEditorHandle>; blocks: Block[]; onDone: (value: string) => void }) {
@@ -51,6 +64,7 @@ export function RichEditor({ ref, blocks, onDone }: { ref: Ref<TextEditorHandle>
   useImperativeHandle(ref, () => ({
     format(kind) {
       if (kind === 'code') toggleCode()
+      else if (kind === 'checklist') toggleTasks(field.current!)
       else document.execCommand(COMMANDS[kind])
     },
   }), [])
@@ -73,7 +87,14 @@ export function RichEditor({ ref, blocks, onDone }: { ref: Ref<TextEditorHandle>
       onBlur={() => onDone(writeRich(readRich(field.current!)))}
       onPaste={(event) => {
         event.preventDefault()
-        document.execCommand('insertText', false, event.clipboardData.getData('text/plain'))
+        const pasted = event.clipboardData.getData('text/plain')
+        // An address pasted over chosen words links them.
+        const link = /^https?:\/\/\S+$/.test(pasted.trim()) && !getSelection()!.isCollapsed
+        document.execCommand(link ? 'createLink' : 'insertText', false, link ? pasted.trim() : pasted)
+      }}
+      onClick={(event) => {
+        const item = event.target instanceof HTMLElement && event.target.matches('li[data-checked]') ? event.target : null
+        if (item && event.clientX < item.getBoundingClientRect().left) item.dataset.checked = String(item.dataset.checked !== 'true')
       }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') event.currentTarget.blur()
@@ -93,7 +114,7 @@ export function SourceEditor({ ref, initial, onDone }: { ref: Ref<TextEditorHand
         setValue(toggleList)
         return
       }
-      if (kind === 'numbered') return
+      if (kind === 'numbered' || kind === 'checklist') return
       const next = toggleMarkAt(value, field.current!.selectionStart, field.current!.selectionEnd, SOURCE_MARKS[kind])
       selection.current = [next.start, next.end]
       setValue(next.text)

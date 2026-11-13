@@ -28,7 +28,7 @@ test('other spellings of the same formatting are normalised', () => {
 })
 
 test('Markdown beyond formatted words is left to the source editor', () => {
-  for (const source of ['# Heading', '> quote', '| a | b |\n| --- | --- |', 'a | b\n--- | ---', '```\ncode\n```', '- [ ] task', '![image](a.png)', 'a <b>tag</b>', '\\(x\\)', '**open', '- item\ncontinued', '    indented', '---', 'AT&amp;T']) {
+  for (const source of ['# Heading', '> quote', '| a | b |\n| --- | --- |', 'a | b\n--- | ---', '```\ncode\n```', '1. [ ] task', '![image](a.png)', 'a <b>tag</b>', '\\(x\\)', '**open', '- item\ncontinued', '    indented', '---', 'AT&amp;T']) {
     expect(parseRich(source)).toBeNull()
   }
 })
@@ -48,4 +48,17 @@ test('marks and lists toggle over every block', () => {
   expect(writeRich(toggleRichMark(blocks, 'strike'))).toBe('~~**Risk**~~\n\n- ~~slips~~')
   expect(writeRich(toggleRichList(blocks, 'ol'))).toBe('1. **Risk**\n2. slips')
   expect(writeRich(toggleRichList(toggleRichList(blocks, 'ul'), 'ul'))).toBe('**Risk**\n\nslips')
+})
+
+test('checklists read, write and toggle as bullets with a box', () => {
+  const source = 'Before launch\n\n- [x] book the hall\n- [ ] **print** badges\n  - [ ] lanyards\n- plain'
+  const blocks = parseRich(source)
+  expect(blocks.map((block) => block.checked)).toEqual([undefined, true, false, false, undefined])
+  expect(writeRich(blocks)).toBe(source)
+  expect(richHTML(blocks)).toBe('<p>Before launch</p><ul><li data-checked="true">book the hall</li><li data-checked="false"><strong>print</strong> badges<ul><li data-checked="false">lanyards</li></ul></li><li>plain</li></ul>')
+  expect(parseRich('1. [ ] numbered task')).toBeNull()
+  const tasks = toggleRichList(parseRich('one\n\n- [x] two'), 'ul', true)
+  expect(writeRich(tasks)).toBe('- [ ] one\n- [x] two')
+  expect(writeRich(toggleRichList(tasks, 'ul', true))).toBe('one\n\ntwo')
+  expect(writeRich(toggleRichList(tasks, 'ul'))).toBe('- one\n- two')
 })

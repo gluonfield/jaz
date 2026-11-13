@@ -1,6 +1,6 @@
 import { Handle, NodeResizeControl, NodeResizer, Position, type NodeProps } from '@xyflow/react'
 import { Ungroup } from 'lucide-react'
-import { useRef, useState, type CSSProperties } from 'react'
+import { useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import type { CanvasItem } from '@/lib/api/canvas'
 import { extension, flows, itemLabel, rounded, viewerFor, type BoardNode } from './board'
@@ -11,7 +11,7 @@ import { TextToolbar } from './CanvasTextToolbar'
 import { ItemToolbar, ToolButton } from './CanvasToolbar'
 import { FileViewer } from './CanvasViewers'
 import { FitContent } from '@/components/canvas/FitContent'
-import { inkColor, lookOf, toggleList, toggleMark } from './format'
+import { inkColor, lookOf, toggleList, toggleMark, toggleTask } from './format'
 import { parseRich, toggleRichList, toggleRichMark, writeRich, type TextFormat } from './richtext'
 import { ViewerFrame } from './ViewerFrame'
 
@@ -134,9 +134,17 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
     }
     const blocks = parseRich(text)
     const next = blocks
-      ? writeRich(kind === 'list' || kind === 'numbered' ? toggleRichList(blocks, kind === 'list' ? 'ul' : 'ol') : toggleRichMark(blocks, kind))
+      ? writeRich(kind === 'list' || kind === 'numbered' || kind === 'checklist' ? toggleRichList(blocks, kind === 'numbered' ? 'ol' : 'ul', kind === 'checklist') : toggleRichMark(blocks, kind))
       : kind === 'list' ? toggleList(text) : kind === 'bold' ? toggleMark(text, '**') : kind === 'italic' ? toggleMark(text, '*') : text
     if (next !== text) commit({ nodes: [{ id, text: next }] })
+  }
+  // A click on a task's box ticks it without opening the text.
+  const tick = (event: MouseEvent<HTMLDivElement>) => {
+    const index = [...event.currentTarget.querySelectorAll('input[type="checkbox"]')].findIndex((box) => {
+      const { left, right, top, bottom } = box.getBoundingClientRect()
+      return event.clientX >= left && event.clientX <= right && event.clientY >= top && event.clientY <= bottom
+    })
+    if (index >= 0 && editing !== id && data.item.locked !== true) commit({ nodes: [{ id, text: toggleTask(text, index) }] })
   }
   const base = look.kind === 'block' ? `canvas-block canvas-shape-${look.shape}` : look.kind === 'note' ? 'canvas-sticky' : 'canvas-text'
   const classes = [
@@ -159,7 +167,7 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
       <Resizer item={data.item} selected={selected && editing !== id} minWidth={look.kind === 'note' ? 120 : 40} minHeight={look.kind === 'note' ? 100 : 40} />
       {selected ? <TextToolbar item={data.item} onFormat={format} /> : null}
       <Handles />
-      <div className={classes} style={style} onDoubleClick={() => data.item.locked !== true && setEditing(id)}>
+      <div className={classes} style={style} onClick={tick} onDoubleClick={() => data.item.locked !== true && setEditing(id)}>
         {look.shape && !CSS_SHAPES.includes(look.shape) ? <ShapeOutline shape={look.shape} /> : null}
         {look.kind === 'block' ? <div className="canvas-block-body">{body}</div> : body}
       </div>

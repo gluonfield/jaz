@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { editTable, lookOf, tableRows, toggleList, toggleMark, toggleMarkAt } from '@/components/canvas/format'
+import { editTable, lookOf, tableRows, toggleList, toggleMark, toggleMarkAt, toggleTask } from '@/components/canvas/format'
 
 test('an item is plain text, a note or a shape by its colour and shape, and unknown values are ignored', () => {
   expect(lookOf({ id: 'a', type: 'text', size: 'title', ink: 'blue', textAlign: 'right' })).toEqual({ kind: 'text', shape: undefined, fill: undefined, ink: { name: 'blue' }, size: 'title', align: 'right', hollow: false })
@@ -46,4 +46,11 @@ test('table edits change one cell, add and remove rows and columns, and keep the
   expect(editTable(rows, { removeColumn: 1 })).toEqual([['a'], ['c']])
   expect(editTable([['a']], { removeRow: 0 })).toEqual([['a']])
   expect(editTable([['a']], { removeColumn: 0 })).toEqual([['a']])
+})
+
+test('ticking a task changes that task alone', () => {
+  const text = '- [ ] one\n  - [x] two\n- not [ ] a task\n* [ ] three'
+  expect(toggleTask(text, 1)).toBe('- [ ] one\n  - [ ] two\n- not [ ] a task\n* [ ] three')
+  expect(toggleTask(text, 2)).toBe('- [ ] one\n  - [x] two\n- not [ ] a task\n* [x] three')
+  expect(toggleTask(text, 3)).toBe(text)
 })

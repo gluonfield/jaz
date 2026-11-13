@@ -1,5 +1,5 @@
 import { useReactFlow } from '@xyflow/react'
-import { Bold, Code, Italic, List, ListOrdered, StickyNote, Strikethrough, TextAlignCenter, TextAlignEnd, TextAlignStart, Type, type LucideIcon } from 'lucide-react'
+import { Bold, Code, Italic, List, ListChecks, ListOrdered, StickyNote, Strikethrough, TextAlignCenter, TextAlignEnd, TextAlignStart, Type, type LucideIcon } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import type { CanvasItem } from '@/lib/api/canvas'
 import { useCanvas } from './canvasContext'
@@ -16,6 +16,7 @@ const FORMATS: [TextFormat, string, LucideIcon][] = [
   ['code', 'Code', Code],
   ['list', 'Bulleted list', List],
   ['numbered', 'Numbered list', ListOrdered],
+  ['checklist', 'Checklist', ListChecks],
 ]
 const title = (word: string) => word[0].toUpperCase() + word.slice(1)
 

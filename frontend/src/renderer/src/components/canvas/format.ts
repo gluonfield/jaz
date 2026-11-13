@@ -110,6 +110,12 @@ export function toggleMarkAt(text: string, start: number, end: number, mark: str
   return { text: text.slice(0, start) + mark + text.slice(start, end) + mark + text.slice(end), start: start + size, end: end + size }
 }
 
+// The text with its nth task ticked or cleared.
+export function toggleTask(text: string, index: number): string {
+  let seen = 0
+  return text.replace(/^(\s*[-*+]\s+\[)([ xX])(?=\]\s)/gm, (whole, lead: string, mark: string) => (seen++ === index ? lead + (mark === ' ' ? 'x' : ' ') : whole))
+}
+
 // Every line a bullet, or none of them.
 export function toggleList(text: string): string {
   const lines = text.split('\n')

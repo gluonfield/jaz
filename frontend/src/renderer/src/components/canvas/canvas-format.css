@@ -458,3 +458,31 @@
   left: calc(50% + var(--canvas-inset) / 2);
   translate: -50% 0;
 }
+
+/* Tasks: a box the pointer passes through on the board, so the item's own
+   click can tick it, and a drawn box while typing. */
+.canvas .react-flow__node input[type='checkbox'] {
+  pointer-events: none;
+}
+
+.canvas-rich-editor li[data-checked] {
+  position: relative;
+  list-style: none;
+}
+
+.canvas-rich-editor li[data-checked]::before {
+  content: '';
+  position: absolute;
+  top: 0.32em;
+  left: -1.45em;
+  width: 0.95em;
+  height: 0.95em;
+  border: 1.5px solid color-mix(in oklab, currentColor 55%, transparent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.canvas-rich-editor li[data-checked='true']::before {
+  border-color: var(--canvas-accent);
+  background: var(--canvas-accent) center / 80% no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.5l2.5 2.5 4.5-5.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}

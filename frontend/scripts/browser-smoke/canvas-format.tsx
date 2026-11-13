@@ -248,6 +248,16 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await until(() => saved('grid').header === false && !node('grid').querySelector('th'), 'The heading row did not turn off')
     await press(control('Heading row'), 'Heading row')
     await until(() => saved('grid').header === undefined && Boolean(node('grid').querySelector('th')), 'The heading row did not turn back on')
+    await select('placed')
+    await press(control('Checklist'), 'Checklist')
+    await until(() => saved('placed').text === '- [ ] Placed under the table' && Boolean(node('placed').querySelector('input[type="checkbox"]')), 'Checklist did not make the line a task')
+    await press(node('placed').querySelector('input[type="checkbox"]'), 'task box')
+    await until(() => saved('placed').text === '- [x] Placed under the table', 'A click on a task\'s box did not tick it')
+    node('placed').querySelector('.canvas-text')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    await until(() => Boolean(node('placed').querySelector('.canvas-rich-editor li[data-checked="true"]')), 'A checklist did not open as formatted words')
+    await press(control('Checklist'), 'Checklist')
+    await window.smoke.key('Escape')
+    await until(() => saved('placed').text === '- Placed under the table', 'Checklist did not turn a task back into a bullet while typing')
 
     for (let step = 0; step < 2; step++) {
       element.querySelector<HTMLButtonElement>('[aria-label="Zoom out"]')!.click()
