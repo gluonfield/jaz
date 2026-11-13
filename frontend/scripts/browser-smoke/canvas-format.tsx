@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { ThreadCanvas } from '@/components/canvas/ThreadCanvas'
 import { applyPatch } from '@/components/canvas/board'
 import { useCanvasContexts } from '@/components/canvas/useCanvasContexts'
-import type { CanvasItem, CanvasView } from '@/lib/api/canvas'
+import type { CanvasItem, CanvasLayout, CanvasView } from '@/lib/api/canvas'
 import { keys } from '@/lib/query/keys'
 
 export async function exerciseCanvasFormat(): Promise<void> {
@@ -20,13 +20,19 @@ export async function exerciseCanvasFormat(): Promise<void> {
       { id: 'cloud', type: 'text', text: 'Hosting', shape: 'cloud', color: '#fde2e4', x: 610, y: 130, width: 170, height: 120 },
       { id: 'note', type: 'text', text: '**Risk**\n- supplier slips\n- *no* spare tool', color: 'yellow', textAlign: 'left', x: 0, y: 300, width: 220, height: 160 },
       { id: 'grid', type: 'table', rows: [['Step', 'Owner', 'Due'], ['Draft', 'Ana', '**Mon**'], ['Review', 'Ben', 'Wed']], x: 280, y: 300, width: 420 },
+      { id: 'placed', type: 'text', text: 'Placed under the table', x: 0, y: 0, width: 300, place: { below: 'grid', gap: 24 } },
     ],
   }
   const snapshot = () => ({ version: view.version, dir: view.dir, pages: [{ id: 'page-1', name: 'Page 1', nodes: view.nodes, edges: view.edges, files: view.files, components: view.components }] })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(keys.sessionCanvas(sessionId), snapshot())
   const originalFetch = window.fetch
+  let layout: CanvasLayout = { page: '', items: [], issues: [] }
   window.fetch = async (input, init) => {
+    if (new URL(String(input)).pathname === `/v1/sessions/${sessionId}/canvas/layout`) {
+      layout = JSON.parse(String(init?.body))
+      return new Response(null, { status: 204 })
+    }
     if (new URL(String(input)).pathname !== `/v1/sessions/${sessionId}/canvas`) {
       return originalFetch(input, init)
     }
@@ -98,6 +104,13 @@ export async function exerciseCanvasFormat(): Promise<void> {
   try {
     root.render(<QueryClientProvider client={client}><Fixture /></QueryClientProvider>)
     await until(() => Boolean(node('grid')?.querySelector('td p')), 'The table did not render its cells')
+    const under = () => 324 + node('grid').offsetHeight
+    await until(() => saved('placed').place === undefined && saved('placed').x === 280 && Math.abs(Number(saved('placed').y) - under()) <= 1, 'An item placed below the table did not take its spot from the table\'s measured height')
+    const seen = (id: string) => layout.items.find((item) => item.id === id)
+    await until(() => layout.page === 'page-1' && seen('placed')?.y === saved('placed').y && Math.abs((seen('grid')?.height ?? 0) - node('grid').offsetHeight) <= 1 && seen('start')?.height === 56, 'The measured layout was not reported')
+    if (layout.issues.length) {
+      throw new Error('Canvas format: a clean page reported ' + layout.issues.join('; '))
+    }
     await until(() => fontSize('title', 'p') === '48px' && fontSize('caption', 'p') === '14px', 'Text sizes were not applied to the words')
     if (getComputedStyle(node('caption').querySelector('p')!).color === getComputedStyle(node('title').querySelector('p')!).color) {
       throw new Error('Canvas format: coloured text kept the default ink')
@@ -254,8 +267,10 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await pick('More', 'Duplicate')
     await until(() => view.nodes.length === count + 1 && view.nodes.at(-1)!.shape === 'pill', 'Duplicate did not copy the item')
     await until(() => Boolean(control('More')) && node(view.nodes.at(-1)!.id)?.classList.contains('selected'), 'The copy was not selected')
+    await until(() => layout.issues.some((issue) => issue.startsWith(`\`start\` overlaps \`${view.nodes.at(-1)!.id}\``)), 'A copy on top of its original was not reported as an overlap')
     await pick('More', 'Delete')
     await until(() => view.nodes.length === count, 'Delete did not remove the item')
+    await until(() => !layout.issues.some((issue) => issue.includes('overlaps')), 'The overlap stayed reported after the copy was deleted')
 
     const block = await place('Shape', [-110, 110, -70, 70], (item) => item.shape === 'rounded' && typeof item.height === 'number')
     await until(() => Boolean(document.activeElement?.classList.contains('canvas-text-editor')) && node(block).classList.contains('selected') && Boolean(control('Bold')), 'A new shape did not open for typing with its controls')

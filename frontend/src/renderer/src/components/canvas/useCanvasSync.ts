@@ -51,6 +51,10 @@ export function useCanvasSync(sessionId: string, working: boolean) {
     stack.redo = []
     history.current.set(page, stack)
   }, [send])
+  // A change that is not the user's to undo.
+  const apply = useCallback((page: string, change: CanvasPatch) => {
+    send({ ...change, page })
+  }, [send])
   const replay = useCallback((page: string, from: 'undo' | 'redo') => {
     const stack = history.current.get(page)
     const change = stack?.[from].pop()
@@ -70,5 +74,5 @@ export function useCanvasSync(sessionId: string, working: boolean) {
     history.current.delete(page)
     await refetch()
   }, [sessionId, refetch])
-  return { view, local, commit, replay, createPage, renamePage, deletePage, refreshed: canvas.isFetchedAfterMount && !canvas.isError, error: canvas.error }
+  return { view, local, commit, apply, replay, createPage, renamePage, deletePage, refreshed: canvas.isFetchedAfterMount && !canvas.isError, error: canvas.error }
 }

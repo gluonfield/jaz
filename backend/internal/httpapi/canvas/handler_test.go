@@ -35,6 +35,7 @@ func newTestServer(t *testing.T) (*http.ServeMux, string, string, *canvas.Servic
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/sessions/{session}/canvas", handler.Get)
 	mux.HandleFunc("PATCH /v1/sessions/{session}/canvas", handler.Patch)
+	mux.HandleFunc("PUT /v1/sessions/{session}/canvas/layout", handler.PutLayout)
 	return mux, session("canvas"), session("chat"), service
 }
 
@@ -132,5 +133,24 @@ func TestLegacyCanvasVersionCannotReuseFlatResponse(t *testing.T) {
 	var view canvas.View
 	if err := json.Unmarshal(res.Body.Bytes(), &view); err != nil || res.Code != http.StatusOK || len(view.Pages) != 1 {
 		t.Fatalf("flat cache reused for paged response: status=%d body=%s err=%v", res.Code, res.Body.String(), err)
+	}
+}
+
+func TestLayoutIsSavedForCanvasPagesOnly(t *testing.T) {
+	mux, board, chat, service := newTestServer(t)
+	body := `{"page":"page-1","items":[{"id":"a","x":0,"y":0,"width":200,"height":88}],"issues":["` + "`a` overlaps `b`" + `"]}`
+
+	if res := serve(mux, http.MethodPut, "/v1/sessions/"+board+"/canvas/layout", body); res.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	raw, err := os.ReadFile(filepath.Join(service.Dir(board), canvas.LayoutFileName))
+	if err != nil || !strings.Contains(string(raw), `{"id":"a","x":0,"y":0,"width":200,"height":88}`) {
+		t.Fatalf("layout = %s, err = %v", raw, err)
+	}
+	if res := serve(mux, http.MethodPut, "/v1/sessions/"+board+"/canvas/layout", strings.Replace(body, "page-1", "gone", 1)); res.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("unknown page status = %d", res.Code)
+	}
+	if res := serve(mux, http.MethodPut, "/v1/sessions/"+chat+"/canvas/layout", body); res.Code != http.StatusNotFound {
+		t.Fatalf("chat thread status = %d", res.Code)
 	}
 }

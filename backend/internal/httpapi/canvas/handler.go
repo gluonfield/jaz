@@ -64,6 +64,26 @@ func (h *Handler) Patch(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, map[string]string{"version": version})
 }
 
+func (h *Handler) PutLayout(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.canvasSession(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Page string `json:"page"`
+		canvas.Layout
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPatchBytes)).Decode(&body); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := h.canvas.SaveLayout(id, body.Page, body.Layout); err != nil {
+		fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) canvasSession(w http.ResponseWriter, r *http.Request) (string, bool) {
 	session, err := h.sessions.LoadSession(r.PathValue("session"))
 	if errors.Is(err, storage.ErrSessionNotFound) {

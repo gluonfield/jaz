@@ -37,13 +37,26 @@ Jaz reads these fields beyond JSON Canvas 1.0. Unknown values are ignored, so a 
 | `hollow` | shaped `text` | `true` keeps the outline without a fill |
 | `rows` | `table` | array of rows, each an array of cell strings with inline Markdown |
 | `header` | `table` | `false` when the first row is not a heading |
+| `points` | `stroke` | the drawn line as `[x, y]` pairs measured from the item's `x` and `y`; resizing stretches it |
+| `weight`, `highlight` | `stroke` | line width in pixels (4 by default); `true` draws it wide and translucent |
+| `color` | `stroke`, edges | an ink name or a CSS colour |
+| `route` | edges | `curve` (default), `elbow`, `straight` |
+| `dash` | edges | `solid` (default), `dashed`, `dotted` |
+| `fromEnd`, `toEnd` | edges | `none`, `arrow`, `circle`; an edge starts plain and ends in an arrow by default |
+| `locked` | any node | `true` pins the item: it cannot be moved, resized, edited or deleted until unlocked |
+| `z` | any node | stacking order; higher is in front, negative is behind |
+| `place` | any node | `{"below": "<id>"}` or `right`, `above`, `left`, with optional `gap` (40) and `align` (`start`, `center`, `end`) |
 
 ```json
 {"id":"gate","type":"text","text":"Ship?","shape":"diamond","color":"yellow","x":0,"y":0,"width":160,"height":120}
 {"id":"owners","type":"table","rows":[["Step","Owner"],["Draft","Ana"]],"x":200,"y":0,"width":320}
 ```
 
-Selecting a text item or table shows its controls above it: shape, size, bold, italic, list, alignment and colour for text; size and rows and columns for a table. Double-click a table cell to edit it; Enter keeps it, Tab keeps it and moves on, Escape leaves it unchanged. The dock's Shape (`R`) and Table (`B`) tools add new ones.
+Selecting an item shows its controls above it: shape, size, bold, italic, strikethrough, code, bulleted and numbered lists, alignment and colour for text; size and rows and columns for a table; route, line, ends and colour for a connector; ink and weight for a drawn line. Every item also has Lock and, under More, Duplicate, Bring to front (`Mod+]`), Send to back (`Mod+[`) and Delete. Selecting several items offers the six alignments and the same actions for all of them.
+
+Double-clicking text opens it for typing as formatted words when it uses only paragraphs, lists, bold, italic, strikethrough, code and links; anything else, such as a heading or a quote, opens as Markdown source. Double-click a table cell to edit it; Enter keeps it, Tab keeps it and moves on, Escape leaves it unchanged. The dock's Shape (`R`) and Table (`B`) tools add new ones. The Pen (`P`) draws lines until another tool is chosen, with inks, three weights and a highlighter above the dock; the Eraser (`E`) removes each line it is dragged across.
+
+An item with a `place` gets its `x` and `y` from the measured size of the item it names once its page is on screen; the client then saves them and removes `place`. Whenever a page has drawn and gone quiet, the client also sends what it measured with `PUT /v1/sessions/{session}/canvas/layout` (`page`, `items` as `{id, x, y, width, height}`, and `issues`), and the server keeps the latest per page in `layout.json` beside `canvas.json`, one item and one issue per line. Issues name overlapping items, items across a section's edge, content shrunk to fit its box and places that could not be worked out. Agents read this file to check a layout they wrote.
 
 Agents may also edit the file directly. Re-read it before editing, change only the intended pages/items, and retain IDs. Missing names in agent-written pages default to their `Page N` position.
 

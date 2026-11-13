@@ -58,6 +58,7 @@ import { SelectionToolbar } from './CanvasToolbar'
 import { fitPadding, useAgentFollow } from './useAgentFollow'
 import { CanvasPages } from '@/components/canvas/CanvasPages'
 import type { CanvasPick } from './useCanvasContexts'
+import { useCanvasLayout } from './useCanvasLayout'
 import { useCanvasInput, type Bindings } from './useCanvasInput'
 import { useCanvasSync } from './useCanvasSync'
 import { useSectionDrag } from './useSectionDrag'
@@ -155,6 +156,7 @@ function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string })
         view={view}
         local={local}
         commit={(change) => sync.commit(page.id, change)}
+        apply={(change) => sync.apply(page.id, change)}
         replay={(from) => sync.replay(page.id, from)}
         error={sync.error}
         initialViewport={viewports.current.get(page.id)}
@@ -183,11 +185,12 @@ interface BoardProps extends Props {
   view: CanvasView
   local: CanvasView
   commit: (change: CanvasPatch) => void
+  apply: (change: CanvasPatch) => void
   replay: (from: 'undo' | 'redo') => void
   error: Error | null
 }
 
-function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, view, local, commit, replay, error, initialViewport, onViewport, targetItem, onJump, children }: BoardProps) {
+function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, view, local, commit, apply, replay, error, initialViewport, onViewport, targetItem, onJump, children }: BoardProps) {
   const flow = useReactFlow<BoardNode, BoardEdge>()
   const { zoom } = useViewport()
   const theme = useArtifactThemeCSS()
@@ -227,6 +230,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   const [connectSource, setConnectSource] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [draft, setDraft] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  useCanvasLayout({ sessionId, page: pageId, local, nodes, hold: dragging || editing !== null, apply, container })
 
   const onSelectionChange = useCallback(({ nodes: picked }: OnSelectionChangeParams<BoardNode, BoardEdge>) => {
     onSelect(picked.map((node) => ({ page: pageId, node: node.id, label: itemLabel(node.data.item) })))
