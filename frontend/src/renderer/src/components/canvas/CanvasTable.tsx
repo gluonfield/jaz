@@ -7,7 +7,8 @@ import type { BoardNode } from './board'
 import { useCanvas } from './canvasContext'
 import { Flash, Handles, Resizer } from './CanvasNodes'
 import { SizeMenu } from './CanvasTextToolbar'
-import { ItemToolbar, ToolButton } from './CanvasToolbar'
+import { ToolButton } from './CanvasMenu'
+import { ItemToolbar } from './CanvasToolbar'
 import { editTable, lookOf, tableRows, type TableEdit } from './format'
 
 type Cell = [row: number, column: number]

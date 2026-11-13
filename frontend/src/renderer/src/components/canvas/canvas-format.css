@@ -461,7 +461,7 @@
 
 /* Tasks: a box the pointer passes through on the board, so the item's own
    click can tick it, and a drawn box while typing. */
-.canvas .react-flow__node input[type='checkbox'] {
+.canvas :is(.canvas-text, .canvas-sticky, .canvas-block) input[type='checkbox'] {
   pointer-events: none;
 }
 

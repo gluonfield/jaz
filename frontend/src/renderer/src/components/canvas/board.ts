@@ -214,6 +214,10 @@ export function withContents(nodes: BoardNode[], all: BoardNode[]): BoardNode[] 
   return [...new Map([...nodes, ...sections.flatMap((section) => sectionContents(section, all))].map((node) => [node.id, node])).values()]
 }
 
+export function newSection(rect: Rect): Partial<CanvasItem> {
+  return { id: newId('section'), type: 'group', label: 'Section', ...rounded(rect) }
+}
+
 export function padded(rect: Rect): Rect {
   return { x: rect.x - SECTION_PAD, y: rect.y - SECTION_PAD, width: rect.width + 2 * SECTION_PAD, height: rect.height + 2 * SECTION_PAD }
 }

@@ -1,27 +1,20 @@
 import { NodeToolbar, useReactFlow } from '@xyflow/react'
 import { AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical, BringToFront, ClipboardPaste, Copy, Ellipsis, Group, Lock, LockOpen, Paintbrush, SendToBack, Trash2, type LucideIcon } from 'lucide-react'
-import { createContext, use, useState, type MouseEvent, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { CanvasItem } from '@/lib/api/canvas'
 import { ALIGNMENTS, alignItems, layerItems, styleOf, type Alignment } from './arrange'
-import { bounds, newId, padded, rectOfNode, rounded, type BoardEdge, type BoardNode } from './board'
+import { bounds, newSection, padded, rectOfNode, type BoardEdge, type BoardNode } from './board'
 import { useCanvas } from './canvasContext'
 import { Comments } from './CanvasComments'
+import { Menu, Menus, ToolButton, hold } from './CanvasMenu'
 
-// Pressing a control must not take the focus from the text being edited.
-export const hold = (event: MouseEvent) => event.preventDefault()
+type Act = [label: string, Icon: LucideIcon, act: () => void]
 
 // The look last copied, with the kind of item it came from.
 let style: { type: unknown; look: Partial<CanvasItem> } | null = null
 
-// The label of the one open menu.
-const OpenMenu = createContext<[string | null, (label: string | null) => void]>([null, () => {}])
-
 // The controls of a selected item, floating above it at screen size. A locked
-// item offers only its lock.
-export function Menus({ children }: { children: ReactNode }) {
-  return <OpenMenu value={useState<string | null>(null)}>{children}</OpenMenu>
-}
-
+// item offers only its lock and its comments.
 export function ItemToolbar({ label, item, offset = 16, children }: { label: string; item: CanvasItem; offset?: number; children?: ReactNode }) {
   return (
     <NodeToolbar className="canvas-toolbar nodrag nopan nowheel" offset={offset} role="toolbar" aria-label={label} onMouseDown={hold}>
@@ -36,28 +29,6 @@ export function ItemToolbar({ label, item, offset = 16, children }: { label: str
         <ArrangeControls ids={[item.id]} menu />
       </Menus>
     </NodeToolbar>
-  )
-}
-
-export function ToolButton({ label, on, onClick, children }: { label: string; on?: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" className={on ? 'on' : ''} aria-label={label} aria-pressed={on} title={label} onClick={onClick}>
-      {children}
-    </button>
-  )
-}
-
-// A menu closes on a choice, unless it is told to stay for more.
-export function Menu({ label, face, stay, children }: { label: string; face: ReactNode; stay?: boolean; children: ReactNode }) {
-  const [current, setCurrent] = use(OpenMenu)
-  const open = current === label
-  return (
-    <div className="canvas-toolbar-menu">
-      <button type="button" className={open ? 'on' : ''} aria-label={label} aria-expanded={open} title={label} onClick={() => setCurrent(open ? null : label)}>
-        {face}
-      </button>
-      {open ? <div className="canvas-toolbar-panel" role="menu" aria-label={label} onClick={() => stay || setCurrent(null)}>{children}</div> : null}
-    </div>
   )
 }
 
@@ -82,12 +53,13 @@ export function ArrangeControls({ ids, menu }: { ids: string[]; menu?: boolean }
     if (change.length) commit({ nodes: change })
   }
   const alike = style ? items.filter((item) => item.type === style!.type) : []
-  const acts: [string, LucideIcon, () => void][] = [
+  const copyStyle = () => {
+    style = { type: items[0].type, look: styleOf(items[0]) }
+  }
+  const acts: Act[] = [
     ['Duplicate', Copy, duplicate],
-    ...(items.length === 1 ? [['Copy style', Paintbrush, () => {
-      style = { type: items[0].type, look: styleOf(items[0]) }
-    }] as [string, LucideIcon, () => void]] : []),
-    ...(alike.length ? [['Paste style', ClipboardPaste, () => commit({ nodes: alike.map((item) => ({ id: item.id, ...style!.look })) })] as [string, LucideIcon, () => void]] : []),
+    ...(items.length === 1 ? [['Copy style', Paintbrush, copyStyle] satisfies Act] : []),
+    ...(alike.length ? [['Paste style', ClipboardPaste, () => commit({ nodes: alike.map((item) => ({ id: item.id, ...style!.look })) })] satisfies Act] : []),
     ['Bring to front', BringToFront, () => layer('front')],
     ['Send to back', SendToBack, () => layer('back')],
     ['Delete', Trash2, () => void flow.deleteElements({ nodes: ids.map((id) => ({ id })) })],
@@ -114,10 +86,7 @@ export function SelectionToolbar({ ids }: { ids: string[] }) {
     const free = flow.getNodes().filter((node) => ids.includes(node.id) && node.data.item.locked !== true)
     commit({ nodes: alignItems(free.map((node) => ({ id: node.id, ...rectOfNode(node) })), to) })
   }
-  const group = () => {
-    const box = padded(bounds(flow.getNodes().filter((node) => ids.includes(node.id)).map(rectOfNode)))
-    commit({ nodes: [{ id: newId('section'), type: 'group', label: 'Section', ...rounded(box) }] })
-  }
+  const group = () => commit({ nodes: [newSection(padded(bounds(flow.getNodes().filter((node) => ids.includes(node.id)).map(rectOfNode))))] })
   return (
     <NodeToolbar nodeId={ids} isVisible className="canvas-toolbar nodrag nopan nowheel" offset={16} role="toolbar" aria-label="Selection actions" onMouseDown={hold}>
       {ALIGNMENTS.map((to) => {

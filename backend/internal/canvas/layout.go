@@ -42,6 +42,7 @@ func (s *Service) SaveLayout(sessionID, page string, layout Layout) error {
 	var stored struct {
 		Pages map[string]Layout `json:"pages"`
 	}
+	// A layout that cannot be read is only a stale measure: it is replaced.
 	if raw, err := os.ReadFile(filepath.Join(dir, LayoutFileName)); err == nil {
 		_ = json.Unmarshal(raw, &stored)
 	}

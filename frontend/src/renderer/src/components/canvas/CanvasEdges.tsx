@@ -5,7 +5,7 @@ import type { BoardEdge } from './board'
 import { useCanvas } from './canvasContext'
 import { LabelInput } from './CanvasNodes'
 import { swatch } from './CanvasTextToolbar'
-import { Menu, Menus, ToolButton, hold } from './CanvasToolbar'
+import { Menu, Menus, ToolButton, hold } from './CanvasMenu'
 import { DASHES, ENDS, INKS, ROUTES, inkColor, type EdgeLook } from './format'
 
 const PATHS = { curve: getBezierPath, elbow: getSmoothStepPath, straight: getStraightPath }

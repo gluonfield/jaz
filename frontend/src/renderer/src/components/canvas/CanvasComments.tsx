@@ -2,7 +2,7 @@ import { MessageSquare } from 'lucide-react'
 import { useState } from 'react'
 import type { CanvasItem } from '@/lib/api/canvas'
 import { useCanvas } from './canvasContext'
-import { Menu } from './CanvasToolbar'
+import { Menu } from './CanvasMenu'
 
 export interface Comment {
   by: 'user' | 'agent'

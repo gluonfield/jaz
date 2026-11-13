@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { hold } from './CanvasToolbar'
+import { hold } from './CanvasMenu'
 
 const STICKERS = ['👍', '👎', '❤️', '🔥', '🎉', '✅', '❌', '❓', '⭐', '💡', '⚠️', '🚀']
 

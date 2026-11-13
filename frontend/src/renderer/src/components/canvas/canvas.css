@@ -672,6 +672,15 @@
   transition-delay: 400ms;
 }
 
+/* On a narrow screen the tools scroll sideways instead of running off it. */
+@media (max-width: 720px) {
+  .canvas-dock {
+    max-width: calc(100% - var(--canvas-inset) - 16px);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+}
+
 .canvas-tool-layer {
   position: absolute;
   inset: 0;

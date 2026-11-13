@@ -36,6 +36,7 @@ import {
   mergeEdges,
   mergeNodes,
   newId,
+  newSection,
   rectOfNode,
   padded,
   rounded,
@@ -261,7 +262,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   }
 
   const addSection = (rect: Rect) => {
-    commit({ nodes: [{ id: newId('section'), type: 'group', label: 'Section', ...rounded(rect) }] })
+    commit({ nodes: [newSection(rect)] })
     setTool('select')
   }
 
