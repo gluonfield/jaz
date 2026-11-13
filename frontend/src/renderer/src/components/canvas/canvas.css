@@ -802,13 +802,14 @@
 }
 
 .canvas-pages {
+  --canvas-pages-left: min(calc(var(--canvas-inset) + 16px), max(16px, calc(100% - 248px)));
   position: absolute;
   top: calc(var(--titlebar-height, 0px) + 16px);
-  left: min(calc(var(--canvas-inset) + 16px), max(16px, calc(100% - 248px)));
+  left: var(--canvas-pages-left);
   display: flex;
   align-items: center;
   gap: 4px;
-  max-width: calc(100% - 32px);
+  max-width: calc(100% - var(--canvas-pages-left) - 16px);
   padding: 4px;
   border-radius: 10px;
   background: var(--color-bg);
@@ -833,8 +834,8 @@
 }
 
 .canvas-pages input {
+  flex: none;
   width: 160px;
-  min-width: 0;
   height: 28px;
   padding: 0 8px;
   border-radius: 6px;
@@ -843,9 +844,35 @@
   outline-color: var(--canvas-accent);
 }
 
-.canvas-pages > button[aria-haspopup] {
+/* Every page in a row that scrolls sideways when the pages outgrow it. */
+.canvas-page-tabs {
+  position: relative;
   display: flex;
-  width: auto;
-  min-width: 80px;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.canvas-page-tabs > button {
+  flex: none;
   max-width: 200px;
+  height: 28px;
+  padding: 0 10px;
+  overflow: hidden;
+  border-radius: 6px;
+  color: var(--color-ink-2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-page-tabs > button:hover {
+  background: var(--color-surface-2);
+}
+
+.canvas-page-tabs > button[aria-current] {
+  background: var(--color-surface-2);
+  color: var(--color-ink);
+  font-weight: 500;
 }

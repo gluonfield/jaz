@@ -58,7 +58,7 @@ import { CommentBadges } from './CanvasComments'
 import { SelectionToolbar } from './CanvasToolbar'
 import { ToolLayer } from './CanvasTools'
 import { fitPadding, useAgentFollow } from './useAgentFollow'
-import { CanvasPages } from '@/components/canvas/CanvasPages'
+import { CanvasPages, type PageTabsMemory } from '@/components/canvas/CanvasPages'
 import type { CanvasPick } from './useCanvasContexts'
 import { uploadedItems } from './upload'
 import { useCanvasLayout } from './useCanvasLayout'
@@ -99,6 +99,7 @@ function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string })
   const [navigationError, setNavigationError] = useState('')
   const visited = useRef(location.navigation)
   const viewports = useRef(new Map<string, Viewport>())
+  const tabs = useRef<PageTabsMemory>({ scroll: 0, focus: false })
   const selectedPage = sync.local?.pages.find((page) => page.id === location.page)
   const page = selectedPage ?? sync.local?.pages[0]
   useEffect(() => {
@@ -159,11 +160,11 @@ function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string })
         targetItem={jump?.page === page.id ? jump.item : undefined}
         onJump={() => setJump((current) => current?.page === page.id && current.item === jump?.item ? null : current)}
       >
-        <CanvasPages key={page.id} pages={sync.local.pages} page={page} onPage={choosePage} onCreate={async () => {
+        <CanvasPages pages={sync.local.pages} page={page} memory={tabs} onPage={choosePage} onCreate={async () => {
           const id = newId('page')
           await sync.createPage(id)
           choosePage(id)
-        }} onRename={(name) => sync.renamePage(page.id, name)} onDelete={() => sync.deletePage(page.id)} />
+        }} onRename={sync.renamePage} onDelete={sync.deletePage} />
         {navigationError ? <div className="canvas-overlay canvas-banner danger" role="alert">{navigationError}</div> : null}
       </Board>
     </ReactFlowProvider>
