@@ -88,6 +88,13 @@ func TestSavedMCPRetryRecoversLiveToolsWithoutCheckingOtherServers(t *testing.T)
 	if status := manager.Status(server.ID); status.Status != "connected" {
 		t.Fatalf("draft probe changed the saved connection = %#v", status)
 	}
+	for _, body := range []string{`{`, `{"name":"invalid","url":"bad-url"}`} {
+		response = httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/"+server.ID+"/test", strings.NewReader(body)))
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("invalid draft probed saved settings: %d %s", response.Code, response.Body.String())
+		}
+	}
 	definitions := registry.Definitions()
 	if len(definitions) != 1 {
 		t.Fatalf("live tools = %d, want 1", len(definitions))

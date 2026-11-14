@@ -57,7 +57,7 @@ type Manager struct {
 	mu           sync.RWMutex
 	sessions     map[string]*serverSession
 	statuses     map[string]mcpconfig.ServerStatus
-	refreshMu    sync.Mutex
+	refreshGate  chan struct{}
 	proxy        *mcpsdk.Server
 	proxyCatalog map[string]remoteTool
 	revision     uint64
@@ -171,6 +171,7 @@ func NewManager(store mcpconfig.ServerReader, tokens tokenStore, registry *tools
 		localServers: make(map[string]localServer),
 		sessions:     make(map[string]*serverSession),
 		statuses:     make(map[string]mcpconfig.ServerStatus),
+		refreshGate:  make(chan struct{}, 1),
 		authStates:   make(map[string]*authorizationPending),
 		proxyCatalog: make(map[string]remoteTool),
 		refreshed:    make(chan struct{}),
@@ -193,7 +194,6 @@ func (m *Manager) backgroundHandler(server mcpconfig.Server) *oauthHandler {
 }
 
 func (m *Manager) Refresh(ctx context.Context) {
-	defer m.refreshedOnce.Do(func() { close(m.refreshed) })
 	m.refresh(ctx, nil)
 }
 
@@ -203,20 +203,34 @@ func (m *Manager) RefreshLocal(ctx context.Context) {
 	})
 }
 
-func (m *Manager) RefreshServer(ctx context.Context, id string) {
-	m.refresh(ctx, func(server mcpconfig.Server) bool {
+func (m *Manager) RefreshServer(ctx context.Context, id string) mcpconfig.ServerStatus {
+	if err := m.refresh(ctx, func(server mcpconfig.Server) bool {
 		return server.ID == id
-	})
+	}); err != nil {
+		return connectErrorStatus(nil, err)
+	}
+	return m.Status(id)
 }
 
-func (m *Manager) refresh(ctx context.Context, include func(mcpconfig.Server) bool) {
-	m.refreshMu.Lock()
-	defer m.refreshMu.Unlock()
+func (m *Manager) refresh(ctx context.Context, include func(mcpconfig.Server) bool) error {
+	select {
+	case m.refreshGate <- struct{}{}:
+		defer func() { <-m.refreshGate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if include == nil {
+		defer m.refreshedOnce.Do(func() { close(m.refreshed) })
+	}
 	servers, err := m.servers(nil)
 	if err != nil {
-		return
+		return err
 	}
 	m.refreshServerList(ctx, servers, include)
+	return nil
 }
 
 func (m *Manager) servers(include func(mcpconfig.Server) bool) ([]mcpconfig.Server, error) {
@@ -371,8 +385,8 @@ func (m *Manager) builtinToolName(server mcpconfig.Server, remote string, used m
 }
 
 func (m *Manager) Close() {
-	m.refreshMu.Lock()
-	defer m.refreshMu.Unlock()
+	m.refreshGate <- struct{}{}
+	defer func() { <-m.refreshGate }()
 	m.mu.Lock()
 	sessions := m.sessions
 	m.sessions = make(map[string]*serverSession)

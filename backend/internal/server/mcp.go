@@ -153,14 +153,16 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 		ctx, cancel := serverActionContext()
 		defer cancel()
 		if r.Body != nil && r.ContentLength != 0 {
-			if input, err := mcpapi.DecodeServerInput(r, &server); err == nil {
-				server = input.Server(server.ID, server.CreatedAt, server.UpdatedAt)
+			input, err := mcpapi.DecodeServerInput(r, &server)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
 			}
+			server = input.Server(server.ID, server.CreatedAt, server.UpdatedAt)
 			writeJSON(w, http.StatusOK, s.MCP.Test(ctx, server))
 			return
 		}
-		s.MCP.RefreshServer(ctx, id)
-		writeJSON(w, http.StatusOK, s.MCP.Status(id))
+		writeJSON(w, http.StatusOK, s.MCP.RefreshServer(ctx, id))
 	case "authorize":
 		server, err := store.LoadMCPServer(id)
 		if err != nil {
