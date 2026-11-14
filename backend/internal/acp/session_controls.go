@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
@@ -53,6 +55,9 @@ func (m *Manager) applySessionControls(job *jobState, raw json.RawMessage) bool 
 			switch option.Category {
 			case "model":
 				job.Model = option.CurrentValue
+				if CanonicalAgentName(job.ACPAgent) == AgentOpenCode && job.ModelProvider != "" && job.ModelProvider != AgentOpenCode {
+					job.Model = strings.TrimPrefix(job.Model, job.ModelProvider+"/")
+				}
 			case "thought_level":
 				job.ReasoningEffort = option.CurrentValue
 			case "mode":
@@ -201,7 +206,7 @@ func (m *Manager) setSessionConfig(ctx context.Context, job *jobState, id, value
 
 // restoreConfiguredChoices reapplies the user's model and effort picks made
 // since the thread last switched agent.
-func restoreConfiguredChoices(cfg *AgentConfig, events []sessionevents.Event) {
+func restoreConfiguredChoices(cfg *AgentConfig, events []sessionevents.Event, agent string) {
 	targets := map[string]*string{"model": &cfg.Model, "thought_level": &cfg.ReasoningEffort}
 	start := 0
 	for i, event := range events {
@@ -213,7 +218,35 @@ func restoreConfiguredChoices(cfg *AgentConfig, events []sessionevents.Event) {
 		if event.AgentSession == nil {
 			continue
 		}
+		if CanonicalAgentName(agent) == AgentOpenCode && cfg.UsesModelProvider() {
+			mismatch := false
+			for _, option := range event.AgentSession.ConfigOptions {
+				if option.Category != "model" {
+					continue
+				}
+				id, native := provider.SplitProviderModel(option.CurrentValue)
+				if id != "" && cfg.ModelProvider != "" && id != cfg.ModelProvider {
+					mismatch = true
+					break
+				}
+				if id != "" && cfg.Model == option.CurrentValue {
+					cfg.Model = native
+				}
+			}
+			if mismatch {
+				continue
+			}
+		}
 		for _, option := range event.AgentSession.ConfigOptions {
+			if option.Category == "model" && CanonicalAgentName(agent) == AgentOpenCode && cfg.UsesModelProvider() {
+				if option.UserValue != nil {
+					id, native := provider.SplitProviderModel(*option.UserValue)
+					if id == cfg.ModelProvider {
+						cfg.Model = native
+					}
+				}
+				continue
+			}
 			if target := targets[option.Category]; target != nil {
 				*target = ""
 				if option.UserValue != nil {

@@ -897,7 +897,35 @@ func fakeAskThenBlock(t *testing.T, conn jsonrpc.MessageConn, prompt *jsonrpc.Me
 }
 
 func sendResult(conn jsonrpc.MessageConn, req *jsonrpc.Message, result any) {
-	if raw := os.Getenv("JAZ_FAKE_ACP_SESSION_OPTIONS"); raw != "" && (req.Method == "session/new" || req.Method == "session/load" || req.Method == "session/resume" || req.Method == "session/set_config_option") {
+	raw := os.Getenv("JAZ_FAKE_ACP_SESSION_OPTIONS")
+	if os.Getenv("JAZ_FAKE_ACP_OVERLAY_OPTIONS") == "1" {
+		var config struct {
+			Model     string `json:"model"`
+			Providers map[string]struct {
+				Models map[string]any `json:"models"`
+			} `json:"provider"`
+		}
+		if err := json.Unmarshal([]byte(os.Getenv("OPENCODE_CONFIG_CONTENT")), &config); err != nil {
+			panic(err)
+		}
+		if config.Model == os.Getenv("JAZ_FAKE_ACP_REJECT_OVERLAY_MODEL") && (req.Method == "session/new" || req.Method == "session/load" || req.Method == "session/resume") {
+			response, _ := jsonrpc.NewErrorResponse(*req.ID, jsonrpc.InternalError("requested test provider unavailable", nil))
+			_ = conn.Send(context.Background(), response)
+			return
+		}
+		values := []map[string]string{}
+		for id, provider := range config.Providers {
+			for model := range provider.Models {
+				values = append(values, map[string]string{"value": id + "/" + model, "name": model})
+			}
+		}
+		encoded, err := json.Marshal([]map[string]any{{"id": "model", "category": "model", "type": "select", "currentValue": config.Model, "options": values}})
+		if err != nil {
+			panic(err)
+		}
+		raw = string(encoded)
+	}
+	if raw != "" && (req.Method == "session/new" || req.Method == "session/load" || req.Method == "session/resume" || req.Method == "session/set_config_option") {
 		var options []map[string]any
 		if err := json.Unmarshal([]byte(raw), &options); err != nil {
 			panic(err)

@@ -250,7 +250,7 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateBot) (Bot, 
 				}
 			}
 			if input.Model != nil {
-				if err := s.threads.SetModel(ctx, thread, strings.TrimSpace(*input.Model), strings.TrimSpace(input.ReasoningEffort)); err != nil {
+				if err := s.threads.SetModel(ctx, thread, strings.TrimSpace(*input.Model), strings.TrimSpace(input.ModelProvider), strings.TrimSpace(input.ReasoningEffort)); err != nil {
 					return Bot{}, err
 				}
 			}
@@ -487,6 +487,7 @@ func (s *Service) view(record storage.BotRecord, session storage.Session, held m
 	bot.Thinking = s.threads.Thinking(session.ID)
 	bot.Away = held[session.ID]
 	bot.Model = session.Model
+	bot.ModelProvider = session.ModelProvider
 	bot.ReasoningEffort = session.ReasoningEffort
 	bot.ContextTokens = session.Usage.ContextTokens
 	bot.ContextWindowTokens = session.Usage.ContextWindowTokens

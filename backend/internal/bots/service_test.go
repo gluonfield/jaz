@@ -393,7 +393,7 @@ func (t fakeThreads) Wait(_ context.Context, req acp.WaitRequest) (acp.Job, erro
 	return acp.Job{ID: req.Session, State: acp.StateIdle, Assistant: "private notes"}, nil
 }
 
-func (t fakeThreads) SetModel(_ context.Context, sessionID, model, effort string) error {
+func (t fakeThreads) SetModel(_ context.Context, sessionID, model, modelProvider, effort string) error {
 	t.world.mu.Lock()
 	defer t.world.mu.Unlock()
 	t.world.models[sessionID] = model + "/" + effort

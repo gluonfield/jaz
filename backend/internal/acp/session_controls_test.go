@@ -435,12 +435,49 @@ func TestRestoredChoicesStartOverAtAnAgentSwitch(t *testing.T) {
 	}
 	events := []sessionevents.Event{picked("model", "opus"), picked("thought_level", "max"), {Type: sessionevents.TypeAgentSwitch, Content: "codex"}}
 	cfg := AgentConfig{Model: "gpt-default", ReasoningEffort: "medium"}
-	restoreConfiguredChoices(&cfg, events)
+	restoreConfiguredChoices(&cfg, events, AgentCodex)
 	if cfg.Model != "gpt-default" || cfg.ReasoningEffort != "medium" {
 		t.Fatalf("the old agent's picks reached the new agent: %+v", cfg)
 	}
-	restoreConfiguredChoices(&cfg, append(events, picked("model", "gpt-pro")))
+	restoreConfiguredChoices(&cfg, append(events, picked("model", "gpt-pro")), AgentCodex)
 	if cfg.Model != "gpt-pro" {
 		t.Fatalf("a pick made after the switch was lost: %+v", cfg)
+	}
+}
+
+func TestOpenCodeReportedModelDoesNotAccumulateProviderPrefixes(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "model-controls", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	model := "alpha/first"
+	for range 3 {
+		job := &jobState{Job: Job{ID: session.ID, ACPAgent: AgentOpenCode, ModelProvider: "alpha"}}
+		raw := json.RawMessage(`{"configOptions":[{"id":"model","category":"model","type":"select","currentValue":"alpha/` + model + `"}]}`)
+		if !manager.applySessionControls(job, raw) {
+			t.Fatal("model update was not handled")
+		}
+		saved, err := store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.Model != "alpha/first" || saved.Model != job.Model {
+			t.Fatalf("model changed after ACP report: runtime=%q stored=%q", job.Model, saved.Model)
+		}
+		model = saved.Model
+	}
+}
+
+func TestOpenCodeNativeCLIChoicesKeepTheirProviderPrefix(t *testing.T) {
+	value := "opencode-go/vendor/model"
+	cfg := AgentConfig{}
+	restoreConfiguredChoices(&cfg, []sessionevents.Event{{Type: sessionevents.TypeAgentSession, AgentSession: &sessionevents.AgentSession{ConfigOptions: []sessionevents.AgentConfigOption{{Category: "model", CurrentValue: value, UserValue: &value}}}}}, AgentOpenCode)
+	if cfg.Model != value {
+		t.Fatalf("native CLI model changed: %q", cfg.Model)
 	}
 }

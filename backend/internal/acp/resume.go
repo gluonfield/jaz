@@ -91,7 +91,10 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 	}
 	cfg.Model = strings.TrimSpace(session.Model)
 	cfg.ReasoningEffort = strings.TrimSpace(session.ReasoningEffort)
-	restoreConfiguredChoices(&cfg, overview)
+	if cfg.UsesModelProvider() {
+		cfg.ModelProvider = strings.TrimSpace(session.ModelProvider)
+	}
+	restoreConfiguredChoices(&cfg, overview, agentName)
 	if cfg.UsesModelProvider() {
 		cfg.ModelProvider = strings.TrimSpace(session.ModelProvider)
 		cfg = cfg.NormalizeProviderModel(cfg.ModelProvider)

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { Select } from '@/components/ui/Select'
 import { agentLabel } from '@/lib/agentLabel'
@@ -10,18 +10,20 @@ import { useModelReasoningState } from '@/lib/modelReasoning'
 import { pickerEffortOptions } from '@/lib/modelPicker'
 import { useUpdateBot } from './useUpdateBot'
 
-// The bot's agent and model in the composer's picker. A running agent's own
-// options are the truth for the bot; before it starts, the bot's stored pick
-// is, and then the agent's default. One save at a time, so an agent switch and
-// a model change cannot race.
+// A saved pick has already been validated. The cached live controls may still
+// describe the previous turn; they supply the available options, not an override
+// of a newly acknowledged selection.
 export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; agentSession?: AgentSessionState; working: boolean }) {
   const settings = useQuery(agentSettingsQuery).data
   const update = useUpdateBot(bot.id)
   const disabled = working || update.isPending
   const agent = bot.agent ?? ''
   const live = (category: string) => agentSession?.config_options?.find((option) => option.category === category)?.current_value
-  const runtime = runtimeModelState(settings, agent)
-  const model = live('model') || bot.model || runtime.defaultModel
+  const [pendingProvider, setPendingProvider] = useState<string>()
+  const runtime = runtimeModelState(settings, agent, pendingProvider ?? bot.model_provider)
+  const model = pendingProvider
+    ? ''
+    : bot.model || (!runtime.usesProvider ? live('model') : '') || runtime.defaultModel
   const reasoning = useModelReasoningState({
     settings,
     agent,
@@ -46,14 +48,27 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
             // with no memory of the conversation, so the move asks first.
             const label = agentLabel(next)
             if (!window.confirm(`Move ${bot.name} to ${label}? ${label} starts with a fresh memory; the chat and routines stay.`)) return
+            setPendingProvider(undefined)
             update.mutate({ agent: next })
           }}
         />
       </Row>
+      {runtime.usesProvider && runtime.providers.length > 1 && (
+        <Row label="Provider">
+          <Select
+            aria-label="Provider"
+            variant="plain"
+            value={runtime.provider}
+            options={runtime.providers.map(({ id, label }) => ({ value: id, label }))}
+            disabled={disabled}
+            onChange={(provider) => setPendingProvider(provider === bot.model_provider ? undefined : provider)}
+          />
+        </Row>
+      )}
       <Row label="Model">
         <div className="-mr-2.5 flex min-w-0 flex-1 justify-end">
           <ModelSelect
-            key={agent}
+            key={`${agent}:${runtime.provider}`}
             value={model}
             effort={reasoning.effectiveReasoningEffort}
             suggestions={reasoning.modelSuggestions}
@@ -62,7 +77,14 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
             disabled={disabled}
             placement="below"
             align="end"
-            onChange={(next) => update.mutate({ model: next.model, reasoning_effort: next.effort })}
+            onChange={(next) => {
+              if (!next.model) return
+              update.mutate({
+                model: next.model,
+                model_provider: runtime.provider || undefined,
+                reasoning_effort: next.effort,
+              }, { onSuccess: () => setPendingProvider(undefined) })
+            }}
           />
         </div>
       </Row>

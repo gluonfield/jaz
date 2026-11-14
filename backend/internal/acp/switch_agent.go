@@ -66,9 +66,35 @@ func (m *Manager) SwitchAgent(_ context.Context, sessionID, agent string) error 
 // stores them on the thread. Before the current agent's first turn the stored
 // choice is applied when its native session starts, as a new thread's is.
 // After that it goes through the agent's own model and effort options first.
-func (m *Manager) SetModel(ctx context.Context, sessionID, model, effort string) error {
+func (m *Manager) SetModel(ctx context.Context, sessionID, model, modelProvider, effort string) error {
 	unlock := m.resumeLocks.Lock(sessionID)
-	session, cfg, effort, live, err := m.modelChoice(sessionID, model, effort)
+	session, cfg, effort, live, err := m.modelChoice(sessionID, model, modelProvider, effort)
+	if err == nil && live && cfg.UsesModelProvider() && CanonicalAgentName(session.RuntimeRef.Agent) == AgentOpenCode && session.ModelProvider != cfg.ModelProvider {
+		defer unlock()
+		job := m.jobByID(sessionID)
+		if job == nil && session.Turn != nil || len(session.QueuedMessages) != 0 {
+			return errors.New("wait for the active turn before changing provider")
+		}
+		if job != nil && !job.retire() {
+			return errors.New("wait for agent work before changing provider")
+		}
+		m.teardown(sessionID)
+		if err := m.saveModel(session, cfg, effort); err != nil {
+			return err
+		}
+		if _, err := m.resumeLocked(ctx, sessionID); err != nil {
+			m.teardown(sessionID)
+			previous := cfg
+			previous.ModelProvider, previous.Model = session.ModelProvider, session.Model
+			restoreErr := m.saveModel(session, previous, session.ReasoningEffort)
+			return errors.Join(fmt.Errorf("resume the native session with the selected provider: %w", err), restoreErr)
+		}
+		current, err := m.store.LoadSession(sessionID)
+		if err != nil {
+			return err
+		}
+		return m.saveModel(current, cfg, effort)
+	}
 	if err == nil && !live {
 		err = m.saveModel(session, cfg, effort)
 	}
@@ -88,7 +114,7 @@ func (m *Manager) SetModel(ctx context.Context, sessionID, model, effort string)
 
 // modelChoice validates a pick for a thread's current agent and reports
 // whether the agent already has a native session or a process to apply it to.
-func (m *Manager) modelChoice(sessionID, model, effort string) (storage.Session, AgentConfig, string, bool, error) {
+func (m *Manager) modelChoice(sessionID, model, modelProvider, effort string) (storage.Session, AgentConfig, string, bool, error) {
 	session, err := m.store.LoadSession(sessionID)
 	if err != nil {
 		return storage.Session{}, AgentConfig{}, "", false, err
@@ -96,7 +122,10 @@ func (m *Manager) modelChoice(sessionID, model, effort string) (storage.Session,
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return storage.Session{}, AgentConfig{}, "", false, fmt.Errorf("session %s is not acp-backed", sessionID)
 	}
-	_, cfg, effort, err := m.spawnConfig(SpawnRequest{ACPAgent: session.RuntimeRef.Agent, Model: model, ReasoningEffort: effort})
+	if modelProvider == "" {
+		modelProvider = session.ModelProvider
+	}
+	_, cfg, effort, err := m.spawnConfig(SpawnRequest{ACPAgent: session.RuntimeRef.Agent, Model: model, ModelProvider: modelProvider, ReasoningEffort: effort})
 	job, _ := m.job(sessionID)
 	return session, cfg, effort, session.RuntimeRef.SessionID != "" || job != nil, err
 }
