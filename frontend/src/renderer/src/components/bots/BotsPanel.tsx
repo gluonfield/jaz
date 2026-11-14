@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Repeat } from 'lucide-react'
+import { Repeat, SquarePen } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type DragEvent, Fragment, type Ref, useMemo, useState } from 'react'
 import { stateDot } from '@/components/sidebar/SessionRow'
-import { ActiveRowHighlight, PANEL_ICON_BUTTON_CLASS, SidebarHeader, SidebarScroll } from '@/components/sidebar/SidebarScroll'
+import { ActiveRowHighlight, NAV_LINK_CLASS, PANEL_ICON_BUTTON_CLASS, SidebarHeader, SidebarScroll } from '@/components/sidebar/SidebarScroll'
 import { MarkdownText } from '@/components/session/MessageMarkdown'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { botsQuery, type BotListEntry } from '@/lib/api/bots'
@@ -35,6 +35,12 @@ export function BotsPanel({ mobile }: { mobile: boolean }) {
   return (
     <>
       <SidebarHeader>
+        <Link to="/new" className={`${NAV_LINK_CLASS} min-w-0 flex-1`}>
+          <span className="grid size-[18px] shrink-0 place-items-center">
+            <SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />
+          </span>
+          <span className="flex-1">New task</span>
+        </Link>
         <Link to="/loops" aria-label="Loops" title="Loops" activeProps={{ className: 'bg-list-active! text-ink!' }} className={`ml-auto ${PANEL_ICON_BUTTON_CLASS}`}>
           <Repeat size={15} className="max-sm:size-[18px]" />
         </Link>
