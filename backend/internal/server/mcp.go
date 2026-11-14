@@ -146,18 +146,21 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusNotFound, err)
 			return
 		}
-		if r.Body != nil && r.ContentLength != 0 {
-			if input, err := mcpapi.DecodeServerInput(r, &server); err == nil {
-				server = input.Server(server.ID, server.CreatedAt, server.UpdatedAt)
-			}
-		}
 		if s.MCP == nil {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("mcp runtime is not configured"))
 			return
 		}
 		ctx, cancel := serverActionContext()
 		defer cancel()
-		writeJSON(w, http.StatusOK, s.MCP.Test(ctx, server))
+		if r.Body != nil && r.ContentLength != 0 {
+			if input, err := mcpapi.DecodeServerInput(r, &server); err == nil {
+				server = input.Server(server.ID, server.CreatedAt, server.UpdatedAt)
+			}
+			writeJSON(w, http.StatusOK, s.MCP.Test(ctx, server))
+			return
+		}
+		s.MCP.RefreshServer(ctx, id)
+		writeJSON(w, http.StatusOK, s.MCP.Status(id))
 	case "authorize":
 		server, err := store.LoadMCPServer(id)
 		if err != nil {
