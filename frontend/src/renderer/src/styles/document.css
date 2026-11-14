@@ -3,7 +3,7 @@
    toolbar at the panel's foot. */
 .document-editor > .file-prose {
   --prose-font-size: 1rem;
-  max-width: 44rem;
+  max-width: 60rem;
   min-height: 100%;
   padding-bottom: 5rem;
 }
@@ -30,15 +30,22 @@
   pointer-events: none;
 }
 /* A table shows every cell's edges, so an empty one can be seen and clicked;
-   the second selector outranks the prose rule that strips a row's end cells. */
-.document-editor table {
+   the second selector outranks the prose rule that strips a row's end cells.
+   Columns take the width their text needs, so a number column stays narrow
+   and no word breaks in two. */
+.document-editor .tableWrapper {
   margin: 0.75rem 0;
-  table-layout: fixed;
+  overflow-x: auto;
+}
+.document-editor table {
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 .document-editor :is(th, td),
 .document-editor :is(th, td):is(:first-child, :last-child) {
   position: relative;
-  padding: 0.45em 0.7em;
+  min-width: 3em;
+  padding: 0.5em 0.75em;
   border: 1px solid var(--color-border);
 }
 .document-editor th {
