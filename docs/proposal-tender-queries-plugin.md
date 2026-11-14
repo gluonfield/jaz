@@ -30,16 +30,18 @@ The plugin is a folder in a private repository for Sterling Green work, [`gluonf
 gluonfield/sg
 └── plugins/
     ├── tenders/
+    │   ├── plugin.json  name, title, description, version
     │   ├── skills/      query-sheet, bid-preparation
     │   ├── views/       question.html, status.html
     │   ├── scripts/     read the pack, export to Excel, status
-    │   └── reference/   check points, positions taken before, how points are written, document format
+    │   ├── reference/   check points, positions taken before, how points are written, document format
+    │   └── examples/    an invented tender with a worked sheet
     └── …                later plugins
 ```
 
 | Skill | When it runs | What it writes in the thread's folder |
 |---|---|---|
-| **query-sheet** | A tender arrives, or the buyer replies to a sheet already sent | `check-points.md`: what this tender asks beside each of Sterling's 77 standard offers. `query-sheet.md`: the points, carried through every round. `query-sheet.xlsx`: the same in the buyer's form. `status.md`. |
+| **query-sheet** | A tender arrives, or the buyer replies to a sheet already sent | `check-points.md`: what this tender asks beside each of Sterling's 77 standard offers. `query-sheet.md`: the points, carried through every round. `query-sheet.xlsx`: the same in the buyer's form. `status.json`, which the status view draws. |
 | **bid-preparation** | The queries are settled and the offer is being assembled | `brief.md`, a checklist of every form the buyer wants with the offer, the compliance and deviation statement, the buyer's data sheet with Sterling's values, and scope notes for whoever prices. It leaves every rate blank. |
 
 Later rounds are part of `query-sheet`, not a separate skill: the same sheet continues when the buyer replies.
@@ -91,55 +93,69 @@ Kind: missing document · Check point 51 · [Price Schedule, item 5](Tender/BOQ/
 
 The alternative is a plugin view in the side panel: a sheet with filters and accept, edit and drop buttons, as in the mocks. It is the better review tool, but it is a separate app to build and host, with its own database of tenders, the way Jaz CRM and Jaz Tasks are separate apps that Jaz connects to. Skills need none of that.
 
-## Views the plugin brings
+## How a plugin works in Jaz
 
-A plugin can carry its own interface as plain HTML files in `views/`. Jaz shows a view in its existing sandboxed frame and hands it the data to draw. Two views cover this plugin:
+This part is built on the task branch and not yet merged or released.
 
-- **A question card in the chat.** When a point needs the rep's decision, the skill shows `question.html` with the clause, Sterling's standard and the choices. For 75 mm insulation asked against a 50 mm standard, the choices are: state our standard, accept at extra cost, or ask the buyer. The rep's click comes back to the thread as their answer. Plain questions keep using Jaz's built-in question card.
-- **A status view in the side panel.** `status.html` shows where the tender stands and updates as the skills work:
-  - files read;
-  - check points filled, out of 77;
-  - points drafted, by kind;
-  - how many wait for an answer;
-  - the round, and whether the Excel file is current.
+**A plugin is a folder.** `plugin.json` names it; `skills/` holds its skills, `views/` its interface as plain HTML files, and `scripts/` and `reference/` what the skills use. Jaz keeps installed plugins in `~/.jaz/plugins` and offers their skills to every agent, beside the user's own ([`plugins.go`](../backend/internal/plugins/plugins.go), [`skills.go`](../backend/internal/skills/skills.go)).
 
-  It links to the brief and the query sheet, and its buttons (Export to Excel, Read the buyer's replies, Prepare the bid) send the request to the thread.
+**A skill shows a view by name.** The agent has one new tool, `show_view`, and passes a view's name and what to draw, never the HTML ([`tools.go`](../backend/internal/plugins/tools.go)):
 
-Most of this exists in Jaz today:
+| Call | Where it appears | Used for |
+|---|---|---|
+| `view: "tenders/question"`, `data: {…}` | A card in the conversation | A point that needs the rep's decision: the clause, Sterling's standard and the choices. The click comes back to the thread as the rep's answer. |
+| `view: "tenders/status"`, `file: "status.json"` | A tab in the side panel | Where the tender stands. The tab opens by itself when the skill shows it and redraws whenever the file changes, without reloading ([`ViewPanel.tsx`](../frontend/src/renderer/src/components/session/ViewPanel.tsx)). |
 
-- An inline artifact can already send a message to its thread ([`artifacts.ts:56`](../frontend/src/renderer/src/lib/artifacts.ts)).
-- An HTML file already opens in the side panel ([`SidePanelState.tsx:138`](../frontend/src/renderer/src/components/session/SidePanelState.tsx)).
+A view runs in Jaz's existing sandboxed frame with the app's colours and fonts. It reads `window.data`, hears later versions through `window.onData`, sends a message to the thread with `sendPrompt` and opens a file from the thread's folder beside itself with `openLink`.
 
-What is missing is listed next.
+![The tenders status view in the side panel, drawn from the mock tender](images/tenders-status-view.png)
+
+The status view above is the plugin's own file drawing the mock tender's `status.json`, captured in Jaz's hidden test window; the left half is the test's placeholder thread.
+
+**The flow for a tender:**
+
+1. The rep starts a thread, attaches the tender folder and asks for the query sheet.
+2. The skill reads the pack and shows the status view. It stays in the side panel for the rest of the work.
+3. The skill fills the check points and drafts `query-sheet.md`. After each step it reruns `status.py`, and the view moves on.
+4. For each point that needs a decision, a question card appears in the conversation. The rep clicks an answer, or opens the query sheet from the status view and edits it directly.
+5. The status view's buttons ask for the next step: export to Excel, read the buyer's replies, prepare the bid.
 
 ## What Jaz needs
 
+- [x] **Show a plugin's view with data.** `show_view`, above.
+- [x] **Keep a plugin's view open in the side panel.** The view tab, above.
+- [x] **Install and remove plugins.** Settings → Plugins, next section.
+- [x] **Release editable documents.** Cell-edited tables and the document toolbar are in tag v0.0.265.
+- [ ] **Ship plugins with a Jaz build.** See the next section.
 - [ ] **Open a source at its page.** The side panel shows PDFs and spreadsheets, but a link cannot carry a page or a cell: the PDF view takes only the file ([`FileReaderPanel.tsx:113`](../frontend/src/renderer/src/components/session/FileReaderPanel.tsx)). This is the largest saving on checking time.
 - [ ] **Show the source beside the sheet.** The side panel shows one tab at a time ([`sidePanelTabs.ts`](../frontend/src/renderer/src/lib/sidePanelTabs.ts)), so opening a reference hides the sheet. A split, or a peek over the document, keeps both in view.
-- [ ] **Show a plugin's view with data.** Today the agent must write out a widget's whole HTML each time it shows one ([`visualize.go:66`](../backend/internal/visualize/visualize.go)). It should name a view file in the plugin and pass only the data, so the card always looks the same.
-- [ ] **Keep a plugin's view open in the side panel.** A status view should open when a skill starts and redraw when its data file changes.
-- [ ] **Ship plugins with a Jaz build.** See the next section. Until then a plugin is installed by dragging its folder.
-- [x] **Release editable documents.** Cell-edited tables and the document toolbar are in tag v0.0.265.
+- [ ] **Let the agent open a document in the side panel.** Today a document opens when the rep clicks its card or a button in the status view.
+- [ ] **`show_view` for Jaz's own agent.** The tool is offered to the coding agents Jaz runs (Claude, Codex and the others); Jaz's built-in agent does not have it yet.
 
 The pack itself can already come from a Drive folder link: this proposal's sample was listed and downloaded through the Drive connection. Sterling works in Outlook and Teams ([12:06 session](https://notes.granola.ai/d/757a4898-e09f-4a09-8b20-acd10b504f86)), which Jaz does not connect to.
 
 ## Installing a plugin
 
-**Today, by dragging.** Jaz reads every skill it finds under its skills folder, at any depth ([`skills.go:63`](../backend/internal/skills/skills.go)). So installing is copying the plugin's folder there: drag `plugins/tenders` from the repository into `~/.jaz/skills` in Finder (press Cmd+Shift+. to see the hidden `.jaz` folder). The two skills appear in the next thread. Updating is dragging the newer folder over the old one. Dragging onto the Jaz window does not install anything; it attaches the files to a message.
+**From Settings.** Settings → Plugins lists what is installed, with each plugin's skills and views, and has an **Add plugin** button; a zip can also be dropped on the page ([`PluginsSettings.tsx`](../frontend/src/renderer/src/components/settings/PluginsSettings.tsx)). The zip can be one plugin's folder or a whole repository as GitHub downloads it: every folder with a `plugin.json` is installed, and a newer zip replaces the plugin of the same name. Removing is one click.
 
-**Later, shipped with Jaz.** A Jaz build can already carry per-customer defaults for appearance and agents (`jaz-defaults.js`), but not skills. To package a Jaz version with its required plugins, the build would include the plugin folders and Jaz would read them alongside the user's own skills folder. Nothing has to be downloaded or signed in to, and the plugin's version is the build's version.
+**By hand.** The same thing is copying the folder: `plugins/tenders` into `~/.jaz/plugins`.
 
-That makes installing from a repository address unnecessary for now, so it is no longer proposed. Today's start-up download of the built-in skills, from a list compiled into Jaz ([`app.go:82`](../backend/internal/app/app.go)), stays as it is.
+**Later, shipped with Jaz.** A Jaz build can already carry per-customer defaults for appearance and agents (`jaz-defaults.js`), but not plugins. To package a Jaz version with its required plugins, the build would include the plugin folders and Jaz would read them beside `~/.jaz/plugins`. Nothing has to be downloaded or signed in to, and the plugin's version is the build's version. Not built.
+
+Installing from a repository address is not proposed for now. Today's start-up download of the built-in skills, from a list compiled into Jaz ([`app.go:82`](../backend/internal/app/app.go)), stays as it is.
 
 ## Build order
 
 - [x] Pack reading, check points and the query sheet, tried on the Adani and PDG packs.
 - [x] Export into both buyers' forms, including PDG's form inside its nine-sheet RFP workbook.
-- [x] The question card and the status view, drawn outside Jaz.
+- [x] The question card and the status view.
 - [x] Corrections from the first trial.
 - [ ] A second trial on a tender the plugin has not seen. The two samples can no longer test it, because the positions file is built from their sent sheets.
 - [ ] Later rounds, tried on PDG's repeated points.
-- [ ] In Jaz: plugins shipped with a build, views shown with data, page links and the source beside the sheet.
+- [x] In Jaz: plugins as installable folders, views shown by name with data, the side-panel view tab, Settings → Plugins. On the task branch.
+- [x] A mock tender, so the flow can be shown without a buyer's documents.
+- [ ] One whole run in the real app with the mock tender: install, ask for the sheet, answer the cards.
+- [ ] In Jaz: plugins shipped with a build, page links and the source beside the sheet.
 - [ ] Run beside the team on the four live West tenders.
 
 ## Decisions needed

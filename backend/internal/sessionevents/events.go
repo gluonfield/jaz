@@ -142,6 +142,11 @@ type ArtifactEvent struct {
 	WidgetCode      string   `json:"widget_code"`
 	LoadingMessages []string `json:"loading_messages,omitempty"`
 	ArtifactType    string   `json:"artifact_type,omitempty"`
+	// Data is what a plugin's view draws; the view reads it as window.data.
+	Data json.RawMessage `json:"data,omitempty"`
+	// File names a JSON file in the thread's folder. A view with one stays
+	// open in the side panel and redraws when the file changes.
+	File string `json:"file,omitempty"`
 }
 
 // MCPAppEvent shows an MCP App in the thread: an agent called a tool its

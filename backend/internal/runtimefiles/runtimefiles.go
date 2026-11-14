@@ -15,8 +15,10 @@ type Layout struct {
 	Workspaces       string
 	DefaultWorkspace string
 	// Bots holds each bot's own permanent directory, named after its id.
-	Bots              string
-	UserSkills        string
+	Bots       string
+	UserSkills string
+	// Plugins holds installed plugins: folders of skills and the views they show.
+	Plugins           string
 	Automations       string
 	Connections       string
 	Ingest            string
@@ -37,6 +39,7 @@ func New(root string) Layout {
 		DefaultWorkspace:  filepath.Join(root, "workspaces", "default"),
 		Bots:              filepath.Join(root, "bots"),
 		UserSkills:        filepath.Join(root, "skills"),
+		Plugins:           filepath.Join(root, "plugins"),
 		Automations:       filepath.Join(root, "automations"),
 		Connections:       filepath.Join(root, "connections"),
 		Ingest:            filepath.Join(root, "ingest"),

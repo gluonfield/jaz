@@ -270,7 +270,19 @@ export function ThreadView({
     send: (text) => void handleSend(text),
     setModelContext: appContexts.report,
     expand: sidePanel.openApp,
-  }), [sessionId, handleSend, appContexts.report, sidePanel.openApp])
+    openView: sidePanel.openView,
+  }), [sessionId, handleSend, appContexts.report, sidePanel.openApp, sidePanel.openView])
+  // A side-panel view the agent shows during a turn opens by itself; one from
+  // the thread's history waits for its row to be clicked.
+  const panelView = events.data.findLast((event) => event.type === 'artifact' && event.artifact?.file)
+  const openedView = useRef(panelView?.seq)
+  const openView = sidePanel.openView
+  const running = queue.sessionRunning
+  useEffect(() => {
+    if (!panelView?.artifact || panelView.seq === openedView.current) return
+    openedView.current = panelView.seq
+    if (running) openView(panelView.artifact)
+  }, [panelView, openView, running])
   const markdownArtifacts = useMemo(() => ({ mode: 'source' as const, onSendPrompt: handleSend }), [handleSend])
   const threadFind = useThreadFind(sessionId, scrollRef, pauseFollowing)
   const [revealedMessageSeq, setRevealedMessageSeq] = useState<number>()

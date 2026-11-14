@@ -16,7 +16,9 @@ import (
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
@@ -63,6 +65,7 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 		connections.NewGmailMCPTools(store, integrationingest.RawWriter{Root: t.TempDir()}),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
+		plugins.New(runtimefiles.New(t.TempDir())),
 	)
 	return &Server{
 		Store:                 store,

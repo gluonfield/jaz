@@ -21,7 +21,10 @@ type Catalog struct {
 	Skills []Skill
 }
 
-const userSkillsDir = "skills"
+const (
+	userSkillsDir = "skills"
+	pluginsDir    = "plugins"
+)
 
 var workspaceSkillDirs = []string{".claude", ".codex", ".agents", ".jaz"}
 
@@ -34,11 +37,15 @@ func Load(root string) (Catalog, error) {
 		return Catalog{}, nil
 	}
 	userRoot := UserRoot(root)
-	out, err := loadDir(userRoot)
+	out, err := LoadDir(userRoot)
 	if err != nil {
 		return Catalog{}, err
 	}
-	return Catalog{Root: userRoot, Skills: out}, nil
+	packaged, err := LoadDir(filepath.Join(root, pluginsDir))
+	if err != nil {
+		return Catalog{}, err
+	}
+	return Catalog{Root: userRoot, Skills: mergeSkills(packaged, out)}, nil
 }
 
 func LoadForWorkspace(root, workspace string) (Catalog, error) {
@@ -51,7 +58,7 @@ func LoadForWorkspace(root, workspace string) (Catalog, error) {
 		return catalog, nil
 	}
 	for _, dir := range workspaceSkillDirs {
-		local, err := loadDir(filepath.Join(workspace, dir, userSkillsDir))
+		local, err := LoadDir(filepath.Join(workspace, dir, userSkillsDir))
 		if err != nil {
 			return Catalog{}, err
 		}
@@ -60,7 +67,8 @@ func LoadForWorkspace(root, workspace string) (Catalog, error) {
 	return catalog, nil
 }
 
-func loadDir(skillsRoot string) ([]Skill, error) {
+// LoadDir returns every skill under a folder, at any depth.
+func LoadDir(skillsRoot string) ([]Skill, error) {
 	info, err := os.Stat(skillsRoot)
 	if err != nil {
 		if os.IsNotExist(err) {

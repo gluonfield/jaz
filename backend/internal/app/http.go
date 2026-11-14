@@ -10,6 +10,7 @@ import (
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	voiceapi "github.com/wins/jaz/backend/internal/httpapi/voice"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/sessionoverview"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/transcript"
@@ -43,6 +44,7 @@ func HTTPModule() fx.Option {
 		sessionsapi.NewOverviewHandler,
 		fx.Annotate(sessionsapi.NewGoalHandler, fx.From(new(*acp.Manager))),
 		canvas.NewService,
+		plugins.New,
 		fx.Annotate(canvasapi.NewHandler, fx.From(new(*sqlitestore.Store))),
 		NewRoutes,
 		NewPublicRoutes,

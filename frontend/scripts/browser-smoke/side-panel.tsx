@@ -565,6 +565,45 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
     console.log('COMMAND_W_SCENARIOS_PASSED')
     if (closeShortcutOnly) return
     await navigate('tabs')
+    const viewCode = `<!doctype html><html><body><output></output><script>
+const loaded = Math.random();
+const report = (data) => {
+  document.querySelector('output').textContent = data.count;
+  parent.postMessage({ type: 'fixture:view', loaded, count: data.count }, '*');
+  if (data.count === 2) openLink('NOTES.md');
+};
+report(window.data);
+window.onData(report);
+</script></body></html>`
+    const viewFile = (count: number) => ({ path: '/status.json', content: JSON.stringify({ count }), size: 1, version: String(count) })
+    const viewReports: { loaded: number; count: number }[] = []
+    const receiveView = (event: MessageEvent) => {
+      if (event.data?.type === 'fixture:view') viewReports.push(event.data)
+    }
+    window.addEventListener('message', receiveView)
+    queryClient.setQueryData(keys.sessionFile('tabs', 'status.json'), viewFile(1))
+    panel.openView({ title: 'Tender status', widget_code: viewCode, artifact_type: 'html', file: 'status.json' })
+    await until(() => panel.open && panel.activeTab?.kind === 'view' && viewReports.at(-1)?.count === 1)
+    if (document.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.trim() !== 'Tender status') {
+      throw new Error('A plugin view tab did not take its title')
+    }
+    await window.smoke.capture('plugin-view-tab')
+    queryClient.setQueryData(keys.sessionFile('tabs', 'status.json'), viewFile(2))
+    await until(() => viewReports.at(-1)?.count === 2)
+    if (new Set(viewReports.map((report) => report.loaded)).size !== 1) {
+      throw new Error('A plugin view reloaded when its file changed')
+    }
+    await until(() => panel.activeTab?.id === 'file:/NOTES.md')
+    const viewTabs = panel.tabs.filter((tab) => tab.kind === 'view').length
+    panel.openView({ title: 'Tender status', widget_code: viewCode, artifact_type: 'html', file: 'status.json' })
+    await until(() => panel.activeTab?.kind === 'view')
+    if (panel.tabs.filter((tab) => tab.kind === 'view').length !== viewTabs) {
+      throw new Error('Opening the same plugin view twice made a second tab')
+    }
+    window.removeEventListener('message', receiveView)
+    console.log('PLUGIN_VIEW_SCENARIOS_PASSED')
+    await panel.closeTab('view:status.json')
+    await panel.closeTab('file:/NOTES.md')
     const backend = await window.smoke.backend()
     setApiBaseUrl(backend)
     setApiAuthToken(backend, 'browser-smoke-credential')

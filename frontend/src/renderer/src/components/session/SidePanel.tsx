@@ -3,6 +3,7 @@ import type { Attachment, QueuedAction, Session, SessionEvent } from '@/lib/api/
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import { MCPAppFrame } from '@/components/apps/MCPAppFrame'
+import { ViewPanel } from '@/components/session/ViewPanel'
 import { BrowserPanelSlot } from '@/components/browser/BrowserWorkspace'
 import type { SendMessageHandler, SendMessageOptions } from '@/lib/sendMessage'
 import type { SpawnedThreadView } from '@/lib/spawnedThreads'
@@ -107,6 +108,8 @@ export function SidePanel({
                 <CodeDiffPanel sessionId={session.id} visible={visible} />
               ) : tab.kind === 'app' ? (
                 <MCPAppFrame app={tab.app} file={tab.file} call={tab.call} active={visible} />
+              ) : tab.kind === 'view' ? (
+                <ViewPanel sessionId={session.id} view={tab.view} visible={visible} working={working} onOpenFile={panel.openFile} />
               ) : (
                 <SideChatPanel
                   sessionId={session.id}

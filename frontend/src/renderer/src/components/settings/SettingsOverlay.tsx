@@ -21,6 +21,7 @@ import { DevicesSettings } from './DevicesSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
 import { MCPSettings } from './MCPSettings'
+import { PluginsSettings } from './PluginsSettings'
 import { MemorySettings } from './MemorySettings'
 import { PersonalizationSettings } from './PersonalizationSettings'
 import { SettingsNav } from './SettingsNav'
@@ -187,6 +188,8 @@ function SectionContent({
       return <KeyboardShortcutsSettings />
     case 'mcp':
       return <MCPSettings />
+    case 'plugins':
+      return <PluginsSettings />
     case 'providers':
       return <AgentProvidersSettings />
     case 'agents':

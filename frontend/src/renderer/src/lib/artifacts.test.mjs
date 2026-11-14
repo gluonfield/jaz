@@ -13,3 +13,10 @@ test('a canvas card starts with its saved data, which cannot close the script th
   expect(buildArtifactDocument({ title: 'card', code: '<p>card</p>', loadingMessages: [] }, '', { canvas: { data: undefined } })).toContain('window.data = null')
   expect(buildArtifactDocument({ title: 'card', code: '<p>card</p>', loadingMessages: [] }, '')).not.toContain('saveData')
 })
+
+test("a plugin's view starts with its data and is not treated as a canvas card", () => {
+  const html = buildArtifactDocument({ title: 'status', code: '<p>status</p>', loadingMessages: [] }, '', { data: { points: 12 } })
+  expect(html).toContain('window.data = {"points":12}')
+  expect(html).toContain('window.onData')
+  expect(html).not.toContain('jaz:canvas-wheel')
+})

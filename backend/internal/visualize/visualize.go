@@ -114,6 +114,11 @@ func (t *MCPTools) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input
 	if err != nil {
 		return nil, nil, err
 	}
+	return t.Present(req, artifact)
+}
+
+// Present shows an artifact in the user's thread and keeps it in the transcript.
+func (t *MCPTools) Present(req *mcp.CallToolRequest, artifact *sessionevents.ArtifactEvent) (*mcp.CallToolResult, any, error) {
 	sessionID := mcpsession.SessionID(req)
 	if sessionID == "" {
 		return nil, nil, errors.New("artifact delivery requires a session")

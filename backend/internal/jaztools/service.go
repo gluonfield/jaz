@@ -17,6 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/mcpdeferred"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessiongoal"
@@ -73,6 +74,7 @@ type Service struct {
 	whatsAppTools   *connections.WhatsAppMCPTools
 	telegramTools   *connections.TelegramMCPTools
 	visualizeTools  *visualize.MCPTools
+	pluginTools     *plugins.MCPTools
 	widgetPublisher *widgets.SessionPublisher
 	sessions        sessionSource
 
@@ -138,14 +140,17 @@ func New(
 	gmailTools *connections.GmailMCPTools,
 	whatsAppTools *connections.WhatsAppMCPTools,
 	telegramTools *connections.TelegramMCPTools,
+	installed *plugins.Store,
 ) *Service {
+	visualizeTools := visualize.NewMCPTools(sessionEvents, sessions, events)
 	return &Service{
 		Memory:          memory,
 		calendarTools:   calendarTools,
 		gmailTools:      gmailTools,
 		whatsAppTools:   whatsAppTools,
 		telegramTools:   telegramTools,
-		visualizeTools:  visualize.NewMCPTools(sessionEvents, sessions, events),
+		visualizeTools:  visualizeTools,
+		pluginTools:     &plugins.MCPTools{Plugins: installed, Presenter: visualizeTools},
 		goalTools:       newGoalTools(events, sessions, usage),
 		widgetPublisher: widgetPublisher,
 		sessions:        sessions,
@@ -285,6 +290,7 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 	default:
 		s.visualizeTools.AddReadMeTo(server)
 		s.visualizeTools.AddShowWidgetTo(server)
+		s.pluginTools.AddTo(server)
 	}
 	return server
 }

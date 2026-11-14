@@ -141,7 +141,7 @@ func installRemoteArchive(root string, skill RemoteSkill, archive []byte, sha st
 		return err
 	}
 	defer func() { _ = os.RemoveAll(work) }()
-	if err := extractSkillZip(archive, work); err != nil {
+	if err := ExtractArchive(archive, work); err != nil {
 		return err
 	}
 	skillRoot, err := archiveSkillRoot(work)
@@ -225,10 +225,12 @@ func saveSyncState(root string, state map[string]managedSkill) error {
 	return os.WriteFile(filepath.Join(root, syncStateFile), append(data, '\n'), 0o644)
 }
 
-func extractSkillZip(data []byte, dst string) error {
+// ExtractArchive unpacks a zip into dst, refusing paths that leave it, links
+// and anything that is not a plain file.
+func ExtractArchive(data []byte, dst string) error {
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return fmt.Errorf("read skill zip: %w", err)
+		return fmt.Errorf("read archive: %w", err)
 	}
 	var expanded uint64
 	for _, file := range reader.File {
@@ -242,7 +244,7 @@ func extractSkillZip(data []byte, dst string) error {
 		}
 		mode := file.FileInfo().Mode()
 		if mode&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlink not allowed in skill archive: %s", file.Name)
+			return fmt.Errorf("symlink not allowed in archive: %s", file.Name)
 		}
 		if file.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
@@ -255,7 +257,7 @@ func extractSkillZip(data []byte, dst string) error {
 		}
 		expanded += file.UncompressedSize64
 		if expanded > maxExpandedArchive {
-			return fmt.Errorf("expanded skill archive exceeds %d bytes", maxExpandedArchive)
+			return fmt.Errorf("expanded archive exceeds %d bytes", maxExpandedArchive)
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err

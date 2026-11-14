@@ -1,4 +1,4 @@
-import { Copy, FileSpreadsheet, FileText, FolderGit2, Globe, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
+import { Copy, FileSpreadsheet, FileText, FolderGit2, Globe, LayoutDashboard, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, Reorder } from 'motion/react'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
@@ -111,7 +111,7 @@ export function SidePanelTabs({ tabs, activeId, sideChatAvailable, onSelect, onR
     <div className="flex h-9 min-w-0 flex-1 items-center gap-1 px-1 pointer-coarse:h-11">
       <Reorder.Group as="div" axis="x" values={tabs.map((tab) => tab.id)} onReorder={onReorder} layoutScroll ref={list} role="tablist" aria-label="Side panel tabs" className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [-webkit-app-region:no-drag]">
         {tabs.map((tab, index) => {
-          const label = tab.kind === 'app' ? tab.file?.name ?? tab.app.title : TAB_TYPES[tab.kind].label
+          const label = tab.kind === 'app' ? tab.file?.name ?? tab.app.title : tab.kind === 'view' ? tab.view.title : TAB_TYPES[tab.kind].label
           const target = browsers.find((browser) => browser.id === tab.id)?.target
           const title = tab.kind === 'file' ? tab.file?.path.split(/[\\/]/).pop() || label : target?.title || target?.displayUrl || label
           const active = activeId === tab.id
@@ -157,6 +157,7 @@ export function SidePanelTabs({ tabs, activeId, sideChatAvailable, onSelect, onR
               >
                 {tab.kind === 'preview' ? <Favicon url={target?.displayUrl || ''} iconUrl={target?.favicon} />
                   : tab.kind === 'app' ? <span className="text-ink-3"><AppIcon app={tab.app} size={14} /></span>
+                    : tab.kind === 'view' ? <LayoutDashboard size={14} className="shrink-0 text-ink-3" aria-hidden />
                     : tab.kind === 'file' && tab.file && isSpreadsheetPath(tab.file.path) ? <FileSpreadsheet size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
                       : <KindIcon kind={tab.kind} />}
                 <span className="truncate">{title}</span>

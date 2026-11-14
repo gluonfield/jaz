@@ -1,5 +1,5 @@
 import { LoaderCircle } from 'lucide-react'
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ArtifactEvent } from '@/lib/api/types'
 import {
   artifactErrorForDisplay,
@@ -39,13 +39,19 @@ export const ArtifactBlock = memo(function ArtifactBlock({
   args,
   result,
   pending = false,
+  data = artifact?.data,
   onSendPrompt,
+  onOpenFile,
 }: {
   artifact?: ArtifactEvent
   args?: string
   result?: string
   pending?: boolean
+  // What a plugin's view draws. Later values reach the view without reloading it.
+  data?: unknown
   onSendPrompt?: (text: string) => void
+  // Opens a link to a file in the thread's folder, such as "query-sheet.md".
+  onOpenFile?: (path: string) => void
 }) {
   const input = useMemo(
     () => (artifact ? artifactInputFromEvent(artifact) : parseArtifactToolArgs(args)),
@@ -56,10 +62,15 @@ export const ArtifactBlock = memo(function ArtifactBlock({
   const [height, setHeight] = useState(280)
   const [error, setError] = useState('')
   const executionError = artifactErrorForDisplay(toolError(result)) ?? ''
+  const [built] = useState(data)
   const doc = useMemo(() => {
     if (!input || executionError) return ''
-    return buildArtifactDocument(input, theme)
-  }, [executionError, input, theme])
+    return buildArtifactDocument(input, theme, { data: built })
+  }, [built, executionError, input, theme])
+  const sendData = useCallback(() => {
+    if (data !== built) frameRef.current?.contentWindow?.postMessage({ type: 'jaz:canvas-data', data }, '*')
+  }, [built, data])
+  useEffect(sendData, [sendData])
 
   useEffect(() => {
     setHeight(280)
@@ -75,12 +86,15 @@ export const ArtifactBlock = memo(function ArtifactBlock({
         const error = artifactErrorForDisplay(message.message ?? 'Artifact error')
         if (error) setError(error)
       }
-      if (message?.type === 'jaz:artifact-link' && message.href) window.open(message.href, '_blank', 'noopener,noreferrer')
+      if (message?.type === 'jaz:artifact-link' && message.href) {
+        if (onOpenFile && !/^[a-z][a-z\d+.-]*:/i.test(message.href)) onOpenFile(message.href)
+        else window.open(message.href, '_blank', 'noopener,noreferrer')
+      }
       if (message?.type === 'jaz:artifact-send-prompt' && message.text?.trim()) onSendPrompt?.(message.text.trim())
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [onSendPrompt])
+  }, [onOpenFile, onSendPrompt])
 
   if (!input) {
     return (
@@ -110,6 +124,7 @@ export const ArtifactBlock = memo(function ArtifactBlock({
           sandbox="allow-scripts allow-forms"
           referrerPolicy="no-referrer"
           srcDoc={doc}
+          onLoad={sendData}
           style={{ height }}
           className="block w-full border-0 bg-transparent"
         />

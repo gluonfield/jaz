@@ -728,6 +728,10 @@ export interface ArtifactEvent {
   widget_code: string
   loading_messages?: string[]
   artifact_type?: 'svg' | 'html'
+  // A plugin's view draws data, which it reads as window.data. One with a
+  // file stays in the side panel and follows that JSON file in the thread's folder.
+  data?: unknown
+  file?: string
 }
 
 // MCPAppEvent is an agent's call to a tool its MCP server links to an MCP

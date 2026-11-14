@@ -13,6 +13,7 @@ import {
   AudioLines,
   Palette,
   Plug,
+  Puzzle,
   SlidersHorizontal,
   Sparkles,
 } from 'lucide-react'
@@ -31,6 +32,7 @@ export type SettingsSection =
   | 'devices'
   | 'keyboard'
   | 'mcp'
+  | 'plugins'
   | 'providers'
   | 'agents'
   | 'voice'
@@ -57,6 +59,7 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'providers', label: 'Model Providers', icon: Boxes, group: 'Agents' },
   { id: 'agents', label: 'Agents (ACP)', icon: Bot, group: 'Agents' },
   { id: 'mcp', label: 'MCP servers', icon: Plug, group: 'Agents' },
+  { id: 'plugins', label: 'Plugins', icon: Puzzle, group: 'Agents' },
   { id: 'connections', label: 'Connections', icon: Link2, group: 'Agents', experimental: true },
   { id: 'browser', label: 'Browser', icon: Globe, group: 'Agents' },
   { id: 'computer', label: 'Computer Use', icon: MonitorSmartphone, group: 'Agents' },

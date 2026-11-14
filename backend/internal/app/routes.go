@@ -24,6 +24,7 @@ import (
 	mcpsearchapi "github.com/wins/jaz/backend/internal/httpapi/mcpsearch"
 	mobilepushapi "github.com/wins/jaz/backend/internal/httpapi/mobilepush"
 	modelcapabilitiesapi "github.com/wins/jaz/backend/internal/httpapi/modelcapabilities"
+	pluginsapi "github.com/wins/jaz/backend/internal/httpapi/plugins"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
@@ -31,6 +32,7 @@ import (
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/mobilepush"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -58,6 +60,7 @@ type routeDeps struct {
 	ConnectionOAuth  *connections.OAuthService         `optional:"true"`
 	ConnectionQR     *connections.QRService            `optional:"true"`
 	MCP              *mcpruntime.Manager               `optional:"true"`
+	Plugins          *plugins.Store
 	Preview          *previewapi.Handler
 	SessionMessages  *sessionsapi.MessagesHandler
 	SessionOverview  *sessionsapi.OverviewHandler
@@ -102,6 +105,12 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "PUT /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.RegisterActivity)},
 		server.Route{Pattern: "DELETE /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.Unregister)},
 		server.Route{Pattern: "GET /v1/notifications/stream", Handler: http.HandlerFunc(push.Stream)},
+	)
+	installed := pluginsapi.NewHandler(deps.Plugins)
+	routes = append(routes,
+		server.Route{Pattern: "GET /v1/plugins", Handler: http.HandlerFunc(installed.List)},
+		server.Route{Pattern: "POST /v1/plugins", Handler: http.HandlerFunc(installed.Install)},
+		server.Route{Pattern: "DELETE /v1/plugins/{plugin}", Handler: http.HandlerFunc(installed.Remove)},
 	)
 	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
