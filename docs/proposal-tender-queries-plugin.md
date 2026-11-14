@@ -108,9 +108,9 @@ This part is built on the task branch and not yet merged or released.
 
 A view runs in Jaz's existing sandboxed frame with the app's colours and fonts. It reads `window.data`, hears later versions through `window.onData`, sends a message to the thread with `sendPrompt` and opens a file from the thread's folder beside itself with `openLink`.
 
-![The tenders status view in the side panel, drawn from the mock tender](images/tenders-status-view.png)
+![A thread with the question card in the conversation and the status view in the side panel](images/tenders-status-view.png)
 
-The status view above is the plugin's own file drawing the mock tender's `status.json`, captured in Jaz's hidden test window; the left half is the test's placeholder thread.
+A thread in a scratch copy of this branch with the plugin installed and the mock tender in its folder. Both views were shown through `show_view`; the calls were made by hand, because the scratch copy has no signed-in agent.
 
 **The flow for a tender:**
 
@@ -138,6 +138,8 @@ The pack itself can already come from a Drive folder link: this proposal's sampl
 
 **From Settings.** Settings → Plugins lists what is installed, with each plugin's skills and views, and has an **Add plugin** button; a zip can also be dropped on the page ([`PluginsSettings.tsx`](../frontend/src/renderer/src/components/settings/PluginsSettings.tsx)). The zip can be one plugin's folder or a whole repository as GitHub downloads it: every folder with a `plugin.json` is installed, and a newer zip replaces the plugin of the same name. Removing is one click.
 
+![Settings, Plugins, with the tenders plugin installed](images/settings-plugins.png)
+
 **By hand.** The same thing is copying the folder: `plugins/tenders` into `~/.jaz/plugins`.
 
 **Later, shipped with Jaz.** A Jaz build can already carry per-customer defaults for appearance and agents (`jaz-defaults.js`), but not plugins. To package a Jaz version with its required plugins, the build would include the plugin folders and Jaz would read them beside `~/.jaz/plugins`. Nothing has to be downloaded or signed in to, and the plugin's version is the build's version. Not built.
@@ -154,7 +156,8 @@ Installing from a repository address is not proposed for now. Today's start-up d
 - [ ] Later rounds, tried on PDG's repeated points.
 - [x] In Jaz: plugins as installable folders, views shown by name with data, the side-panel view tab, Settings → Plugins. On the task branch.
 - [x] A mock tender, so the flow can be shown without a buyer's documents.
-- [ ] One whole run in the real app with the mock tender: install, ask for the sheet, answer the cards.
+- [x] Install, the Plugins page, the question card and the side-panel view seen in a running copy of the branch.
+- [ ] One run with a signed-in agent on the mock tender: ask for the sheet, answer the cards.
 - [ ] In Jaz: plugins shipped with a build, page links and the source beside the sheet.
 - [ ] Run beside the team on the four live West tenders.
 
