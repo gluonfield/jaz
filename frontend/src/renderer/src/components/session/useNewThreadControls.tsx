@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { RuntimeSelect } from '@/components/session/NewThreadControls'
 import { ModelSelect } from '@/components/session/ModelSelect'
+import { ReasoningSelect } from '@/components/session/ReasoningSelect'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
@@ -140,18 +141,26 @@ export function AgentModelControls({
         />
       ) : null}
       {controls.showModelPicker ? (
-        <ModelSelect
-          key={controls.runtime}
-          value={controls.model}
-          suggestions={controls.modelSuggestions}
-          loading={controls.modelsLoading}
-          placement={placement}
-          disabled={disabled}
-          onChange={controls.setSelection}
-          effort={controls.effort}
-          effortOptions={pickerEffortOptions(controls.effortOptions)}
-          fastMode={controls.fastMode ? { ...controls.fastMode, disabled } : undefined}
-        />
+        <>
+          <ModelSelect
+            key={controls.runtime}
+            value={controls.model}
+            suggestions={controls.modelSuggestions}
+            loading={controls.modelsLoading}
+            placement={placement}
+            disabled={disabled}
+            onChange={controls.setSelection}
+            effort={controls.effort}
+            fastMode={controls.fastMode ? { ...controls.fastMode, disabled } : undefined}
+          />
+          <ReasoningSelect
+            value={controls.effort}
+            options={controls.runtime === 'opencode' ? controls.effortOptions : pickerEffortOptions(controls.effortOptions)}
+            status={controls.runtime === 'opencode' ? controls.reasoningStatus : undefined}
+            disabled={disabled}
+            onChange={(effort) => controls.setSelection({ model: controls.model, effort })}
+          />
+        </>
       ) : null}
     </>
   )

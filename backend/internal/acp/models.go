@@ -108,6 +108,7 @@ var codexReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), ba
 
 var openCodeReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), baseReasoningEffortOptions...),
 	ReasoningEffortOption{Value: "max", Label: "Max"},
+	ReasoningEffortOption{Value: "none", Label: "None"},
 )
 
 var museReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), codexReasoningEffortOptions...),
@@ -480,8 +481,14 @@ func (m *Manager) applyConfiguredReasoningEffort(
 	if effort == "" {
 		return nil, nil
 	}
+	if CanonicalAgentName(agentName) == AgentOpenCode && effort == "none" && !configOptionValueAvailable(options.effortOptions, effort) {
+		return nil, nil
+	}
 	if !agentPolicyForAgent(agentName).usesReasoningEffortConfigOption() && options.effortConfigID == "" {
 		return nil, fmt.Errorf("acp agent %q model %q did not advertise reasoning controls", agentName, model)
+	}
+	if CanonicalAgentName(agentName) == AgentOpenCode && !options.effortConfigPresent {
+		return nil, fmt.Errorf("acp agent %q model %q did not advertise reasoning variants", agentName, model)
 	}
 	if activeModelOptions && !options.effortConfigPresent {
 		return nil, nil
@@ -794,6 +801,9 @@ func AgentOptionsForConfig(name string, cfg AgentConfig, root string) AgentOptio
 }
 
 func NormalizeAgentReasoningEffort(agentName, value string) (string, error) {
+	if CanonicalAgentName(agentName) == AgentOpenCode {
+		return strings.TrimSpace(value), nil
+	}
 	return agentPolicyForAgent(CanonicalAgentName(agentName)).normalizeReasoningEffort(value)
 }
 

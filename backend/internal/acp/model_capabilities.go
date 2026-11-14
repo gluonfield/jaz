@@ -140,7 +140,7 @@ func (c ModelCapabilities) reasoningCapabilityModels(agent, providerID string) (
 
 func (c ModelCapabilities) ValidateReasoningEffort(agent, providerID, model, effort string) error {
 	effort = strings.ToLower(strings.TrimSpace(effort))
-	if effort == "" {
+	if effort == "" || (effort == "none" && CanonicalAgentName(agent) == AgentOpenCode) {
 		return nil
 	}
 	models, err := c.reasoningCapabilityModels(agent, providerID)
@@ -192,7 +192,7 @@ func resolveModelCapabilities(agent string, models []modelcatalog.Model, allowAg
 				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, claudeReasoningEffortUltracode)
 			}
 		case modelcatalog.ReasoningUnavailable, modelcatalog.ReasoningPending:
-			if allowAgentCapabilities {
+			if allowAgentCapabilities && agent != AgentOpenCode {
 				resolved.Reasoning = agentReasoningCapabilities(supported)
 			}
 		}

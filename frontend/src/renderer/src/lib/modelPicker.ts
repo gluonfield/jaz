@@ -10,10 +10,15 @@ export interface ModelSelection {
 }
 
 export function pickerEffortOptions(options: ReasoningEffortOption[]): ReasoningEffortOption[] {
-  return ['low', 'medium', 'high', 'xhigh', 'ultracode'].flatMap((value) => {
-    const option = options.find((option) => option.value === value)
-      ?? (value === 'ultracode' ? options.find((option) => option.value === 'ultra') : undefined)
-    return option ? [{ ...option, label: value === 'xhigh' ? 'Xhigh' : value === 'ultracode' ? 'Ultracode' : option.label }] : []
+  const order = ['', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra', 'ultracode']
+  const ordered = order.flatMap((value) => options.filter((option) => option.value === value))
+  const known = new Set(order)
+  const custom = options.filter((option) => !known.has(option.value))
+  const seen = new Set<string>()
+  return [...ordered, ...custom].filter((option) => {
+    if (seen.has(option.value)) return false
+    seen.add(option.value)
+    return true
   })
 }
 

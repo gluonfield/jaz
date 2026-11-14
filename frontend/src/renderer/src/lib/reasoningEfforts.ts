@@ -1,5 +1,5 @@
-import type { AgentSettings, ReasoningEffortOption } from './api/types'
-import { modelSuggestionFor, type ModelSuggestion } from './modelSuggestion'
+import type { AgentSessionConfigOption, AgentSettings, ReasoningEffortOption } from '@/lib/api/types'
+import { modelSuggestionFor, type ModelSuggestion } from '@/lib/modelSuggestion'
 
 const REASONING_LABELS: Record<string, string> = {
   '': 'Default',
@@ -45,7 +45,6 @@ export function reasoningEffortLabel(
 // than "inherit the default".
 function settingsReasoningOptions(options: ReasoningEffortOption[]): ReasoningEffortOption[] {
   return dedupeReasoningOptions(options)
-    .filter((option) => option.value !== 'none')
     .map((option) => (option.value === '' ? { ...option, label: 'None' } : option))
 }
 
@@ -62,7 +61,7 @@ export interface ModelReasoningSelection {
   options: ReasoningEffortOption[]
   effectiveEffort: string
   supported: boolean
-  status: 'pending' | 'error' | 'ready'
+  status: 'pending' | 'error' | 'unknown' | 'ready'
   blocked: boolean
 }
 
@@ -81,6 +80,7 @@ export function modelReasoningSelection({
   requested,
   settingsMode,
   catalog,
+  advertisedOptions,
 }: {
   settings: AgentSettings | undefined
   agent: string
@@ -88,21 +88,34 @@ export function modelReasoningSelection({
   requested: string
   settingsMode: boolean
   catalog: ModelReasoningCatalog
+  advertisedOptions?: ReasoningEffortOption[]
 }): ModelReasoningSelection {
   const effort = requested.trim()
+  if (advertisedOptions !== undefined) {
+    return {
+      options: advertisedOptions,
+      effectiveEffort: effectiveReasoningEffort(effort, advertisedOptions),
+      supported: supportedReasoningEffort(effort, advertisedOptions),
+      status: 'ready',
+      blocked: false,
+    }
+  }
   if (catalog.status !== 'ready') {
     return {
       options: [],
       effectiveEffort: effort,
       supported: true,
       status: catalog.status,
-      blocked: effort !== '',
+      blocked: effort !== '' && effort !== 'none',
     }
   }
   const suggestion = modelSuggestionFor(catalog.suggestions, model)
+  if (agent === 'opencode' && !suggestion) {
+    return { options: [], effectiveEffort: effort, supported: true, status: 'unknown', blocked: false }
+  }
   const capabilityStatus = suggestion?.reasoning.status ?? catalog.unknownModel
   if (capabilityStatus === 'pending') {
-    return { options: [], effectiveEffort: effort, supported: true, status: 'pending', blocked: effort !== '' }
+    return { options: [], effectiveEffort: effort, supported: true, status: 'pending', blocked: effort !== '' && effort !== 'none' }
   }
   if (capabilityStatus === 'unavailable') {
     return {
@@ -121,6 +134,11 @@ export function modelReasoningSelection({
     status: 'ready',
     blocked: false,
   }
+}
+
+export function sessionReasoningEffortOptions(options: AgentSessionConfigOption[] | null | undefined): ReasoningEffortOption[] | undefined {
+  const option = options?.find((option) => option.category === 'thought_level')
+  return option?.options.map(({ value, name }) => ({ value, label: name }))
 }
 
 export function supportedReasoningEffort(value: string, options: ReasoningEffortOption[]): boolean {
@@ -149,6 +167,7 @@ function reasoningOptions(
 ): ReasoningEffortOption[] {
   const suggestion = modelSuggestionFor(suggestions, model)
   if (!suggestion) {
+    if (agent === 'opencode') return []
     const agentOptions = acpReasoningEffortOptions(settings, agent)
     return settingsMode ? settingsReasoningOptions(agentOptions) : agentOptions
   }
@@ -157,7 +176,7 @@ function reasoningOptions(
   if (values.length === 0) return []
   const options = [
     { value: '', label: settingsMode ? 'None' : 'Default' },
-    ...values.filter((value) => !settingsMode || value !== 'none').map(reasoningOption),
+    ...values.map(reasoningOption),
   ]
   return settingsMode ? settingsReasoningOptions(options) : dedupeReasoningOptions(options)
 }

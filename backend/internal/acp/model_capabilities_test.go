@@ -133,6 +133,24 @@ func TestModelCapabilitiesLeavesProviderBackedModelsUnknownUntilCatalogLoads(t *
 	}
 }
 
+func TestOpenCodeModelCapabilitiesDoNotGuessAgentReasoningEfforts(t *testing.T) {
+	for _, status := range []modelcatalog.ReasoningStatus{modelcatalog.ReasoningPending, modelcatalog.ReasoningUnavailable} {
+		catalog := capabilityCatalog{agents: map[string][]modelcatalog.Model{AgentOpenCode: {{
+			Value: "native-model", Reasoning: modelcatalog.Reasoning{Status: status},
+		}}}}
+		models := (ModelCapabilities{Catalog: catalog}).AgentModels(AgentOpenCode)
+		if len(models) != 1 || models[0].Reasoning.Status != status || len(models[0].Reasoning.Efforts) != 0 {
+			t.Fatalf("unreported %s controls became %#v", status, models)
+		}
+	}
+	models := resolveModelCapabilities(AgentOpenCode, []modelcatalog.Model{{
+		Value: "reported-model", Reasoning: modelcatalog.Reasoning{Status: modelcatalog.ReasoningReady, Efforts: []string{"none", "high"}},
+	}}, true)
+	if got := strings.Join(models[0].Reasoning.Efforts, ","); got != "none,high" {
+		t.Fatalf("advertised controls changed: %s", got)
+	}
+}
+
 func TestModelCapabilitiesValidatesSelectedProviderBeforeAgentCatalog(t *testing.T) {
 	agentModel := modelcatalog.Model{Value: "shared", Reasoning: modelcatalog.Reasoning{Status: modelcatalog.ReasoningReady, Efforts: []string{"minimal"}}}
 	providerModel := modelcatalog.Model{Value: "shared", Reasoning: modelcatalog.Reasoning{Status: modelcatalog.ReasoningReady, Efforts: []string{"high"}}}
