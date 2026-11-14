@@ -16,6 +16,10 @@ type proxyRuntime struct {
 
 func (r *proxyRuntime) Refresh(context.Context) {}
 
+func (r *proxyRuntime) RefreshServer(context.Context, string) mcpconfig.ServerStatus {
+	return mcpconfig.ServerStatus{}
+}
+
 func (r *proxyRuntime) Status(string) mcpconfig.ServerStatus {
 	return mcpconfig.ServerStatus{}
 }

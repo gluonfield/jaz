@@ -390,8 +390,8 @@ function MCPServerRow({
         <IconButton
           variant="ghost"
           size="sm"
-          aria-label="Test MCP server"
-          title="Test MCP server"
+          aria-label="Reconnect MCP server"
+          title="Reconnect MCP server"
           disabled={busy || !server.enabled}
           onClick={onTest}
         >

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,6 +16,81 @@ import (
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/tools"
 )
+
+func TestCancelledQueuedRefreshPreservesLiveConnection(t *testing.T) {
+	var blocked atomic.Bool
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	remote := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "remote"}, nil)
+	remote.AddTool(&mcpsdk.Tool{Name: "echo", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+		return &mcpsdk.CallToolResult{}, nil
+	})
+	remote.AddReceivingMiddleware(func(next mcpsdk.MethodHandler) mcpsdk.MethodHandler {
+		return func(ctx context.Context, method string, req mcpsdk.Request) (mcpsdk.Result, error) {
+			if method == "tools/list" && blocked.Load() {
+				once.Do(func() { close(entered) })
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return next(ctx, method, req)
+		}
+	})
+	upstream := httptest.NewServer(mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return remote }, nil))
+	defer upstream.Close()
+	store := &testStore{servers: []mcpconfig.Server{{ID: "remote", Name: "remote", URL: upstream.URL, Enabled: true}}}
+	registry := tools.NewRegistry()
+	manager := NewManager(store, nil, registry, log.New(io.Discard))
+	defer manager.Close()
+	manager.Refresh(t.Context())
+	original := manager.sessions["remote"].serverConnection
+	blocked.Store(true)
+	refreshDone := make(chan struct{})
+	go func() {
+		manager.Refresh(t.Context())
+		close(refreshDone)
+	}()
+	defer func() {
+		close(release)
+		<-refreshDone
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("refresh did not reach the remote catalog")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	retryDone := make(chan mcpconfig.ServerStatus, 1)
+	go func() {
+		retryDone <- manager.RefreshServer(ctx, "remote")
+	}()
+	select {
+	case status := <-retryDone:
+		if status.Status != "error" || status.Error != context.DeadlineExceeded.Error() {
+			t.Fatalf("cancelled retry = %#v", status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancelled retry remained blocked behind another refresh")
+	}
+	if manager.Status("remote").Status != "connected" || manager.session("remote").serverConnection != original {
+		t.Fatal("cancelled retry replaced the live connection")
+	}
+	definitions := registry.Definitions()
+	if len(definitions) != 1 {
+		t.Fatalf("live tools = %d, want 1", len(definitions))
+	}
+	tool, ok := registry.Get(tools.DefinitionName(definitions[0]))
+	if !ok {
+		t.Fatal("cancelled retry removed the live tool")
+	}
+	if _, err := tool.Execute(t.Context(), nil); err != nil {
+		t.Fatalf("live tool failed during refresh: %v", err)
+	}
+}
 
 func TestProxyRefreshPreservesSessionAndActiveCalls(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

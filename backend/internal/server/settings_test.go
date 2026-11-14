@@ -973,6 +973,11 @@ func (r *blockingMCPRuntime) Refresh(ctx context.Context) {
 	}
 }
 
+func (r *blockingMCPRuntime) RefreshServer(ctx context.Context, _ string) mcpconfig.ServerStatus {
+	r.Refresh(ctx)
+	return mcpconfig.ServerStatus{}
+}
+
 func (r *blockingMCPRuntime) Status(string) mcpconfig.ServerStatus {
 	return mcpconfig.ServerStatus{}
 }
@@ -987,6 +992,10 @@ func (r *blockingMCPRuntime) Authorize(context.Context, mcpconfig.Server, mcpcon
 
 type recordingMCPRuntime struct {
 	options mcpconfig.AuthorizeOptions
+}
+
+func (r *recordingMCPRuntime) RefreshServer(context.Context, string) mcpconfig.ServerStatus {
+	return mcpconfig.ServerStatus{}
 }
 
 func (r *recordingMCPRuntime) Refresh(context.Context) {}

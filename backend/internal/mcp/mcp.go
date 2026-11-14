@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -56,7 +57,7 @@ type Manager struct {
 	mu           sync.RWMutex
 	sessions     map[string]*serverSession
 	statuses     map[string]mcpconfig.ServerStatus
-	refreshMu    sync.Mutex
+	refreshGate  chan struct{}
 	proxy        *mcpsdk.Server
 	proxyCatalog map[string]remoteTool
 	revision     uint64
@@ -170,6 +171,7 @@ func NewManager(store mcpconfig.ServerReader, tokens tokenStore, registry *tools
 		localServers: make(map[string]localServer),
 		sessions:     make(map[string]*serverSession),
 		statuses:     make(map[string]mcpconfig.ServerStatus),
+		refreshGate:  make(chan struct{}, 1),
 		authStates:   make(map[string]*authorizationPending),
 		proxyCatalog: make(map[string]remoteTool),
 		refreshed:    make(chan struct{}),
@@ -192,26 +194,43 @@ func (m *Manager) backgroundHandler(server mcpconfig.Server) *oauthHandler {
 }
 
 func (m *Manager) Refresh(ctx context.Context) {
-	m.refreshMu.Lock()
-	defer m.refreshMu.Unlock()
-	defer m.refreshedOnce.Do(func() { close(m.refreshed) })
-	servers, err := m.servers(nil)
-	if err != nil {
-		return
-	}
-	m.refreshServerList(ctx, servers, false)
+	m.refresh(ctx, nil)
 }
 
 func (m *Manager) RefreshLocal(ctx context.Context) {
-	m.refreshMu.Lock()
-	defer m.refreshMu.Unlock()
-	servers, err := m.servers(func(server mcpconfig.Server) bool {
+	m.refresh(ctx, func(server mcpconfig.Server) bool {
 		return m.hasLocalServer(server.ID)
 	})
-	if err != nil {
-		return
+}
+
+func (m *Manager) RefreshServer(ctx context.Context, id string) mcpconfig.ServerStatus {
+	if err := m.refresh(ctx, func(server mcpconfig.Server) bool {
+		return server.ID == id
+	}); err != nil {
+		return connectErrorStatus(nil, err)
 	}
-	m.refreshServerList(ctx, servers, true)
+	return m.Status(id)
+}
+
+func (m *Manager) refresh(ctx context.Context, include func(mcpconfig.Server) bool) error {
+	select {
+	case m.refreshGate <- struct{}{}:
+		defer func() { <-m.refreshGate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if include == nil {
+		defer m.refreshedOnce.Do(func() { close(m.refreshed) })
+	}
+	servers, err := m.servers(nil)
+	if err != nil {
+		return err
+	}
+	m.refreshServerList(ctx, servers, include)
+	return nil
 }
 
 func (m *Manager) servers(include func(mcpconfig.Server) bool) ([]mcpconfig.Server, error) {
@@ -246,7 +265,7 @@ func (m *Manager) servers(include func(mcpconfig.Server) bool) ([]mcpconfig.Serv
 	return servers, nil
 }
 
-func (m *Manager) refreshServerList(ctx context.Context, servers []mcpconfig.Server, localOnly bool) {
+func (m *Manager) refreshServerList(ctx context.Context, servers []mcpconfig.Server, include func(mcpconfig.Server) bool) {
 	m.mu.RLock()
 	old := m.sessions
 	m.mu.RUnlock()
@@ -256,6 +275,15 @@ func (m *Manager) refreshServerList(ctx context.Context, servers []mcpconfig.Ser
 		results[i].server = server
 		if !server.Enabled {
 			results[i].status = mcpconfig.ServerStatus{Status: "disabled"}
+			continue
+		}
+		if include != nil && !include(server) {
+			if previous := old[server.ID]; previous != nil {
+				preserved := *previous
+				preserved.tools = slices.Clone(previous.tools)
+				results[i].session = &preserved
+			}
+			results[i].status = m.Status(server.ID)
 			continue
 		}
 		wg.Add(1)
@@ -327,17 +355,6 @@ func (m *Manager) refreshServerList(ctx context.Context, servers []mcpconfig.Ser
 		statuses[result.server.ID] = statusWithTools(result.status, kept)
 	}
 
-	if localOnly {
-		for id, session := range old {
-			if !m.hasLocalServer(id) {
-				next[id] = session
-				statuses[id] = m.Status(id)
-				for _, tool := range session.tools {
-					remoteTools = append(remoteTools, tool)
-				}
-			}
-		}
-	}
 	m.mu.Lock()
 	m.sessions = next
 	m.statuses = statuses
@@ -368,8 +385,8 @@ func (m *Manager) builtinToolName(server mcpconfig.Server, remote string, used m
 }
 
 func (m *Manager) Close() {
-	m.refreshMu.Lock()
-	defer m.refreshMu.Unlock()
+	m.refreshGate <- struct{}{}
+	defer func() { <-m.refreshGate }()
 	m.mu.Lock()
 	sessions := m.sessions
 	m.sessions = make(map[string]*serverSession)
