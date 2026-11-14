@@ -178,9 +178,6 @@ func (c AgentConfig) ProviderQualifiedModel() string {
 	if !c.UsesModelProvider() || modelProvider == "" || model == "" {
 		return model
 	}
-	if embedded, _ := provider.SplitProviderModel(model); embedded == modelProvider {
-		return model
-	}
 	return modelProvider + "/" + model
 }
 
@@ -189,19 +186,16 @@ func (c AgentConfig) ProviderNativeModel() string {
 }
 
 func (c AgentConfig) NormalizeProviderModel(defaultProvider string) AgentConfig {
+	// With an explicit provider, Model is an opaque native ID. Only the legacy
+	// combined form without a separate provider is split.
 	if !c.UsesModelProvider() {
 		return c
 	}
 	modelProvider := strings.TrimSpace(c.ModelProvider)
 	model := strings.TrimSpace(c.Model)
-	if embedded, rest := provider.SplitProviderModel(model); embedded != "" {
-		switch {
-		case modelProvider == "":
-			modelProvider = embedded
-			model = rest
-		case embedded == modelProvider:
-			model = rest
-		}
+	if embedded, rest := provider.SplitProviderModel(model); modelProvider == "" && embedded != "" {
+		modelProvider = embedded
+		model = rest
 	}
 	if modelProvider == "" {
 		modelProvider = strings.TrimSpace(defaultProvider)
