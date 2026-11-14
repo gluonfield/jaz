@@ -59,6 +59,7 @@ import type { AgentSessionState, ChatMessage, SessionEvent, SessionOverview } fr
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { MCPAppThreadContext, type MCPAppThread } from '@/lib/mcpAppThread'
 import { SidePanelSlot } from '@/lib/sidePanelSlot'
+import { isPanelView } from '@/lib/sidePanelTabs'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { type HistoryPaging, useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
@@ -192,14 +193,6 @@ export function ThreadView({
   const notifySessionEventError = useCallback((event: SessionEvent) => {
     notifyCriticalError(sessionEventErrorMessage(event))
   }, [notifyCriticalError])
-  const handleSessionEvent = useCallback((event: SessionEvent) => {
-    const at = event.at || new Date().toISOString()
-    setLastSessionEventAt((current) => latestEventTimeISO(current, at))
-    notifySessionEventError(event)
-  }, [notifySessionEventError])
-  useEffect(() => setLastSessionEventAt(undefined), [sessionId])
-  useSessionEvents(sessionId, detail.data?.latest_event_seq, handleSessionEvent)
-
   const { paging } = detail
 
   const [planDecisionPending, setPlanDecisionPending] = useState(false)
@@ -211,7 +204,17 @@ export function ThreadView({
   // A canvas shows the agent's work on the board, so its browser stays out of
   // sight until the user opens it. Other threads follow it once they are known.
   const sidePanel = useSidePanelState(sessionId, { sideChatAvailable, startOpen: openDetails, followBrowser: Boolean(detailSession) && !canvas })
-  const { open: panelOpen, mode: panelMode, toggleMode: togglePanel } = sidePanel
+  const { open: panelOpen, mode: panelMode, toggleMode: togglePanel, openView } = sidePanel
+  const handleSessionEvent = useCallback((event: SessionEvent) => {
+    const at = event.at || new Date().toISOString()
+    setLastSessionEventAt((current) => latestEventTimeISO(current, at))
+    notifySessionEventError(event)
+    // A side-panel view opens as the agent shows it; one from the thread's
+    // history waits for its row to be clicked.
+    if (isPanelView(event.artifact)) openView(event.artifact)
+  }, [notifySessionEventError, openView])
+  useEffect(() => setLastSessionEventAt(undefined), [sessionId])
+  useSessionEvents(sessionId, detail.data?.latest_event_seq, handleSessionEvent)
   const showDetails = useCallback(() => {
     if (!panelOpen || panelMode !== 'overview') togglePanel('overview')
   }, [panelOpen, panelMode, togglePanel])
@@ -270,19 +273,8 @@ export function ThreadView({
     send: (text) => void handleSend(text),
     setModelContext: appContexts.report,
     expand: sidePanel.openApp,
-    openView: sidePanel.openView,
-  }), [sessionId, handleSend, appContexts.report, sidePanel.openApp, sidePanel.openView])
-  // A side-panel view the agent shows during a turn opens by itself; one from
-  // the thread's history waits for its row to be clicked.
-  const panelView = events.data.findLast((event) => event.type === 'artifact' && event.artifact?.file)
-  const openedView = useRef(panelView?.seq)
-  const openView = sidePanel.openView
-  const running = queue.sessionRunning
-  useEffect(() => {
-    if (!panelView?.artifact || panelView.seq === openedView.current) return
-    openedView.current = panelView.seq
-    if (running) openView(panelView.artifact)
-  }, [panelView, openView, running])
+    openView,
+  }), [sessionId, handleSend, appContexts.report, sidePanel.openApp, openView])
   const markdownArtifacts = useMemo(() => ({ mode: 'source' as const, onSendPrompt: handleSend }), [handleSend])
   const threadFind = useThreadFind(sessionId, scrollRef, pauseFollowing)
   const [revealedMessageSeq, setRevealedMessageSeq] = useState<number>()

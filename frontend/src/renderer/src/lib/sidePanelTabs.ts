@@ -2,13 +2,17 @@ import type { FileReference } from '@shared/fileReader'
 import type { ArtifactEvent, MCPAppEvent, MCPEntrypoint } from '@/lib/api/types'
 import type { OpenedFile } from '@/lib/mcpAppFiles'
 
+// A plugin's view that names a file lives in the side panel and follows that file.
+export type PanelView = ArtifactEvent & { file: string }
+export const isPanelView = (view?: ArtifactEvent): view is PanelView => Boolean(view?.file)
+
 export type SidePanelTab =
   | { id: string; kind: 'preview' | 'terminal' | 'side-chat' | 'diff' }
   | { id: string; kind: 'file'; file: FileReference | null }
   // An app tab shows a thread app, a file's viewer, or the call an inline view opened larger.
   | { id: string; kind: 'app'; app: Pick<MCPEntrypoint, 'server_id' | 'tool' | 'title' | 'icon'>; file?: OpenedFile; call?: Pick<MCPAppEvent, 'arguments' | 'result'> }
   // A view tab shows a plugin's view, drawn from a file in the thread's folder.
-  | { id: string; kind: 'view'; view: ArtifactEvent & { file: string } }
+  | { id: string; kind: 'view'; view: PanelView }
 // NewSidePanelTab is what the new-tab menu opens: a built-in kind or a thread app.
 export type NewSidePanelTab = Exclude<SidePanelTab['kind'], 'app' | 'view'> | MCPEntrypoint
 export type SidePanelMode = 'tabs' | 'overview'

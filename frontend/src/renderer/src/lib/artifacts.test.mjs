@@ -7,10 +7,10 @@ test('artifact iframe layout warnings stay internal while real errors remain vis
 })
 
 test('a canvas card starts with its saved data, which cannot close the script that carries it', () => {
-  const html = buildArtifactDocument({ title: 'card', code: '<p>card</p>', loadingMessages: [] }, '', { canvas: { data: { note: '</script><b>\u2028' } } })
+  const html = buildArtifactDocument({ title: 'card', code: '<p>card</p>', loadingMessages: [] }, '', { canvas: true, data: { note: '</script><b>\u2028' } })
   expect(html).toContain('window.data = {"note":"\\u003c/script>\\u003cb>\\u2028"}')
   expect(html.match(/<\/script>/g)).toHaveLength(1)
-  expect(buildArtifactDocument({ title: 'card', code: '<p>card</p>', loadingMessages: [] }, '', { canvas: { data: undefined } })).toContain('window.data = null')
+  expect(buildArtifactDocument({ title: 'card', code: '<p>card</p>', loadingMessages: [] }, '', { canvas: true })).toContain('window.data = null')
   expect(buildArtifactDocument({ title: 'card', code: '<p>card</p>', loadingMessages: [] }, '')).not.toContain('saveData')
 })
 

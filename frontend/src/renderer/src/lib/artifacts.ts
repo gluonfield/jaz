@@ -237,10 +237,10 @@ export function buildArtifactThemeCSS(darkOverride?: boolean): string {
 export function buildArtifactDocument(
   input: ArtifactInput,
   theme: string,
-  opts: { measureLayout?: boolean; canvas?: { data: unknown }; data?: unknown } = {},
+  opts: { measureLayout?: boolean; canvas?: boolean; data?: unknown } = {},
 ): string {
-  const data = opts.canvas ? canvasBridgeScript + dataScript(opts.canvas.data) : opts.data === undefined ? '' : dataScript(opts.data)
-  const bridge = bridgeScript + (opts.measureLayout ? widgetBridgeScript : '') + data
+  const data = opts.canvas || opts.data !== undefined ? dataScript(opts.data) : ''
+  const bridge = bridgeScript + (opts.measureLayout ? widgetBridgeScript : '') + (opts.canvas ? canvasBridgeScript : '') + data
   if (opts.canvas) {
     theme += canvasCSS
   }

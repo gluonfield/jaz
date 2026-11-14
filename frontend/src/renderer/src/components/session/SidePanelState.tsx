@@ -11,9 +11,8 @@ import { previewDisplayUrl } from '@/lib/api/preview'
 import { openedFile } from '@/lib/mcpAppFiles'
 import { useBrowserSessions, useSessionPreview } from '@/lib/browserSessions'
 import { SidebarVisibility } from '@/lib/sidebar'
-import type { ArtifactEvent } from '@/lib/api/types'
 import type { MCPAppThread } from '@/lib/mcpAppThread'
-import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, type NewSidePanelTab, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
+import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, type NewSidePanelTab, type PanelView, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
 
 const PANEL_MAX_WIDTH = 1180
 const PANEL_MIN_THREAD_WIDTH = 360
@@ -161,9 +160,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
       call,
     })
   }, [entrypoints, openTab])
-  const openView = useCallback((view: ArtifactEvent) => {
-    if (view.file) openTab({ id: `view:${view.file}`, kind: 'view', view: { ...view, file: view.file } })
-  }, [openTab])
+  const openView = useCallback((view: PanelView) => openTab({ id: `view:${view.file}`, kind: 'view', view }), [openTab])
   const openPreview = useCallback((url: string) => {
     const display = previewDisplayUrl(url) ?? url
     if (openFile(display)) {

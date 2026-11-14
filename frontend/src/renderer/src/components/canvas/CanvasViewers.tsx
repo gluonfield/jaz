@@ -68,7 +68,7 @@ function TextFileViewer({ id, file, data }: { id: string; file: CanvasFile; data
   if (viewer === 'html') {
     return (
       <ViewerFrame id={id}>
-        <SandboxFrame id={id} title={fileName(file.path)} source={text + theme} data={data} build={(saved) => buildArtifactDocument({ title: fileName(file.path), code: text, loadingMessages: [] }, theme, { canvas: { data: saved } })} />
+        <SandboxFrame id={id} title={fileName(file.path)} source={text + theme} data={data} build={(saved) => buildArtifactDocument({ title: fileName(file.path), code: text, loadingMessages: [] }, theme, { canvas: true, data: saved })} />
       </ViewerFrame>
     )
   }

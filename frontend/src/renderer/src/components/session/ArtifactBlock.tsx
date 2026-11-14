@@ -50,8 +50,8 @@ export const ArtifactBlock = memo(function ArtifactBlock({
   // What a plugin's view draws. Later values reach the view without reloading it.
   data?: unknown
   onSendPrompt?: (text: string) => void
-  // Opens a link to a file in the thread's folder, such as "query-sheet.md".
-  onOpenFile?: (path: string) => void
+  // Opens a link when it names a file, and says whether it did.
+  onOpenFile?: (href: string) => boolean
 }) {
   const input = useMemo(
     () => (artifact ? artifactInputFromEvent(artifact) : parseArtifactToolArgs(args)),
@@ -86,10 +86,7 @@ export const ArtifactBlock = memo(function ArtifactBlock({
         const error = artifactErrorForDisplay(message.message ?? 'Artifact error')
         if (error) setError(error)
       }
-      if (message?.type === 'jaz:artifact-link' && message.href) {
-        if (onOpenFile && !/^[a-z][a-z\d+.-]*:/i.test(message.href)) onOpenFile(message.href)
-        else window.open(message.href, '_blank', 'noopener,noreferrer')
-      }
+      if (message?.type === 'jaz:artifact-link' && message.href && !onOpenFile?.(message.href)) window.open(message.href, '_blank', 'noopener,noreferrer')
       if (message?.type === 'jaz:artifact-send-prompt' && message.text?.trim()) onSendPrompt?.(message.text.trim())
     }
     window.addEventListener('message', onMessage)

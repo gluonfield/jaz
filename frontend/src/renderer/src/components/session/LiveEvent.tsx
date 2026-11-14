@@ -1,8 +1,9 @@
 import { LayoutDashboard } from 'lucide-react'
 import { memo, use } from 'react'
-import type { ACPPermission, ArtifactEvent, SessionEvent } from '@/lib/api/types'
+import type { ACPPermission, SessionEvent } from '@/lib/api/types'
 import { MCPAppThreadContext } from '@/lib/mcpAppThread'
 import { isParentChildACPEvent } from '@/lib/sessionEvents'
+import { isPanelView, type PanelView } from '@/lib/sidePanelTabs'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { Bubble } from '@/components/session/Bubble'
@@ -57,7 +58,7 @@ export const LiveEvent = memo(function LiveEvent({
         <ACPEventHeader agent={event.acp.agent} title={event.acp.title} at={event.at} />
       ) : null}
       {event.acp?.thought ? <ThinkingBlock text={event.acp.thought} findActive={findActive} /> : null}
-      {artifact?.file ? (
+      {isPanelView(artifact) ? (
         <PanelViewRow view={artifact} />
       ) : artifact ? (
         <ArtifactBlock artifact={artifact} onSendPrompt={onArtifactPrompt} />
@@ -79,7 +80,7 @@ export const LiveEvent = memo(function LiveEvent({
 })
 
 // A view that lives in the side panel leaves a row in the thread to open it again.
-function PanelViewRow({ view }: { view: ArtifactEvent }) {
+function PanelViewRow({ view }: { view: PanelView }) {
   const thread = use(MCPAppThreadContext)
   return (
     <button type="button" onClick={() => thread?.openView?.(view)} className="flex w-fit max-w-full cursor-pointer items-center gap-2 rounded-card border border-border bg-surface px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-surface-2">
