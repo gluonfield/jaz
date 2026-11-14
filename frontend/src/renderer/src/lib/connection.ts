@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import {
   apiBaseUrl, cachedApiAuthToken, clearApiSession, CLIENT_PLATFORM, CLIENT_PLATFORM_HEADER,
   consumeStartupConnectUrl, isLocalBackendUrl, localBaseUrl, normalizeBaseUrl,
-  parseBackendConnectUrl, rememberApiAuthToken, restoreApiAuthToken, secureBackendConnection,
+  forgetApiAuthToken, parseBackendConnectUrl, rememberApiAuthToken, restoreApiAuthToken, secureBackendConnection,
   setApiAuthToken, setApiBaseUrl, onApiAuthRejected,
 } from '@/lib/api/client'
 import { rememberBackend, removeKnownBackend } from '@/lib/backends'
@@ -17,7 +17,7 @@ import { LOCAL_BACKEND_URL as LOCAL_URL } from '@shared/localBackend'
 export { isLocalBackendUrl } from '@/lib/api/client'
 export type ConnectionStatus = 'checking' | 'connected' | 'reconnecting' | 'disconnected' | 'pending_approval'
 export type PendingPairing = { url: string; id: string; secret: string; deviceName: string; expiresAt: string }
-export type ConnectionState = { status: ConnectionStatus; url: string; pairing: PendingPairing | null; error: string | null }
+export type ConnectionState = { status: ConnectionStatus; url: string; pairing: PendingPairing | null; error: string | null; reauthorizeUrl: string | null }
 export type ConnectionMode = 'local' | 'remote'
 type ConnectionPreference = { mode: ConnectionMode; remoteUrl?: string }
 type Attempt = { url: string; revision: number; controller: AbortController }
@@ -32,7 +32,7 @@ let attempt: Attempt | null = null
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 let pairingTimer: ReturnType<typeof setTimeout> | undefined
 let issuance: Promise<unknown> = Promise.resolve()
-let state: ConnectionState = { status: 'checking', url: apiBaseUrl(), pairing: null, error: null }
+let state: ConnectionState = { status: 'checking', url: apiBaseUrl(), pairing: null, error: null, reauthorizeUrl: null }
 const listeners = new Set<() => void>()
 
 function setState(next: Partial<ConnectionState>): void {
@@ -118,11 +118,11 @@ function begin(url: string, announce = true): Attempt {
   const value = { url, revision: authoritative?.revision ?? 0, controller: new AbortController() }
   attempt = value
   setApiBaseUrl(url)
-  setState({ status: 'checking', url, pairing: null, error: null })
+  setState({ status: 'checking', url, pairing: null, error: null, reauthorizeUrl: null })
   return value
 }
 
-function block(error: string | null): void {
+function block(error: string | null, reauthorizeUrl: string | null = null): void {
   invalidate()
   if (ownsConnection) {
     clearConnectionPreference()
@@ -133,7 +133,11 @@ function block(error: string | null): void {
   } else if (bridge && desktop && authoritative?.phase === 'connected') {
     authoritative = bridge.update({ operation: 'reject', document: desktop.document, revision: authoritative.revision })
   }
-  setState({ status: 'disconnected', pairing: null, error })
+  setState({ status: 'disconnected', pairing: null, error, reauthorizeUrl })
+}
+
+function canRequestApprovalAgain(access: { code?: string }): boolean {
+  return access.code === 'unauthorized' || access.code === 'device_approval_required'
 }
 
 function activate(value: Attempt, candidate: Candidate): void {
@@ -179,7 +183,7 @@ async function verify(value: Attempt, candidate: Candidate): Promise<string | nu
       pollTimer = setTimeout(() => void verify(value, candidate), 5000)
       return error
     }
-    block(error)
+    block(error, !access.ok && canRequestApprovalAgain(access) ? value.url : null)
     return error
   }
   activate(value, { ...candidate, deviceId: access.deviceId, ticket: access.ticket })
@@ -203,7 +207,7 @@ function schedulePoll(value: Attempt, candidate: Candidate, missed = false): voi
     }
     if (!access.ok) {
       if (!access.recoverable) {
-        block(access.error)
+        block(access.error, canRequestApprovalAgain(access) ? value.url : null)
         return
       }
       if (missed) {
@@ -270,6 +274,7 @@ function pending(value: Attempt, pairing: PendingPairing, deviceId: string): voi
     try {
       const response = await backendFetch(value.url + '/v1/devices/pairing-requests/' + encodeURIComponent(pairing.id), {
         headers: { [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM, 'X-Jaz-Pairing-Secret': pairing.secret },
+        redirect: 'error',
         signal: AbortSignal.any([value.controller.signal, AbortSignal.timeout(5000)]),
       })
       const body = await readJSON<{ token?: string; error?: string; pairing?: { status: string } }>(response)
@@ -316,17 +321,26 @@ async function pair(value: Attempt): Promise<string | null> {
   return null
 }
 
-export async function connectRemote(input: string): Promise<string | null> {
+export function connectRemote(input: string): Promise<string | null> {
+  return connect(input)
+}
+
+async function connect(input: string, resetLogin = false): Promise<string | null> {
   const parsed = parseBackendConnectUrl(input)
   const url = normalizeBaseUrl(parsed.url)
   if (!secureBackendConnection(url)) {
     return 'Remote connections require HTTPS'
   }
-  const cached = cachedApiAuthToken(url)
+  const cached = resetLogin ? '' : cachedApiAuthToken(url)
   let remembered = !parsed.key && authoritative?.session?.url === url && authoritative.session.token === cached && authoritative.session.remembered === true
   const value = begin(url)
   clearConnectionPreference()
   try {
+    if (resetLogin) {
+      forgetApiAuthToken(url)
+      if (clientRuntime.kind === 'web') await forgetBrowserCredential(url, () => current(value))
+      if (!current(value)) return null
+    }
     if (parsed.key.startsWith('invite_')) {
       return await register(value, parsed.key)
     }
@@ -344,7 +358,7 @@ export async function connectRemote(input: string): Promise<string | null> {
     }
     let token = parsed.key || cached
     let deviceId: string | undefined
-    if (!token) {
+    if (!token && !resetLogin) {
       const saved = await savedCredential(url).catch((error): SavedCredential => {
         if (clientRuntime.kind !== 'web') throw error
         return { token: '' }
@@ -368,7 +382,7 @@ export async function connectRemote(input: string): Promise<string | null> {
       if (access.code === 'device_approval_required' && parsed.key) {
         return await register(value, token)
       }
-      block(access.error)
+      block(access.error, canRequestApprovalAgain(access) ? url : null)
       return access.error
     }
     activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered })
@@ -378,7 +392,7 @@ export async function connectRemote(input: string): Promise<string | null> {
       return null
     }
     const message = error instanceof Error ? error.message : 'Could not connect'
-    block(message)
+    block(message, resetLogin ? url : null)
     return message
   }
 }
@@ -437,6 +451,10 @@ export function forgetBackend(url: string): void {
   if (preference?.mode === 'remote' && preference.remoteUrl === normalizeBaseUrl(url)) {
     clearConnectionPreference()
   }
+}
+
+export function reauthorizeBackend(url: string): Promise<string | null> {
+  return connect(normalizeBaseUrl(url), true)
 }
 
 export function rememberConnection(): string | null {
@@ -498,7 +516,9 @@ async function hydrate(snapshot: SessionSnapshot): Promise<void> {
     if (ownsConnection && snapshot.phase === 'blocked') {
       clearConnectionPreference()
     }
-    setState({ status: snapshot.phase === 'pending' || snapshot.phase === 'initial' ? 'checking' : 'disconnected', url: snapshot.url || state.url, pairing: null, error: snapshot.error })
+    const url = snapshot.url || state.url
+    const reauthorizeUrl = snapshot.phase === 'blocked' && state.reauthorizeUrl === url ? url : null
+    setState({ status: snapshot.phase === 'pending' || snapshot.phase === 'initial' ? 'checking' : 'disconnected', url, pairing: null, error: snapshot.error, reauthorizeUrl })
   }
 }
 
@@ -587,7 +607,7 @@ async function restore(url: string): Promise<void> {
         pollTimer = setTimeout(() => void retry(), 5000)
       }
       else {
-        block(access.error)
+        block(access.error, canRequestApprovalAgain(access) ? url : null)
       }
       return
     }
@@ -603,5 +623,5 @@ async function restore(url: string): Promise<void> {
 bridge?.subscribe((snapshot) => {
   void hydrate(snapshot)
 })
-onApiAuthRejected(() => block('Backend device access was rejected'))
+onApiAuthRejected(() => block('Backend device access was rejected', state.url))
 void init().catch((error: unknown) => block(error instanceof Error ? error.message : 'Could not open the connection'))

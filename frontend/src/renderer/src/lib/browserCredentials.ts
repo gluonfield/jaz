@@ -62,6 +62,9 @@ export async function loadBrowserCredential(url: string): Promise<{ token: strin
   return { token: new TextDecoder().decode(plaintext), deviceId: saved.deviceId }
 }
 
-export async function forgetBrowserCredential(url: string): Promise<void> {
-  await transaction('readwrite', (store) => store.delete(url))
+export async function forgetBrowserCredential(url: string, current?: () => boolean): Promise<void> {
+  await transaction('readwrite', (store) => {
+    if (current && !current()) throw new Error('Connection changed before the login could be removed')
+    return store.delete(url)
+  })
 }

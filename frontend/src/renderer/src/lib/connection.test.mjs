@@ -55,7 +55,7 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, pairing = false, storedValues = [], encryptCredential, decryptCredential, health, registration, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential } = {}) {
+async function fixture({ auth, pairing = false, storedValues = [], encryptCredential, decryptCredential, health, registration, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, forgetBrowserCredential } = {}) {
   const stored = new Map(storedValues)
   if (web) stored.set('jaz.deviceIdentity', JSON.stringify({ device_id: 'identity', public_key: 'public' }))
   const configured = []
@@ -145,7 +145,7 @@ async function fixture({ auth, pairing = false, storedValues = [], encryptCreden
         if (!current()) throw new Error('Connection changed')
         browserCredentials.set(url, { token, deviceId })
       }),
-      forgetBrowserCredential: async (url) => browserCredentials.delete(url),
+      forgetBrowserCredential: forgetBrowserCredential || (async (url) => browserCredentials.delete(url)),
     }
     : require(name), module, module.exports)
   connection = module.exports
@@ -620,6 +620,61 @@ test('browser storage failure preserves the verified session without saving laun
   expect(connection.cachedApiAuthToken(url)).toBe('jaz_verified')
   expect(connection.connectionPreference()).toBeNull()
   expect(browserCredentials.size).toBe(0)
+})
+
+test('browser requests approval again only after an explicit login reset', async () => {
+  const url = 'https://jaz.example'
+  const other = 'https://other.example'
+  const otherLogin = { token: 'jaz_other', deviceId: 'other' }
+  const { connection, browserCredentials, pollPairing } = await fixture({
+    web: true, pairing: true,
+    browserCredentials: new Map([[url, { token: 'jaz_revoked', deviceId: 'identity' }], [other, otherLogin]]),
+    storedValues: [['jaz.connection', JSON.stringify({ mode: 'remote', remoteUrl: url })]],
+    auth: ({ headers }) => headers.Authorization === 'Bearer jaz_revoked'
+      ? Response.json({ code: 'unauthorized' }, { status: 401 })
+      : Response.json({ ok: true, auth_kind: 'device', device_id: 'identity' }),
+  })
+  expect(connection.useConnection().status).toBe('disconnected')
+  expect(connection.useConnection().reauthorizeUrl).toBe(url)
+  expect(browserCredentials.get(url)?.token).toBe('jaz_revoked')
+
+  expect(await connection.reauthorizeBackend(url)).toBeNull()
+  expect(connection.useConnection().status).toBe('pending_approval')
+  expect(browserCredentials.has(url)).toBe(false)
+  expect(browserCredentials.get(other)).toEqual(otherLogin)
+
+  await pollPairing()
+  expect(connection.useConnection().status).toBe('connected')
+  expect(connection.useConnection().reauthorizeUrl).toBeNull()
+  expect(browserCredentials.get(url)?.token).toBe('jaz_device-token')
+  expect(connection.connectionPreference()).toEqual({ mode: 'remote', remoteUrl: url })
+})
+
+test('a late browser login reset cannot erase a newer login to the same server', async () => {
+  const url = 'https://jaz.example'
+  const browserCredentials = new Map([[url, { token: 'jaz_revoked', deviceId: 'identity' }]])
+  let releaseDeletion
+  const delayed = new Promise((resolve) => { releaseDeletion = resolve })
+  const { connection } = await fixture({
+    web: true, pairing: true, browserCredentials,
+    storedValues: [['jaz.connection', JSON.stringify({ mode: 'remote', remoteUrl: url })]],
+    auth: ({ headers }) => headers.Authorization === 'Bearer jaz_revoked'
+      ? Response.json({ code: 'unauthorized' }, { status: 401 })
+      : Response.json({ ok: true, auth_kind: 'device', device_id: 'identity' }),
+    forgetBrowserCredential: async (target, current) => {
+      await delayed
+      if (current?.() === false) throw new Error('Connection changed')
+      browserCredentials.delete(target)
+    },
+  })
+  const reset = connection.reauthorizeBackend(url)
+  expect(await connection.connectRemote(url + '#key=jaz_new')).toBeNull()
+  await settle()
+  releaseDeletion()
+  await reset
+
+  expect(connection.useConnection().status).toBe('connected')
+  expect(browserCredentials.get(url)?.token).toBe('jaz_new')
 })
 
 test('explicit browser connection can request session-only approval when site storage is unavailable', async () => {
