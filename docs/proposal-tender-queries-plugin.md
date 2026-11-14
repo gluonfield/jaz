@@ -32,7 +32,7 @@ gluonfield/sg
     ├── tenders/
     │   ├── plugin.json  name, title, description, version
     │   ├── skills/      query-sheet, bid-preparation
-    │   ├── views/       question.html, status.html
+    │   ├── views/       status.html
     │   ├── scripts/     read the pack, export to Excel, status
     │   ├── reference/   check points, positions taken before, how points are written, document format
     │   └── examples/    an invented tender with a worked sheet
@@ -101,24 +101,22 @@ This part is built on the task branch and not yet merged or released.
 
 **A skill shows a view by name.** The agent has one new tool, `show_view`, and passes a view's name and what to draw, never the HTML ([`tools.go`](../backend/internal/plugins/tools.go)):
 
-| Call | Where it appears | Used for |
-|---|---|---|
-| `view: "tenders/question"`, `data: {…}` | A card in the conversation | A point that needs the rep's decision: the clause, Sterling's standard and the choices. The click comes back to the thread as the rep's answer. |
-| `view: "tenders/status"`, `file: "status.json"` | A tab in the side panel | Where the tender stands. The tab opens by itself when the skill shows it and redraws whenever the file changes, without reloading ([`ViewPanel.tsx`](../frontend/src/renderer/src/components/session/ViewPanel.tsx)). |
+| Call | Where it appears |
+|---|---|
+| `view`, `data: {…}` | A card in the conversation |
+| `view`, `file: "status.json"` | A tab in the side panel that opens by itself when the skill shows it and redraws whenever the file changes, without reloading ([`ViewPanel.tsx`](../frontend/src/renderer/src/components/session/ViewPanel.tsx)) |
+
+The tenders plugin has one view, `tenders/status`, in the side panel. It leads with the one thing the rep has to do now, lists the points waiting for them, and keeps the stages of the work and the documents below. Questions to the rep use Jaz's own question card, not a view.
 
 A view runs in Jaz's existing sandboxed frame with the app's colours and fonts. It reads `window.data`, hears later versions through `window.onData`, sends a message to the thread with `sendPrompt` and opens a file from the thread's folder beside itself with `openLink`.
-
-![A thread with the question card in the conversation and the status view in the side panel](images/tenders-status-view.png)
-
-A thread in a scratch copy of this branch with the plugin installed and the mock tender in its folder. Both views were shown through `show_view`; the calls were made by hand, because the scratch copy has no signed-in agent.
 
 **The flow for a tender:**
 
 1. The rep starts a thread, attaches the tender folder and asks for the query sheet.
 2. The skill reads the pack and shows the status view. It stays in the side panel for the rest of the work.
 3. The skill fills the check points and drafts `query-sheet.md`. After each step it reruns `status.py`, and the view moves on.
-4. For each point that needs a decision, a question card appears in the conversation. The rep clicks an answer, or opens the query sheet from the status view and edits it directly.
-5. The status view's buttons ask for the next step: export to Excel, read the buyer's replies, prepare the bid.
+4. For each point that needs a decision, the skill asks with Jaz's question card. The rep clicks an answer, or opens the query sheet from the status view and edits it directly.
+5. The status view's one button asks for the next step: export to Excel, read the buyer's replies, prepare the bid.
 
 ## What Jaz needs
 
@@ -156,7 +154,7 @@ Installing from a repository address is not proposed for now. Today's start-up d
 - [ ] Later rounds, tried on PDG's repeated points.
 - [x] In Jaz: plugins as installable folders, views shown by name with data, the side-panel view tab, Settings → Plugins. On the task branch.
 - [x] A mock tender, so the flow can be shown without a buyer's documents.
-- [x] Install, the Plugins page, the question card and the side-panel view seen in a running copy of the branch.
+- [x] Install, the Plugins page, a card and the side-panel view seen in a running copy of the branch.
 - [ ] One run with a signed-in agent on the mock tender: ask for the sheet, answer the cards.
 - [ ] In Jaz: plugins shipped with a build, page links and the source beside the sheet.
 - [ ] Run beside the team on the four live West tenders.
