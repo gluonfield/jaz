@@ -28,6 +28,7 @@ const THEME_VARS = [
   '--color-primary',
   '--color-primary-strong',
   '--color-primary-soft',
+  '--color-on-primary',
   '--color-border',
   '--color-danger',
   '--color-danger-soft',
