@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } from '@tanstack/react-router'
 import { useLayoutEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { FileReaderPanel } from '@/components/session/FileReaderPanel'
@@ -43,7 +44,7 @@ report();
 </script></body></html>`
   const content = '# Artifact report\n\n~~~jaz-artifact Route counter\n' + code + '\n~~~\n\n## Notes\n\nAn ordinary document with an interactive figure.'
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
-  client.setQueryData(keys.sessionFile('artifacts', path), { path, content, size: content.length })
+  client.setQueryData(keys.sessionFile('artifacts', path), { path, content, size: content.length, version: 'v1' })
   client.setQueryData(keys.health, { capabilities: { session_file_read: true } })
   client.setQueryData(keys.skills(), [])
   const host = document.createElement('div')
@@ -95,7 +96,7 @@ report();
   try {
     await window.smoke.resize(1000, 844)
     setThemePref('dark')
-    root.render(<View />)
+    root.render(<RouterContextProvider router={createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() })}><View /></RouterContextProvider>)
     await until(() => Boolean(host.querySelector('.markdown-document-card button')))
     if (host.querySelector('iframe') || !host.textContent?.includes('Route counter · Interactive artifact')) throw new Error('Compact preview executed its artifact')
     const open = host.querySelector('.markdown-document-card button')!.getBoundingClientRect()

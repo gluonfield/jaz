@@ -12,18 +12,26 @@ export function markdownDocumentTitle(content: string, path: string, label = '')
   return content.match(/^#\s+(.+)$/m)?.[1] ?? (label || path.split(/[\\/]/).at(-1) || 'Document')
 }
 
+// headingAnchors names each heading of one document in turn, numbering repeats.
+export function headingAnchors() {
+  const used = new Set<string>()
+  return (heading: string) => {
+    const slug = heading.toLowerCase().replace(/[^\p{L}\p{N}\p{M}_\s-]/gu, '').replace(/\s/g, '-') || 'section'
+    let id = slug
+    let suffix = 0
+    while (used.has(id)) id = `${slug}-${++suffix}`
+    used.add(id)
+    return id
+  }
+}
+
 export function remarkHeadingAnchors() {
   return (tree: Node) => {
-    const used = new Set<string>()
+    const anchor = headingAnchors()
     const visit = (node: Node) => {
       if (node.type === 'heading') {
         const text = (child: Node): string => child.value ?? child.children?.map(text).join('') ?? ''
-        const slug = text(node).toLowerCase().replace(/[^\p{L}\p{N}\p{M}_\s-]/gu, '').replace(/\s/g, '-') || 'section'
-        let id = slug
-        let suffix = 0
-        while (used.has(id)) id = `${slug}-${++suffix}`
-        used.add(id)
-        node.data = { ...node.data, hProperties: { ...node.data?.hProperties, id } }
+        node.data = { ...node.data, hProperties: { ...node.data?.hProperties, id: anchor(text(node)) } }
       }
       node.children?.forEach(visit)
     }

@@ -192,6 +192,10 @@ jobs:
           bunx electron-builder --mac --arm64 --publish never
           echo 'minimumSystemVersion: 22.0.0' >> dist/latest-mac.yml
 
+      - name: Verify Markdown document editing
+        working-directory: frontend
+        run: bun scripts/test-browser.ts --markdown-documents
+
       - name: Attach backend release assets
         env:
           GH_TOKEN: ${{ github.token }}

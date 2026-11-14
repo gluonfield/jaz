@@ -214,6 +214,12 @@ func TestSessionFileWrite(t *testing.T) {
 	if read.Code != http.StatusOK || original == "" {
 		t.Fatalf("raw read = %d with ETag %q", read.Code, original)
 	}
+	var document sessionFileResponse
+	documentRead := httptest.NewRecorder()
+	handler.ServeHTTP(documentRead, httptest.NewRequest(http.MethodGet, strings.TrimSuffix(fileURL, "&raw=1"), nil))
+	if err := json.Unmarshal(documentRead.Body.Bytes(), &document); err != nil || document.Version != original {
+		t.Fatalf("document read has version %q, want %q (%v)", document.Version, original, err)
+	}
 	saved := send(http.MethodPut, "solid bb\n", original)
 	if saved.Code != http.StatusNoContent || saved.Header().Get("ETag") == original {
 		t.Fatalf("save = %d with ETag %q", saved.Code, saved.Header().Get("ETag"))
@@ -240,5 +246,25 @@ func TestSessionFileWrite(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(file); string(data) != "solid dddd\n" {
 		t.Fatalf("an oversized save changed the file: %q", data)
+	}
+	create := func(path, body string) int {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPut, "/v1/sessions/"+session.ID+"/file?path="+path+"&raw=1", strings.NewReader(body))
+		req.Header.Set("If-None-Match", "*")
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		return res.Code
+	}
+	if code := create("images/sketch.png", "png"); code != http.StatusCreated {
+		t.Fatalf("creating a file = %d", code)
+	}
+	if data, _ := os.ReadFile(filepath.Join(dir, "images", "sketch.png")); string(data) != "png" {
+		t.Fatalf("created file = %q", data)
+	}
+	if code := create("part.stl", "solid e\n"); code != http.StatusPreconditionFailed {
+		t.Fatalf("creating a file that exists = %d", code)
+	}
+	if data, _ := os.ReadFile(file); string(data) != "solid dddd\n" {
+		t.Fatalf("creating a file that exists replaced it: %q", data)
 	}
 }
