@@ -171,6 +171,10 @@ func read(dir string) (Plugin, error) {
 		if err := plugin.Page.validate(plugin.Views); err != nil {
 			return Plugin{}, err
 		}
+		plugin.Page.Icon, err = readIcon(dir, plugin.Page.Icon)
+		if err != nil {
+			return Plugin{}, err
+		}
 	}
 	return plugin, nil
 }

@@ -31,7 +31,7 @@ func TestPageGroupsFoldersAndReloadsTheirData(t *testing.T) {
 	layout := runtimefiles.New(t.TempDir())
 	store := New(layout)
 	if _, err := store.Install(archive(t, map[string]string{
-		"tenders/plugin.json":       `{"name":"tenders","page":{"title":"Tenders","icon":"FileText","view":"status","file":"status.json"}}`,
+		"tenders/plugin.json":       `{"name":"tenders","page":{"title":"Tenders","view":"status","file":"status.json"}}`,
 		"tenders/views/status.html": "<p>status</p>",
 	})); err != nil {
 		t.Fatal(err)
@@ -111,6 +111,16 @@ func TestInstallRejectsInvalidPagePaths(t *testing.T) {
 		{Title: "Tenders", View: "status.html", File: "status.json"},
 		{Title: "Tenders", View: "missing", File: "status.json"},
 		{Title: " ", View: "status", File: "status.json"},
+		{Title: "Tenders", View: "status", File: "status.json", Icon: "assets/icon.svg"},
+		{Title: "Tenders", View: "status", File: "status.json", Icon: "./../icon.svg"},
+		{Title: "Tenders", View: "status", File: "status.json", Icon: "./assets/../icon.svg"},
+		{Title: "Tenders", View: "status", File: "status.json", Icon: "./assets/./icon.svg"},
+		{Title: "Tenders", View: "status", File: "status.json", Icon: "./assets//icon.svg"},
+		{Title: "Tenders", View: "status", File: "status.json", Icon: `./assets\icon.svg`},
+		{Title: "Tenders", View: "status", File: "status.json", Icon: "/assets/icon.svg"},
+		{Title: "Tenders", View: "status", File: "status.json", Icon: "https://example.com/icon.svg"},
+		{Title: "Tenders", View: "status", File: "status.json", Icon: "./assets/icon.png"},
+		{Title: "Tenders", View: "status", File: "status.json", Icon: "./missing.svg"},
 	} {
 		t.Run(page.View+"/"+page.File, func(t *testing.T) {
 			manifest, err := json.Marshal(Plugin{Name: "tenders", Page: &page})
@@ -122,5 +132,28 @@ func TestInstallRejectsInvalidPagePaths(t *testing.T) {
 				t.Fatalf("accepted page %+v: %v", page, err)
 			}
 		})
+	}
+}
+
+func TestPageIconCannotFollowASymlinkOutsideThePlugin(t *testing.T) {
+	layout := runtimefiles.New(t.TempDir())
+	store := New(layout)
+	if _, err := store.Install(archive(t, map[string]string{
+		"tenders/plugin.json":       `{"name":"tenders","page":{"title":"Tenders","icon":"./icon.svg","view":"status","file":"status.json"}}`,
+		"tenders/icon.svg":          `<svg xmlns="http://www.w3.org/2000/svg"/>`,
+		"tenders/views/status.html": "<p>status</p>",
+	})); err != nil {
+		t.Fatal(err)
+	}
+	icon := filepath.Join(layout.Plugins, "tenders", "icon.svg")
+	outside := filepath.Join(layout.Root, "outside.svg")
+	if err := os.Rename(icon, outside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, icon); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Page("tenders", pageSessions{}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("icon escaped plugin: %v", err)
 	}
 }
