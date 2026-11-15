@@ -1,58 +1,65 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useState } from 'react'
-import { linkedHues, resetColorTheme, setColorTheme, useColorTheme } from '@/lib/appearanceScheme'
+import { type ColorTheme, linkedHues, resetColorTheme, setColorTheme, useColorTheme } from '@/lib/appearanceScheme'
 import { ColorPad, GrainDial, StrengthWave, swatch } from './ColorControls'
 import { SettingsCard } from './SettingsCard'
 
-// Starting points carry as many colours as you have (one when there are none),
-// linked the same way; the pages step from vivid to soft.
-const PALETTE_HUES = [20, 50, 85, 140, 175, 215, 264, 320]
-const PALETTE_PAGES = [
-  { label: 'Vivid', saturation: 0.8 },
-  { label: 'Balanced', saturation: 0.55 },
-  { label: 'Soft', saturation: 0.3 },
+// Named starting points. Each sets only the fields listed, so Graphite keeps
+// the hue to come back to and none of them touch the grain.
+const THEMES: { name: string; theme: Partial<ColorTheme> }[] = [
+  { name: 'Cobalt', theme: { hue: 264, colors: 2, harmony: 1, saturation: 0.6, strength: 0.45 } },
+  { name: 'Graphite', theme: { colors: 0 } },
+  { name: 'Slate', theme: { hue: 250, colors: 1, harmony: 0, saturation: 0.15, strength: 0.4 } },
+  { name: 'Ocean', theme: { hue: 225, colors: 2, harmony: 1, saturation: 0.5, strength: 0.45 } },
+  { name: 'Forest', theme: { hue: 160, colors: 1, harmony: 0, saturation: 0.35, strength: 0.4 } },
+  { name: 'Sage', theme: { hue: 140, colors: 2, harmony: 1, saturation: 0.2, strength: 0.4 } },
+  { name: 'Sand', theme: { hue: 80, colors: 1, harmony: 0, saturation: 0.25, strength: 0.4 } },
+  { name: 'Clay', theme: { hue: 50, colors: 2, harmony: 1, saturation: 0.4, strength: 0.4 } },
+  { name: 'Rose', theme: { hue: 10, colors: 1, harmony: 0, saturation: 0.35, strength: 0.4 } },
+  { name: 'Plum', theme: { hue: 320, colors: 2, harmony: 1, saturation: 0.4, strength: 0.4 } },
+  { name: 'Sunset', theme: { hue: 20, colors: 3, harmony: 0, saturation: 0.7, strength: 0.5 } },
+  { name: 'Aurora', theme: { hue: 190, colors: 3, harmony: 0, saturation: 0.65, strength: 0.5 } },
 ]
 
 // Zen's swatch shapes: one colour flat, two across, three from the corners.
-function ideaBackground(hues: number[], saturation: number) {
-  const [a, b, c] = hues.map((hue) => swatch(hue, saturation))
+function themeBackground(theme: ColorTheme) {
+  const [a = 'oklch(var(--swatch-l) 0 0)', b, c] = linkedHues(theme).map((hue) => swatch(hue, theme.saturation))
   if (!b) return a
   if (!c) return `linear-gradient(135deg, ${a}, ${b})`
   return `radial-gradient(circle at 0% 0%, ${a}, transparent 100%), radial-gradient(circle at 100% 0%, ${b}, transparent 100%), linear-gradient(to top, ${c} 0%, transparent 60%), ${a}`
 }
 
-export function PaletteIdeas({ page = 0, className = 'gap-2' }: { page?: number; className?: string }) {
-  const theme = useColorTheme()
-  const { label, saturation } = PALETTE_PAGES[page]
-  const colors = Math.max(1, theme.colors)
+// Round swatches in a row, or named tiles in a grid.
+export function ThemePresets({ named = false }: { named?: boolean }) {
+  const current = useColorTheme()
   return (
-    <div className={`flex ${className}`}>
-      {PALETTE_HUES.map((hue) => {
-        const active = theme.colors === colors && theme.hue === hue && theme.saturation === saturation
+    <div className={named ? 'grid grid-cols-4 gap-x-2 gap-y-3' : 'flex justify-between'}>
+      {THEMES.map(({ name, theme }) => {
+        const active = (Object.keys(theme) as (keyof ColorTheme)[]).every((key) => current[key] === theme[key])
         return (
           <button
-            key={hue}
+            key={name}
             type="button"
-            aria-label={`${label}, hue ${hue}°`}
+            aria-label={name}
             aria-pressed={active}
-            onClick={() => setColorTheme({ hue, colors, saturation })}
-            style={{ background: ideaBackground(linkedHues({ ...theme, hue, colors }), saturation) }}
-            className={`size-[26px] shrink-0 cursor-pointer rounded-full transition-transform duration-100 hover:scale-105 active:scale-95 ${
-              active ? 'ring-2 ring-ink ring-offset-2 ring-offset-surface' : 'shadow-[0_0_1px_1px_rgb(0_0_0/0.1)]'
-            }`}
-          />
+            title={named ? undefined : name}
+            onClick={() => setColorTheme(theme)}
+            className={`group flex cursor-pointer flex-col gap-1.5 text-[12px] ${active ? 'font-medium text-ink' : 'text-ink-2 hover:text-ink'}`}
+          >
+            <span
+              style={{ background: themeBackground({ ...current, ...theme }) }}
+              className={`transition-transform duration-100 group-hover:scale-[1.03] group-active:scale-[0.97] ${
+                named ? 'h-9 w-full rounded-lg' : 'size-[26px] rounded-full'
+              } ${active ? 'ring-2 ring-ink ring-offset-2 ring-offset-surface' : 'shadow-[0_0_1px_1px_rgb(0_0_0/0.1)]'}`}
+            />
+            {named ? name : null}
+          </button>
         )
       })}
     </div>
   )
 }
 
-const PAGE_BUTTON =
-  'grid size-6 shrink-0 cursor-pointer place-items-center rounded-md text-ink-3 transition-colors duration-150 hover:text-ink disabled:cursor-default disabled:opacity-30 disabled:hover:text-ink-3'
-
 export function ColorThemeSettings() {
   const theme = useColorTheme()
-  const [page, setPage] = useState(0)
   return (
     <>
       <div className="mt-6 flex items-end justify-between gap-3">
@@ -73,38 +80,10 @@ export function ColorThemeSettings() {
 
       <SettingsCard className="mt-4 grid gap-5 p-3 md:grid-cols-[300px_minmax(0,1fr)]">
         <ColorPad theme={theme} />
-        <div className="flex min-w-0 flex-col justify-center gap-7">
+        <div className="flex min-w-0 flex-col justify-center gap-6">
           <div>
-            <div className="flex items-baseline justify-between">
-              <p className="text-[13px] font-medium text-ink">Palette</p>
-              <p className="text-[12px] text-ink-3">{PALETTE_PAGES[page].label}</p>
-            </div>
-            <div className="mt-3 flex items-center gap-1">
-              <button
-                type="button"
-                aria-label="Previous palette"
-                disabled={page === 0}
-                onClick={() => setPage(page - 1)}
-                className={PAGE_BUTTON}
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <PaletteIdeas page={page} className="flex-1 justify-between" />
-              <button
-                type="button"
-                aria-label="Next palette"
-                disabled={page === PALETTE_PAGES.length - 1}
-                onClick={() => setPage(page + 1)}
-                className={PAGE_BUTTON}
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-            <div aria-hidden className="mt-2.5 flex justify-center gap-1.5">
-              {PALETTE_PAGES.map(({ label }, index) => (
-                <span key={label} className={`size-[5px] rounded-full bg-ink ${index === page ? 'opacity-60' : 'opacity-20'}`} />
-              ))}
-            </div>
+            <p className="mb-3 text-[13px] font-medium text-ink">Theme</p>
+            <ThemePresets named />
           </div>
           <div className="flex items-start justify-between gap-4">
             <div>
