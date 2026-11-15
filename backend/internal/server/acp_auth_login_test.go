@@ -35,6 +35,22 @@ func TestACPAuthLoginEnvPreservesHostProxy(t *testing.T) {
 	}
 }
 
+func TestACPAuthLoginClaudePreservesNamedSDKProfileHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	root := t.TempDir()
+	invocation := acp.AgentLoginInvocationFor(acp.AgentClaude, root, acp.AgentAuthConfig{Mode: acp.AuthModeJazProfile}, "", map[string]string{"ANTHROPIC_PROFILE": "selected"})
+	env := strings.Join(acpAuthLoginEnv(invocation), "\n")
+	for _, want := range []string{"HOME=" + home, "CLAUDE_CONFIG_DIR=" + filepath.Join(root, "acp", "claude"), "ANTHROPIC_PROFILE=selected"} {
+		if !strings.Contains(env, want) {
+			t.Fatalf("login environment missing %q: %s", want, env)
+		}
+	}
+	if strings.Contains(env, "ANTHROPIC_CONFIG_DIR=") {
+		t.Fatalf("named SDK profile acquired a different config directory: %s", env)
+	}
+}
+
 func TestACPAuthLoginRunsCodexWithoutHome(t *testing.T) {
 	home := t.TempDir()
 	bin := t.TempDir()

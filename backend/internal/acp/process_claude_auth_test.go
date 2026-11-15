@@ -33,24 +33,26 @@ func TestProcessEnvScrubsClaudeHostOAuthWhenAutoSelectsJazProfile(t *testing.T) 
 }
 
 func TestClaudeJazProfileSDKConfigMatchesLogin(t *testing.T) {
-	for _, configured := range []map[string]string{
-		{},
-		{"ANTHROPIC_CONFIG_DIR": "/configured/anthropic"},
-		{"ANTHROPIC_PROFILE": "selected"},
+	root := t.TempDir()
+	managed := filepath.Join(root, "acp", "claude", "anthropic")
+	for _, test := range []struct {
+		name string
+		env  map[string]string
+		dir  string
+	}{
+		{"managed", nil, managed},
+		{"sdk_directory", map[string]string{"ANTHROPIC_CONFIG_DIR": "/configured/anthropic"}, "/configured/anthropic"},
+		{"sdk_profile", map[string]string{"ANTHROPIC_PROFILE": "selected"}, ""},
+		{"empty_sdk_profile", map[string]string{"ANTHROPIC_PROFILE": " \t"}, managed},
 	} {
-		t.Run(configured["ANTHROPIC_CONFIG_DIR"]+configured["ANTHROPIC_PROFILE"], func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			clearHostEnv(t)
-			root := t.TempDir()
 			auth := AgentAuthConfig{Mode: AuthModeJazProfile}
-			env := NewManager(nil, Config{Root: root}, nil).processEnv(AgentClaude, AgentConfig{Auth: auth, Env: configured})
-			want := configured["ANTHROPIC_CONFIG_DIR"]
-			if want == "" && configured["ANTHROPIC_PROFILE"] == "" {
-				want = filepath.Join(root, "acp", "claude", "anthropic")
-			}
-			login := AgentLoginInvocationFor(AgentClaude, root, auth, "", configured)
+			env := NewManager(nil, Config{Root: root}, nil).processEnv(AgentClaude, AgentConfig{Auth: auth, Env: test.env})
+			login := AgentLoginInvocationFor(AgentClaude, root, auth, "", test.env)
 			for _, actual := range []map[string]string{env, login.Env} {
-				if actual["ANTHROPIC_CONFIG_DIR"] != want || actual["ANTHROPIC_PROFILE"] != configured["ANTHROPIC_PROFILE"] {
-					t.Fatalf("SDK profile env = %v; want directory %q and profile %q", actual, want, configured["ANTHROPIC_PROFILE"])
+				if actual["ANTHROPIC_CONFIG_DIR"] != test.dir || actual["ANTHROPIC_PROFILE"] != test.env["ANTHROPIC_PROFILE"] {
+					t.Fatalf("SDK profile env = %v; want directory %q and profile %q", actual, test.dir, test.env["ANTHROPIC_PROFILE"])
 				}
 			}
 		})

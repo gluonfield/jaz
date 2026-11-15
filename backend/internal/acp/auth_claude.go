@@ -19,7 +19,7 @@ const (
 )
 
 func claudeSDKConfigDir(configDir string, env map[string]string) string {
-	if env["ANTHROPIC_PROFILE"] != "" {
+	if strings.TrimSpace(env["ANTHROPIC_PROFILE"]) != "" {
 		return env["ANTHROPIC_CONFIG_DIR"]
 	}
 	return firstNonEmpty(env["ANTHROPIC_CONFIG_DIR"], filepath.Join(configDir, "anthropic"))

@@ -104,6 +104,7 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 	case AgentClaude:
 		configDir := firstNonEmpty(auth.Path, layout.ACPClaudeConfig)
 		loginEnv := map[string]string{"CLAUDE_CONFIG_DIR": configDir}
+		preserveRuntimeHome(loginEnv)
 		if auth.Mode == AuthModeJazProfile {
 			loginEnv["ANTHROPIC_CONFIG_DIR"] = claudeSDKConfigDir(configDir, env)
 			loginEnv["ANTHROPIC_PROFILE"] = env["ANTHROPIC_PROFILE"]
