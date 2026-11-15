@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 )
 
 func Read(dir string) (Manifest, error) {
@@ -41,6 +42,27 @@ func Read(dir string) (Manifest, error) {
 		return plugin, nil
 	}
 	return Manifest{}, ErrNotPlugin
+}
+
+func ReadClaude(dir string) (Manifest, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return Manifest{}, err
+	}
+	defer root.Close()
+	data, err := root.ReadFile(".claude-plugin/plugin.json")
+	if errors.Is(err, fs.ErrNotExist) {
+		return Manifest{Name: filepath.Base(dir)}, nil
+	}
+	if err != nil {
+		return Manifest{}, err
+	}
+	plugin, err := readNative(data, ".claude-plugin/plugin.json")
+	plugin.ManifestPath = ".claude-plugin/plugin.json"
+	if err == nil && !SafeName(plugin.Name) {
+		err = errors.New("invalid Claude plugin name")
+	}
+	return plugin, err
 }
 
 type paths []string

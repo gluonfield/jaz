@@ -26,7 +26,6 @@ type Manifest struct {
 
 type Page struct {
 	View string
-	File string
 }
 
 var safeName = regexp.MustCompile(`^[a-zA-Z0-9_-][a-zA-Z0-9._-]*$`)

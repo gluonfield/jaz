@@ -25,6 +25,7 @@ import (
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/mobilepush"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 	mockprovider "github.com/wins/jaz/backend/internal/provider/mock"
@@ -326,7 +327,7 @@ func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, log
 	})
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service) (acp.Config, error) {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service, installed *plugins.Store) (acp.Config, error) {
 	if err := bots.MigrateHomes(store); err != nil {
 		return acp.Config{}, err
 	}
@@ -339,6 +340,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	cfg.ACP.ProviderSource = providerSource
 	cfg.ACP.ModelCatalog = modelCatalog
 	cfg.ACP.SystemPrompt = prompts
+	cfg.ACP.ClaudePlugins = installed.ClaudePlugins
 	cfg.ACP.MCPStore = mcpServers
 	promptBuilder := loops.RuntimePromptBuilder{Repo: store, PromptExtras: []func(loops.Loop, loops.Run) string{bots.RoutineInstructions(store)}}
 	if widgetService != nil {

@@ -10,7 +10,15 @@ Jaz reads `.agents/plugins/marketplace.json` first, then `.claude-plugin/marketp
 
 Repository, ref and resolved commit appear beside each plugin’s version. **Update** fetches that source and replaces only that plugin. Source records live in the runtime’s `plugin-sources.json`, outside plugin folders. ZIP replacement clears that plugin’s source and Update action.
 
-Packages are fully staged and validated before publication. Replacement uses atomic directory exchange on macOS/Linux filesystems that support it, with rollback if source publication fails. Other platforms/filesystems preserve the existing package and report unsupported replacement. Store readers see coherent package/source records. Installation, update and removal reuse MCP refresh, so changed code reconnects even when its server config stays the same.
+Packages are fully staged and validated before publication. Replacement moves the previous package aside, publishes the new package and source, and restores the previous package on failure. Store readers see coherent package/source records. Installation, update and removal respond after publication and refresh the changed MCP servers in the background, so changed code reconnects even when its server config stays the same. Settings status and App entrypoints refresh within five seconds once connected.
+
+## Native agents
+
+The bundled managed Claude adapter loads installed folders for each new or restored session through Claude Code's session-scoped plugin flags. Running sessions keep their startup folder selection. Claude owns their hooks, commands, agents and native skills; Jaz never runs hooks or interprets those other components. Plugin MCP servers remain on Jaz's proxy and are excluded from Claude's native discovery. No native profile or global plugin configuration is changed.
+
+Only skills selected for native loading are omitted from Jaz's generated Claude catalogue. The composer keeps the complete `plugin:skill` catalogue and original paths, and other providers keep Jaz's catalogue. Native Claude uses `.claude-plugin/plugin.json`'s name, or the installed folder name without that manifest. An unreadable, malformed or conflicting Claude overlay produces a warning on that plugin and keeps its skills in Jaz's catalogue; other plugins still load natively. Custom/remote Claude adapters retain Jaz skill ownership because their startup support is unknown. Codex currently has no supported session-scoped folder option, so Jaz does not install plugins into its native configuration.
+
+Restoring a Claude conversation passes the current native folder selection without rewriting its provider history. Older prompt snapshots can retain the previous Jaz catalogue until native compaction rebuilds them.
 
 ## Manifest
 
@@ -29,15 +37,14 @@ Jaz settings belong only under `extensions["chat.jaz"]`:
       "displayName": "Tenders",
       "icon": "./assets/icon.svg",
       "page": {
-        "view": "tenders",
-        "file": "status.json"
+        "view": "tenders"
       }
     }
   }
 }
 ```
 
-`displayName` labels Settings and the navigation button; it defaults to `name`. `icon` is optional and must name an SVG inside the plugin, starting with `./` and containing no `..` segments. Jaz uses a neutral icon when it is omitted. `page` is optional and contains only `view` and `file`. Top-level `title` and `page` have no Jaz meaning.
+`displayName` labels Settings and the navigation button; it defaults to `name`. `icon` is optional and must name an SVG inside the plugin, starting with `./` and containing no `..` segments. Jaz uses a neutral icon when it is omitted. `page` is optional and contains only `view`. Unknown fields in `chat.jaz` and its `page` produce warnings and are ignored, including the obsolete `page.file`. Top-level `title` and `page` have no Jaz meaning.
 
 ```text
 tenders/
@@ -91,9 +98,9 @@ Settings → Plugins lists server names and per-server configuration diagnostics
 
 ## Views and pages
 
-Put HTML views under `views/`. A page's `view: "tenders"` selects `views/tenders.html`; `file` must be a plain filename such as `status.json`.
+Put HTML views under `views/`. A page's `view: "tenders"` selects `views/tenders.html`.
 
-The navigation page reads that JSON file from working folders known to Jaz threads. Its sandbox receives `window.data = {items}`, where each item has `folder`, parsed `data`, and associated `threads` with `id`, `title`, `status`, and `updated_at`. Folders and threads are ordered by their latest thread update. Missing or invalid JSON is skipped. Subscribe with `window.onData(callback)` for updates.
+The navigation page includes only threads that have called `show_view` with a view of that plugin and a `file`. For each thread, Jaz follows its latest such presentation, including archived threads. The file must be a plain filename inside the thread's working folder; subdirectories, traversal, and symlinks outside that folder are rejected. An incidental file with the same name does not link a thread. Older stored presentations without a plugin/view reference still render, but do not link a thread to a page. Its sandbox receives `window.data = {items}`, where each item has `folder`, parsed `data`, and associated `threads` with `id`, `title`, `status`, and `updated_at`. Items group threads by both absolute folder and filename. Items and their threads are ordered by the latest thread update. Missing or invalid JSON is skipped. Subscribe with `window.onData(callback)` for updates.
 
 On a page, `sendPrompt(text)` opens the new-thread composer with the text ready to edit, attach files, and send. `openLink('/sessions/<id>')` opens that thread in Jaz. External links open in the browser.
 

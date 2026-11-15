@@ -1,11 +1,10 @@
 package manifest
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 )
 
 type coreManifest struct {
@@ -30,7 +29,6 @@ type jazExtension struct {
 	Icon        string `json:"icon"`
 	Page        *struct {
 		View string `json:"view"`
-		File string `json:"file"`
 	} `json:"page"`
 }
 
@@ -47,26 +45,38 @@ func readCore(data []byte) (Manifest, error) {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return Manifest{}, err
 	}
-	for field := range fields {
-		switch field {
-		case "$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords", "extensions":
-		default:
-			plugin.Warnings = append(plugin.Warnings, fmt.Sprintf("Ignoring unknown manifest field %q", field))
-		}
-	}
-	sort.Strings(plugin.Warnings)
+	plugin.Warnings = unknownFields(fields, "", "$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords", "extensions")
 	if value, exists := input.Extensions["chat.jaz"]; exists {
 		var jaz jazExtension
-		decoder := json.NewDecoder(bytes.NewReader(value))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&jaz); err != nil {
+		if err := json.Unmarshal(value, &jaz); err != nil {
 			return Manifest{}, fmt.Errorf("chat.jaz: %w", err)
 		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(value, &fields); err != nil {
+			return Manifest{}, err
+		}
+		plugin.Warnings = append(plugin.Warnings, unknownFields(fields, "extensions.chat.jaz.", "displayName", "icon", "page")...)
 		plugin.DisplayName = jaz.DisplayName
 		plugin.IconPath = jaz.Icon
 		if jaz.Page != nil {
-			plugin.Page = &Page{View: jaz.Page.View, File: jaz.Page.File}
+			plugin.Page = &Page{View: jaz.Page.View}
+			var pageFields map[string]json.RawMessage
+			if err := json.Unmarshal(fields["page"], &pageFields); err != nil {
+				return Manifest{}, err
+			}
+			plugin.Warnings = append(plugin.Warnings, unknownFields(pageFields, "extensions.chat.jaz.page.", "view")...)
 		}
 	}
+	slices.Sort(plugin.Warnings)
 	return plugin, nil
+}
+
+func unknownFields(fields map[string]json.RawMessage, prefix string, allowed ...string) []string {
+	var warnings []string
+	for field := range fields {
+		if !slices.Contains(allowed, field) {
+			warnings = append(warnings, fmt.Sprintf("Ignoring unknown manifest field %q", prefix+field))
+		}
+	}
+	return warnings
 }

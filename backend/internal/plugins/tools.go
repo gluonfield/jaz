@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -28,7 +27,7 @@ type ShowViewInput struct {
 	View  string         `json:"view" jsonschema:"The view to show, as <plugin>/<view>, for example tenders/status."`
 	Title string         `json:"title" jsonschema:"A short title for the card or the side-panel tab."`
 	Data  map[string]any `json:"data,omitempty" jsonschema:"What the view draws, as a JSON object. Shows the view as a card in the conversation."`
-	File  string         `json:"file,omitempty" jsonschema:"A JSON file in the thread's folder holding what the view draws. Opens the view in the side panel, where it redraws whenever the file changes. Use instead of data for a view that should stay in sight while work goes on."`
+	File  string         `json:"file,omitempty" jsonschema:"A plain JSON filename in the thread's folder holding what the view draws. Opens the view in the side panel, where it redraws whenever the file changes. Use instead of data for a view that should stay in sight while work goes on."`
 }
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
@@ -48,15 +47,16 @@ func (t *MCPTools) ShowView(_ context.Context, req *mcp.CallToolRequest, input S
 	if (input.Data == nil) == (file == "") {
 		return nil, nil, errors.New("pass either data, for a card in the conversation, or file, for a view in the side panel")
 	}
-	if file != "" && !filepath.IsLocal(file) {
-		return nil, nil, errors.New("file must be a path inside the thread's folder")
+	if file != "" && !filename.MatchString(file) {
+		return nil, nil, errors.New("file must be a plain filename inside the thread's folder")
 	}
-	html, err := t.Plugins.View(strings.TrimSpace(input.View))
+	ref := strings.TrimSpace(input.View)
+	html, err := t.Plugins.View(ref)
 	if err != nil {
 		return nil, nil, err
 	}
 	if file != "" {
-		return t.Presenter.PresentMCP(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Title: title, WidgetCode: html, File: file}})
+		return t.Presenter.PresentMCP(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Reference: ref, Title: title, WidgetCode: html, File: file}})
 	}
 	artifact := &sessionevents.ArtifactEvent{Title: title, WidgetCode: html, ArtifactType: "html"}
 	if artifact.Data, err = json.Marshal(input.Data); err != nil {

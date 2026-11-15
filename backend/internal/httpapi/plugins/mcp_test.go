@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/log"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -27,6 +30,28 @@ func TestPluginMCPProcess(t *testing.T) {
 		return
 	}
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "plugin-fixture"}, nil)
+	if gate := os.Getenv("GATE_FILE"); gate != "" {
+		server.AddReceivingMiddleware(func(next mcpsdk.MethodHandler) mcpsdk.MethodHandler {
+			return func(ctx context.Context, method string, request mcpsdk.Request) (mcpsdk.Result, error) {
+				if method == "tools/list" {
+					_ = os.WriteFile(gate+".entered", nil, 0600)
+					ticker := time.NewTicker(10 * time.Millisecond)
+					defer ticker.Stop()
+					for {
+						if _, err := os.Stat(gate); err == nil {
+							break
+						}
+						select {
+						case <-ctx.Done():
+							return nil, ctx.Err()
+						case <-ticker.C:
+						}
+					}
+				}
+				return next(ctx, method, request)
+			}
+		})
+	}
 	server.AddTool(&mcpsdk.Tool{Name: "inspect", InputSchema: map[string]any{"type": "object"}, Meta: mcpsdk.Meta{"ui": map[string]any{"resourceUri": "ui://fixture/app"}, "openai/ui": map[string]any{"entrypoints": []any{map[string]any{"type": "global"}}}}}, func(context.Context, *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 		cwd, _ := os.Getwd()
 		data, _ := json.Marshal(map[string]string{"pid": strconv.Itoa(os.Getpid()), "cwd": cwd, "root": os.Getenv("PLUGIN_ROOT"), "data": os.Getenv("PLUGIN_DATA"), "value": os.Getenv("VALUE")})
@@ -52,36 +77,101 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	layout := runtimefiles.New(filepath.Join(t.TempDir(), "literal-${PLUGIN_DATA}"))
 	store := plugins.New(layout)
+	unrelated := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "unrelated"}, nil)
+	unrelated.AddTool(&mcpsdk.Tool{Name: "unrelated", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+		return &mcpsdk.CallToolResult{}, nil
+	})
+	var blocked atomic.Bool
+	var requests atomic.Int32
+	release := make(chan struct{})
+	remoteHandler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return unrelated }, nil)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if blocked.Load() {
+			select {
+			case <-release:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		remoteHandler.ServeHTTP(w, r)
+	}))
+	defer upstream.Close()
+	if _, err := store.Install(pluginArchive(t, map[string]string{
+		"unrelated/plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"unrelated"}`,
+		"unrelated/mcp.json":    `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"remote":{"type":"streamable-http","url":"` + upstream.URL + `"}}}`,
+	})); err != nil {
+		t.Fatal(err)
+	}
 	manager := mcpruntime.NewManager(store, nil, tools.NewRegistry(), log.New(io.Discard))
 	defer manager.Close()
+	defer close(release)
+	manager.Refresh(t.Context())
+	blocked.Store(true)
+	before := requests.Load()
+	until := func(check func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for !check() {
+			if time.Now().After(deadline) {
+				t.Fatal("background plugin refresh did not settle")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 	handler := NewHandler(sessionStore{}, manager, store)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/plugins", handler.Install)
 	mux.HandleFunc("DELETE /v1/plugins/{plugin}", handler.Remove)
+	mux.HandleFunc("POST /v1/plugins/repository", handler.InstallRepository)
+	mux.HandleFunc("POST /v1/plugins/{plugin}/update", handler.Update)
+	var previousRevision uint64
+	request := func(method, path string, body io.Reader) *httptest.ResponseRecorder {
+		t.Helper()
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		response := httptest.NewRecorder()
+		done := make(chan struct{})
+		start := time.Now()
+		previousRevision = manager.Revision()
+		go func() {
+			mux.ServeHTTP(response, httptest.NewRequest(method, path, body).WithContext(ctx))
+			close(done)
+		}()
+		select {
+		case <-done:
+			t.Logf("%s %s response: %s", method, path, time.Since(start))
+		case <-time.After(2 * time.Second):
+			t.Fatal("plugin response waited for MCP discovery")
+		}
+		return response
+	}
+	connected := func() {
+		until(func() bool {
+			return manager.Revision() > previousRevision && manager.Status(plugins.MCPServerID("fixture", "local")).Status == "connected"
+		})
+	}
 	install := func(value string) {
 		t.Helper()
-		var archive bytes.Buffer
-		writer := zip.NewWriter(&archive)
-		for name, content := range map[string]string{
+		archive := pluginArchive(t, map[string]string{
 			"fixture/plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"fixture"}`,
-			"fixture/mcp.json":    `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"local":{"type":"stdio","command":"plugin-fixture","cwd":"${PLUGIN_DATA}","args":["-test.run=^TestPluginMCPProcess$"],"env":{"JAZ_PLUGIN_MCP_PROCESS":"1","VALUE":"` + value + `"}}}}`,
-		} {
-			file, err := writer.Create(name)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := io.WriteString(file, content); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := writer.Close(); err != nil {
-			t.Fatal(err)
-		}
-		recorder := httptest.NewRecorder()
-		mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/plugins", &archive))
+			"fixture/mcp.json":    `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"local":{"type":"stdio","command":"plugin-fixture","cwd":"${PLUGIN_DATA}","args":["-test.run=^TestPluginMCPProcess$"],"env":{"JAZ_PLUGIN_MCP_PROCESS":"1","GATE_FILE":"${PLUGIN_DATA}/allow","VALUE":"` + value + `"}}}}`,
+		})
+		recorder := request(http.MethodPost, "/v1/plugins", bytes.NewReader(archive))
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("install = %d %s", recorder.Code, recorder.Body)
 		}
+		gate := filepath.Join(layout.Root, "plugin-data", "fixture", "allow")
+		if _, err := os.Stat(gate); os.IsNotExist(err) {
+			until(func() bool { _, err := os.Stat(gate + ".entered"); return err == nil })
+			if manager.Status(plugins.MCPServerID("fixture", "local")).Status == "connected" {
+				t.Fatal("MCP connected before its fixture was released")
+			}
+			if err := os.WriteFile(gate, nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		connected()
 	}
 	install("${PLUGIN_ROOT}")
 	proxy := httptest.NewServer(manager.Handler())
@@ -95,10 +185,16 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 	call := func(want string) string {
 		t.Helper()
 		list, err := session.ListTools(t.Context(), nil)
-		if err != nil || len(list.Tools) != 1 {
+		if err != nil || len(list.Tools) != 2 {
 			t.Fatalf("agent tools = %+v %v", list, err)
 		}
-		result, err := session.CallTool(t.Context(), &mcpsdk.CallToolParams{Name: list.Tools[0].Name})
+		name := ""
+		for _, tool := range list.Tools {
+			if strings.HasSuffix(tool.Name, "inspect") {
+				name = tool.Name
+			}
+		}
+		result, err := session.CallTool(t.Context(), &mcpsdk.CallToolParams{Name: name})
 		if err != nil || result.IsError {
 			t.Fatalf("agent call = %+v %v", result, err)
 		}
@@ -132,8 +228,50 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 	if err != nil || !strings.Contains(html, "Plugin MCP App") {
 		t.Fatalf("MCP App = %s %v", html, err)
 	}
-	install("updated")
-	call("updated")
+	repo := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		command := exec.Command("git", append([]string{"-c", "core.hooksPath=" + os.DevNull}, args...)...)
+		command.Dir = repo
+		data, err := command.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(data))
+	}
+	git("init", "--quiet")
+	config := func(value string) {
+		t.Helper()
+		for name, body := range map[string]string{
+			"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"fixture"}`,
+			"mcp.json":    `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"local":{"type":"stdio","command":"plugin-fixture","cwd":"${PLUGIN_DATA}","args":["-test.run=^TestPluginMCPProcess$"],"env":{"JAZ_PLUGIN_MCP_PROCESS":"1","VALUE":"` + value + `"}}}}`,
+		} {
+			if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		git("add", "--all")
+		git("commit", "--quiet", "-m", "Change plugin fixture")
+	}
+	config("repo-first")
+	input, _ := json.Marshal(plugins.RepositoryInput{Repository: repo})
+	response := request(http.MethodPost, "/v1/plugins/repository", bytes.NewReader(input))
+	if response.Code != http.StatusOK {
+		t.Fatalf("repository install = %d %s", response.Code, response.Body)
+	}
+	connected()
+	call("repo-first")
+	config("repo-second")
+	response = request(http.MethodPost, "/v1/plugins/fixture/update", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("repository update = %d %s", response.Code, response.Body)
+	}
+	connected()
+	call("repo-second")
+	listed, err := store.List()
+	if err != nil || listed[0].Source.Commit != git("rev-parse", "HEAD") {
+		t.Fatalf("updated source = %+v %v", listed, err)
+	}
 	stopped := filepath.Join(layout.Root, "plugin-data", "fixture", "stopped")
 	if _, err := os.Stat(stopped); err != nil {
 		t.Fatal("replaced stdio process did not stop", err)
@@ -141,12 +279,12 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 	if err := os.Remove(stopped); err != nil {
 		t.Fatal(err)
 	}
-	recorder := httptest.NewRecorder()
-	mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, "/v1/plugins/fixture", nil))
+	recorder := request(http.MethodDelete, "/v1/plugins/fixture", nil)
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("remove = %d %s", recorder.Code, recorder.Body)
 	}
-	if list, err := session.ListTools(t.Context(), nil); err != nil || len(list.Tools) != 0 {
+	until(func() bool { _, err := os.Stat(stopped); return err == nil })
+	if list, err := session.ListTools(t.Context(), nil); err != nil || len(list.Tools) != 1 {
 		t.Fatalf("removed agent tools = %+v %v", list, err)
 	}
 	if points, err := manager.Entrypoints(t.Context()); err != nil || len(points) != 0 {
@@ -155,4 +293,26 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 	if _, err := os.Stat(stopped); err != nil {
 		t.Fatal("removed stdio process did not stop", err)
 	}
+	if requests.Load() != before {
+		t.Fatalf("plugin mutation contacted unrelated server: %d -> %d", before, requests.Load())
+	}
+}
+
+func pluginArchive(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	for name, body := range files {
+		file, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.WriteString(file, body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return archive.Bytes()
 }

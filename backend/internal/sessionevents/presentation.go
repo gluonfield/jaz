@@ -22,6 +22,7 @@ type PresentationEvent struct {
 }
 
 type PluginView struct {
+	Reference  string `json:"reference,omitempty"`
 	Title      string `json:"title"`
 	WidgetCode string `json:"widget_code"`
 	File       string `json:"file"`

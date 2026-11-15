@@ -101,6 +101,7 @@ export function PluginsSettings() {
             <Input value={ref} onChange={(event) => setRef(event.target.value)} placeholder="Branch, tag or commit" autoComplete="off" disabled={repositoryInstall.isPending} />
           </label>
           <p className="text-[12px] text-ink-3">Private repositories need Git access on the Jaz backend.</p>
+          <p className="text-[12px] text-ink-3">Plugins can run commands on the backend machine, so install only from sources you trust.</p>
           <div className="flex gap-2">
             <Button type="submit" variant="primary" disabled={repositoryInstall.isPending || !repository.trim()}>{repositoryInstall.isPending ? 'Installing…' : 'Install repository'}</Button>
             <Button type="button" variant="ghost" disabled={install.isPending} onClick={() => picker.current?.click()}>Choose ZIP</Button>

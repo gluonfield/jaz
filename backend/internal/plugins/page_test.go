@@ -9,122 +9,165 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/plugins/manifest"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
 type pageSessions struct {
-	threads []storage.Session
-	err     error
+	views []storage.SessionPluginView
+	err   error
 }
 
-func (s pageSessions) ListSessionFolders() ([]storage.SessionFolder, error) {
-	var matches []storage.SessionFolder
-	for _, thread := range s.threads {
-		if thread.RuntimeRef != nil && thread.RuntimeRef.Cwd != "" {
-			matches = append(matches, storage.SessionFolder{ID: thread.ID, Title: thread.Title, Status: thread.Status, UpdatedAt: thread.UpdatedAt, Folder: thread.RuntimeRef.Cwd})
-		}
-	}
-	return matches, s.err
+func (s pageSessions) ListSessionPluginViews() ([]storage.SessionPluginView, error) {
+	return s.views, s.err
 }
 
-func TestPageGroupsFoldersAndReloadsTheirData(t *testing.T) {
+type storedPresentation struct {
+	store *sqlite.Store
+}
+
+func (p storedPresentation) PresentMCP(id string, presentation *sessionevents.PresentationEvent) (*mcp.CallToolResult, any, error) {
+	err := p.store.AppendSessionEvents(id, sessionevents.Event{Type: sessionevents.TypeArtifact, Artifact: presentation})
+	return &mcp.CallToolResult{}, nil, err
+}
+
+func TestPageFollowsStoredShowViewPresentations(t *testing.T) {
 	layout := runtimefiles.New(t.TempDir())
 	store := New(layout)
 	if _, err := store.Install(archive(t, map[string]string{
-		"tenders/plugin.json":       `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tenders","page":{"view":"status","file":"status.json"}}}}`,
+		"tenders/plugin.json":       portable(t, "tenders", map[string]any{"page": map[string]string{"view": "status"}}),
 		"tenders/views/status.html": "<p>status</p>",
+		"tenders/views/other.html":  "<p>other</p>",
+		"other/plugin.json":         portable(t, "other", nil),
+		"other/views/status.html":   "<p>other plugin</p>",
 	})); err != nil {
 		t.Fatal(err)
 	}
-	folders := make([]string, 4)
-	for i := range folders {
-		folders[i] = t.TempDir()
-	}
-	write := func(path, content string) {
-		t.Helper()
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write(filepath.Join(folders[0], "status.json"), `{"title":"Tender A"}`)
-	write(filepath.Join(folders[1], "status.json"), `false`)
-	write(filepath.Join(folders[2], "status.json"), `{broken`)
-	thread := func(id, folder string, updated int64) storage.Session {
-		return storage.Session{ID: id, Title: "Thread " + id, Status: storage.StatusIdle, UpdatedAt: time.Unix(updated, 0), RuntimeRef: &storage.RuntimeRef{Cwd: folder}}
-	}
-	child := thread("newest", folders[0]+string(filepath.Separator)+".", 6)
-	child.ParentID = "old"
-	child.SourceType = storage.SourceBotWorker
-	archived := thread("archived", folders[1], 3)
-	archived.Archived = true
-	sessions := pageSessions{threads: []storage.Session{
-		thread("old", folders[0], 1), thread("other", folders[1], 4),
-		thread("invalid", folders[2], 8), thread("missing", folders[3], 9),
-		thread("relative", "relative", 10), {ID: "no-runtime"}, child, archived,
-	}}
-	page, err := store.Page("tenders", sessions)
+	sessions, err := sqlite.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.View != "<p>status</p>" || len(page.Items) != 2 {
-		t.Fatalf("page = %+v", page)
+	defer sessions.Close()
+	tools := MCPTools{Plugins: store, Presenter: storedPresentation{sessions}}
+	folder, other, incidental := t.TempDir(), t.TempDir(), t.TempDir()
+	write := func(folder, file, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(folder, file), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	first := page.Items[0]
-	if first.Folder != folders[0] || first.Data.(map[string]any)["title"] != "Tender A" || len(first.Threads) != 2 || first.Threads[0].ID != "newest" || first.Threads[1].ID != "old" {
-		t.Fatalf("first folder = %+v", first)
+	write(folder, "status.json", `{"title":"Shared"}`)
+	write(folder, "next.json", `{"title":"Latest"}`)
+	write(folder, "invalid.json", `{broken`)
+	write(other, "status.json", `false`)
+	write(incidental, "status.json", `{"title":"Unrelated"}`)
+	create := func(title, folder string) storage.Session {
+		t.Helper()
+		thread, err := sessions.CreateSession(storage.CreateSession{Title: title, RuntimeRef: &storage.RuntimeRef{Cwd: folder}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return thread
 	}
-	if page.Items[1].Folder != folders[1] || page.Items[1].Data != false || len(page.Items[1].Threads) != 2 || page.Items[1].Threads[1].ID != "archived" || page.Items[1].Threads[0].Title != "Thread other" || page.Items[1].Threads[0].Status != storage.StatusIdle || !page.Items[1].Threads[0].UpdatedAt.Equal(time.Unix(4, 0)) {
-		t.Fatalf("second folder = %+v", page.Items[1])
+	show := func(thread storage.Session, ref, file string) {
+		t.Helper()
+		req := &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(thread.ID)}}
+		if _, _, err := tools.ShowView(t.Context(), req, ShowViewInput{View: ref, Title: thread.Title, File: file}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	write(filepath.Join(folders[0], "status.json"), `{"title":"Updated"}`)
-	write(filepath.Join(layout.Plugins, "tenders", "views", "status.html"), "<p>updated view</p>")
+	first := create("First", folder)
+	show(first, "tenders/status", "status.json")
+	show(first, "other/status", "next.json")
+	time.Sleep(2 * time.Millisecond)
+	shared, err := sessions.CreateSession(storage.CreateSession{Title: "Archived child", ParentID: first.ID, SourceType: "fixture", RuntimeRef: &storage.RuntimeRef{Cwd: folder + "/."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	show(shared, "tenders/other", "status.json")
+	if err := sessions.SetArchived(shared.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	create("Incidental file", incidental)
+	legacy := create("Old view without reference", incidental)
+	if err := sessions.AppendSessionEvents(legacy.ID, sessionevents.Event{Type: sessionevents.TypeArtifact, Content: `{"title":"Old","widget_code":"<p>old</p>","file":"status.json"}`}); err != nil {
+		t.Fatal(err)
+	}
+	events, err := sessions.LoadSessionEvents(legacy.ID)
+	if err != nil || len(events) != 1 || events[0].Artifact == nil || events[0].Artifact.View == nil || events[0].Artifact.View.Reference != "" || events[0].Artifact.View.WidgetCode != "<p>old</p>" {
+		t.Fatalf("old view no longer renders: %+v %v", events, err)
+	}
+	show(create("Invalid JSON", folder), "tenders/status", "invalid.json")
+	show(create("Missing JSON", folder), "tenders/status", "missing.json")
+	show(create("Relative folder", "relative"), "tenders/status", "status.json")
+	outside := t.TempDir()
+	write(outside, "escape.json", `{"title":"Outside"}`)
+	if err := os.Symlink(filepath.Join(outside, "escape.json"), filepath.Join(folder, "escape.json")); err != nil {
+		t.Fatal(err)
+	}
+	show(create("Escaping symlink", folder), "tenders/status", "escape.json")
+	for _, file := range []string{"../status.json", `nested\status.json`, "/status.json", "nested/status.json", `C:\status.json`, "..", "status.json\x00", " status.json"} {
+		thread := create("Unsafe stored filename", folder)
+		show(thread, "tenders/status", "status.json")
+		if err := sessions.AppendSessionEvents(thread.ID, sessionevents.Event{Type: sessionevents.TypeArtifact, Artifact: &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Reference: "tenders/status", Title: "Unsafe", WidgetCode: "<p></p>", File: file}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(2 * time.Millisecond)
+	show(create("Other folder", other), "tenders/status", "status.json")
+	time.Sleep(2 * time.Millisecond)
+	latest := create("Latest file", folder)
+	show(latest, "tenders/status", "status.json")
+	show(latest, "tenders/other", "next.json")
+	req := &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(latest.ID)}}
+	if _, _, err := tools.ShowView(t.Context(), req, ShowViewInput{View: "tenders/status", Title: "Inline card", Data: map[string]any{"title": "Inline"}}); err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.Page("tenders", sessions)
+	if err != nil || page.View != "<p>status</p>" || len(page.Items) != 3 {
+		t.Fatalf("page = %+v %v", page, err)
+	}
+	if page.Items[0].Folder != folder || page.Items[0].Data.(map[string]any)["title"] != "Latest" || len(page.Items[0].Threads) != 1 || page.Items[0].Threads[0].ID != latest.ID || page.Items[1].Data != false || len(page.Items[2].Threads) != 2 || page.Items[2].Threads[0].ID != shared.ID {
+		t.Fatalf("latest event, grouping, or ordering = %+v", page.Items)
+	}
+	for _, thread := range page.Items[2].Threads {
+		if thread.ID != first.ID && thread.ID != shared.ID {
+			t.Fatalf("unrelated thread linked: %+v", thread)
+		}
+	}
+	write(folder, "next.json", `null`)
+	write(layout.Plugins, "tenders/views/status.html", "<p>updated</p>")
 	page, err = store.Page("tenders", sessions)
-	if err != nil || page.View != "<p>updated view</p>" || page.Items[0].Data.(map[string]any)["title"] != "Updated" {
-		t.Fatalf("reloaded page = %+v, %v", page, err)
+	if err != nil || page.View != "<p>updated</p>" || page.Items[0].Data != nil {
+		t.Fatalf("file-only update not reflected: %+v %v", page, err)
 	}
-	write(filepath.Join(folders[3], "status.json"), `null`)
+	write(folder, "missing.json", `"Created later"`)
 	page, err = store.Page("tenders", sessions)
-	if err != nil || len(page.Items) != 3 || page.Items[0].Folder != folders[3] || page.Items[0].Data != nil {
-		t.Fatalf("new JSON file was not immediately visible: %+v, %v", page, err)
+	if err != nil || len(page.Items) != 4 {
+		t.Fatalf("newly created followed file was not read: %+v %v", page, err)
 	}
-	write(filepath.Join(layout.Plugins, "tenders", "plugin.json"), `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tenders","page":{"view":"status","file":"next.json"}}}}`)
-	page, err = store.Page("tenders", sessions)
-	if err != nil || len(page.Items) != 0 {
-		t.Fatalf("changed filename = %+v, %v", page, err)
-	}
-	encoded, err := json.Marshal(page)
-	var wire map[string]json.RawMessage
-	if err != nil || json.Unmarshal(encoded, &wire) != nil || string(wire["items"]) != "[]" {
-		t.Fatalf("empty items = %s, %v", encoded, err)
+	empty, err := store.Page("tenders", pageSessions{})
+	encoded, marshalErr := json.Marshal(empty)
+	if err != nil || marshalErr != nil || !strings.Contains(string(encoded), `"items":[]`) {
+		t.Fatalf("empty page = %s %v %v", encoded, err, marshalErr)
 	}
 	if _, err := store.Page("tenders", pageSessions{err: errors.New("storage failed")}); err == nil {
 		t.Fatal("page ignored session storage failure")
 	}
 }
 
-func TestInstallRejectsInvalidPagePaths(t *testing.T) {
-	for _, page := range []Page{
-		{View: "status", File: "../status.json"},
-		{View: "status", File: `nested\status.json`},
-		{View: "status", File: "/status.json"},
-		{View: "status", File: "nested/status.json"},
-		{View: "status", File: `C:\status.json`},
-		{View: "status", File: ".."},
-		{View: "status", File: "status.json\x00"},
-		{View: "status", File: " status.json"},
-		{View: "../status", File: "status.json"},
-		{View: "status.html", File: "status.json"},
-		{View: "missing", File: "status.json"},
-	} {
-		t.Run(page.View+"/"+page.File, func(t *testing.T) {
-			store := New(runtimefiles.New(t.TempDir()))
-			manifest := portable(t, "tenders", map[string]any{"page": page})
-			if _, err := store.Install(archive(t, map[string]string{"tenders/plugin.json": manifest, "tenders/views/status.html": "<p>status</p>"})); !errors.Is(err, ErrInvalid) {
-				t.Fatalf("accepted page %+v: %v", page, err)
-			}
-		})
+func TestInstallRejectsInvalidPageViews(t *testing.T) {
+	for _, view := range []string{"../status", "status.html", "missing"} {
+		store := New(runtimefiles.New(t.TempDir()))
+		definition := portable(t, "tenders", map[string]any{"page": Page{View: view}})
+		if _, err := store.Install(archive(t, map[string]string{"tenders/plugin.json": definition, "tenders/views/status.html": "<p>status</p>"})); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("accepted page view %q: %v", view, err)
+		}
 	}
 }
 
@@ -143,7 +186,7 @@ func TestIconCannotFollowASymlinkOutsideThePlugin(t *testing.T) {
 	layout := runtimefiles.New(t.TempDir())
 	store := New(layout)
 	installed, err := store.Install(archive(t, map[string]string{
-		"tenders/plugin.json":       `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tenders","icon":"./icon.svg","page":{"view":"status","file":"status.json"}}}}`,
+		"tenders/plugin.json":       `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tenders","icon":"./icon.svg","page":{"view":"status"}}}}`,
 		"tenders/icon.svg":          `<svg xmlns="http://www.w3.org/2000/svg"/>`,
 		"tenders/views/status.html": "<p>status</p>",
 	}))

@@ -8,14 +8,16 @@ import (
 
 func TestStoredPresentationsNormalizeAndRoundTrip(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		stored string
-		kind   PresentationKind
-		file   string
+		name      string
+		stored    string
+		kind      PresentationKind
+		file      string
+		reference string
 	}{
-		{"inline", `{"presented":true,"title":"Map","widget_code":"<svg></svg>","artifact_type":"svg","data":{"x":1}}`, PresentationArtifact, ""},
-		{"plugin", `{"presented":true,"title":"Status","widget_code":"<p></p>","artifact_type":"html","file":"status.json"}`, PresentationPluginView, "status.json"},
-		{"canvas", `{"presented":true,"title":"Canvas","widget_code":"","artifact_type":"canvas","file":"/private/runtime/canvases/id/canvas.json"}`, PresentationCanvas, ""},
+		{"inline", `{"presented":true,"title":"Map","widget_code":"<svg></svg>","artifact_type":"svg","data":{"x":1}}`, PresentationArtifact, "", ""},
+		{"plugin", `{"presented":true,"title":"Status","widget_code":"<p></p>","artifact_type":"html","file":"status.json"}`, PresentationPluginView, "status.json", ""},
+		{"referenced plugin", `{"kind":"plugin-view","presented":true,"view":{"reference":"tenders/status","title":"Status","widget_code":"<p></p>","file":"status.json"}}`, PresentationPluginView, "status.json", "tenders/status"},
+		{"canvas", `{"presented":true,"title":"Canvas","widget_code":"","artifact_type":"canvas","file":"/private/runtime/canvases/id/canvas.json"}`, PresentationCanvas, "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			event := Event{Type: TypeArtifact, Content: tc.stored}
@@ -38,7 +40,7 @@ func TestStoredPresentationsNormalizeAndRoundTrip(t *testing.T) {
 					t.Fatalf("inline artifact lost content: %+v", round.Artifact)
 				}
 			case PresentationPluginView:
-				if round.Artifact.View.File != tc.file || round.Artifact.View.WidgetCode != "<p></p>" {
+				if round.Artifact.View.Reference != tc.reference || round.Artifact.View.File != tc.file || round.Artifact.View.WidgetCode != "<p></p>" {
 					t.Fatalf("plugin view lost source: %+v", round.Artifact)
 				}
 			case PresentationCanvas:

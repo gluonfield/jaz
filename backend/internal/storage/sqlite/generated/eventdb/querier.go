@@ -33,6 +33,7 @@ type Querier interface {
 	ListSessionEvents(ctx context.Context, threadID string) ([]ListSessionEventsRow, error)
 	ListSessionEventsAfter(ctx context.Context, arg ListSessionEventsAfterParams) ([]ListSessionEventsAfterRow, error)
 	ListSessionEventsAfterTime(ctx context.Context, arg ListSessionEventsAfterTimeParams) ([]ListSessionEventsAfterTimeRow, error)
+	ListSessionPluginViews(ctx context.Context) ([]ListSessionPluginViewsRow, error)
 	NextSessionEventCompaction(ctx context.Context, runningStatus string) (string, error)
 	NextSessionEventSeq(ctx context.Context, threadID string) (int64, error)
 	SetSessionEventCoalesceKey(ctx context.Context, arg SetSessionEventCoalesceKeyParams) error

@@ -17,6 +17,53 @@ import (
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
+func TestAsyncRefreshStopsOnManagerClose(t *testing.T) {
+	entered := make(chan struct{})
+	cancelled := make(chan struct{})
+	release := make(chan struct{})
+	remote := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "blocked"}, nil)
+	remote.AddReceivingMiddleware(func(next mcpsdk.MethodHandler) mcpsdk.MethodHandler {
+		return func(ctx context.Context, method string, request mcpsdk.Request) (mcpsdk.Result, error) {
+			if method == "tools/list" {
+				close(entered)
+				select {
+				case <-release:
+				case <-ctx.Done():
+					close(cancelled)
+					return nil, ctx.Err()
+				}
+			}
+			return next(ctx, method, request)
+		}
+	})
+	upstream := httptest.NewServer(mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return remote }, nil))
+	defer upstream.Close()
+	defer close(release)
+	manager := NewManager(&testStore{servers: []mcpconfig.Server{{ID: "blocked", Name: "blocked", URL: upstream.URL, Enabled: true}}}, nil, tools.NewRegistry(), log.New(io.Discard))
+	defer manager.Close()
+	manager.RefreshServersAsync("blocked")
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("background refresh did not reach MCP discovery")
+	}
+	closed := make(chan struct{})
+	go func() {
+		manager.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not cancel background discovery")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("MCP discovery did not receive cancellation")
+	}
+}
+
 func TestCancelledQueuedRefreshPreservesLiveConnection(t *testing.T) {
 	var blocked atomic.Bool
 	entered := make(chan struct{})

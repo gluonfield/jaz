@@ -87,8 +87,8 @@ func TestManifestPrecedenceAndUnknownCoreFields(t *testing.T) {
 		if err != nil || installed[0].DisplayName != want || installed[0].Page != nil {
 			t.Fatalf("precedence = %+v, %v", installed, err)
 		}
-		if hasRoot && len(installed[0].Warnings) != 2 {
-			t.Fatalf("unknown root fields were not reported: %+v", installed[0])
+		if hasRoot && (len(installed[0].Warnings) != 3 || !strings.Contains(installed[0].Warnings[2], "native name")) {
+			t.Fatalf("unknown root fields and conflicting native overlay were not reported: %+v", installed[0])
 		}
 	}
 	store := New(runtimefiles.New(t.TempDir()))
@@ -107,8 +107,6 @@ func TestPortableManifestValidationAtInstall(t *testing.T) {
 		{"version", 3}, {"description", false}, {"author", "invalid"}, {"author", map[string]any{"name": false}},
 		{"homepage", false}, {"repository", []string{}}, {"license", false}, {"keywords", []any{"valid", false}},
 		{"extensions", []any{}}, {"extensions", false},
-		{"extensions", map[string]any{"chat.jaz": map[string]any{"unknown": true}}},
-		{"extensions", map[string]any{"chat.jaz": map[string]any{"page": map[string]any{"view": "status", "file": "status.json", "icon": "legacy"}}}},
 	} {
 		t.Run(test.field, func(t *testing.T) {
 			fields := map[string]any{"$schema": manifest.Schema, "name": "valid"}
@@ -122,6 +120,28 @@ func TestPortableManifestValidationAtInstall(t *testing.T) {
 				t.Fatalf("accepted invalid %s=%v: %v", test.field, test.value, err)
 			}
 		})
+	}
+}
+
+func TestUnknownJazFieldsWarnAndLeaveThePageUsable(t *testing.T) {
+	store := New(runtimefiles.New(t.TempDir()))
+	installed, err := store.Install(archive(t, map[string]string{
+		"plugin.json": portable(t, "tenders", map[string]any{
+			"future": true,
+			"page":   map[string]any{"view": "status", "file": "../ignored.json", "icon": "legacy"},
+		}),
+		"views/status.html": "<p>status</p>",
+	}))
+	if err != nil || len(installed) != 1 || installed[0].Page == nil || installed[0].Page.View != "status" || !slices.Equal(installed[0].Warnings, []string{
+		`Ignoring unknown manifest field "extensions.chat.jaz.future"`,
+		`Ignoring unknown manifest field "extensions.chat.jaz.page.file"`,
+		`Ignoring unknown manifest field "extensions.chat.jaz.page.icon"`,
+	}) {
+		t.Fatalf("unknown nested fields blocked or escaped warnings: %+v %v", installed, err)
+	}
+	page, err := store.Page("tenders", pageSessions{})
+	if err != nil || page.View != "<p>status</p>" || len(page.Items) != 0 {
+		t.Fatalf("old page.file affected the page: %+v %v", page, err)
 	}
 }
 

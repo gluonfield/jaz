@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -126,11 +125,7 @@ func (s *Store) installRepository(ctx context.Context, input RepositoryInput, wa
 	if err != nil {
 		return result, err
 	}
-	defer func() {
-		if !errors.Is(err, errKeepStaging) {
-			_ = os.RemoveAll(work)
-		}
-	}()
+	defer os.RemoveAll(work)
 	repo := filepath.Join(work, "repository")
 	if _, err = gitCommand(ctx, "", "clone", "--quiet", "--no-checkout", "--no-hardlinks", "--", repository, repo); err != nil {
 		return result, fmt.Errorf("Git repository unavailable; the backend machine needs access through its existing Git credentials")

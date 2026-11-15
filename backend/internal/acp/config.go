@@ -7,6 +7,7 @@ import (
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -118,6 +119,7 @@ type Config struct {
 	ProviderSource provider.Source
 	ModelCatalog   ModelCatalog
 	SystemPrompt   SystemPromptSource
+	ClaudePlugins  func() ([]plugins.NativePlugin, error)
 	MCPStore       mcpconfig.ServerReader
 	ResumePrompt   SessionPromptExtensionResolver
 	// TurnNote is text a thread's next turn opens with for its agent alone,

@@ -14,7 +14,7 @@ export interface Plugin {
   mcp_servers: string[]
   icon_data_url?: string
   warnings?: string[]
-  page?: { view: string; file: string }
+  page?: { view: string }
   source?: { repository: string; ref?: string; commit: string }
 }
 
