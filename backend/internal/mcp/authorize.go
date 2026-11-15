@@ -29,6 +29,9 @@ func (m *Manager) authorize(ctx context.Context, server mcpconfig.Server, opts m
 	if server.Transport == mcpconfig.TransportStdio {
 		return mcpconfig.ServerStatus{Status: "error", Error: "Local stdio servers do not use OAuth sign-in", CheckedAt: time.Now().UTC()}
 	}
+	if server.Transport == mcpconfig.TransportSSE {
+		return mcpconfig.ServerStatus{Status: "error", Error: "Legacy SSE OAuth sign-in is not supported; use configured headers or Streamable HTTP", CheckedAt: time.Now().UTC()}
+	}
 	if m.tokens == nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: "token store is not configured", CheckedAt: time.Now().UTC()}
 	}

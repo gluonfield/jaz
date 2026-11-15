@@ -10,6 +10,7 @@ import (
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/oauthbroker"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -42,8 +43,8 @@ func DeclareMCPServers(cfg Config, store *sqlitestore.Store) error {
 	return mcpconfig.Declare(store, cfg.MCPServers)
 }
 
-func NewMCPManager(store *sqlitestore.Store, catalog *connections.Catalog, registry *tools.Registry, jaz *jaztools.Service, events *sessionevents.Bus, broker oauthbroker.Broker, logger *log.Logger) *mcpruntime.Manager {
-	reader := connectionMCPServerReader{store: store, catalog: catalog}
+func NewMCPManager(installed *plugins.Store, store *sqlitestore.Store, catalog *connections.Catalog, registry *tools.Registry, jaz *jaztools.Service, events *sessionevents.Bus, broker oauthbroker.Broker, logger *log.Logger) *mcpruntime.Manager {
+	reader := connectionMCPServerReader{store: store, catalog: catalog, plugins: installed}
 	return mcpruntime.NewManager(reader, store, registry, logger,
 		mcpruntime.WithBuiltinServerProvider(jaztools.ServerConfig(jaz.URL()), jaz.Server),
 		mcpruntime.WithSessionEvents(store, events),
@@ -57,6 +58,7 @@ type connectionTokenStore interface {
 }
 
 type connectionMCPServerReader struct {
+	plugins mcpconfig.ServerReader
 	store   connectionTokenStore
 	catalog *connections.Catalog
 }
@@ -65,6 +67,13 @@ func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) 
 	servers, err := r.store.ListMCPServers()
 	if err != nil {
 		return nil, err
+	}
+	if r.plugins != nil {
+		derived, err := r.plugins.ListMCPServers()
+		if err != nil {
+			return nil, err
+		}
+		servers = append(servers, derived...)
 	}
 	ctx := context.Background()
 	for _, plugin := range r.catalog.ListPlugins() {
@@ -103,6 +112,7 @@ func (r connectionMCPServerReader) connectionBackedServers(ctx context.Context, 
 				Transport: mcpconfig.TransportStreamableHTTP,
 				URL:       url,
 				Enabled:   true,
+				Source:    mcpconfig.SourceConnection,
 			})
 			continue
 		}
@@ -119,6 +129,7 @@ func (r connectionMCPServerReader) connectionBackedServers(ctx context.Context, 
 			Transport:         mcpconfig.TransportStreamableHTTP,
 			URL:               url,
 			Enabled:           true,
+			Source:            mcpconfig.SourceConnection,
 			TokenConnectionID: account.ID,
 		}
 		if plugin.Provider.ID == driveconnector.ProviderID {

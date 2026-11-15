@@ -56,7 +56,7 @@ func (s *Store) Page(plugin string, sessions SessionStore) (PageContent, error) 
 	if !manifest.SafeName(plugin) {
 		return PageContent{}, fmt.Errorf("%w: name %q", ErrInvalid, plugin)
 	}
-	installed, err := read(filepath.Join(s.dir, plugin))
+	installed, err := read(filepath.Join(s.dir, plugin), s.dataDir)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, manifest.ErrNotPlugin) {
 		return PageContent{}, ErrNotFound
 	}

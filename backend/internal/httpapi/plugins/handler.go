@@ -2,9 +2,11 @@
 package plugins
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/plugins"
@@ -12,7 +14,12 @@ import (
 
 const maxArchiveBytes = 64 << 20
 
+type MCPRuntime interface {
+	Refresh(context.Context)
+}
+
 type Handler struct {
+	runtime  MCPRuntime
 	store    *plugins.Store
 	sessions plugins.SessionStore
 }
@@ -21,8 +28,8 @@ type listResponse struct {
 	Plugins []plugins.Plugin `json:"plugins"`
 }
 
-func NewHandler(sessions plugins.SessionStore, store *plugins.Store) *Handler {
-	return &Handler{store: store, sessions: sessions}
+func NewHandler(sessions plugins.SessionStore, runtime MCPRuntime, store *plugins.Store) *Handler {
+	return &Handler{store: store, sessions: sessions, runtime: runtime}
 }
 
 func (h *Handler) Page(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +62,9 @@ func (h *Handler) Install(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, statusFor(err), err)
 		return
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	h.runtime.Refresh(ctx)
 	httpapi.WriteJSON(w, http.StatusOK, listResponse{Plugins: installed})
 }
 
@@ -63,6 +73,9 @@ func (h *Handler) Remove(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, statusFor(err), err)
 		return
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	h.runtime.Refresh(ctx)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -40,7 +40,11 @@ func (s *Server) handleListMCPServers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("mcp store is not configured"))
 		return
 	}
-	servers, err := store.ListMCPServers()
+	reader := mcpconfig.ServerReader(store)
+	if runtime, ok := s.MCP.(mcpconfig.ServerReader); ok {
+		reader = runtime
+	}
+	servers, err := reader.ListMCPServers()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -135,6 +139,10 @@ func (s *Server) handleMCPServerAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Request, store mcpStore, id, action string) {
+	reader := mcpconfig.ServerReader(store)
+	if runtime, ok := s.MCP.(mcpconfig.ServerReader); ok {
+		reader = runtime
+	}
 	switch action {
 	case "enable", "disable":
 		server, err := store.SetMCPServerEnabled(id, action == "enable")
@@ -145,7 +153,7 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 		s.refreshMCP()
 		writeJSON(w, http.StatusOK, s.mcpServerView(server))
 	case "test":
-		server, err := store.LoadMCPServer(id)
+		server, err := mcpconfig.FindServer(reader, id)
 		if err != nil {
 			writeError(w, http.StatusNotFound, err)
 			return
@@ -157,6 +165,10 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 		ctx, cancel := serverActionContext()
 		defer cancel()
 		if r.Body != nil && r.ContentLength != 0 {
+			if server.Source != "" {
+				writeError(w, http.StatusBadRequest, fmt.Errorf("server configuration is managed by its %s source", server.Source))
+				return
+			}
 			input, err := mcpapi.DecodeServerInput(r, &server)
 			if err != nil {
 				writeError(w, http.StatusBadRequest, err)
@@ -168,7 +180,7 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 		}
 		writeJSON(w, http.StatusOK, s.MCP.RefreshServer(ctx, id))
 	case "authorize":
-		server, err := store.LoadMCPServer(id)
+		server, err := mcpconfig.FindServer(reader, id)
 		if err != nil {
 			writeError(w, http.StatusNotFound, err)
 			return

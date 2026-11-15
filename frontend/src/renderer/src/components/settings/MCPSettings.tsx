@@ -398,36 +398,40 @@ function MCPServerRow({
           <RefreshCcw size={14} />
         </IconButton>
       )}
-      <IconButton
-        variant="ghost"
-        size="sm"
-        aria-label={server.enabled ? 'Disable MCP server' : 'Enable MCP server'}
-        title={server.enabled ? 'Disable MCP server' : 'Enable MCP server'}
-        disabled={busy}
-        onClick={onToggle}
-      >
-        <Power size={14} />
-      </IconButton>
-      <IconButton
-        variant="ghost"
-        size="sm"
-        aria-label="Edit MCP server"
-        title="Edit MCP server"
-        disabled={busy}
-        onClick={onEdit}
-      >
-        <Pencil size={14} />
-      </IconButton>
-      <IconButton
-        variant="danger"
-        size="sm"
-        aria-label="Delete MCP server"
-        title="Delete MCP server"
-        disabled={busy}
-        onClick={onDelete}
-      >
-        <Trash2 size={14} />
-      </IconButton>
+      {!server.source ? (
+        <>
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label={server.enabled ? 'Disable MCP server' : 'Enable MCP server'}
+            title={server.enabled ? 'Disable MCP server' : 'Enable MCP server'}
+            disabled={busy}
+            onClick={onToggle}
+          >
+            <Power size={14} />
+          </IconButton>
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label="Edit MCP server"
+            title="Edit MCP server"
+            disabled={busy}
+            onClick={onEdit}
+          >
+            <Pencil size={14} />
+          </IconButton>
+          <IconButton
+            variant="danger"
+            size="sm"
+            aria-label="Delete MCP server"
+            title="Delete MCP server"
+            disabled={busy}
+            onClick={onDelete}
+          >
+            <Trash2 size={14} />
+          </IconButton>
+        </>
+      ) : null}
     </div>
   )
 }

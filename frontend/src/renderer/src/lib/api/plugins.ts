@@ -11,6 +11,7 @@ export interface Plugin {
   version: string
   skills: string[]
   views: string[]
+  mcp_servers: string[]
   icon_data_url?: string
   warnings?: string[]
   page?: { view: string; file: string }

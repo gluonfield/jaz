@@ -5,15 +5,19 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/charmbracelet/log"
+	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/tools"
 )
 
 func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
@@ -21,7 +25,10 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(folder, "status.json"), []byte(`{"title":"Tender A"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	handler := NewHandler(sessionStore{{ID: "thread", Title: "Tender work", RuntimeRef: &storage.RuntimeRef{Cwd: folder}}}, plugins.New(runtimefiles.New(t.TempDir())))
+	store := plugins.New(runtimefiles.New(t.TempDir()))
+	runtime := mcpruntime.NewManager(store, nil, tools.NewRegistry(), log.New(io.Discard))
+	defer runtime.Close()
+	handler := NewHandler(sessionStore{{ID: "thread", Title: "Tender work", RuntimeRef: &storage.RuntimeRef{Cwd: folder}}}, runtime, store)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/plugins", handler.List)
 	mux.HandleFunc("GET /v1/plugins/{plugin}/page", handler.Page)

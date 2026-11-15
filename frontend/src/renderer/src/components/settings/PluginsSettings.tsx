@@ -15,7 +15,7 @@ export function PluginsSettings() {
   const plugins = useQuery(pluginsQuery)
   const picker = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
-  const refresh = () => queryClient.invalidateQueries({ queryKey: keys.plugins })
+  const refresh = () => Promise.all([keys.plugins, keys.mcpServers, keys.mcpApps].map((queryKey) => queryClient.invalidateQueries({ queryKey })))
   const install = useMutation({
     mutationFn: installPlugins,
     onSuccess: (installed) => toast(`Installed ${installed.map((plugin) => plugin.display_name).join(', ')}`),
@@ -48,7 +48,7 @@ export function PluginsSettings() {
       <div className="flex items-start justify-between gap-4 py-4">
         <div className="min-w-0">
           <p className="text-sm font-medium text-ink">Plugins</p>
-          <p className="mt-0.5 text-[13px] text-ink-2">A plugin adds skills and the views they show. Add one from a .zip of its folder, or of a repository that holds several.</p>
+          <p className="mt-0.5 text-[13px] text-ink-2">A plugin adds skills, MCP servers and views. Add one from a .zip of its folder, or of a repository that holds several.</p>
         </div>
         <Button variant="primary" disabled={install.isPending} onClick={() => picker.current?.click()}>
           {install.isPending ? 'Installing…' : 'Add plugin'}
@@ -93,6 +93,7 @@ function PluginCard({ plugin, removing, onRemove }: { plugin: Plugin; removing: 
           {plugin.description ? <p className="mt-0.5 text-[12px] text-ink-2">{plugin.description}</p> : null}
           <Names label="Skills" names={plugin.skills} />
           <Names label="Views" names={plugin.views} />
+          <Names label="MCP servers" names={plugin.mcp_servers} />
           {plugin.warnings?.map((warning) => <p key={warning} className="mt-1.5 text-[12px] text-ink-3">{warning}</p>)}
         </div>
         <IconButton variant="ghost" size="xs" aria-label={`Remove ${title}`} title={`Remove ${title}`} disabled={removing} onClick={onRemove}>

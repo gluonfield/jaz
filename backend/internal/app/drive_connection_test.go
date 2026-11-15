@@ -125,6 +125,10 @@ func TestDriveConnectionSignInRefreshAndDisconnect(t *testing.T) {
 	if err != nil || len(accounts) != 1 || accounts[0].AccountID != "work@example.com" {
 		t.Fatalf("accounts = %+v, error = %v", accounts, err)
 	}
+	derived, err := manager.ListMCPServers()
+	if err != nil || len(derived) != 1 || derived[0].Source != mcpconfig.SourceConnection {
+		t.Fatalf("connection-owned MCP servers = %+v, %v", derived, err)
+	}
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for manager.Status(accounts[0].ID).Status != "connected" {

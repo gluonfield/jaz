@@ -30,18 +30,20 @@ type Plugin struct {
 	Version     string   `json:"version"`
 	Skills      []string `json:"skills"`
 	Views       []string `json:"views"`
+	MCPServers  []string `json:"mcp_servers"`
 	IconDataURL string   `json:"icon_data_url,omitempty"`
 	Page        *Page    `json:"page,omitempty"`
 	Warnings    []string `json:"warnings,omitempty"`
 }
 
 type Store struct {
-	dir string
-	mu  sync.Mutex
+	dir     string
+	dataDir string
+	mu      sync.Mutex
 }
 
 func New(layout runtimefiles.Layout) *Store {
-	return &Store{dir: layout.Plugins}
+	return &Store{dir: layout.Plugins, dataDir: filepath.Join(layout.Root, "plugin-data")}
 }
 
 func (s *Store) List() ([]Plugin, error) {
@@ -54,7 +56,7 @@ func (s *Store) List() ([]Plugin, error) {
 	}
 	out := []Plugin{}
 	for _, entry := range entries {
-		plugin, err := read(filepath.Join(s.dir, entry.Name()))
+		plugin, err := read(filepath.Join(s.dir, entry.Name()), s.dataDir)
 		if err == nil && plugin.Name == entry.Name() {
 			out = append(out, plugin)
 		}
@@ -103,7 +105,7 @@ func (s *Store) Install(archive []byte) ([]Plugin, error) {
 		if err != nil || !entry.IsDir() {
 			return err
 		}
-		plugin, err := read(path)
+		plugin, err := read(path, s.dataDir)
 		if errors.Is(err, manifest.ErrNotPlugin) {
 			return nil
 		}
@@ -144,7 +146,7 @@ func (s *Store) Remove(plugin string) error {
 	return os.RemoveAll(dir)
 }
 
-func read(dir string) (Plugin, error) {
+func read(dir, dataDir string) (Plugin, error) {
 	definition, err := manifest.Read(dir)
 	if err != nil {
 		return Plugin{}, fmt.Errorf("%w: %w", ErrInvalid, err)
@@ -175,6 +177,12 @@ func read(dir string) (Plugin, error) {
 	plugin.IconDataURL, err = readIcon(dir, definition.IconPath)
 	if err != nil {
 		return Plugin{}, err
+	}
+	servers, warnings := loadMCP(dir, dataDir, definition)
+	plugin.Warnings = append(plugin.Warnings, warnings...)
+	plugin.MCPServers = make([]string, len(servers))
+	for i, server := range servers {
+		plugin.MCPServers[i] = strings.TrimPrefix(server.Name, definition.Name+":")
 	}
 	return plugin, nil
 }

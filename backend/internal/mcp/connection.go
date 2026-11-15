@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpconfig"
@@ -131,17 +132,23 @@ func (m *Manager) connectionKey(ctx context.Context, server mcpconfig.Server) ([
 			return [32]byte{}, err
 		}
 	}
+	var packageUpdated time.Time
+	if server.Source == mcpconfig.SourcePlugin {
+		packageUpdated = server.UpdatedAt
+	}
 	data, err := json.Marshal(struct {
-		Transport string
-		URL       string
-		Command   string
-		Args      []string
-		Env       map[string]string
-		Headers   []mcpconfig.Header
-		OAuth     mcpconfig.OAuthConfig
-		Token     integrationoauth.Token
-		TokenID   string
-	}{server.Transport, server.URL, server.Command, server.Args, server.Env, headers, server.OAuth, token, server.TokenID()})
+		PackageUpdated time.Time
+		Transport      string
+		URL            string
+		Cwd            string
+		Command        string
+		Args           []string
+		Env            map[string]string
+		Headers        []mcpconfig.Header
+		OAuth          mcpconfig.OAuthConfig
+		Token          integrationoauth.Token
+		TokenID        string
+	}{packageUpdated, server.Transport, server.URL, server.Cwd, server.Command, server.Args, server.Env, headers, server.OAuth, token, server.TokenID()})
 	return sha256.Sum256(data), err
 }
 

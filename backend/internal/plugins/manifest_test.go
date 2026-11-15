@@ -38,7 +38,7 @@ func TestManifestLayoutsDriveInventoryAndAgentSkills(t *testing.T) {
 				"bundle/single/SKILL.md":                           "---\nname: single\ndescription: Single skill\n---\n",
 				"bundle/SKILL.md":                                  "---\nname: root\ndescription: Root skill\n---\n",
 				"bundle/commands/unrequested/SKILL.md":             "---\nname: command\ndescription: Unsupported component\n---\n",
-				"bundle/custom-mcp.json":                           `{not read in B1}`,
+				"bundle/custom-mcp.json":                           `{"mcpServers":{}}`,
 				"bundle/.app.json":                                 `{not read}`,
 			}
 			installed, err := store.Install(archive(t, files))
