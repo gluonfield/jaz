@@ -32,6 +32,7 @@ type Plugin struct {
 	Version     string   `json:"version"`
 	Skills      []string `json:"skills"`
 	Views       []string `json:"views"`
+	Page        *Page    `json:"page,omitempty"`
 }
 
 type Store struct {
@@ -165,6 +166,11 @@ func read(dir string) (Plugin, error) {
 	plugin.Views = make([]string, len(views))
 	for i, view := range views {
 		plugin.Views[i] = strings.TrimSuffix(filepath.Base(view), ".html")
+	}
+	if plugin.Page != nil {
+		if err := plugin.Page.validate(plugin.Views); err != nil {
+			return Plugin{}, err
+		}
 	}
 	return plugin, nil
 }

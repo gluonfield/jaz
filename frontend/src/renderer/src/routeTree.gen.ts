@@ -17,6 +17,7 @@ import { Route as LoopsIndexRouteImport } from './routes/loops.index'
 import { Route as BotsIndexRouteImport } from './routes/bots.index'
 import { Route as BoardsIndexRouteImport } from './routes/boards.index'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions.$sessionId'
+import { Route as PluginsPluginRouteImport } from './routes/plugins.$plugin'
 import { Route as LoopsLoopIdRouteImport } from './routes/loops.$loopId'
 import { Route as BotsBotIdRouteImport } from './routes/bots.$botId'
 import { Route as BoardsBoardIdRouteImport } from './routes/boards.$boardId'
@@ -62,6 +63,11 @@ const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
   path: '/sessions/$sessionId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PluginsPluginRoute = PluginsPluginRouteImport.update({
+  id: '/plugins/$plugin',
+  path: '/plugins/$plugin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoopsLoopIdRoute = LoopsLoopIdRouteImport.update({
   id: '/loops/$loopId',
   path: '/loops/$loopId',
@@ -91,6 +97,7 @@ export interface FileRoutesByFullPath {
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/bots/$botId': typeof BotsBotIdRoute
   '/loops/$loopId': typeof LoopsLoopIdRoute
+  '/plugins/$plugin': typeof PluginsPluginRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/boards/': typeof BoardsIndexRoute
   '/bots/': typeof BotsIndexRoute
@@ -105,6 +112,7 @@ export interface FileRoutesByTo {
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/bots/$botId': typeof BotsBotIdRoute
   '/loops/$loopId': typeof LoopsLoopIdRoute
+  '/plugins/$plugin': typeof PluginsPluginRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/boards': typeof BoardsIndexRoute
   '/bots': typeof BotsIndexRoute
@@ -120,6 +128,7 @@ export interface FileRoutesById {
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/bots/$botId': typeof BotsBotIdRoute
   '/loops/$loopId': typeof LoopsLoopIdRoute
+  '/plugins/$plugin': typeof PluginsPluginRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/boards/': typeof BoardsIndexRoute
   '/bots/': typeof BotsIndexRoute
@@ -136,6 +145,7 @@ export interface FileRouteTypes {
     | '/boards/$boardId'
     | '/bots/$botId'
     | '/loops/$loopId'
+    | '/plugins/$plugin'
     | '/sessions/$sessionId'
     | '/boards/'
     | '/bots/'
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/boards/$boardId'
     | '/bots/$botId'
     | '/loops/$loopId'
+    | '/plugins/$plugin'
     | '/sessions/$sessionId'
     | '/boards'
     | '/bots'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/boards/$boardId'
     | '/bots/$botId'
     | '/loops/$loopId'
+    | '/plugins/$plugin'
     | '/sessions/$sessionId'
     | '/boards/'
     | '/bots/'
@@ -179,6 +191,7 @@ export interface RootRouteChildren {
   BoardsBoardIdRoute: typeof BoardsBoardIdRoute
   BotsBotIdRoute: typeof BotsBotIdRoute
   LoopsLoopIdRoute: typeof LoopsLoopIdRoute
+  PluginsPluginRoute: typeof PluginsPluginRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
   BoardsIndexRoute: typeof BoardsIndexRoute
   BotsIndexRoute: typeof BotsIndexRoute
@@ -244,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SessionsSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/plugins/$plugin': {
+      id: '/plugins/$plugin'
+      path: '/plugins/$plugin'
+      fullPath: '/plugins/$plugin'
+      preLoaderRoute: typeof PluginsPluginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/loops/$loopId': {
       id: '/loops/$loopId'
       path: '/loops/$loopId'
@@ -283,6 +303,7 @@ const rootRouteChildren: RootRouteChildren = {
   BoardsBoardIdRoute: BoardsBoardIdRoute,
   BotsBotIdRoute: BotsBotIdRoute,
   LoopsLoopIdRoute: LoopsLoopIdRoute,
+  PluginsPluginRoute: PluginsPluginRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
   BoardsIndexRoute: BoardsIndexRoute,
   BotsIndexRoute: BotsIndexRoute,
