@@ -1,6 +1,13 @@
 package acpadapter
 
-import "github.com/wins/jaz/backend/internal/acp"
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+
+	"github.com/wins/jaz/backend/internal/acp"
+)
 
 type adapterSpec struct {
 	Adapter  string
@@ -23,4 +30,15 @@ func (s adapterSpec) executables() []string {
 		paths = append(paths, value)
 	}
 	return paths
+}
+
+func (s adapterSpec) binDirs() string {
+	var dirs []string
+	for _, path := range s.executables() {
+		dir := filepath.Dir(path)
+		if !slices.Contains(dirs, dir) {
+			dirs = append(dirs, dir)
+		}
+	}
+	return strings.Join(dirs, string(os.PathListSeparator))
 }

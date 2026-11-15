@@ -25,6 +25,7 @@ type Status struct {
 	Version         string
 	Platform        string
 	Path            string
+	BinDirs         string
 	State           string
 	Message         string
 	BytesDownloaded int64
@@ -85,8 +86,12 @@ func (m *Manager) Status(name string) Status {
 	if status, ok := m.storedStatus(name); ok {
 		return status
 	}
-	if spec, err := m.resolveSpec(name); err == nil && m.installed(spec) {
-		return readyStatus(spec)
+	if spec, err := m.resolveSpec(name); err == nil {
+		status := readyStatus(spec)
+		if !m.installed(spec) {
+			status.State = StateMissing
+		}
+		return status
 	}
 	return Status{
 		Adapter:  name,
@@ -166,6 +171,7 @@ func readyStatus(spec adapterSpec) Status {
 		Version:  spec.Version,
 		Platform: spec.Platform,
 		Path:     spec.Command,
+		BinDirs:  spec.binDirs(),
 		State:    StateReady,
 	}
 }

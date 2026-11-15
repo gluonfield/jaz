@@ -6,7 +6,7 @@ require (
 	github.com/charmbracelet/log v0.4.2
 	github.com/creack/pty v1.1.24
 	github.com/evanw/esbuild v0.28.2
-	github.com/gluonfield/acp-transport v0.0.0-20260925121224-9e5d8f001fb3
+	github.com/gluonfield/acp-transport v0.0.0-20261115135951-c83f4c147e2a
 	github.com/gluonfield/jazmem v0.0.0-20261024150224-bae5cf39ccd8
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
@@ -23,7 +23,6 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.21.0
 	github.com/yuin/goldmark v1.8.2
-	github.com/zalando/go-keyring v0.2.8
 	go.mau.fi/whatsmeow v0.0.0-20260929112325-8b41cfe6d9c4
 	go.uber.org/fx v1.24.0
 	golang.org/x/image v0.47.0

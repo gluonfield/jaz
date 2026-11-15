@@ -50,7 +50,8 @@ func TestAntigravityDiscoveryReadsNativeCatalogWithoutChangingSavedChoice(t *tes
 	} {
 		got := catalog.Models[i]
 		if got.Value != want.id || got.Label != want.label || got.ContextLength != 0 ||
-			got.Reasoning.Status != modelcatalog.ReasoningUnavailable || len(got.Reasoning.Efforts) != 0 {
+			got.Reasoning.Status != modelcatalog.ReasoningPending || len(got.Reasoning.Efforts) != 0 ||
+			got.Reasoning.DefaultEffort != "" || got.Reasoning.Mandatory || got.Reasoning.Automatic {
 			t.Fatalf("native metadata changed or invented: %#v", got)
 		}
 	}

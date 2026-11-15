@@ -1,8 +1,6 @@
 package acp
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -41,9 +39,6 @@ type AgentLoginInvocation struct {
 	// UsePTY runs the login on a pseudo-terminal: agy drains piped stdin as
 	// prompt input and would stall before ever starting its OAuth flow.
 	UsePTY bool
-	// TailLog streams a CLI log file into the login output. agy prints its
-	// sign-in URL and paste prompt only there, never to stdout.
-	TailLog string
 	// Cwd overrides the login working directory. agy adopts the cwd as its
 	// workspace and indexes it; sign-in should not hand it the Jaz root.
 	Cwd string
@@ -66,7 +61,7 @@ func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env 
 	probeEnv := NewManager(nil, Config{Root: root, Env: env, Providers: providers}, nil).probeEnv(name, cfg)
 	resolved := resolveAgentAuthWithProviders(name, cfg, root, probeEnv, providers)
 	status := agentLoginCommand(name, root, resolved.Config, loginBinDirs(cfg), probeEnv)
-	status.ManualDisconnect = agentManualDisconnect(name)
+	status.ManualDisconnect = agentManualDisconnect(name, cfg)
 	status.RefreshOwner = RefreshOwnerAgentCLI
 	status.StoragePath = resolved.StoragePath
 	status.Authenticated = resolved.Authenticated
@@ -118,26 +113,17 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 		probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, AgentConfig{LoginBinDir: binDir})
 		return museLoginInvocation(probeEnv)
 	case AgentAntigravity:
-		logFile := filepath.Join(root, "acp", "agy-login-"+randomHex(4)+".log")
-		invocation := loginInvocation(nil, true, binDir, "agy",
-			"--log-file", logFile,
-			"--print-timeout", "120s",
-			"--print", "Reply with exactly: signed in")
+		executable, err := antigravityExecutable(binDir)
+		if err != nil {
+			executable = "antigravity"
+		}
+		invocation := loginInvocation(nil, true, "", executable, "acp", "--login")
 		invocation.UsePTY = runtime.GOOS != "windows"
-		invocation.TailLog = logFile
 		invocation.Cwd = filepath.Join(root, "acp", "agy-login-workspace")
 		return invocation
 	default:
 		return AgentLoginInvocation{}
 	}
-}
-
-func randomHex(bytes int) string {
-	b := make([]byte, bytes)
-	if _, err := rand.Read(b); err != nil {
-		return "0"
-	}
-	return hex.EncodeToString(b)
 }
 
 func loginBinDirs(cfg AgentConfig) string {

@@ -14,18 +14,9 @@ import (
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
-	"github.com/zalando/go-keyring"
 )
 
 const RefreshOwnerAgentCLI = "coding_agent_cli"
-
-// The agy CLI keeps its Google OAuth token in the OS keyring under this
-// entry, with ~/.gemini/antigravity-cli/antigravity-oauth-token as the
-// fallback copy for hosts without a keyring.
-const (
-	antigravityKeyringService = "gemini"
-	antigravityKeyringAccount = "antigravity"
-)
 
 const (
 	AuthKindOAuth  = "oauth"
@@ -480,7 +471,7 @@ func apiKeyAlias(key string) string {
 
 // RemoveOwnedCredential deletes an agent's OAuth credential, but ONLY when Jaz
 // owns it — stored in Jaz's own profile (under root) — or when the CLI login is
-// the agent's sole auth (Grok's ~/.grok/auth.json, Antigravity's agy token).
+// the agent's sole auth (Grok's ~/.grok/auth.json).
 // It never deletes the user's global ~/.claude.json / ~/.codex config. A no-op
 // when the path is empty, absent, or not Jaz-owned.
 func RemoveOwnedCredential(name, storagePath, root string) error {
@@ -489,7 +480,7 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 	if storagePath == "" {
 		return nil
 	}
-	if !pathUnderRoot(storagePath, root) && name != AgentGrok && name != AgentAntigravity {
+	if !pathUnderRoot(storagePath, root) && name != AgentGrok {
 		return nil
 	}
 	// Credentials are always files; a directory StoragePath (e.g. OpenCode's
@@ -503,28 +494,30 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 	if err := os.Remove(storagePath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	// agy stores its OAuth token in the OS keyring; the file is a fallback copy.
-	// Best-effort: headless hosts have no keyring and agy uses the file there.
-	if name == AgentAntigravity {
-		_ = keyring.Delete(antigravityKeyringService, antigravityKeyringAccount)
-		invalidateAntigravityAuthCache()
-	}
 	return nil
 }
 
 func DisconnectAgentAuth(ctx context.Context, name string, cfg AgentConfig, root, storagePath string) error {
-	if instructions := agentManualDisconnect(name); instructions != "" {
+	if instructions := agentManualDisconnect(name, cfg); instructions != "" {
 		return fmt.Errorf("%s", instructions)
 	}
-	if CanonicalAgentName(name) != AgentMuse {
+	switch CanonicalAgentName(name) {
+	case AgentAntigravity:
+		return disconnectAntigravityAuth(ctx, cfg, root)
+	case AgentMuse:
+		return disconnectMuseAuth(ctx, cfg, root)
+	default:
 		return RemoveOwnedCredential(name, storagePath, root)
 	}
-	return disconnectMuseAuth(ctx, cfg, root)
 }
 
-func agentManualDisconnect(name string) string {
+func agentManualDisconnect(name string, cfg AgentConfig) string {
 	if CanonicalAgentName(name) == AgentCopilot {
-		return "To sign out, run copilot on the Jaz server and enter /logout."
+		command, err := resolveLoginExecutable(loginBinDirs(cfg), "copilot")
+		if err != nil {
+			command = "copilot"
+		}
+		return fmt.Sprintf("To sign out, run %s on the Jaz server and enter /logout.", shellQuote(command))
 	}
 	return ""
 }

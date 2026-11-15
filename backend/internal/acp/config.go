@@ -96,6 +96,8 @@ func systemPromptMeta(agent, prompt string, fresh bool) map[string]any {
 		return map[string]any{"systemPrompt": claude}
 	case AgentGrok:
 		return map[string]any{"rules": prompt}
+	case AgentAntigravity:
+		return map[string]any{"antigravity": map[string]any{"systemPrompt": map[string]any{"append": prompt}}}
 	default:
 		return map[string]any{"systemPrompt": prompt}
 	}
@@ -134,7 +136,6 @@ type AgentConfig struct {
 	ManagedAdapter          string
 	ManagedAdapterArgs      []string
 	ManagedTool             string
-	ManagedToolAdapterArg   string
 	Local                   bool
 	ProviderMode            string
 	ModelProviderCapability string
@@ -329,8 +330,8 @@ func BuiltinAgents() AgentCatalog {
 			},
 		},
 		AgentOpenCode: {
-			Command:                 "npx",
-			Args:                    []string{"-y", "opencode-ai@1.19.4", "acp"},
+			ManagedAdapter:          "opencode",
+			ManagedAdapterArgs:      []string{"acp"},
 			ProviderMode:            AgentProviderModeAgentDefaults,
 			ModelProviderCapability: provider.CapabilityChatCompletions,
 			ModelProvider:           provider.ProviderOpenRouter,
@@ -338,18 +339,16 @@ func BuiltinAgents() AgentCatalog {
 			ReasoningEffort:         DefaultAgentReasoningEffort(AgentOpenCode),
 		},
 		AgentAntigravity: {
-			ManagedAdapter:        "antigravity",
-			ManagedAdapterArgs:    []string{"--auth=auto", "--dangerously-skip-permissions"},
-			ManagedTool:           "antigravity-cli",
-			ManagedToolAdapterArg: "--agy",
+			ManagedAdapter:     "antigravity",
+			ManagedAdapterArgs: []string{"acp", "--process-per-session", "--dangerously-skip-permissions"},
 		},
 		AgentMuse: {
 			ManagedAdapter: "muse",
 			ManagedTool:    "muse",
 		},
 		AgentCopilot: {
-			Command: "copilot",
-			Args:    []string{"--acp", "--stdio"},
+			ManagedAdapter:     "copilot",
+			ManagedAdapterArgs: []string{"--acp", "--stdio"},
 		},
 	}
 }
@@ -397,7 +396,6 @@ func canonicalAgentConfig(cfg AgentConfig) AgentConfig {
 		cfg.useCommandLaunch(command, cfg.Args)
 	}
 	cfg.ManagedTool = strings.TrimSpace(cfg.ManagedTool)
-	cfg.ManagedToolAdapterArg = strings.TrimSpace(cfg.ManagedToolAdapterArg)
 	return cfg
 }
 
@@ -422,9 +420,6 @@ func mergeAgentConfig(base, override AgentConfig) AgentConfig {
 	}
 	if tool := strings.TrimSpace(override.ManagedTool); tool != "" {
 		next.ManagedTool = tool
-	}
-	if arg := strings.TrimSpace(override.ManagedToolAdapterArg); arg != "" {
-		next.ManagedToolAdapterArg = arg
 	}
 	if strings.TrimSpace(override.ProviderMode) != "" {
 		next.ProviderMode = override.ProviderMode

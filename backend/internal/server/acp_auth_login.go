@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -185,11 +184,6 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 		cancel()
 		return nil, err
 	}
-	var tail *acpAuthLogTail
-	if log := strings.TrimSpace(invocation.TailLog); log != "" {
-		tail = &acpAuthLogTail{path: log, w: writer}
-		go tail.follow(cmdCtx)
-	}
 	s.acpAuthLoginJobs.Store(job.ID, job)
 	go func() {
 		defer cancel()
@@ -204,10 +198,6 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 		// verify so a late paste rejects cleanly instead of writing to a pipe
 		// Wait already closed.
 		job.closeStdin()
-		if tail != nil {
-			tail.drain()
-			_ = os.Remove(tail.path)
-		}
 		if err == nil {
 			err = s.verifyACPAuthLogin(agent, auth)
 		} else if last := job.failureLine(); last != "" {
@@ -250,53 +240,6 @@ func startACPAuthLoginProcess(cmd *exec.Cmd, job *acpAuthLoginJob, writer acpAut
 	// exec.Cmd owns the pipe copies; Wait returns only after output is drained.
 	close(done)
 	return done, cmd.Start()
-}
-
-var acpGlogLine = regexp.MustCompile(`^[IWEF][0-9]{4} `)
-
-// acpAuthLogTail streams a CLI log file's human-facing lines into the login
-// output: agy prints its sign-in URL and paste prompt only to its log, never
-// to stdout.
-type acpAuthLogTail struct {
-	path string
-	w    io.Writer
-
-	mu     sync.Mutex
-	offset int
-}
-
-func (t *acpAuthLogTail) follow(ctx context.Context) {
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			t.drain()
-		}
-	}
-}
-
-func (t *acpAuthLogTail) drain() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	data, err := os.ReadFile(t.path)
-	if err != nil {
-		return
-	}
-	end := bytes.LastIndexByte(data, '\n') + 1
-	if end <= t.offset {
-		return
-	}
-	chunk := data[t.offset:end]
-	t.offset = end
-	for _, line := range strings.Split(string(chunk), "\n") {
-		if strings.TrimSpace(line) == "" || acpGlogLine.MatchString(line) {
-			continue
-		}
-		_, _ = fmt.Fprintln(t.w, line)
-	}
 }
 
 func (s *Server) verifyACPAuthLogin(agent string, auth acp.AgentAuthConfig) error {

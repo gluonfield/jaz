@@ -11,11 +11,6 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-// handleDisconnectACPAuth removes an agent's credential so it can be re-connected
-// or switched. It deletes only what Jaz owns: the Jaz-managed API key env var,
-// and an OAuth credential that lives in Jaz's own profile (or Grok's and
-// Antigravity's CLI-owned logins, which have no other sign-out). It never
-// touches the user's global ~/.claude.json / ~/.codex config.
 func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
@@ -50,6 +45,10 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusConflict, fmt.Errorf("%s", auth.ManualDisconnect))
 		return
 	}
+	if err := acp.DisconnectAgentAuth(r.Context(), agent, cfg, s.runtimeRoot(), auth.StoragePath); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 
 	if current, ok := defaults.ACP[agent]; ok {
 		current.Enabled = false
@@ -68,20 +67,7 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	if err := acp.DisconnectAgentAuth(r.Context(), agent, cfg, s.runtimeRoot(), auth.StoragePath); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	// Antigravity's login lives in CLI-owned stores Jaz can only best-effort
-	// clear; fail loudly instead of showing a still-connected card if the agy
-	// CLI kept its credentials (e.g. it moved its keyring entry). The response
-	// re-probes every agent, so its status doubles as the post-removal check.
 	response := s.agentSettingsResponse(defaults)
-	if agent == acp.AgentAntigravity && auth.Authenticated && response.ACPAuth[agent].Authenticated {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("antigravity is still signed in after removing its credentials; sign out with the agy CLI and reconnect"))
-		return
-	}
 	if agent == acp.AgentMuse && response.ACPAuth[agent].Authenticated && response.ACPAuth[agent].AuthKind != acp.AuthKindNone {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("Muse is signed in through META_API_KEY; remove the environment variable to disconnect"))
 		return

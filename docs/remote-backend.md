@@ -34,13 +34,11 @@ stays current without editing. To pin a specific release instead, swap in
 `releases/download/<tag>`, for example
 `base=https://github.com/gluonfield/jaz/releases/download/v0.0.46`.
 
-Node/npm are required when the backend runs default ACP agents because the
-built-in Codex, Claude, and OpenCode adapters launch through `npx`. Install each
-agent CLI you enable on the server too, for example `npm install -g @openai/codex`
-for Codex login. Without the CLI on the server's `PATH` the onboarding agent
-cards show "Not installed" and offer no sign-in.
+Install built-in managed agents from Settings → Agents on the server, including
+the matching native CLI used for sign-in. Grok uses the server's installed CLI;
+Muse's install card also prepares its native launcher.
 
-GitHub Copilot requires the official `copilot` CLI on the server. Its sign-in card
+Install GitHub Copilot from its Settings → Agents card. Its sign-in card
 runs `copilot login --device-code`: open GitHub's verification URL and enter the
 displayed code in your browser. Credentials stay in the server user's native
 Copilot credential store; a client-local Copilot login is not shared with the server.

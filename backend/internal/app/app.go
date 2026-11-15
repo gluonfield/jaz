@@ -215,41 +215,47 @@ func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
 	return acp.MergeAgents(acp.BuiltinAgents(), cfg.ACP.Agents)
 }
 
-func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog, tools *managedtool.Manager) acp.AgentConfigSource {
+func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog, tools *managedtool.Manager, adapters *acpadapter.Manager) acp.AgentConfigSource {
 	source := agentsettings.NewACPConfigSource(store, catalog)
-	return managedToolAgentConfigSource{source: source, tools: tools}
+	return managedAgentConfigSource{source: source, tools: tools, adapters: adapters}
 }
 
-type managedToolAgentConfigSource struct {
-	source *agentsettings.ACPConfigSource
-	tools  *managedtool.Manager
+type managedAgentConfigSource struct {
+	source   *agentsettings.ACPConfigSource
+	tools    *managedtool.Manager
+	adapters *acpadapter.Manager
 }
 
-func (s managedToolAgentConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error) {
+func (s managedAgentConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error) {
 	cfg, ok, err := s.source.AgentConfig(name)
 	if err != nil || !ok {
 		return cfg, ok, err
 	}
-	return s.withManagedTool(cfg), true, nil
+	return s.withManagedExecutables(cfg), true, nil
 }
 
-func (s managedToolAgentConfigSource) MetadataConfig(name string) (acp.AgentConfig, bool, error) {
+func (s managedAgentConfigSource) MetadataConfig(name string) (acp.AgentConfig, bool, error) {
 	cfg, ok, err := s.source.MetadataConfig(name)
 	if err != nil || !ok {
 		return cfg, ok, err
 	}
-	return s.withManagedTool(cfg), true, nil
+	return s.withManagedExecutables(cfg), true, nil
 }
 
-func (s managedToolAgentConfigSource) withManagedTool(cfg acp.AgentConfig) acp.AgentConfig {
+func (s managedAgentConfigSource) withManagedExecutables(cfg acp.AgentConfig) acp.AgentConfig {
+	if adapter := s.adapters.Status(cfg.ManagedAdapter); adapter.State == acpadapter.StateReady {
+		cfg.AdapterBinDir = filepath.Dir(adapter.Path)
+		for _, dir := range filepath.SplitList(adapter.BinDirs) {
+			cfg.LoginBinDir = appendPathList(cfg.LoginBinDir, dir)
+		}
+	}
 	if tool := s.tools.Status(cfg.ManagedTool, cfg.Env); tool.State == managedtool.StateReady && strings.TrimSpace(tool.Path) != "" {
 		cfg.LoginBinDir = appendPathList(cfg.LoginBinDir, filepath.Dir(tool.Path))
-		cfg.ManagedAdapterArgs = withManagedToolAdapterArg(cfg.ManagedAdapterArgs, cfg.ManagedToolAdapterArg, tool.Path)
 	}
 	return cfg
 }
 
-func (s managedToolAgentConfigSource) EnabledAgentNames() ([]string, error) {
+func (s managedAgentConfigSource) EnabledAgentNames() ([]string, error) {
 	return s.source.EnabledAgentNames()
 }
 
@@ -274,27 +280,6 @@ func appendPathList(current, dir string) string {
 	}
 	parts = append(parts, dir)
 	return strings.Join(parts, string(os.PathListSeparator))
-}
-
-func withManagedToolAdapterArg(args []string, flag, path string) []string {
-	flag = strings.TrimSpace(flag)
-	path = strings.TrimSpace(path)
-	if flag == "" || path == "" {
-		return args
-	}
-	out := make([]string, 0, len(args)+1)
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == flag {
-			i++
-			continue
-		}
-		if strings.HasPrefix(arg, flag+"=") {
-			continue
-		}
-		out = append(out, arg)
-	}
-	return append(out, flag+"="+path)
 }
 
 // NewProviderSource builds the live, thread-safe registry of effective model

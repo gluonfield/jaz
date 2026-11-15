@@ -4,12 +4,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"slices"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/acpadapter"
 	telegramconnector "github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
@@ -76,54 +77,48 @@ func TestNewAgentDefersMCPToolsByRegistryGroup(t *testing.T) {
 	}
 }
 
-func TestACPAgentConfigSourcePassesManagedToolPathToAdapter(t *testing.T) {
+func TestACPAgentConfigSourceUsesBundledNativeLogin(t *testing.T) {
 	root := t.TempDir()
-	toolPath := managedtool.ExecutablePath(root, managedtool.AntigravityCLI)
-	if err := os.MkdirAll(filepath.Dir(toolPath), 0o755); err != nil {
-		t.Fatal(err)
+	adapters := acpadapter.New(root)
+	status := adapters.Status(acp.AgentCodex)
+	if status.Path == "" || status.BinDirs == "" {
+		t.Fatalf("managed runtime paths unavailable: %#v", status)
 	}
-	if err := os.WriteFile(toolPath, []byte("ok"), 0o755); err != nil {
-		t.Fatal(err)
+	dirs := filepath.SplitList(status.BinDirs)
+	nativeDir := dirs[len(dirs)-1]
+	executable := func(name string) string {
+		if runtime.GOOS == "windows" {
+			return name + ".exe"
+		}
+		return name
+	}
+	for _, path := range []string{status.Path, filepath.Join(nativeDir, executable("codex")), filepath.Join(nativeDir, executable("codex-code-mode-host"))} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-
-	defaults := agentsettings.AgentDefaultsFromCatalog(acp.BuiltinAgents())
-	antigravity := defaults.ACP[acp.AgentAntigravity]
-	antigravity.Enabled = true
-	defaults.ACP[acp.AgentAntigravity] = antigravity
-	if _, err := agentsettings.SaveAgentDefaults(store, defaults); err != nil {
+	catalog := acp.BuiltinAgents()
+	if _, err := agentsettings.SaveAgentDefaults(store, agentsettings.AgentDefaultsFromCatalog(catalog)); err != nil {
 		t.Fatal(err)
 	}
-
-	source := NewACPAgentConfigSource(store, acp.BuiltinAgents(), managedtool.New(root))
-	cfg, ok, err := source.AgentConfig(acp.AgentAntigravity)
-	if err != nil {
-		t.Fatal(err)
+	source := NewACPAgentConfigSource(store, catalog, managedtool.New(root), adapters)
+	cfg, ok, err := source.(interface {
+		MetadataConfig(string) (acp.AgentConfig, bool, error)
+	}).MetadataConfig(acp.AgentCodex)
+	if err != nil || !ok {
+		t.Fatalf("native metadata config = %#v, %v", cfg, err)
 	}
-	if !ok {
-		t.Fatal("antigravity config disabled")
-	}
-	if cfg.LoginBinDir != filepath.Dir(toolPath) {
-		t.Fatalf("login bin dir = %q, want %q", cfg.LoginBinDir, filepath.Dir(toolPath))
-	}
-	if !slices.Contains(cfg.ManagedAdapterArgs, "--agy="+toolPath) {
-		t.Fatalf("managed adapter args = %#v, want agy path", cfg.ManagedAdapterArgs)
-	}
-}
-
-func TestWithManagedToolAdapterArgReplacesExistingValues(t *testing.T) {
-	got := withManagedToolAdapterArg(
-		[]string{"--auth=auto", "--agy", "/old/agy", "--dangerously-skip-permissions", "--agy=/stale/agy"},
-		"--agy",
-		"/new/agy",
-	)
-	want := []string{"--auth=auto", "--dangerously-skip-permissions", "--agy=/new/agy"}
-	if !slices.Equal(got, want) {
-		t.Fatalf("args = %#v, want %#v", got, want)
+	login := acp.AgentLoginInvocationFor(acp.AgentCodex, root, cfg.Auth, cfg.LoginBinDir, cfg.Env)
+	if !login.Available || login.Executable != filepath.Join(nativeDir, executable("codex")) {
+		t.Fatalf("login bypassed bundled runtime: %#v", login)
 	}
 }
 
@@ -274,7 +269,7 @@ func TestMetadataConfigKeepsDisabledAgentsDisabled(t *testing.T) {
 	if _, err := agentsettings.SaveAgentDefaults(store, defaults); err != nil {
 		t.Fatal(err)
 	}
-	source := NewACPAgentConfigSource(store, catalog, managedtool.New(root))
+	source := NewACPAgentConfigSource(store, catalog, managedtool.New(root), acpadapter.New(root))
 	if _, enabled, err := source.AgentConfig(acp.AgentMuse); err != nil || enabled {
 		t.Fatalf("disabled Muse runtime = %v, %v", enabled, err)
 	}

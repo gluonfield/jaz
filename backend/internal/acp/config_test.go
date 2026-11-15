@@ -83,22 +83,6 @@ func TestCodexBuiltinAgentUsesManagedAdapter(t *testing.T) {
 	}
 }
 
-func TestAntigravityBuiltinAgentUsesManagedAdapter(t *testing.T) {
-	cfg := BuiltinAgents()[AgentAntigravity]
-	if cfg.Command != "" || cfg.ManagedAdapter != "antigravity" {
-		t.Fatalf("cfg = %#v, want managed adapter", cfg)
-	}
-	if !reflect.DeepEqual(cfg.ManagedAdapterArgs, []string{"--auth=auto", "--dangerously-skip-permissions"}) {
-		t.Fatalf("managed args = %#v", cfg.ManagedAdapterArgs)
-	}
-	if cfg.ManagedTool != "antigravity-cli" {
-		t.Fatalf("managed tool = %q", cfg.ManagedTool)
-	}
-	if cfg.ManagedToolAdapterArg != "--agy" {
-		t.Fatalf("managed tool adapter arg = %q", cfg.ManagedToolAdapterArg)
-	}
-}
-
 func TestLaunchCommandWrapsWindowsCommandScripts(t *testing.T) {
 	command, args := resolvedLaunchCommand("windows", "npx.cmd", `C:\Program Files\nodejs\npx.cmd`, []string{"--version"})
 	if command != "cmd.exe" {

@@ -380,6 +380,13 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 	if err != nil {
 		return nil, fmt.Errorf("initialize acp agent: %w", withProcessStderr(err, stderr))
 	}
+	var initialized acpschema.InitializeResponse
+	if err := json.Unmarshal(initRaw, &initialized); err != nil {
+		return nil, fmt.Errorf("decode acp initialization: %w", err)
+	}
+	if initialized.ProtocolVersion != acpschema.ProtocolVersion(acpschema.ProtocolVersionNumber) {
+		return nil, fmt.Errorf("unsupported acp protocol version %d", initialized.ProtocolVersion)
+	}
 	state.initialized(initRaw)
 	methodID, missingAuth := autoAuthMethod(name, initRaw, env)
 	if methodID != "" {

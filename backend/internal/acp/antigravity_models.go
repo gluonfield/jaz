@@ -12,18 +12,27 @@ import (
 )
 
 func antigravityModelsCommand(ctx context.Context, env map[string]string) (*exec.Cmd, error) {
-	path, err := executableInPath("agy", env["PATH"])
+	path, err := antigravityExecutable(env["PATH"])
 	if err != nil {
-		path, err = ResolveExecutable("agy")
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 	cmd := exec.CommandContext(ctx, path, "models")
 	if len(env) > 0 {
 		cmd.Env = processenv.List(env)
 	}
 	return cmd, nil
+}
+
+func antigravityExecutable(dirs string) (string, error) {
+	for _, name := range []string{"antigravity", "agy"} {
+		if path, err := executableInPath(name, dirs); err == nil {
+			return path, nil
+		}
+	}
+	if path, err := ResolveExecutable("antigravity"); err == nil {
+		return path, nil
+	}
+	return ResolveExecutable("agy")
 }
 
 func antigravityModels(ctx context.Context, env map[string]string) (AgentModelCatalog, error) {
@@ -49,7 +58,7 @@ func antigravityModels(ctx context.Context, env map[string]string) (AgentModelCa
 		}
 		catalog.Models = append(catalog.Models, AgentModel{
 			Value: id, Label: label,
-			Reasoning: ReasoningCapabilities{Status: modelcatalog.ReasoningUnavailable, Scope: ReasoningScopeAgent},
+			Reasoning: ReasoningCapabilities{Status: modelcatalog.ReasoningPending, Scope: ReasoningScopeAgent},
 		})
 	}
 	return catalog, nil

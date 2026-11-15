@@ -3,6 +3,7 @@
 package acp_test
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -13,6 +14,28 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 )
+
+func TestManagerRejectsUnsupportedProtocolAndClosesProcess(t *testing.T) {
+	for _, version := range []string{"missing", "2"} {
+		t.Run(version, func(t *testing.T) {
+			starts := filepath.Join(t.TempDir(), "starts")
+			manager := idleManager(t, "fake", map[string]string{
+				"JAZ_FAKE_ACP_PROTOCOL_VERSION": version,
+				"JAZ_FAKE_ACP_START_LOG":        starts,
+			}, "", "")
+			t.Cleanup(manager.Close)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			_, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "protocol-version"})
+			if err == nil || !strings.Contains(err.Error(), "unsupported acp protocol version") {
+				t.Fatalf("spawn error = %v", err)
+			}
+			for _, pid := range startedPIDs(t, starts) {
+				waitProcessGone(ctx, t, pid)
+			}
+		})
+	}
+}
 
 func TestTerminatedAgentReportsExitAndContinuesItsProviderSession(t *testing.T) {
 	dir := t.TempDir()

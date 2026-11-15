@@ -60,6 +60,9 @@ func TestCopilotNativeLoginAndModelDiscovery(t *testing.T) {
 	if !status.Authenticated || status.AuthMode != AuthModeExistingCLI || status.RefreshOwner != RefreshOwnerAgentCLI || status.ManualDisconnect == "" {
 		t.Fatalf("native login not reused = %#v", status)
 	}
+	if !strings.Contains(status.ManualDisconnect, shellQuote(invocation.Executable)) {
+		t.Fatalf("native sign-out guidance omits installed executable: %q", status.ManualDisconnect)
+	}
 	if err := DisconnectAgentAuth(t.Context(), AgentCopilot, cfg, root, ""); err == nil || err.Error() != status.ManualDisconnect {
 		t.Fatalf("shared native login should require native sign-out: %v", err)
 	}

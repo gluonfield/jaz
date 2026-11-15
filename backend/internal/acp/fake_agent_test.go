@@ -165,6 +165,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			continue
 		}
 		switch msg.Method {
+		case "logout":
+			if os.Getenv("JAZ_FAKE_ACP_LOGOUT") == "error" {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, &jsonrpc.Error{Code: -32005, Message: "provider refused sign out"})
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			sendResult(conn, msg, map[string]any{})
 		case "initialize":
 			typedFailures = fakeTypedFailures(msg.Params)
 			if os.Getenv("JAZ_FAKE_ACP_EXPECT_TERMINAL_AUTH") == "1" {
@@ -190,6 +197,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			capabilities := map[string]any{
 				"loadSession": os.Getenv("JAZ_FAKE_ACP_LOAD") != "0",
 			}
+			if os.Getenv("JAZ_FAKE_ACP_LOGOUT") != "" {
+				capabilities["auth"] = map[string]any{"logout": map[string]any{}}
+			}
 			if os.Getenv("JAZ_FAKE_ACP_RESUME") == "1" {
 				capabilities["sessionCapabilities"] = map[string]any{
 					"resume": map[string]any{},
@@ -207,6 +217,12 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				"protocolVersion":   1,
 				"agentInfo":         map[string]any{"name": "fake-agent", "version": "test"},
 				"agentCapabilities": capabilities,
+			}
+			if version := os.Getenv("JAZ_FAKE_ACP_PROTOCOL_VERSION"); version != "" {
+				delete(response, "protocolVersion")
+				if version != "missing" {
+					response["protocolVersion"], _ = strconv.Atoi(version)
+				}
 			}
 			if os.Getenv("JAZ_FAKE_ACP_NATIVE_STEERING") == "1" {
 				response["_meta"] = map[string]any{
