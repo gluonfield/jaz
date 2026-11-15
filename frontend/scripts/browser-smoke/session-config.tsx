@@ -139,10 +139,10 @@ export async function exerciseSessionConfig(): Promise<void> {
 
     client.setQueryData(keys.sessionEvents(session.id), [{
       session_id: session.id, seq: 2, type: 'artifact', at: new Date().toISOString(),
-      artifact: { presented: true, artifact_type: 'canvas', file: '/workspace/canvas.json', title: 'Canvas', widget_code: '' },
+      artifact: { kind: 'canvas', presented: true },
     }])
-    await until(() => [...element.querySelectorAll('button')].some((button) => button.textContent?.includes('Open canvas')))
-    const presentation = [...element.querySelectorAll('button')].find((button) => button.textContent?.includes('Open canvas'))!
+    await until(() => [...element.querySelectorAll('button')].some((button) => button.textContent?.includes('Open in side panel')))
+    const presentation = [...element.querySelectorAll('button')].find((button) => button.textContent?.includes('Open in side panel'))!
     presentation.click()
     await until(() => Boolean(element.querySelector('#panel-body-canvas .react-flow__node[data-id="notes"]')))
     if (element.querySelector('.canvas-chat') || !element.querySelector('textarea')) throw new Error('Canvas tab replaced the thread conversation')

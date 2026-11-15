@@ -26,6 +26,7 @@ func TestIntegrationOAuthTokenRoundTrip(t *testing.T) {
 		TokenType:    "Bearer",
 		Expiry:       time.Date(2026, 6, 12, 15, 0, 0, 0, time.UTC),
 		ClientID:     "client",
+		Issuer:       "https://auth.example.com",
 		TokenURL:     "https://auth.example.com/token",
 		Scopes:       []string{"read"},
 	}
@@ -39,7 +40,7 @@ func TestIntegrationOAuthTokenRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("token not found")
 	}
-	if got.AccessToken != want.AccessToken || got.RefreshToken != want.RefreshToken || got.ClientID != want.ClientID || got.TokenURL != want.TokenURL || !got.Expiry.Equal(want.Expiry) {
+	if got.AccessToken != want.AccessToken || got.RefreshToken != want.RefreshToken || got.ClientID != want.ClientID || got.Issuer != want.Issuer || got.TokenURL != want.TokenURL || !got.Expiry.Equal(want.Expiry) {
 		t.Fatalf("token = %#v, want %#v", got, want)
 	}
 }

@@ -15,7 +15,7 @@ export async function exerciseBotArtifactDelivery() {
   const event: SessionEvent = {
     session_id: 'artifact-bot', seq: 316, type: 'artifact', at: '2026-10-30T13:17:10Z',
     artifact: {
-      presented: true, title: 'Supply chain map',
+      kind: 'artifact', presented: true, artifact: { title: 'Supply chain map',
       widget_code: `<h1>Supply chain map</h1>
 <svg viewBox="0 0 680 100"><text x="20" y="50">Mill → Service centre → Shop → Buyer</text></svg>
 <button onclick="sendPrompt('Explain service centres')">Explain this layer</button>
@@ -25,7 +25,7 @@ setTimeout(() => {
   parent.postMessage({type: 'map-ready'}, '*')
 }, 50)
 </script>`,
-    },
+    } },
   }
   let update: (events: SessionEvent[]) => void = () => {}
   let ready = 0
@@ -84,7 +84,7 @@ setTimeout(() => {
     await new Promise(requestAnimationFrame)
     await new Promise(requestAnimationFrame)
     await window.smoke.capture('bot-artifact-reloaded')
-    update([{ ...event, seq: 317, artifact: { presented: true, title: 'Broken map', widget_code: '<script>throw new Error("Map rendering failed")</script>' } }])
+    update([{ ...event, seq: 317, artifact: { kind: 'artifact', presented: true, artifact: { title: 'Broken map', widget_code: '<script>throw new Error("Map rendering failed")</script>' } } }])
     await until(() => Boolean(element.querySelector('pre')?.textContent?.includes('Map rendering failed')))
   } finally {
     root.unmount()

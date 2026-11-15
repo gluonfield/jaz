@@ -54,7 +54,7 @@ type Event struct {
 	Plan             *PlanEvent             `json:"plan,omitempty"`
 	Goal             *GoalEvent             `json:"goal,omitempty"`
 	Permission       *ACPPermission         `json:"permission,omitempty"`
-	Artifact         *ArtifactEvent         `json:"artifact,omitempty"`
+	Artifact         *PresentationEvent     `json:"artifact,omitempty"`
 	LoopCreated      *LoopCreatedEvent      `json:"loop_created,omitempty"`
 	BotActivity      *BotActivityEvent      `json:"bot_activity,omitempty"`
 	RoomMessage      *RoomMessageEvent      `json:"room_message,omitempty"`
@@ -136,21 +136,17 @@ func (s ProviderSubagentStatus) Ended() bool {
 }
 
 type ArtifactEvent struct {
-	// Presented records host acceptance for the user's chat, not a client render acknowledgement.
-	Presented       bool     `json:"presented,omitempty"`
 	Title           string   `json:"title"`
 	WidgetCode      string   `json:"widget_code"`
 	LoadingMessages []string `json:"loading_messages,omitempty"`
 	ArtifactType    string   `json:"artifact_type,omitempty"`
 	// Data is what a plugin's view draws; the view reads it as window.data.
 	Data json.RawMessage `json:"data,omitempty"`
-	// File names a stored canvas or a plugin view's JSON data source.
-	File string `json:"file,omitempty"`
 }
 
 // MCPAppEvent shows an MCP App in the thread: an agent called a tool its
 // server links to a UI, which renders with the call's arguments and result.
-// Like ArtifactEvent it round-trips through the content column. Jaz marks
+// Like PresentationEvent it round-trips through the content column. Jaz marks
 // every view it displays Presented; stored events without it predate that.
 type MCPAppEvent struct {
 	ServerID  string          `json:"server_id"`
@@ -161,7 +157,7 @@ type MCPAppEvent struct {
 }
 
 // LoopCreatedEvent renders a card in the thread when a loop is created, linking
-// to the loop and to any boards its widget was pinned to. Like ArtifactEvent it
+// to the loop and to any boards its widget was pinned to. Like PresentationEvent it
 // has no dedicated storage column: it round-trips through the content column.
 type LoopCreatedEvent struct {
 	LoopID    string         `json:"loop_id"`
@@ -254,8 +250,8 @@ func (e *Event) NormalizePayload() {
 		if e.Content == "" {
 			return
 		}
-		var artifact ArtifactEvent
-		if err := json.Unmarshal([]byte(e.Content), &artifact); err == nil && artifact.Title != "" && artifact.WidgetCode != "" {
+		var artifact PresentationEvent
+		if err := json.Unmarshal([]byte(e.Content), &artifact); err == nil {
 			e.Artifact = &artifact
 			e.Content = ""
 		}

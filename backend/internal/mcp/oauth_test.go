@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/oauthex"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/oauthbroker"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
@@ -50,8 +51,10 @@ func (m *memTokenStore) DeleteToken(_ context.Context, id string) error {
 
 type mockAuthorizationServer struct {
 	*httptest.Server
-	registrations int
-	tokenForm     url.Values
+	registrations      int
+	registrationStatus int
+	registration       oauthex.ClientRegistrationMetadata
+	tokenForm          url.Values
 }
 
 // mockAuthServer serves the OAuth discovery, registration, and token endpoints an
@@ -85,6 +88,13 @@ func mockAuthServer(t *testing.T, extra map[string]any) *mockAuthorizationServer
 	})
 	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
 		srv.registrations++
+		json.NewDecoder(r.Body).Decode(&srv.registration)
+		if srv.registrationStatus != 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(srv.registrationStatus)
+			io.WriteString(w, `{"error":"invalid_client","error_description":"initial credentials required"}`)
+			return
+		}
 		writeJSONResp(w, map[string]any{
 			"client_id":                  "dynamic-client-id",
 			"token_endpoint_auth_method": "none",
@@ -179,16 +189,16 @@ func TestRunAuthorizationCompletesFlow(t *testing.T) {
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	// Fake browser: read the state from the authorization URL and return an
 	// authorization code, simulating the user approving access.
-	handler.fetch = func(_ context.Context, authURL string) (string, string, error) {
+	handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
 		u, err := url.Parse(authURL)
 		if err != nil {
-			return "", "", err
+			return mcpconfig.AuthorizationResponse{}, err
 		}
 		q := u.Query()
 		if q.Get("code_challenge") == "" || q.Get("code_challenge_method") != "S256" {
 			t.Errorf("authorization URL missing PKCE challenge: %s", authURL)
 		}
-		return "the-auth-code", q.Get("state"), nil
+		return mcpconfig.AuthorizationResponse{Code: "the-auth-code", State: q.Get("state")}, nil
 	}
 
 	resp := &http.Response{
@@ -235,10 +245,10 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 	handler := newOAuthHandler(server, store, http.DefaultClient)
 	handler.mode = oauthModeInteractive
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
-	handler.fetch = func(_ context.Context, authURL string) (string, string, error) {
+	handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
 		u, err := url.Parse(authURL)
 		if err != nil {
-			return "", "", err
+			return mcpconfig.AuthorizationResponse{}, err
 		}
 		q := u.Query()
 		if q.Get("client_id") != "static-client" {
@@ -247,7 +257,7 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 		if q.Get("resource") != srv.URL+"/mcp" {
 			t.Errorf("authorization URL resource = %q", q.Get("resource"))
 		}
-		return "the-auth-code", q.Get("state"), nil
+		return mcpconfig.AuthorizationResponse{Code: "the-auth-code", State: q.Get("state")}, nil
 	}
 
 	if err := handler.AuthorizeFromMetadata(context.Background()); err != nil {
@@ -260,7 +270,7 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 	if tok.AccessToken != "static-access" {
 		t.Fatalf("token = %#v", tok)
 	}
-	if tok.ClientID != "" || tok.ClientSecret != "" {
+	if tok.ClientID != "static-client" || tok.Issuer != srv.URL || tok.ClientSecret != "" {
 		t.Fatalf("token stored static client fields = %#v", tok)
 	}
 	if !handler.didAuthorize() {
@@ -274,9 +284,9 @@ func TestAuthorizeFromMetadataRequiresStaticClientWhenNoDCR(t *testing.T) {
 	handler := newOAuthHandler(server, newMemTokenStore(), http.DefaultClient)
 	handler.mode = oauthModeInteractive
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
-	handler.fetch = func(context.Context, string) (string, string, error) {
+	handler.fetch = func(context.Context, string) (mcpconfig.AuthorizationResponse, error) {
 		t.Fatal("fetch should not run without a client")
-		return "", "", nil
+		return mcpconfig.AuthorizationResponse{}, nil
 	}
 
 	err := handler.AuthorizeFromMetadata(context.Background())
@@ -305,13 +315,13 @@ func TestAuthorizeFromMetadataPrefersClientMetadataDocument(t *testing.T) {
 	handler.mode = oauthModeInteractive
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	handler.broker = oauthbroker.Broker{URL: brokerURL}
-	handler.fetch = func(_ context.Context, authURL string) (string, string, error) {
+	handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
 		u, _ := url.Parse(authURL)
 		q := u.Query()
 		if q.Get("client_id") != clientID || q.Get("redirect_uri") != brokerURL || q.Get("state") != "broker-state" {
 			t.Errorf("authorization URL = %s", authURL)
 		}
-		return "the-auth-code", q.Get("state"), nil
+		return mcpconfig.AuthorizationResponse{Code: "the-auth-code", State: q.Get("state")}, nil
 	}
 
 	if err := handler.AuthorizeFromMetadata(context.Background()); err != nil {

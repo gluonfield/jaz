@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -112,10 +111,11 @@ func (t *MCPTools) AddShowWidgetTo(server *mcp.Server) {
 }
 
 func (t *MCPTools) ReadMe(_ context.Context, req *mcp.CallToolRequest, input ReadMeInput) (*mcp.CallToolResult, any, error) {
-	if slices.Contains(input.Modules, "canvas") {
-		return t.canvasGuide(req)
+	guide, err := t.Guide(mcpsession.SessionID(req), input)
+	if err != nil {
+		return nil, nil, err
 	}
-	return textResult(BuildReadMeGuide(input.Modules, input.Platform))
+	return textResult(guide)
 }
 
 func (t *MCPTools) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input ShowWidgetInput) (*mcp.CallToolResult, any, error) {
@@ -123,12 +123,11 @@ func (t *MCPTools) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input
 	if err != nil {
 		return nil, nil, err
 	}
-	return t.Present(req, artifact)
+	return t.Present(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationArtifact, Artifact: artifact})
 }
 
 // Present shows an artifact in the user's thread and keeps it in the transcript.
-func (t *MCPTools) Present(req *mcp.CallToolRequest, artifact *sessionevents.ArtifactEvent) (*mcp.CallToolResult, any, error) {
-	sessionID := mcpsession.SessionID(req)
+func (t *MCPTools) Present(sessionID string, artifact *sessionevents.PresentationEvent) (*mcp.CallToolResult, any, error) {
 	if sessionID == "" {
 		return nil, nil, errors.New("artifact delivery requires a session")
 	}

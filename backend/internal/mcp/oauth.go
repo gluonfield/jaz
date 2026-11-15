@@ -7,17 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
-	"runtime"
+	"slices"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/oauthbroker"
@@ -52,7 +48,7 @@ type oauthHandler struct {
 
 // codeFetcher directs the user through the authorization URL (e.g. opens a browser)
 // and returns the authorization code and state once the redirect arrives.
-type codeFetcher func(ctx context.Context, authURL string) (code, state string, err error)
+type codeFetcher func(ctx context.Context, authURL string) (mcpconfig.AuthorizationResponse, error)
 
 type metadataDiscovery int
 
@@ -66,9 +62,7 @@ type oauthClientConfig struct {
 	clientSecret string
 	authStyle    oauth2.AuthStyle
 	static       bool
-	// metadataDocument clients redirect through the broker, the only redirect
-	// URI their document lists.
-	metadataDocument bool
+	useBroker    bool
 }
 
 type oauthMode int
@@ -195,25 +189,19 @@ func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, chall
 		return zero, errors.New("server advertised no authorization servers")
 	}
 
-	asm, err := auth.GetAuthServerMetadata(ctx, prm.AuthorizationServers[0], h.httpClient)
+	asm, err := authorizationServerMetadata(ctx, prm.AuthorizationServers[0], h.httpClient)
 	if err != nil {
 		return zero, fmt.Errorf("authorization server metadata: %w", err)
 	}
-	if asm == nil {
-		base := strings.TrimRight(prm.AuthorizationServers[0], "/")
-		asm = &oauthex.AuthServerMeta{
-			Issuer:                base,
-			AuthorizationEndpoint: base + "/authorize",
-			TokenEndpoint:         base + "/token",
-			RegistrationEndpoint:  base + "/register",
-		}
+	if asm == nil || !slices.Contains(asm.CodeChallengeMethodsSupported, "S256") {
+		return zero, errors.New("authorization server must advertise S256 PKCE support in its OAuth metadata")
 	}
 
 	scopes := scopesFromChallenges(challenges)
 	if len(scopes) == 0 {
 		scopes = prm.ScopesSupported
 	}
-	clientConfig, err := h.authorizationClientConfig(ctx, asm)
+	clientConfig, err := h.authorizationClientConfig(ctx, asm.AuthServerMeta)
 	if err != nil {
 		return zero, err
 	}
@@ -240,15 +228,24 @@ func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, chall
 		oauth2.SetAuthURLParam("resource", prm.Resource),
 	)
 
-	code, gotState, err := h.fetch(ctx, authURL)
+	response, err := h.fetch(ctx, authURL)
 	if err != nil {
 		return zero, err
 	}
-	if gotState != state {
+	if response.State != state {
 		return zero, errors.New("authorization state mismatch")
 	}
+	if response.Issuer != "" && response.Issuer != asm.Issuer || asm.ResponseIssuerSupported && response.Issuer == "" {
+		return zero, errors.New("authorization response issuer is missing or does not match the authorization server")
+	}
+	if response.Error != "" {
+		return zero, fmt.Errorf("authorization failed: %s", response.Error)
+	}
+	if response.Code == "" {
+		return zero, errors.New("authorization returned no code")
+	}
 
-	token, err := cfg.Exchange(h.exchangeContext(ctx), code,
+	token, err := cfg.Exchange(h.exchangeContext(ctx), response.Code,
 		oauth2.VerifierOption(verifier),
 		oauth2.SetAuthURLParam("resource", prm.Resource),
 	)
@@ -261,7 +258,8 @@ func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, chall
 		RefreshToken: token.RefreshToken,
 		TokenType:    token.TokenType,
 		Expiry:       token.Expiry,
-		ClientID:     storedClientID(clientConfig),
+		ClientID:     clientConfig.clientID,
+		Issuer:       asm.Issuer,
 		ClientSecret: dynamicClientSecret(clientConfig),
 		AuthURL:      asm.AuthorizationEndpoint,
 		TokenURL:     asm.TokenEndpoint,
@@ -274,6 +272,16 @@ func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, chall
 
 func (h *oauthHandler) authorizationClientConfig(ctx context.Context, asm *oauthex.AuthServerMeta) (oauthClientConfig, error) {
 	if h.oauth.ClientID != "" {
+		if h.oauth.Issuer != "" && h.oauth.Issuer != asm.Issuer {
+			return oauthClientConfig{}, errors.New("configured OAuth client issuer does not match the server's authorization server; update the OAuth client settings")
+		}
+		saved, ok, err := h.store.LoadToken(ctx, h.tokenID)
+		if err != nil {
+			return oauthClientConfig{}, err
+		}
+		if ok && saved.Issuer != "" && saved.Issuer != asm.Issuer && saved.ClientID == h.oauth.ClientID {
+			return oauthClientConfig{}, errors.New("authorization server changed; register a client with the new issuer and update the OAuth client settings")
+		}
 		clientSecret, err := h.staticClientSecret()
 		if err != nil {
 			return oauthClientConfig{}, err
@@ -282,15 +290,24 @@ func (h *oauthHandler) authorizationClientConfig(ctx context.Context, asm *oauth
 		if clientSecret != "" {
 			authStyle = oauth2.AuthStyleAutoDetect
 		}
-		return oauthClientConfig{clientID: h.oauth.ClientID, clientSecret: clientSecret, authStyle: authStyle, static: true}, nil
+		return oauthClientConfig{clientID: h.oauth.ClientID, clientSecret: clientSecret, authStyle: authStyle, static: true, useBroker: h.broker.URL != ""}, nil
 	}
 	if asm.ClientIDMetadataDocumentSupported && h.broker.URL != "" {
-		return oauthClientConfig{clientID: h.broker.ClientMetadataURL(), authStyle: oauth2.AuthStyleInParams, metadataDocument: true}, nil
+		return oauthClientConfig{clientID: h.broker.ClientMetadataURL(), authStyle: oauth2.AuthStyleInParams, useBroker: true}, nil
 	}
 	if asm.RegistrationEndpoint == "" {
-		return oauthClientConfig{}, errors.New("authorization server does not support dynamic client registration; configure an OAuth client ID")
+		return oauthClientConfig{}, h.clientSetupError("authorization server does not support dynamic client registration")
+	}
+	applicationType := "web"
+	callback, err := url.Parse(h.redirectURL)
+	if err != nil {
+		return oauthClientConfig{}, err
+	}
+	if callback.Hostname() == "localhost" || callback.Hostname() == "127.0.0.1" || callback.Hostname() == "::1" {
+		applicationType = "native"
 	}
 	reg, err := oauthex.RegisterClient(ctx, asm.RegistrationEndpoint, &oauthex.ClientRegistrationMetadata{
+		ApplicationType:         applicationType,
 		RedirectURIs:            []string{h.redirectURL},
 		ClientName:              "Jaz",
 		GrantTypes:              []string{"authorization_code", "refresh_token"},
@@ -298,17 +315,33 @@ func (h *oauthHandler) authorizationClientConfig(ctx context.Context, asm *oauth
 		TokenEndpointAuthMethod: "none",
 	}, h.httpClient)
 	if err != nil {
-		return oauthClientConfig{}, fmt.Errorf("register client: %w", err)
+		return oauthClientConfig{}, h.clientSetupError(fmt.Sprintf("automatic client registration failed (%v); the provider may require authenticated registration", err))
 	}
-	return oauthClientConfig{clientID: reg.ClientID, clientSecret: reg.ClientSecret, authStyle: oauth2.AuthStyleInParams}, nil
+	authStyle := oauth2.AuthStyleInParams
+	switch reg.TokenEndpointAuthMethod {
+	case "client_secret_basic":
+		authStyle = oauth2.AuthStyleInHeader
+	case "none", "client_secret_post":
+	case "":
+		if reg.ClientSecret != "" {
+			authStyle = oauth2.AuthStyleAutoDetect
+		}
+	default:
+		return oauthClientConfig{}, h.clientSetupError("registered client requires an unsupported token endpoint authentication method")
+	}
+	return oauthClientConfig{clientID: reg.ClientID, clientSecret: reg.ClientSecret, authStyle: authStyle}, nil
 }
 
 func (h *oauthHandler) authorizationRedirect(ctx context.Context, client oauthClientConfig) (string, string, error) {
-	if client.metadataDocument {
+	if client.useBroker {
 		return h.broker.Relay(ctx, h.redirectURL)
 	}
 	state, err := randomState()
 	return h.redirectURL, state, err
+}
+
+func (h *oauthHandler) clientSetupError(reason string) error {
+	return fmt.Errorf("%s; register an OAuth client with callback %s and S256 PKCE, then configure an OAuth client ID in Settings → MCP → Edit → Advanced → OAuth (set a client secret environment variable only if required)", reason, h.broker.RedirectURL(h.redirectURL))
 }
 
 func (h *oauthHandler) refreshClientConfig(ctx context.Context, token integrationoauth.Token) (integrationoauth.ClientConfig, error) {
@@ -358,13 +391,6 @@ func dynamicClientSecret(client oauthClientConfig) string {
 		return ""
 	}
 	return client.clientSecret
-}
-
-func storedClientID(client oauthClientConfig) string {
-	if client.static {
-		return ""
-	}
-	return client.clientID
 }
 
 func (h *oauthHandler) exchangeContext(ctx context.Context) context.Context {
@@ -461,81 +487,3 @@ func authorizationStateFromURL(raw string) string {
 	}
 	return strings.TrimSpace(u.Query().Get("state"))
 }
-
-// loopbackReceiver runs a localhost HTTP server that captures the OAuth redirect.
-type loopbackReceiver struct {
-	srv         *http.Server
-	redirectURL string
-	result      chan loopbackResult
-}
-
-type loopbackResult struct {
-	code  string
-	state string
-	err   string
-}
-
-func newLoopbackReceiver() (*loopbackReceiver, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil, err
-	}
-	lb := &loopbackReceiver{
-		redirectURL: fmt.Sprintf("http://%s/callback", ln.Addr().String()),
-		result:      make(chan loopbackResult, 1),
-	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		select {
-		case lb.result <- loopbackResult{code: q.Get("code"), state: q.Get("state"), err: q.Get("error")}:
-		default:
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, callbackHTML)
-	})
-	lb.srv = &http.Server{Handler: mux}
-	go func() { _ = lb.srv.Serve(ln) }()
-	return lb, nil
-}
-
-func (lb *loopbackReceiver) fetch(ctx context.Context, authURL string) (string, string, error) {
-	if err := openBrowser(authURL); err != nil {
-		// Not fatal: the user can still complete sign-in if the URL is surfaced elsewhere.
-		fmt.Printf("Open this URL to authorize the MCP server:\n%s\n", authURL)
-	}
-	select {
-	case res := <-lb.result:
-		if res.err != "" {
-			return "", "", fmt.Errorf("authorization failed: %s", res.err)
-		}
-		if res.code == "" {
-			return "", "", errors.New("authorization returned no code")
-		}
-		return res.code, res.state, nil
-	case <-ctx.Done():
-		return "", "", ctx.Err()
-	}
-}
-
-func (lb *loopbackReceiver) close() {
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	_ = lb.srv.Shutdown(shutdownCtx)
-}
-
-func openBrowser(target string) error {
-	switch runtime.GOOS {
-	case "darwin":
-		return exec.Command("open", target).Start()
-	case "windows":
-		return exec.Command("rundll32", "url.dll,FileProtocolHandler", target).Start()
-	default:
-		return exec.Command("xdg-open", target).Start()
-	}
-}
-
-const callbackHTML = `<!doctype html><html><head><meta charset="utf-8"><title>Jaz</title></head>
-<body style="font-family:-apple-system,system-ui,sans-serif;display:grid;place-items:center;height:100vh;margin:0;color:#333">
-<div style="text-align:center"><h2 style="font-weight:600">You're signed in</h2>
-<p style="color:#666">You can close this tab and return to Jaz.</p></div></body></html>`

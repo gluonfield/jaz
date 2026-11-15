@@ -1,6 +1,3 @@
-import { getCanvas } from '@/lib/api/canvas'
-import { readSessionFile } from '@/lib/api/sessions'
-
 declare module '@tanstack/history' {
   interface HistoryState {
     canvasNavigation?: string
@@ -17,9 +14,4 @@ export function canvasLink(href: string | undefined, sessionId?: string): { sess
   } catch {
     return null
   }
-}
-
-export async function isCanvasFile(sessionId: string, path: string): Promise<boolean> {
-  const [file, canvas] = await Promise.all([readSessionFile(sessionId, path), getCanvas(sessionId)])
-  return file.path === `${canvas.dir}/canvas.json`
 }

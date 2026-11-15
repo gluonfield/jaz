@@ -90,7 +90,7 @@ export function MCPSettings() {
   const servers = useQuery({
     ...mcpServersQuery,
     refetchInterval: (query) =>
-      pendingAuthServerID || query.state.data?.some((server) => server.enabled && server.status === 'unknown')
+      pendingAuthServerID || query.state.data?.servers.some((server) => server.enabled && server.status === 'unknown')
         ? 1000
         : false,
   })
@@ -168,7 +168,7 @@ export function MCPSettings() {
   }
 
   const sortedServers = useMemo(
-    () => [...(servers.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+    () => [...(servers.data?.servers ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
     [servers.data],
   )
   const toolsServer = sortedServers.find((server) => server.id === toolsServerID) ?? null
@@ -307,7 +307,7 @@ export function MCPSettings() {
           </>
         }
       >
-        {draft ? <MCPServerForm draft={draft} onChange={setDraft} /> : null}
+        {draft ? <MCPServerForm draft={draft} onChange={setDraft} oauthRedirectURL={servers.data?.oauth_redirect_url} /> : null}
       </Modal>
 
       <MCPToolsModal server={toolsServer} onClose={() => setToolsServerID(null)} />
@@ -444,9 +444,11 @@ function StatusIcon({ server, authorizing }: { server: MCPServer; authorizing: b
 function MCPServerForm({
   draft,
   onChange,
+  oauthRedirectURL,
 }: {
   draft: Draft
   onChange: (draft: Draft) => void
+  oauthRedirectURL?: string
 }) {
   const headerCount = draft.headers?.length ?? 0
   const oauthSet = Boolean(
@@ -531,7 +533,7 @@ function MCPServerForm({
                   onChange={(event) => onChange({ ...draft, bearer_token_env_var: event.target.value })}
                 />
               </Field>
-              <OAuthEditor value={draft.oauth ?? {}} onChange={(oauth) => onChange({ ...draft, oauth })} />
+              <OAuthEditor value={draft.oauth ?? {}} onChange={(oauth) => onChange({ ...draft, oauth })} redirectURL={oauthRedirectURL} />
               <HeaderEditor
                 headers={draft.headers ?? []}
                 onChange={(headers) => onChange({ ...draft, headers })}
@@ -576,13 +578,20 @@ function Field({
 function OAuthEditor({
   value,
   onChange,
+  redirectURL,
 }: {
   value: MCPOAuthConfig
   onChange: (value: MCPOAuthConfig) => void
+  redirectURL?: string
 }) {
   return (
     <div className="space-y-2">
       <p className="text-[12px] font-medium text-ink-2">OAuth</p>
+      <p className="text-[12px] text-ink-3">
+        If the provider requires registration, create an OAuth client with S256 PKCE and enter its Client ID here.
+        {redirectURL ? <> Register this exact callback: <code className="select-all break-all">{redirectURL}</code></> : null}
+        {' '}Public clients do not need a client secret.
+      </p>
       <div className="grid gap-2 sm:grid-cols-2">
         <Input
           placeholder="Client ID"

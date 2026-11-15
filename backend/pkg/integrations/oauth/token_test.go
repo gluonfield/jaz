@@ -37,7 +37,7 @@ func TestRefresherPersistsUpdatedToken(t *testing.T) {
 		if err := r.ParseForm(); err != nil {
 			t.Fatal(err)
 		}
-		if r.Form.Get("grant_type") != "refresh_token" || r.Form.Get("refresh_token") != "old-refresh" {
+		if r.Form.Get("grant_type") != "refresh_token" || r.Form.Get("refresh_token") != "old-refresh" || r.Form.Get("resource") != "https://mcp.example.com" {
 			t.Fatalf("unexpected refresh request %s", r.Form.Encode())
 		}
 		w.Header().Set("Content-Type", "application/json")

@@ -47,8 +47,8 @@ function normalizeOAuth(oauth: MCPServerInput['oauth']): MCPServerInput['oauth']
 export const mcpServersQuery = queryOptions({
   queryKey: keys.mcpServers,
   queryFn: async () => {
-    const data = await get<{ servers: MCPServer[] | null }>('/v1/mcp/servers')
-    return (data.servers ?? []).map(normalizeServer)
+    const data = await get<{ servers: MCPServer[] | null; oauth_redirect_url: string }>('/v1/mcp/servers')
+    return { ...data, servers: (data.servers ?? []).map(normalizeServer) }
   },
 })
 
