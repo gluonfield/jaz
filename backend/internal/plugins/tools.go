@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
@@ -15,7 +16,7 @@ const ShowViewMCPToolName = "show_view"
 
 // Presenter shows an artifact in the thread the call came from.
 type Presenter interface {
-	Present(req *mcp.CallToolRequest, artifact *sessionevents.ArtifactEvent) (*mcp.CallToolResult, any, error)
+	Present(sessionID string, artifact *sessionevents.PresentationEvent) (*mcp.CallToolResult, any, error)
 }
 
 type MCPTools struct {
@@ -54,11 +55,12 @@ func (t *MCPTools) ShowView(_ context.Context, req *mcp.CallToolRequest, input S
 	if err != nil {
 		return nil, nil, err
 	}
-	artifact := &sessionevents.ArtifactEvent{Title: title, WidgetCode: html, ArtifactType: "html", File: file}
-	if input.Data != nil {
-		if artifact.Data, err = json.Marshal(input.Data); err != nil {
-			return nil, nil, err
-		}
+	if file != "" {
+		return t.Presenter.Present(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Title: title, WidgetCode: html, File: file}})
 	}
-	return t.Presenter.Present(req, artifact)
+	artifact := &sessionevents.ArtifactEvent{Title: title, WidgetCode: html, ArtifactType: "html"}
+	if artifact.Data, err = json.Marshal(input.Data); err != nil {
+		return nil, nil, err
+	}
+	return t.Presenter.Present(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationArtifact, Artifact: artifact})
 }

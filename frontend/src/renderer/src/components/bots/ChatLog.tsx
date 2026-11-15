@@ -1,6 +1,6 @@
 import { memo, useMemo, useState, type RefObject } from 'react'
 import { MCPAppFrame } from '@/components/apps/MCPAppFrame'
-import { ArtifactBlock } from '@/components/session/ArtifactBlock'
+import { PresentedContent } from '@/components/session/PresentedContent'
 import { MessageActions } from '@/components/session/MessageActions'
 import { MessageAttachments } from '@/components/session/MessageAttachments'
 import { PermissionCard } from '@/components/session/TranscriptPermissions'
@@ -99,7 +99,7 @@ export function ChatLog({
             ) : entry.kind === 'app' ? (
               <MCPAppFrame app={entry.app} call={entry.app} inline active />
             ) : entry.kind === 'artifact' ? (
-              <ArtifactBlock artifact={entry.event.artifact} onSendPrompt={onSendPrompt} />
+              entry.event.artifact ? <PresentedContent presentation={entry.event.artifact} onSendPrompt={onSendPrompt} /> : null
             ) : entry.kind === 'question' ? (
               <PermissionCard event={entry.event} resolution={entry.answer} />
             ) : (

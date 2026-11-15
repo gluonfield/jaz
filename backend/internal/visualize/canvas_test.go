@@ -1,6 +1,7 @@
 package visualize_test
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -47,13 +48,13 @@ func TestCanvasDiscoveryAndPresentationInAnOrdinaryThread(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
-	guide, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: visualize.ReadMeMCPToolName, Arguments: map[string]any{"modules": []string{"canvas"}}})
+	guide, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: visualize.ReadMeMCPToolName, Arguments: map[string]any{"modules": []string{"canvas", "diagram"}}})
 	if err != nil || guide.IsError {
 		t.Fatalf("canvas discovery = %+v, %v", guide, err)
 	}
 	file := filepath.Join(boards.Dir(session.ID), canvas.FileName)
 	text := guide.Content[0].(*mcp.TextContent).Text
-	for _, want := range []string{file, `"pages":[`, "JSON Canvas 1.0", "visualise_show_canvas", "side-panel tab"} {
+	for _, want := range []string{file, `"pages":[`, "JSON Canvas 1.0", "visualise_show_canvas", "side-panel tab", "Diagram types"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("canvas guide missing %q", want)
 		}
@@ -85,8 +86,12 @@ func TestCanvasDiscoveryAndPresentationInAnOrdinaryThread(t *testing.T) {
 	}
 	select {
 	case event := <-events:
-		if event.Artifact == nil || event.Artifact.File != file || event.Artifact.ArtifactType != "canvas" || !event.Artifact.Presented {
+		if event.Artifact == nil || event.Artifact.Kind != sessionevents.PresentationCanvas || event.Artifact.Artifact != nil || event.Artifact.View != nil || !event.Artifact.Presented {
 			t.Fatalf("canvas event = %+v", event)
+		}
+		encoded, err := json.Marshal(event)
+		if err != nil || strings.Contains(string(encoded), file) || strings.Contains(string(encoded), `"file"`) {
+			t.Fatalf("canvas presentation leaked a path: %s, %v", encoded, err)
 		}
 		stored, err := store.LoadSessionEvents(session.ID)
 		if err != nil || len(stored) != 1 || stored[0].Seq != event.Seq {

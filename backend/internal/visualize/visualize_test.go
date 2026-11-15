@@ -45,7 +45,7 @@ func TestShowWidgetSavesAndPublishesTheSameDelivery(t *testing.T) {
 		t.Fatalf("chat history = %+v, %v", page, err)
 	}
 	saved := page.Events[0]
-	if saved.Seq == 0 || saved.SessionID != session.ID || saved.Artifact == nil || saved.Artifact.Title != "System map" || saved.Artifact.WidgetCode != widgetInput().WidgetCode || !saved.Artifact.Presented {
+	if saved.Seq == 0 || saved.SessionID != session.ID || saved.Artifact == nil || saved.Artifact.Artifact.Title != "System map" || saved.Artifact.Artifact.WidgetCode != widgetInput().WidgetCode || !saved.Artifact.Presented {
 		t.Fatalf("saved artifact = %+v", saved)
 	}
 	select {

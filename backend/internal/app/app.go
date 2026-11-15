@@ -15,7 +15,6 @@ import (
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/bots"
-	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/jazagent"
@@ -48,6 +47,7 @@ import (
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
 	visualizetool "github.com/wins/jaz/backend/internal/tools/visualize"
 	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
+	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
 	"github.com/wins/jaz/backend/internal/widgets"
@@ -395,7 +395,7 @@ func NewThreadService(store *sqlitestore.Store) *threads.Service {
 	return threads.NewService(sqlitestore.NewSearchQueries(store), store)
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher, canvases *canvas.Service) *tools.Registry {
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher, visualizations *visualize.MCPTools) *tools.Registry {
 	return tools.NewRegistry(
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
 		&exectool.WriteStdinTool{Manager: commandManager},
@@ -404,7 +404,8 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 			ExtraRoots: []string{loops.AutomationsDir(store.RootDir())},
 			PathScope:  applypatch.AbsolutePaths,
 		},
-		&visualizetool.ReadMeTool{Canvases: canvases},
+		&visualizetool.ReadMeTool{Visualize: visualizations},
+		&visualizetool.ShowCanvasTool{Visualize: visualizations},
 		&visualizetool.ShowWidgetTool{},
 		&widgettool.PublishTool{Publisher: widgetPublisher},
 		&viewimagetool.Tool{Workspace: string(workspace)},

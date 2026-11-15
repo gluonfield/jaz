@@ -10,6 +10,9 @@ import (
 	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
 	visualizesvc "github.com/wins/jaz/backend/internal/visualize"
 )
@@ -48,7 +51,7 @@ func TestReadMeExecuteFiltersByModule(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		result, err := ReadMeTool{}.Execute(context.Background(), map[string]any{"modules": tc.modules})
+		result, err := ReadMeTool{Visualize: &visualizesvc.MCPTools{}}.Execute(context.Background(), map[string]any{"modules": tc.modules})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -66,7 +69,7 @@ func TestReadMeExecuteFiltersByModule(t *testing.T) {
 }
 
 func TestReadMeExecuteEmptyReturnsCore(t *testing.T) {
-	result, err := ReadMeTool{}.Execute(context.Background(), nil)
+	result, err := ReadMeTool{Visualize: &visualizesvc.MCPTools{}}.Execute(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,23 +83,64 @@ func TestReadMeExecuteEmptyReturnsCore(t *testing.T) {
 	}
 }
 
-func TestCanvasGuidanceUsesTheNativeTurnSession(t *testing.T) {
-	boards := canvas.NewService(runtimefiles.New(t.TempDir()))
-	tool := ReadMeTool{Canvases: boards}
-	input := map[string]any{"modules": []any{"canvas"}}
-	if _, err := tool.Execute(t.Context(), input); err == nil {
-		t.Fatal("canvas guidance accepted a turn without a session")
-	}
-	result, err := tool.Execute(sessioncontext.WithSessionID(t.Context(), "ordinary-thread"), input)
+func TestNativeCanvasDiscoveryAndPresentation(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(boards.Dir("ordinary-thread"), canvas.FileName)
-	if !strings.Contains(result.Content, file) || !strings.Contains(result.Content, "visualise_show_canvas") {
-		t.Fatalf("native canvas guidance did not resolve its own thread: %s", result.Content)
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boards := canvas.NewService(runtimefiles.New(store.RootDir()))
+	bus := sessionevents.New()
+	events := bus.Subscribe(t.Context(), session.ID)
+	service := visualizesvc.NewMCPTools(store, store, bus, boards)
+	read := ReadMeTool{Visualize: service}
+	show := ShowCanvasTool{Visualize: service}
+	input := map[string]any{"modules": []any{"canvas", "diagram"}}
+	if _, err := read.Execute(t.Context(), input); err == nil {
+		t.Fatal("canvas guidance accepted a turn without a session")
+	}
+	ctx := sessioncontext.WithSessionID(t.Context(), session.ID)
+	result, err := read.Execute(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(boards.Dir(session.ID), canvas.FileName)
+	for _, want := range []string{file, "visualise_show_canvas", "Diagram types"} {
+		if !strings.Contains(result.Content, want) {
+			t.Fatalf("native guide missing %q", want)
+		}
 	}
 	if _, err := os.Stat(file); !os.IsNotExist(err) {
 		t.Fatalf("discovery created a canvas: %v", err)
+	}
+	if _, err := show.Execute(ctx, nil); err == nil {
+		t.Fatal("presentation accepted a missing canvas")
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte(`{"pages":[{"id":"plan","name":"Plan","nodes":[],"edges":[]}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err = show.Execute(ctx, nil)
+	if err != nil || !strings.Contains(result.Content, visualizesvc.SavedMessage) {
+		t.Fatalf("native presentation = %+v, %v", result, err)
+	}
+	select {
+	case event := <-events:
+		if event.Artifact == nil || event.Artifact.Kind != sessionevents.PresentationCanvas || !event.Artifact.Presented || !event.Delivers() {
+			t.Fatalf("native event = %+v", event)
+		}
+		stored, err := store.LoadSessionEvents(session.ID)
+		if err != nil || len(stored) != 1 || stored[0].Seq != event.Seq {
+			t.Fatalf("native presentation not persisted: %+v, %v", stored, err)
+		}
+	default:
+		t.Fatal("native presentation did not publish")
 	}
 }
 

@@ -1,7 +1,7 @@
 import { exerciseFrameNavigation } from './links'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet } from '@tanstack/react-router'
-import { useLayoutEffect } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from '@/App'
 import { ThreadCanvas } from '@/components/canvas/ThreadCanvas'
@@ -46,6 +46,7 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
   }
   let panel: ReturnType<typeof useSidePanelState>
   let activeSessionId: string
+  let setSideChatAvailable: (available: boolean) => void
   let chatRenders = 0
   let terminalConnections = 0
   let terminalCloses = 0
@@ -91,11 +92,13 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
   const noop = async () => {}
   function Chat({ sessionId }: { sessionId: string }) {
     chatRenders += 1
-    const state = useSidePanelState(sessionId, { availability: { 'side-chat': true } })
+    const [available, setAvailable] = useState(true)
+    const state = useSidePanelState(sessionId, { sideChatAvailable: available })
     const currentSession = { ...session, id: sessionId }
     const isMobile = useIsMobile()
     const contexts = useCanvasContexts({ contexts: [], removeContext: () => {}, replaceContexts: () => {} })
     useLayoutEffect(() => {
+      setSideChatAvailable = setAvailable
       panel = state
       activeSessionId = sessionId
     })
@@ -233,10 +236,25 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
     if (!closeShortcutOnly) {
       await click(button('Side Panel')!)
       await until(() => panel.open && panel.mode === 'tabs' && Math.abs(element.querySelector('[role="separator"]')!.parentElement!.getBoundingClientRect().width - panel.width) < 1)
+      const originalTabs = panel.tabs
+      setSideChatAvailable(true)
+      panel.resize(481)
+      await until(() => panel.width === 481)
+      if (panel.tabs !== originalTabs) throw new Error('Unrelated panel updates replaced the tabs array')
+      panel.addTab('side-chat')
+      await until(() => panel.activeTab?.kind === 'side-chat')
+      setSideChatAvailable(false)
+      await until(() => !panel.tabs.some((tab) => tab.kind === 'side-chat'))
+      await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'other' } })
+      await until(() => activeSessionId === 'other')
+      await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'tabs' } })
+      await until(() => activeSessionId === 'tabs')
+      await until(() => panel.activeTab?.kind === 'side-chat')
+      await panel.closeTab('side-chat')
       session.status = 'running'
       if (button('Canvas')) throw new Error('Canvas is offered as a new tab')
       panel.close()
-      await click([...element.querySelectorAll('[role=link]')].find((link) => link.textContent === 'Open canvas')!)
+      panel.openView({ kind: 'canvas' })
       await until(() => panel?.activeTab?.kind === 'canvas' && Boolean(element.querySelector('.react-flow__node[data-id="two"]')))
       panel.resize(480)
       const body = () => document.getElementById('panel-body-canvas')!
@@ -301,7 +319,9 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
       await until(() => node('two').textContent?.includes('Live agent update') === true)
       if (canvasReads < 2) throw new Error('Canvas did not poll for agent edits')
       panel.openFile('/workspace/canvas.json')
-      await until(() => panel.tabs.filter((tab) => tab.kind === 'canvas').length === 1)
+      await until(() => panel.activeTab?.kind === 'file')
+      panel.openView({ kind: 'canvas' })
+      await until(() => panel.activeTab?.kind === 'canvas' && panel.tabs.filter((tab) => tab.kind === 'canvas').length === 1)
       await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'other-chat' } })
       await until(() => activeSessionId === 'other-chat')
       await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'tabs' } })
@@ -692,7 +712,7 @@ window.onData(report);
     }
     window.addEventListener('message', receiveView)
     queryClient.setQueryData(keys.sessionFile('tabs', 'status.json'), viewFile(1))
-    panel.openView({ title: 'Tender status', widget_code: viewCode, artifact_type: 'html', file: 'status.json' })
+    panel.openView({ kind: 'plugin-view', view: { title: 'Tender status', widget_code: viewCode, file: 'status.json' } })
     await until(() => panel.open && panel.activeTab?.kind === 'view' && viewReports.at(-1)?.count === 1)
     if (document.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.trim() !== 'Tender status') {
       throw new Error('A plugin view tab did not take its title')
@@ -705,7 +725,7 @@ window.onData(report);
     }
     await until(() => panel.activeTab?.id === 'file:/NOTES.md')
     const viewTabs = panel.tabs.filter((tab) => tab.kind === 'view').length
-    panel.openView({ title: 'Tender status', widget_code: viewCode, artifact_type: 'html', file: 'status.json' })
+    panel.openView({ kind: 'plugin-view', view: { title: 'Tender status', widget_code: viewCode, file: 'status.json' } })
     await until(() => panel.activeTab?.kind === 'view')
     if (panel.tabs.filter((tab) => tab.kind === 'view').length !== viewTabs) {
       throw new Error('Opening the same plugin view twice made a second tab')

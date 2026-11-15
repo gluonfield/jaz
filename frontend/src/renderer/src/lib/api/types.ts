@@ -723,16 +723,25 @@ export interface GoalState {
 export type GoalEvent = GoalState
 
 export interface ArtifactEvent {
-  presented?: boolean
   title: string
   widget_code: string
   loading_messages?: string[]
-  artifact_type?: 'svg' | 'html' | 'canvas'
+  artifact_type?: 'svg' | 'html'
   // A plugin's view draws data, which it reads as window.data.
   data?: unknown
-  // File names a stored canvas or a plugin view's JSON data source.
-  file?: string
 }
+
+export interface PluginView {
+  title: string
+  widget_code: string
+  file: string
+}
+
+export type PresentationEvent = { presented?: boolean } & (
+  | { kind: 'artifact'; artifact: ArtifactEvent }
+  | { kind: 'plugin-view'; view: PluginView }
+  | { kind: 'canvas' }
+)
 
 // MCPAppEvent is an agent's call to a tool its MCP server links to an MCP
 // App, which the thread shows with the call's arguments and result.
@@ -1078,7 +1087,7 @@ export interface SessionEvent {
   plan?: PlanEvent
   goal?: GoalEvent
   permission?: ACPPermission
-  artifact?: ArtifactEvent
+  artifact?: PresentationEvent
   loop_created?: LoopCreatedEvent
   bot_activity?: BotActivityEvent
   room_message?: RoomMessageEvent

@@ -24,6 +24,7 @@ import (
 	"github.com/wins/jaz/backend/internal/tools"
 	applypatch "github.com/wins/jaz/backend/internal/tools/applypatch"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
+	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 type appTestTool string
@@ -50,7 +51,7 @@ func TestNewToolRegistryAllowsApplyPatchAbsolutePaths(t *testing.T) {
 		store,
 		sessionevents.New(),
 		nil,
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewMCPTools(store, store, sessionevents.New(), canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	tool, ok := registry.Get("apply_patch")
 	if !ok {
