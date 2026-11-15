@@ -21,7 +21,7 @@ type listResponse struct {
 	Plugins []plugins.Plugin `json:"plugins"`
 }
 
-func NewHandler(store *plugins.Store, sessions plugins.SessionStore) *Handler {
+func NewHandler(sessions plugins.SessionStore, store *plugins.Store) *Handler {
 	return &Handler{store: store, sessions: sessions}
 }
 

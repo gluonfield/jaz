@@ -18,7 +18,7 @@ import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useTaskWorkspace } from '@/lib/hooks/useTaskWorkspace'
 import { modelSuggestionLabel } from '@/lib/models'
-import { NEW_SESSION_DIRECTORY_KEY, NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionConfig'
+import { NEW_SESSION_DIRECTORY_KEY, NEW_SESSION_DRAFT_KEY, type NewThreadPrompt } from '@/lib/newSessionConfig'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useGlobalVoice } from '@/lib/voice/VoiceProvider'
@@ -32,8 +32,6 @@ type NewSearch = {
 declare module '@tanstack/history' {
   interface HistoryState {
     startVoice?: boolean
-    appPrompt?: string
-    draftPrompt?: string
   }
 }
 
@@ -59,13 +57,8 @@ function NewSessionPage() {
   const toast = useToast()
   const [creating, setCreating] = useState(false)
   const controls = useNewThreadControls()
-  const draftPrompt = useLocation({ select: (location) => location.state.draftPrompt })
+  const incomingPrompt = useLocation({ select: (location) => location.state.newThreadPrompt })
   const { setDraft } = useComposerDraft({ storageKey: NEW_SESSION_DRAFT_KEY })
-  useEffect(() => {
-    if (!draftPrompt) return
-    setDraft({ text: draftPrompt, tokens: new Map() })
-    void navigate({ replace: true, state: (previous) => ({ ...previous, draftPrompt: undefined }) })
-  }, [draftPrompt, navigate, setDraft])
   const { runtimeAvailable, runtime } = controls
   const [directory, setDirectory] = useState(
     () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),
@@ -152,24 +145,19 @@ function NewSessionPage() {
     }
   }
 
-  // A sidebar app's message opens this page with a prompt. It starts once
-  // the agent and model are ready, leaves the composer's draft alone and
-  // replaces this page in history, so Back returns to the app.
-  const appPrompt = useLocation({ select: (location) => location.state.appPrompt })
-  const startedPrompt = useRef<string>(undefined)
-  const startAppPrompt = useEffectEvent((prompt: string) => {
-    if (startedPrompt.current === prompt) {
-      return
-    }
-    startedPrompt.current = prompt
-    void navigate({ replace: true, state: (previous) => ({ ...previous, appPrompt: undefined }) })
-    void handleStart(prompt, {}, true)
+  const handledPrompt = useRef<NewThreadPrompt>(undefined)
+  const consumePrompt = useEffectEvent((prompt: NewThreadPrompt) => {
+    if (handledPrompt.current === prompt) return
+    handledPrompt.current = prompt
+    void navigate({ replace: true, state: (previous) => ({ ...previous, newThreadPrompt: undefined }) })
+    if (prompt.mode === 'draft') setDraft({ text: prompt.text, tokens: new Map() })
+    else void handleStart(prompt.text, {}, true)
   })
   useEffect(() => {
-    if (appPrompt && controls.ready && workspaceReady && (search.project === undefined || search.project === directory)) {
-      startAppPrompt(appPrompt)
-    }
-  }, [appPrompt, controls.ready, workspaceReady, search.project, directory])
+    if (!incomingPrompt) return
+    if (incomingPrompt.mode === 'send' && (!controls.ready || !workspaceReady || (search.project !== undefined && search.project !== directory))) return
+    consumePrompt(incomingPrompt)
+  }, [incomingPrompt, controls.ready, workspaceReady, search.project, directory])
 
   // Phone: the controls live in a header dropdown, which sits above the
   // composer, so their own popovers open downward.

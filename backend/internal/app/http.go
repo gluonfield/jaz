@@ -7,6 +7,7 @@ import (
 	feedcore "github.com/wins/jaz/backend/internal/feed"
 	agentsessionsapi "github.com/wins/jaz/backend/internal/httpapi/agentsessions"
 	canvasapi "github.com/wins/jaz/backend/internal/httpapi/canvas"
+	pluginsapi "github.com/wins/jaz/backend/internal/httpapi/plugins"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	voiceapi "github.com/wins/jaz/backend/internal/httpapi/voice"
@@ -45,6 +46,7 @@ func HTTPModule() fx.Option {
 		fx.Annotate(sessionsapi.NewGoalHandler, fx.From(new(*acp.Manager))),
 		canvas.NewService,
 		plugins.New,
+		fx.Annotate(pluginsapi.NewHandler, fx.From(new(*sqlitestore.Store))),
 		fx.Annotate(canvasapi.NewHandler, fx.From(new(*sqlitestore.Store))),
 		NewRoutes,
 		NewPublicRoutes,

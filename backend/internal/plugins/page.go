@@ -31,7 +31,7 @@ func validatePage(p *Page, views []string) error {
 }
 
 type SessionStore interface {
-	ListSessions(storage.SessionFilter) ([]storage.Session, error)
+	ListSessionFolders() ([]storage.SessionFolder, error)
 }
 
 type PageContent struct {
@@ -70,42 +70,36 @@ func (s *Store) Page(plugin string, sessions SessionStore) (PageContent, error) 
 	if err != nil {
 		return PageContent{}, err
 	}
-	var threads []storage.Session
-	for _, archived := range []bool{false, true} {
-		batch, err := sessions.ListSessions(storage.SessionFilter{IncludeChildren: true, IncludeSourced: true, Archived: archived})
-		if err != nil {
-			return PageContent{}, err
-		}
-		threads = append(threads, batch...)
+	threads, err := sessions.ListSessionFolders()
+	if err != nil {
+		return PageContent{}, err
 	}
-	slices.SortFunc(threads, func(a, b storage.Session) int {
+	slices.SortFunc(threads, func(a, b storage.SessionFolder) int {
 		if order := b.UpdatedAt.Compare(a.UpdatedAt); order != 0 {
 			return order
 		}
 		return strings.Compare(a.ID, b.ID)
 	})
-	page := PageContent{View: html, Items: []PageItem{}}
-	folders := map[string]int{}
+	folders := map[string][]PageThread{}
+	var ordered []string
 	for _, thread := range threads {
-		if thread.RuntimeRef == nil || !filepath.IsAbs(thread.RuntimeRef.Cwd) {
+		if !filepath.IsAbs(thread.Folder) {
 			continue
 		}
-		folder := filepath.Clean(thread.RuntimeRef.Cwd)
-		index, found := folders[folder]
-		if !found {
-			index = len(page.Items)
-			folders[folder] = index
-			data, err := os.ReadFile(filepath.Join(folder, installed.Page.File))
-			var value any
-			if err != nil || json.Unmarshal(data, &value) != nil {
-				folders[folder] = -1
-				continue
-			}
-			page.Items = append(page.Items, PageItem{Folder: folder, Data: value, Threads: []PageThread{}})
+		folder := filepath.Clean(thread.Folder)
+		if _, found := folders[folder]; !found {
+			ordered = append(ordered, folder)
 		}
-		if index >= 0 {
-			page.Items[index].Threads = append(page.Items[index].Threads, PageThread{ID: thread.ID, Title: thread.Title, Status: thread.Status, UpdatedAt: thread.UpdatedAt})
+		folders[folder] = append(folders[folder], PageThread{ID: thread.ID, Title: thread.Title, Status: thread.Status, UpdatedAt: thread.UpdatedAt})
+	}
+	page := PageContent{View: html, Items: []PageItem{}}
+	for _, folder := range ordered {
+		data, err := os.ReadFile(filepath.Join(folder, installed.Page.File))
+		var value any
+		if err != nil || json.Unmarshal(data, &value) != nil {
+			continue
 		}
+		page.Items = append(page.Items, PageItem{Folder: folder, Data: value, Threads: folders[folder]})
 	}
 	return page, nil
 }

@@ -122,7 +122,7 @@ export function MCPAppFrame({ app, active, inline = false, file, call, deepLink,
   const sendMessage = useEffectEvent((text: string) => {
     if (!text || document.activeElement !== frame.current) return { isError: true }
     if (thread) thread.send(text)
-    else void navigate({ to: '/new', state: { appPrompt: text } })
+    else void navigate({ to: '/new', state: { newThreadPrompt: { text, mode: 'send' } } })
     return {}
   })
   const reportState = useEffectEvent((text: string) => thread?.setModelContext?.(view, tool, text))
