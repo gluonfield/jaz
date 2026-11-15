@@ -4,6 +4,10 @@ import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet
 import { useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from '@/App'
+import { ThreadCanvas } from '@/components/canvas/ThreadCanvas'
+import { useCanvasContexts } from '@/components/canvas/useCanvasContexts'
+import { applyPagePatch } from '@/components/canvas/board'
+import type { CanvasDocument } from '@/lib/api/canvas'
 import { SidePanel } from '@/components/session/SidePanel'
 import { SessionTitlebar } from '@/components/session/SessionTitlebar'
 import { SidePanelDrawer } from '@/components/session/SidePanelDrawer'
@@ -33,9 +37,8 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
   queryClient.setQueryData(keys.sessionRepoChanges('tabs'), { files: [{ path: 'change.ts', status: 'modified', added: 1, deleted: 0 }], total_added: 1, total_deleted: 0 })
   const diffKey = keys.sessionRepoDiff('tabs', 'modified:change.ts', '', '')
   queryClient.setQueryData(diffKey, { path: 'change.ts', patch: '@@ -1 +1 @@\n-before\n+after' })
-  for (const path of ['/ANALYSIS.md', '/NOTES.md']) {
-    queryClient.setQueryData(keys.sessionFile('tabs', path), { path, content: `# ${path.slice(1)}\n\nRetained document content.\n\n## Routes\n\n| Route | Cost |\n| --- | --- |\n| Press | £1 |\n\n[Open notes](/NOTES.md)` })
-  }
+  const documents = ['/ANALYSIS.md', '/NOTES.md'].map((path) => ({ path, content: `# ${path.slice(1)}\n\nRetained document content.\n\n## Routes\n\n| Route | Cost |\n| --- | --- |\n| Press | £1 |\n\n[Open notes](/NOTES.md)` }))
+  for (const file of documents) queryClient.setQueryData(keys.sessionFile('tabs', file.path), file)
   const session: Session = {
     id: 'tabs', slug: 'tabs', title: 'Manufacturing research', runtime: 'acp', status: 'idle',
     created_at: '', updated_at: '', last_attention_at: '',
@@ -88,9 +91,10 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
   const noop = async () => {}
   function Chat({ sessionId }: { sessionId: string }) {
     chatRenders += 1
-    const state = useSidePanelState(sessionId, { sideChatAvailable: true })
+    const state = useSidePanelState(sessionId, { availability: { 'side-chat': true } })
     const currentSession = { ...session, id: sessionId }
     const isMobile = useIsMobile()
+    const contexts = useCanvasContexts({ contexts: [], removeContext: () => {}, replaceContexts: () => {} })
     useLayoutEffect(() => {
       panel = state
       activeSessionId = sessionId
@@ -105,13 +109,14 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
         <div className="min-w-0 flex-1 p-8 text-ink" data-tab-chat>
           <FileReaderLinkProvider sessionId={sessionId} onOpen={state.openFile}>
             <PreviewLinkProvider onOpen={state.openPreview}>
-              <RenderedMarkdown text={`# Product research\n\nReview the [analysis](/ANALYSIS.md) and compare it with the [supplier website](${location.origin}/target?tabs=one).\n\n[Local report](${fixture.path})`} />
+              <RenderedMarkdown text={`# Product research\n\nReview the [analysis](/ANALYSIS.md) and compare it with the [supplier website](${location.origin}/target?tabs=one).\n\n[Local report](${fixture.path})\n\n[Open canvas](/workspace/canvas.json)`} />
               <MessageMarkdown text="/ANALYSIS.md" />
+              <textarea aria-label="Conversation draft" />
             </PreviewLinkProvider>
           </FileReaderLinkProvider>
         </div>
         <SidePanelDrawer panel={state} isMobile={isMobile}>
-          <SidePanel session={currentSession} panel={state} subagents={[]} spawnedThreads={[]} working={false} sideChatAvailable sideChatEvents={[]} onSend={noop} onQueuePrompt={noop} onQueueAction={noop} onSendSideChat={noop} />
+          <SidePanel canvas={<ThreadCanvas sessionId={sessionId} inset={0} working={currentSession.status === 'running'} {...contexts} onPrompt={noop} />} session={currentSession} panel={state} subagents={[]} spawnedThreads={[]} working={currentSession.status === 'running'} sideChatAvailable sideChatEvents={[]} onSend={noop} onQueuePrompt={noop} onQueueAction={noop} onSendSideChat={noop} />
         </SidePanelDrawer>
       </div>
     </div>
@@ -178,7 +183,7 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
       return false
     }
     try {
-      return await evaluate(view, `document.readyState === "complete" && (${condition})`) === true
+      return await evaluate(view, `document.readyState === "complete" && location.href !== "about:blank" && (${condition})`) === true
     } catch (error) {
       if (!isPreviewWebviewPending(error) && !(error instanceof Error && error.message.includes('Cannot find default execution context'))) {
         throw error
@@ -198,12 +203,117 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
     await click(button(label)!)
     await until(() => !document.querySelector('[aria-label="New tab"][aria-expanded="true"]'))
   }
+  const originalFetch = window.fetch
+  let canvas: CanvasDocument = { version: '1', dir: '/workspace', pages: [{ id: 'page-1', name: 'Plan', nodes: [
+    { id: 'one', type: 'text', text: 'Canvas beside the conversation', x: 0, y: 0, width: 240, height: 120 },
+    { id: 'two', type: 'text', text: 'Agent edits appear here', x: 600, y: 200, width: 240, height: 120 },
+  ], edges: [], files: {}, components: {} }] }
+  let canvasReads = 0
+  window.fetch = async (input, init) => {
+    const url = new URL(String(input), location.origin)
+    const path = url.pathname
+    const file = path === '/v1/sessions/tabs/file' ? documents.find((file) => file.path === url.searchParams.get('path')) : undefined
+    if (file) return Response.json(file)
+    if (path === '/v1/sessions/tabs/file' && url.searchParams.get('path') === '/workspace/canvas.json') return Response.json({ path: '/workspace/canvas.json', content: JSON.stringify(canvas) })
+    if (path === '/v1/sessions/tabs/canvas/layout') return new Response(null, { status: 204 })
+    if (path !== '/v1/sessions/tabs/canvas') return originalFetch(input, init)
+    if (init?.method === 'PATCH') {
+      canvas = { ...applyPagePatch(canvas, JSON.parse(String(init.body))), version: String(Number(canvas.version) + 1) }
+      return Response.json({ version: canvas.version })
+    }
+    canvasReads += 1
+    return Response.json(canvas)
+  }
   try {
     await window.smoke.resize(1440, 900)
     setThemePref('dark')
     root.render(<QueryClientProvider client={queryClient}><App router={router} /></QueryClientProvider>)
     await until(() => Boolean(button('Side Panel')))
     await until(() => Boolean(element.querySelector('.markdown-document-card table')))
+    if (!closeShortcutOnly) {
+      await click(button('Side Panel')!)
+      await until(() => panel.open && panel.mode === 'tabs' && Math.abs(element.querySelector('[role="separator"]')!.parentElement!.getBoundingClientRect().width - panel.width) < 1)
+      session.status = 'running'
+      if (button('Canvas')) throw new Error('Canvas is offered as a new tab')
+      panel.close()
+      await click([...element.querySelectorAll('[role=link]')].find((link) => link.textContent === 'Open canvas')!)
+      await until(() => panel?.activeTab?.kind === 'canvas' && Boolean(element.querySelector('.react-flow__node[data-id="two"]')))
+      panel.resize(480)
+      const body = () => document.getElementById('panel-body-canvas')!
+      const node = (id: string) => body().querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"]`)!
+      const transform = () => body().querySelector<HTMLElement>('.react-flow__viewport')!.style.transform
+      const fitted = () => {
+        const bounds = body().getBoundingClientRect()
+        return ['one', 'two'].every((id) => {
+          const r = node(id).getBoundingClientRect()
+          return r.left >= bounds.left && r.right <= bounds.right && r.top >= bounds.top && r.bottom <= bounds.bottom
+        })
+      }
+      await until(() => Math.abs(body().getBoundingClientRect().width - 472) < 1)
+      await click(body().querySelector('[title="Fit everything"]'))
+      await until(fitted)
+      if (element.querySelector('.canvas-chat') || element.querySelector('[data-tab-chat]')!.getBoundingClientRect().right > body().getBoundingClientRect().left) {
+        throw new Error('Canvas tab duplicated or covered the conversation')
+      }
+      const dock = body().querySelector('[aria-label="Canvas tools"]')!.getBoundingClientRect()
+      if (dock.left < body().getBoundingClientRect().left || dock.right > body().getBoundingClientRect().right) throw new Error('Canvas tools escaped the narrow panel')
+      await window.smoke.capture('canvas-side-panel-tab')
+      const beforeZoom = transform()
+      await click(body().querySelector('[aria-label="Zoom in"]'))
+      await until(() => transform() !== beforeZoom)
+      const point = body().getBoundingClientRect()
+      const beforeWheel = transform()
+      await window.smoke.wheel(Math.round(point.x + 40), Math.round(point.y + 160), 60)
+      await until(() => transform() !== beforeWheel)
+      const beforePinch = transform()
+      await window.smoke.wheel(Math.round(point.x + 40), Math.round(point.y + 160), -30, true)
+      await until(() => transform() !== beforePinch)
+      await click(body().querySelector('[title="Fit everything"]'))
+      await until(fitted)
+      await click(node('one'))
+      await until(() => node('one').classList.contains('selected'))
+      await click(element.querySelector('[aria-label="Conversation draft"]'))
+      await window.smoke.key('D', ['meta'])
+      await window.smoke.key('Backspace')
+      if (canvas.pages[0].nodes.length !== 2) throw new Error('Conversation keys edited the canvas')
+      await click(tab('canvas'))
+      await until(() => Boolean(node('one')))
+      await click(node('one'))
+      await window.smoke.key('D', ['meta'])
+      await until(() => canvas.pages[0].nodes.length === 3)
+      const mountedBoard = body().querySelector('.canvas')
+      const savedViewport = transform()
+      panel.openFile('/ANALYSIS.md')
+      await until(() => panel.activeTab?.kind === 'file' && body().hidden)
+      if (body().querySelector('.canvas') !== mountedBoard) throw new Error('Switching tabs unmounted the canvas')
+      await click(tab('canvas'))
+      await until(() => !body().hidden && body().getBoundingClientRect().width > 400)
+      if (transform() !== savedViewport) throw new Error('Switching tabs lost the canvas viewport')
+      await click(node('one'))
+      await window.smoke.key('Z', ['meta'])
+      await until(() => canvas.pages[0].nodes.length === 2)
+      await window.smoke.key('Z', ['meta', 'shift'])
+      await until(() => canvas.pages[0].nodes.length === 3)
+      await click(body().querySelector('.react-flow__node.selected'))
+      await window.smoke.key('Backspace')
+      await until(() => canvas.pages[0].nodes.length === 2)
+      canvas = { ...canvas, version: String(Number(canvas.version) + 1), pages: canvas.pages.map((page) => ({ ...page, nodes: page.nodes.map((item) => item.id === 'two' ? { ...item, text: 'Live agent update' } : item) })) }
+      await until(() => node('two').textContent?.includes('Live agent update') === true)
+      if (canvasReads < 2) throw new Error('Canvas did not poll for agent edits')
+      panel.openFile('/workspace/canvas.json')
+      await until(() => panel.tabs.filter((tab) => tab.kind === 'canvas').length === 1)
+      await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'other-chat' } })
+      await until(() => activeSessionId === 'other-chat')
+      await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'tabs' } })
+      await until(() => activeSessionId === 'tabs' && panel.activeTab?.kind === 'canvas' && Boolean(node('two')))
+      await until(() => panel.width === 480 && panel.open)
+      session.status = 'idle'
+      for (const tab of [...panel.tabs]) await panel.closeTab(tab.id)
+      await until(() => !element.querySelector('.canvas'))
+      panel.close()
+      await until(() => !panel.open)
+      console.log('CANVAS_SIDE_PANEL_SCENARIOS_PASSED')
+    }
     await click(element.querySelector('.markdown-document-card button'))
     await until(() => panel?.activeTab?.kind === 'file' && Boolean(element.querySelector('[role="tabpanel"] h1')))
     if (button('Overview')?.getAttribute('aria-pressed') !== 'false' || button('Side Panel')?.getAttribute('aria-pressed') !== 'true') {
@@ -617,11 +727,12 @@ window.onData(report);
       return response.json()
     }
     await until(async () => (await fetch(`${backend}/v1/sessions/tabs/browser`, { method: 'POST', body: '{"action":"status"}' })).ok)
+    const agentURL = `${location.origin}/target?tabs=agent`
+    await action({ action: 'navigate', url: agentURL })
     panel.selectTab('tabs')
     await until(() => ready('tabs'))
     const agentView = webview('tabs')
     const agentID = agentView.getWebContentsId()
-    const agentURL = await evaluate(agentView, 'location.href') as string
     const shown = () => panel.open && panel.mode === 'tabs' && panel.activeTab?.id === 'tabs' && !document.querySelector<HTMLElement>('[data-browser-session="tabs"]')!.inert
     for (const input of [
       { action: 'navigate', url: agentURL },
@@ -746,6 +857,7 @@ await tab.cdp.send('Runtime.evaluate', { expression: 'window.visibilityProbe += 
     setApiBaseUrl(location.origin)
     queryClient.clear()
     window.WebSocket = NativeSocket
+    window.fetch = originalFetch
     element.remove()
     setThemePref('light')
     await window.smoke.resize(1050, 850)

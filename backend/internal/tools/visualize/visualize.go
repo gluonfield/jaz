@@ -3,26 +3,38 @@ package visualize
 import (
 	"context"
 	"errors"
+	"slices"
 
+	"github.com/wins/jaz/backend/internal/canvas"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/tools"
 	visualizesvc "github.com/wins/jaz/backend/internal/visualize"
 )
 
-type ReadMeTool struct{}
+type ReadMeTool struct{ Canvases *canvas.Service }
 
 type ShowWidgetTool struct{}
 
 func (ReadMeTool) Definition() tools.Definition {
 	return tools.Function(
 		visualizesvc.ReadMeMCPToolName,
-		"Loads inline artifact guidance before creating a real SVG or HTML artifact. Call this silently before the first visual artifact in a turn.",
+		visualizesvc.ReadMeDescription,
 		false,
 		visualizesvc.ReadMeInputSchema(),
 	)
 }
 
-func (ReadMeTool) Execute(_ context.Context, inputs map[string]any) (tools.Result, error) {
-	return tools.Result{Content: visualizesvc.BuildReadMeGuide(moduleNames(inputs["modules"]), tools.StringInput(inputs, "platform"))}, nil
+func (t ReadMeTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
+	modules := moduleNames(inputs["modules"])
+	if slices.Contains(modules, "canvas") {
+		sessionID := sessioncontext.SessionID(ctx)
+		if sessionID == "" {
+			return tools.Result{}, errors.New("canvas guidance requires a session")
+		}
+		guide, err := visualizesvc.CanvasGuide(t.Canvases.Dir(sessionID))
+		return tools.Result{Content: guide}, err
+	}
+	return tools.Result{Content: visualizesvc.BuildReadMeGuide(modules, tools.StringInput(inputs, "platform"))}, nil
 }
 
 // moduleNames leniently coerces the optional "modules" argument into a slice;

@@ -727,10 +727,10 @@ export interface ArtifactEvent {
   title: string
   widget_code: string
   loading_messages?: string[]
-  artifact_type?: 'svg' | 'html'
-  // A plugin's view draws data, which it reads as window.data. One with a
-  // file stays in the side panel and follows that JSON file in the thread's folder.
+  artifact_type?: 'svg' | 'html' | 'canvas'
+  // A plugin's view draws data, which it reads as window.data.
   data?: unknown
+  // File names a stored canvas or a plugin view's JSON data source.
   file?: string
 }
 

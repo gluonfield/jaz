@@ -12,6 +12,7 @@ import (
 
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/jaztools"
@@ -66,6 +67,7 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	return &Server{
 		Store:                 store,

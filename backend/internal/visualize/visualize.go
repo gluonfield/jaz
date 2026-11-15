@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -16,6 +18,8 @@ import (
 const (
 	ReadMeMCPToolName     = "visualise_read_me"
 	ShowWidgetMCPToolName = "visualise_show_widget"
+	ShowCanvasMCPToolName = "visualise_show_canvas"
+	ReadMeDescription     = "Loads visual guidance before creating an artifact. Use the canvas module to discover this thread's editable canvas file, its format, and how to present it. Other modules cover SVG and HTML inline artifacts. Call silently before the first visual artifact in a turn."
 
 	MaxWidgetCodeBytes = 5 << 20
 )
@@ -56,7 +60,7 @@ type SessionSource interface {
 }
 
 type ReadMeInput struct {
-	Modules  []string `json:"modules,omitempty" jsonschema:"diagram, mockup, interactive, data_viz, art, chart, elicitation"`
+	Modules  []string `json:"modules,omitempty" jsonschema:"diagram, mockup, interactive, data_viz, art, chart, elicitation, canvas"`
 	Platform string   `json:"platform,omitempty"`
 }
 
@@ -76,22 +80,24 @@ type MCPTools struct {
 	Store    SessionEventAppender
 	Sessions SessionSource
 	Events   SessionEventPublisher
+	Canvases *canvas.Service
 }
 
-func NewMCPTools(store SessionEventAppender, sessions SessionSource, events SessionEventPublisher) *MCPTools {
-	return &MCPTools{Store: store, Sessions: sessions, Events: events}
+func NewMCPTools(store SessionEventAppender, sessions SessionSource, events SessionEventPublisher, canvases *canvas.Service) *MCPTools {
+	return &MCPTools{Store: store, Sessions: sessions, Events: events, Canvases: canvases}
 }
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
 	t.AddReadMeTo(server)
 	t.AddShowWidgetTo(server)
+	t.AddCanvasTo(server)
 }
 
 func (t *MCPTools) AddReadMeTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ReadMeMCPToolName,
 		Title:       "Read artifact guidance",
-		Description: "Loads design-system and module guidance before creating a real SVG or HTML inline artifact. Call this silently before the first visual artifact in a turn.",
+		Description: ReadMeDescription,
 		InputSchema: readMeInputSchema(),
 	}, t.ReadMe)
 }
@@ -105,7 +111,10 @@ func (t *MCPTools) AddShowWidgetTo(server *mcp.Server) {
 	}, t.ShowWidget)
 }
 
-func (t *MCPTools) ReadMe(_ context.Context, _ *mcp.CallToolRequest, input ReadMeInput) (*mcp.CallToolResult, any, error) {
+func (t *MCPTools) ReadMe(_ context.Context, req *mcp.CallToolRequest, input ReadMeInput) (*mcp.CallToolResult, any, error) {
+	if slices.Contains(input.Modules, "canvas") {
+		return t.canvasGuide(req)
+	}
 	return textResult(BuildReadMeGuide(input.Modules, input.Platform))
 }
 
@@ -230,7 +239,7 @@ func ReadMeInputSchema() map[string]any {
 				"description": "Guidance modules to load.",
 				"items": map[string]any{
 					"type": "string",
-					"enum": []string{"diagram", "mockup", "interactive", "data_viz", "art", "chart", "elicitation"},
+					"enum": []string{"diagram", "mockup", "interactive", "data_viz", "art", "chart", "elicitation", "canvas"},
 				},
 			},
 			"platform": map[string]any{

@@ -1,4 +1,4 @@
-import { Copy, FileSpreadsheet, FileText, FolderGit2, Globe, LayoutDashboard, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
+import { Copy, PencilRuler, FileSpreadsheet, FileText, FolderGit2, Globe, LayoutDashboard, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, Reorder } from 'motion/react'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
@@ -14,6 +14,7 @@ import type { NewSidePanelTab, SidePanelTab } from '@/lib/sidePanelTabs'
 
 const TAB_TYPES = {
   file: { label: 'Files', icon: FileText },
+  canvas: { label: 'Canvas', icon: PencilRuler },
   'side-chat': { label: 'Side chat', icon: MessageCirclePlus },
   preview: { label: 'Browser', icon: Globe },
   terminal: { label: 'Terminal', icon: Terminal },
@@ -34,7 +35,7 @@ export function SidePanelTabMenu({ sideChatAvailable, onAdd, empty = false }: {
 }) {
   const [open, setOpen] = useState(false)
   const apps = (useQuery(mcpEntrypointsQuery).data ?? []).filter((entry) => entry.type === 'thread')
-  const options = (Object.keys(TAB_TYPES) as (keyof typeof TAB_TYPES)[]).filter((kind) => kind !== 'side-chat' || sideChatAvailable)
+  const options = (Object.keys(TAB_TYPES) as (keyof typeof TAB_TYPES)[]).filter((kind): kind is Exclude<keyof typeof TAB_TYPES, 'canvas'> => kind !== 'canvas' && (kind !== 'side-chat' || sideChatAvailable))
   const row = (key: string, tab: NewSidePanelTab, icon: ReactNode, label: string) => (
     <button type="button" className="flex h-7 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink pointer-coarse:h-10" key={key} onClick={() => {
       onAdd(tab)

@@ -68,6 +68,18 @@ func (s *Service) Dir(sessionID string) string {
 	return Dir(s.root, sessionID)
 }
 
+func (s *Service) ExistingFile(sessionID string) (string, error) {
+	dir := s.Dir(sessionID)
+	raw, _, err := readDocument(dir)
+	if err != nil {
+		return "", err
+	}
+	if raw == nil {
+		return "", os.ErrNotExist
+	}
+	return filepath.Join(dir, FileName), nil
+}
+
 func Dir(canvasesRoot, sessionID string) string {
 	return filepath.Join(canvasesRoot, sessionID)
 }

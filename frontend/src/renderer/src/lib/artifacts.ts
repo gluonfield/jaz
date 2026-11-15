@@ -62,7 +62,7 @@ const bridgeScript = `
     const link = event.target?.closest?.('a[href]');
     if (!link) return;
     event.preventDefault();
-    window.openLink(link.href);
+    window.openLink(link.getAttribute('href'));
   });
   new ResizeObserver(measure).observe(document.documentElement);
   window.addEventListener('load', measure);
