@@ -2,12 +2,17 @@ package app
 
 import (
 	"context"
+	"io"
 	"testing"
 
+	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/connectors/deployink"
+	driveconnector "github.com/wins/jaz/backend/internal/connectors/drive"
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
+	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/tools"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
@@ -122,5 +127,40 @@ func TestConnectionMCPServerReaderIgnoresProvidersWithoutConnectionBackedMCP(t *
 	}
 	if len(servers) != 0 {
 		t.Fatalf("servers = %#v", servers)
+	}
+}
+
+func TestConnectionMCPServerReaderKeepsDriveAccountsAndToolsDistinct(t *testing.T) {
+	store := fakeConnectionTokenStore{
+		connections: map[string][]integrations.Connection{
+			driveconnector.ProviderID: {
+				{ID: "drive:personal", Provider: driveconnector.ProviderID, Alias: "personal"},
+				{ID: "drive:work", Provider: driveconnector.ProviderID, Alias: "work"},
+			},
+		},
+		tokens: map[string]integrationoauth.Token{
+			"drive:personal": {AccessToken: "personal-grant"},
+			"drive:work":     {AccessToken: "work-grant"},
+		},
+	}
+	reader := connectionReader(store)
+	servers, err := reader.ListMCPServers()
+	if err != nil || len(servers) != 2 {
+		t.Fatalf("Drive inventory = %+v, %v", servers, err)
+	}
+	registry := tools.NewRegistry()
+	manager := mcpruntime.NewManager(reader, nil, registry, log.New(io.Discard))
+	defer manager.Close()
+	manager.Refresh(t.Context())
+	for _, server := range servers {
+		if server.Source != mcpconfig.SourceConnection || server.TokenConnectionID != server.ID || server.URL != "" {
+			t.Fatalf("Drive account provenance = %+v", server)
+		}
+		if status := manager.Status(server.ID); status.Status != "connected" || status.ToolCount != 8 {
+			t.Fatalf("Drive tool catalog = %+v", status)
+		}
+	}
+	if count := len(registry.Definitions()); count != 16 {
+		t.Fatalf("distinct account tool count = %d", count)
 	}
 }

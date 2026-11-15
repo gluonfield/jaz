@@ -152,6 +152,8 @@ func (s *OAuthService) Callback(ctx context.Context, state, code, failure string
 	if err != nil {
 		return err
 	}
+	unlock := integrationoauth.LockToken(connection.ID)
+	defer unlock()
 	return s.store.SaveOAuthConnection(ctx, token, connection)
 }
 

@@ -89,8 +89,9 @@ export function MCPSettings() {
   // until every enabled server has a status (and its Sign in action) to show.
   const servers = useQuery({
     ...mcpServersQuery,
+    select: (data) => ({ ...data, servers: data.servers.filter((server) => !server.source) }),
     refetchInterval: (query) =>
-      pendingAuthServerID || query.state.data?.servers.some((server) => server.enabled && server.status === 'unknown')
+      pendingAuthServerID || query.state.data?.servers.some((server) => !server.source && server.enabled && server.status === 'unknown')
         ? 1000
         : 5000,
   })
@@ -226,7 +227,7 @@ export function MCPSettings() {
         <div>
           <p className="text-sm font-medium text-ink">MCP servers</p>
           <p className="mt-0.5 text-[13px] text-ink-2">
-            Remote and local MCP connections available to Jaz and capable agents.
+            Servers you add here are available to Jaz and capable agents. Manage connected apps in Connections.
           </p>
         </div>
         <Button variant="secondary" size="md" onClick={openAdd}>
