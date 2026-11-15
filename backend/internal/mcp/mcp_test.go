@@ -32,12 +32,11 @@ func (s *testStore) ListMCPServers() ([]mcpconfig.Server, error) {
 
 func TestCallbackReceiverSurfacesAuthURLAndCompletesFromCallback(t *testing.T) {
 	manager := NewManager(&testStore{}, newMemTokenStore(), tools.NewRegistry(), log.New(io.Discard))
-	started := make(chan authorizationStart, 1)
+	started := make(chan string, 1)
 	receiver := &callbackReceiver{
-		manager:     manager,
-		redirectURL: "https://jaz.example.com/v1/mcp/oauth/callback",
-		started:     started,
-		pending:     newAuthorizationPending(),
+		manager: manager,
+		started: started,
+		pending: newAuthorizationPending(),
 	}
 	authURL := "https://auth.example.com/authorize?client_id=jaz&state=state-1"
 	done := make(chan struct {
@@ -46,25 +45,25 @@ func TestCallbackReceiverSurfacesAuthURLAndCompletesFromCallback(t *testing.T) {
 		err   error
 	}, 1)
 	go func() {
-		code, state, err := receiver.fetch(context.Background(), authURL)
+		response, err := receiver.fetch(context.Background(), authURL)
 		done <- struct {
 			code  string
 			state string
 			err   error
-		}{code: code, state: state, err: err}
+		}{code: response.Code, state: response.State, err: err}
 	}()
 
 	select {
 	case start := <-started:
-		if start.authURL != authURL {
-			t.Fatalf("auth url = %q, want %q", start.authURL, authURL)
+		if start != authURL {
+			t.Fatalf("auth url = %q, want %q", start, authURL)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for auth url")
 	}
 	callbackDone := make(chan error, 1)
 	go func() {
-		callbackDone <- manager.CompleteAuthorization(context.Background(), "state-1", "code-1", "")
+		callbackDone <- manager.CompleteAuthorization(context.Background(), mcpconfig.AuthorizationResponse{State: "state-1", Code: "code-1", Error: ""})
 	}()
 	select {
 	case got := <-done:
@@ -98,16 +97,15 @@ func TestCallbackReceiverSurfacesAuthURLAndCompletesFromCallback(t *testing.T) {
 
 func TestCompleteAuthorizationReturnsFinalFailureStatus(t *testing.T) {
 	manager := NewManager(&testStore{}, newMemTokenStore(), tools.NewRegistry(), log.New(io.Discard))
-	started := make(chan authorizationStart, 1)
+	started := make(chan string, 1)
 	receiver := &callbackReceiver{
-		manager:     manager,
-		redirectURL: "https://jaz.example.com/v1/mcp/oauth/callback",
-		started:     started,
-		pending:     newAuthorizationPending(),
+		manager: manager,
+		started: started,
+		pending: newAuthorizationPending(),
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, _, _ = receiver.fetch(context.Background(), "https://auth.example.com/authorize?state=state-fail")
+		_, _ = receiver.fetch(context.Background(), "https://auth.example.com/authorize?state=state-fail")
 	}()
 	select {
 	case <-started:
@@ -115,7 +113,7 @@ func TestCompleteAuthorizationReturnsFinalFailureStatus(t *testing.T) {
 		t.Fatal("timed out waiting for auth url")
 	}
 	go func() {
-		done <- manager.CompleteAuthorization(context.Background(), "state-fail", "code-1", "")
+		done <- manager.CompleteAuthorization(context.Background(), mcpconfig.AuthorizationResponse{State: "state-fail", Code: "code-1", Error: ""})
 	}()
 	receiver.pending.complete(mcpconfig.ServerStatus{Status: "error", Error: "token exchange failed"})
 	select {

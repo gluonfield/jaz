@@ -32,8 +32,7 @@ func (c *MCPConnectionConnector) Connect(ctx context.Context, plugin integration
 		return OAuthStart{}, err
 	}
 	status := c.authorizer.AuthorizeWithHook(ctx, server, mcpconfig.AuthorizeOptions{
-		RedirectURL:   redirectURL,
-		ReturnAuthURL: true,
+		RedirectURL: redirectURL,
 	}, func(ctx context.Context) error {
 		return c.store.SaveConnection(ctx, connection)
 	})

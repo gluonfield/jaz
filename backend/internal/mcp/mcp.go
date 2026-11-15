@@ -73,6 +73,7 @@ type Manager struct {
 
 	authMu     sync.Mutex
 	authStates map[string]*authorizationPending
+	authFlows  map[string]context.CancelFunc
 	broker     oauthbroker.Broker
 
 	// Optional: agents' calls to tools linked to an MCP App show it in their
@@ -385,6 +386,11 @@ func (m *Manager) builtinToolName(server mcpconfig.Server, remote string, used m
 }
 
 func (m *Manager) Close() {
+	m.authMu.Lock()
+	for _, cancel := range m.authFlows {
+		cancel()
+	}
+	m.authMu.Unlock()
 	m.refreshGate <- struct{}{}
 	defer func() { <-m.refreshGate }()
 	m.mu.Lock()

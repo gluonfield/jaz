@@ -27,7 +27,7 @@ type mcpProxyRuntime interface {
 }
 
 type mcpOAuthCallbackRuntime interface {
-	CompleteAuthorization(context.Context, string, string, string) error
+	CompleteAuthorization(context.Context, mcpconfig.AuthorizationResponse) error
 }
 
 type mcpProxySessionStore interface {
@@ -49,7 +49,11 @@ func (s *Server) handleListMCPServers(w http.ResponseWriter, r *http.Request) {
 	for _, server := range servers {
 		out = append(out, s.mcpServerView(server))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"servers": out})
+	redirectURL := mcpOAuthCallbackURL(r, s.ServerConfig)
+	if runtime, ok := s.MCP.(interface{ OAuthRedirectURL(string) string }); ok {
+		redirectURL = runtime.OAuthRedirectURL(redirectURL)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"servers": out, "oauth_redirect_url": redirectURL})
 }
 
 func (s *Server) handleCreateMCPServer(w http.ResponseWriter, r *http.Request) {
@@ -177,11 +181,8 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 		// by the request context (cancelled if the client disconnects).
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 		defer cancel()
-		platform := requestClientPlatform(r)
 		writeJSON(w, http.StatusOK, s.MCP.Authorize(ctx, server, mcpconfig.AuthorizeOptions{
-			RedirectURL:   mcpOAuthCallbackURL(r, s.ServerConfig),
-			ReturnAuthURL: platform == "browser" || platform == "mobile",
-			OpenBrowser:   platform != "browser" && platform != "mobile",
+			RedirectURL: mcpOAuthCallbackURL(r, s.ServerConfig),
 		}))
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
@@ -196,7 +197,7 @@ func (s *Server) handleMCPOAuthCallback(w http.ResponseWriter, r *http.Request) 
 	}
 	q := r.URL.Query()
 	failure := q.Get("error")
-	if err := runtime.CompleteAuthorization(r.Context(), q.Get("state"), q.Get("code"), failure); err != nil {
+	if err := runtime.CompleteAuthorization(r.Context(), mcpconfig.AuthorizationResponse{State: q.Get("state"), Code: q.Get("code"), Issuer: q.Get("iss"), Error: failure}); err != nil {
 		writeMCPOAuthCallbackHTML(w, http.StatusBadRequest, "Connection failed", err.Error(), false)
 		return
 	}
