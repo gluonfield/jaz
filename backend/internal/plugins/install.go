@@ -25,14 +25,6 @@ type preparedPlugin struct {
 	expected *Source
 }
 
-type replacement struct {
-	staged  string
-	live    string
-	existed bool
-}
-
-var errKeepStaging = errors.New("plugin rollback failed; last good package retained in staging")
-
 func (s *Store) sources() (map[string]Source, error) {
 	data, err := os.ReadFile(s.sourcesPath)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -71,25 +63,7 @@ func (s *Store) stageSources(sources map[string]Source) (string, error) {
 	return path, err
 }
 
-func rollback(changes []replacement) error {
-	var failure error
-	for i := len(changes) - 1; i >= 0; i-- {
-		change := changes[i]
-		var err error
-		if change.existed {
-			err = exchangeDirectories(change.staged, change.live)
-		} else {
-			err = os.Rename(change.live, change.staged)
-		}
-		failure = errors.Join(failure, err)
-	}
-	if failure != nil {
-		return errors.Join(errKeepStaging, failure)
-	}
-	return nil
-}
-
-func (s *Store) publish(prepared []preparedPlugin) ([]Plugin, error) {
+func (s *Store) publish(prepared []preparedPlugin) (out []Plugin, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, err := s.sources()
@@ -115,29 +89,50 @@ func (s *Store) publish(prepared []preparedPlugin) ([]Plugin, error) {
 		return nil, err
 	}
 	defer os.Remove(metadata)
-	var changes []replacement
-	for _, candidate := range prepared {
+	backups, err := os.MkdirTemp(s.dir, ".previous-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(backups)
+	changed := 0
+	defer func() {
+		if err == nil {
+			return
+		}
+		for i := changed - 1; i >= 0; i-- {
+			live := filepath.Join(s.dir, prepared[i].plugin.Name)
+			previous := filepath.Join(backups, prepared[i].plugin.Name)
+			err = errors.Join(err, os.RemoveAll(live))
+			if _, statErr := os.Lstat(previous); statErr == nil {
+				err = errors.Join(err, os.Rename(previous, live))
+			}
+		}
+	}()
+	out = make([]Plugin, 0, len(prepared))
+	for i, candidate := range prepared {
 		live := filepath.Join(s.dir, candidate.plugin.Name)
-		_, err := os.Lstat(live)
-		existed := err == nil
-		if errors.Is(err, fs.ErrNotExist) {
-			err = os.Rename(candidate.path, live)
-		} else if err == nil {
-			err = exchangeDirectories(candidate.path, live)
+		previous := filepath.Join(backups, candidate.plugin.Name)
+		if candidate.path == "" {
+			if _, err := manifest.Read(live); errors.Is(err, fs.ErrNotExist) || errors.Is(err, manifest.ErrNotPlugin) {
+				return nil, fmt.Errorf("%w: %s", ErrNotFound, candidate.plugin.Name)
+			}
 		}
-		if err != nil {
-			return nil, errors.Join(err, rollback(changes))
+		if err = os.Rename(live, previous); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
 		}
-		changes = append(changes, replacement{staged: candidate.path, live: live, existed: existed})
-	}
-	if err := s.commitMetadata(metadata, s.sourcesPath); err != nil {
-		return nil, errors.Join(err, rollback(changes))
-	}
-	out := make([]Plugin, 0, len(prepared))
-	for _, candidate := range prepared {
+		changed = i + 1
+		if candidate.path != "" {
+			if err = os.Rename(candidate.path, live); err != nil {
+				return nil, err
+			}
+		}
 		candidate.plugin.Source = candidate.source
 		out = append(out, candidate.plugin)
 	}
+	if err = os.Rename(metadata, s.sourcesPath); err != nil {
+		return nil, err
+	}
+	_ = os.RemoveAll(backups)
 	return out, nil
 }
 

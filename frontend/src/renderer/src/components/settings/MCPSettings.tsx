@@ -92,7 +92,7 @@ export function MCPSettings() {
     refetchInterval: (query) =>
       pendingAuthServerID || query.state.data?.servers.some((server) => server.enabled && server.status === 'unknown')
         ? 1000
-        : false,
+        : 5000,
   })
   const [draft, setDraft] = useState<Draft | null>(null)
   const [toolsServerID, setToolsServerID] = useState<string | null>(null)

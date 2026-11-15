@@ -17,6 +17,10 @@ import (
 
 const mcpSchema = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
 
+func MCPServerID(plugin, name string) string {
+	return "plugin:" + plugin + ":" + base64.RawURLEncoding.EncodeToString([]byte(name))
+}
+
 type mcpDocument struct {
 	Schema  string                     `json:"$schema"`
 	Servers map[string]json.RawMessage `json:"mcpServers"`
@@ -148,7 +152,7 @@ func loadMCP(root, dataDir string, definition manifest.Manifest) ([]mcpconfig.Se
 			warnings = append(warnings, fmt.Sprintf("MCP %s: %v", name, err))
 			continue
 		}
-		server.ID = "plugin:" + definition.Name + ":" + base64.RawURLEncoding.EncodeToString([]byte(name))
+		server.ID = MCPServerID(definition.Name, name)
 		server.Name = definition.Name + ":" + name
 		server.Source = mcpconfig.SourcePlugin
 		server.UpdatedAt = info.ModTime()

@@ -38,7 +38,7 @@ func fixtureFiles(t *testing.T, root string, files map[string]string) {
 	}
 }
 
-func TestRepositoryMarketplaceUpdateAndMetadataRollback(t *testing.T) {
+func TestRepositoryMarketplaceUpdateAndFailedReplacement(t *testing.T) {
 	repo := t.TempDir()
 	fixtureGit(t, repo, "init", "--quiet")
 	fixtureFiles(t, repo, map[string]string{
@@ -82,21 +82,31 @@ func TestRepositoryMarketplaceUpdateAndMetadataRollback(t *testing.T) {
 	fixtureFiles(t, repo, map[string]string{"plugins/alpha/views/status.html": "unpublished"})
 	fixtureGit(t, repo, "add", "--all")
 	fixtureGit(t, repo, "commit", "--quiet", "-m", "Unpublished plugin fixture")
-	observedSwap := false
-	store.commitMetadata = func(staged, path string) error {
-		data, err := os.ReadFile(filepath.Join(layout.Plugins, "alpha", "views", "status.html"))
+	candidate, err := read(filepath.Join(repo, "plugins", "alpha"), store.dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := *updated.Plugins[0].Source
+	beta, err := read(filepath.Join(repo, "plugins", "beta"), store.dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []*Source{nil, {Repository: repo, Ref: ref, Commit: fixtureGit(t, repo, "rev-parse", "HEAD")}} {
+		prepared, err := stagePackages([]preparedPlugin{{plugin: candidate, path: filepath.Join(repo, "plugins", "alpha"), source: source, expected: &previous}, {plugin: beta, path: filepath.Join(repo, "plugins", "beta"), source: source}}, filepath.Join(t.TempDir(), "ready"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		observedSwap = string(data) == "unpublished"
-		return fs.ErrPermission
-	}
-	if _, err := store.Update(t.Context(), "alpha"); !errors.Is(err, fs.ErrPermission) {
-		t.Fatalf("metadata failure was ignored: %v", err)
-	}
-	store.commitMetadata = os.Rename
-	if !observedSwap {
-		t.Fatal("fault did not occur after the real package exchange")
+		if err := os.RemoveAll(prepared[1].path); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.publish(prepared); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("missing staged package did not fail its real rename: %v", err)
+		}
+		view, viewErr := store.View("alpha/status")
+		listed, listErr := store.List()
+		if viewErr != nil || listErr != nil || view != "second" || *listed[0].Source != previous || listed[1].Source.Commit != first {
+			t.Fatalf("failed rename changed last good package/origin: %+v %q %v %v", listed, view, listErr, viewErr)
+		}
 	}
 	listed, err = store.List()
 	view, viewErr := store.View("alpha/status")

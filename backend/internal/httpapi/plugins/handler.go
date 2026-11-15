@@ -2,12 +2,10 @@
 package plugins
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/plugins"
@@ -16,7 +14,7 @@ import (
 const maxArchiveBytes = 64 << 20
 
 type MCPRuntime interface {
-	Refresh(context.Context)
+	RefreshServersAsync(...string)
 }
 
 type Handler struct {
@@ -59,7 +57,7 @@ func (h *Handler) Install(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	installed, err := h.store.Install(archive)
-	h.writeInstalled(w, r, plugins.InstallResult{Plugins: installed}, err)
+	h.writeInstalled(w, plugins.InstallResult{Plugins: installed}, err)
 }
 
 func (h *Handler) InstallRepository(w http.ResponseWriter, r *http.Request) {
@@ -69,23 +67,27 @@ func (h *Handler) InstallRepository(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.store.InstallRepository(r.Context(), input)
-	h.writeInstalled(w, r, result, err)
+	h.writeInstalled(w, result, err)
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	result, err := h.store.Update(r.Context(), r.PathValue("plugin"))
-	h.writeInstalled(w, r, result, err)
+	h.writeInstalled(w, result, err)
 }
 
-func (h *Handler) writeInstalled(w http.ResponseWriter, r *http.Request, result plugins.InstallResult, err error) {
+func (h *Handler) writeInstalled(w http.ResponseWriter, result plugins.InstallResult, err error) {
 	if err != nil {
 		httpapi.WriteError(w, statusFor(err), err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-	h.runtime.Refresh(ctx)
 	httpapi.WriteJSON(w, http.StatusOK, result)
+	var ids []string
+	for _, plugin := range result.Plugins {
+		for _, name := range plugin.MCPServers {
+			ids = append(ids, plugins.MCPServerID(plugin.Name, name))
+		}
+	}
+	h.runtime.RefreshServersAsync(ids...)
 }
 
 func (h *Handler) Remove(w http.ResponseWriter, r *http.Request) {
@@ -93,10 +95,8 @@ func (h *Handler) Remove(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, statusFor(err), err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-	h.runtime.Refresh(ctx)
 	w.WriteHeader(http.StatusNoContent)
+	h.runtime.RefreshServersAsync()
 }
 
 func statusFor(err error) int {

@@ -10,7 +10,7 @@ Jaz reads `.agents/plugins/marketplace.json` first, then `.claude-plugin/marketp
 
 Repository, ref and resolved commit appear beside each plugin’s version. **Update** fetches that source and replaces only that plugin. Source records live in the runtime’s `plugin-sources.json`, outside plugin folders. ZIP replacement clears that plugin’s source and Update action.
 
-Packages are fully staged and validated before publication. Replacement uses atomic directory exchange on macOS/Linux filesystems that support it, with rollback if source publication fails. Other platforms/filesystems preserve the existing package and report unsupported replacement. Store readers see coherent package/source records. Installation, update and removal reuse MCP refresh, so changed code reconnects even when its server config stays the same.
+Packages are fully staged and validated before publication. Replacement moves the previous package aside, publishes the new package and source, and restores the previous package on failure. Store readers see coherent package/source records. Installation, update and removal respond after publication and refresh the changed MCP servers in the background, so changed code reconnects even when its server config stays the same. Settings status and App entrypoints refresh within five seconds once connected.
 
 ## Manifest
 

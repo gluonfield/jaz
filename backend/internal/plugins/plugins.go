@@ -39,15 +39,14 @@ type Plugin struct {
 }
 
 type Store struct {
-	dir            string
-	dataDir        string
-	mu             sync.RWMutex
-	sourcesPath    string
-	commitMetadata func(string, string) error
+	dir         string
+	dataDir     string
+	mu          sync.RWMutex
+	sourcesPath string
 }
 
 func New(layout runtimefiles.Layout) *Store {
-	return &Store{dir: layout.Plugins, dataDir: filepath.Join(layout.Root, "plugin-data"), sourcesPath: filepath.Join(layout.Root, "plugin-sources.json"), commitMetadata: os.Rename}
+	return &Store{dir: layout.Plugins, dataDir: filepath.Join(layout.Root, "plugin-data"), sourcesPath: filepath.Join(layout.Root, "plugin-sources.json")}
 }
 
 func (s *Store) List() ([]Plugin, error) {
@@ -112,11 +111,7 @@ func (s *Store) Install(archive []byte) (installed []Plugin, err error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if !errors.Is(err, errKeepStaging) {
-			_ = os.RemoveAll(work)
-		}
-	}()
+	defer os.RemoveAll(work)
 	tree := filepath.Join(work, "content")
 	if err = os.MkdirAll(tree, 0755); err != nil {
 		return nil, err
@@ -139,35 +134,8 @@ func (s *Store) Remove(plugin string) error {
 	if !manifest.SafeName(plugin) {
 		return fmt.Errorf("%w: name %q", ErrInvalid, plugin)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	dir := filepath.Join(s.dir, plugin)
-	if _, err := manifest.Read(dir); errors.Is(err, fs.ErrNotExist) || errors.Is(err, manifest.ErrNotPlugin) {
-		return fmt.Errorf("%w: %s", ErrNotFound, plugin)
-	}
-	sources, err := s.sources()
-	if err != nil {
-		return err
-	}
-	delete(sources, plugin)
-	metadata, err := s.stageSources(sources)
-	if err != nil {
-		return err
-	}
-	defer os.Remove(metadata)
-	trash, err := os.MkdirTemp(s.dir, ".remove-")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(trash)
-	backup := filepath.Join(trash, plugin)
-	if err := os.Rename(dir, backup); err != nil {
-		return err
-	}
-	if err := s.commitMetadata(metadata, s.sourcesPath); err != nil {
-		return errors.Join(err, os.Rename(backup, dir))
-	}
-	return os.RemoveAll(trash)
+	_, err := s.publish([]preparedPlugin{{plugin: Plugin{Name: plugin}}})
+	return err
 }
 
 func read(dir, dataDir string) (Plugin, error) {

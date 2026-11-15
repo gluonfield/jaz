@@ -81,6 +81,7 @@ export function authorizeMCPServer(id: string): Promise<MCPServerStatus> {
 export const mcpEntrypointsQuery = queryOptions({
   queryKey: keys.mcpApps,
   queryFn: async () => (await get<{ entrypoints: MCPEntrypoint[] }>('/v1/mcp/apps')).entrypoints,
+  refetchInterval: 5000,
 })
 
 // Opening an entrypoint picks up a new app version; unchanged HTML keeps the

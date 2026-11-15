@@ -53,6 +53,8 @@ type Manager struct {
 	tokens   tokenStore
 	registry *tools.Registry
 	log      *log.Logger
+	ctx      context.Context
+	cancel   context.CancelFunc
 
 	localServers map[string]localServer
 
@@ -166,11 +168,14 @@ func NewManager(store mcpconfig.ServerReader, tokens tokenStore, registry *tools
 	if logger == nil {
 		logger = log.Default()
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	m := &Manager{
 		store:        store,
 		tokens:       tokens,
 		registry:     registry,
 		log:          logger.WithPrefix("mcp"),
+		ctx:          ctx,
+		cancel:       cancel,
 		localServers: make(map[string]localServer),
 		sessions:     make(map[string]*serverSession),
 		statuses:     make(map[string]mcpconfig.ServerStatus),
@@ -217,6 +222,18 @@ func (m *Manager) RefreshServer(ctx context.Context, id string) mcpconfig.Server
 		return connectErrorStatus(nil, err)
 	}
 	return m.Status(id)
+}
+
+func (m *Manager) RefreshServersAsync(ids ...string) {
+	selected := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		selected[id] = true
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+		defer cancel()
+		_ = m.refresh(ctx, func(server mcpconfig.Server) bool { return selected[server.ID] })
+	}()
 }
 
 func (m *Manager) refresh(ctx context.Context, include func(mcpconfig.Server) bool) error {
@@ -392,6 +409,7 @@ func (m *Manager) builtinToolName(server mcpconfig.Server, remote string, used m
 }
 
 func (m *Manager) Close() {
+	m.cancel()
 	m.authMu.Lock()
 	for _, cancel := range m.authFlows {
 		cancel()
