@@ -452,12 +452,15 @@ type SessionFilter struct {
 	Limit    int
 }
 
-type SessionFolder struct {
+type SessionPluginView struct {
 	ID        string
 	Title     string
 	Status    string
 	UpdatedAt time.Time
 	Folder    string
+	Seq       int64
+	Reference string
+	File      string
 }
 
 type SessionPosition struct {

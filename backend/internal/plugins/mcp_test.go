@@ -15,7 +15,7 @@ func TestPortableMCPDiscoveryPreservesVariablesAndIsolatesBadEntries(t *testing.
 	layout := runtimefiles.New(filepath.Join(t.TempDir(), "literal-${PLUGIN_DATA}"))
 	store := New(layout)
 	installed, err := store.Install(archive(t, map[string]string{
-		"fixture/plugin.json":       portable(t, "fixture", map[string]any{"page": map[string]string{"view": "status", "file": "status.json"}}),
+		"fixture/plugin.json":       portable(t, "fixture", map[string]any{"page": map[string]string{"view": "status"}}),
 		"fixture/views/status.html": "<p>status</p>",
 		"fixture/mcp.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{
 "local":{"type":"stdio","command":"printf","cwd":"${PLUGIN_DATA}","args":["${PLUGIN_ROOT}","${PLUGIN_DATA}","${UNKNOWN}","${UNKNOWN:-literal}"],"env":{"VALUE":"${PLUGIN_ROOT}"}},

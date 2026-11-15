@@ -145,7 +145,7 @@ func read(dir, dataDir string) (Plugin, error) {
 	}
 	plugin := Plugin{Name: definition.Name, DisplayName: definition.DisplayName, Description: definition.Description, Version: definition.Version, Warnings: definition.Warnings}
 	if definition.Page != nil {
-		plugin.Page = &Page{View: definition.Page.View, File: definition.Page.File}
+		plugin.Page = &Page{View: definition.Page.View}
 	}
 	held, warnings := skills.LoadPlugin(dir, definition.Name, definition.ExtraSkillPaths)
 	plugin.Warnings = append(plugin.Warnings, warnings...)
@@ -162,10 +162,7 @@ func read(dir, dataDir string) (Plugin, error) {
 		plugin.Views[i] = strings.TrimSuffix(filepath.Base(view), ".html")
 	}
 	if plugin.Page != nil {
-		if err := validatePage(plugin.Page); err != nil {
-			return Plugin{}, err
-		}
-		if !slices.Contains(plugin.Views, plugin.Page.View) {
+		if !name.MatchString(plugin.Page.View) || !slices.Contains(plugin.Views, plugin.Page.View) {
 			return Plugin{}, fmt.Errorf("%w: page view does not exist", ErrInvalid)
 		}
 	}

@@ -160,12 +160,14 @@ func TestShowViewPresentsTheViewWithItsData(t *testing.T) {
 	if _, _, err := tools.ShowView(context.Background(), nil, ShowViewInput{View: "tenders/status", Title: "Tender status", File: "status.json"}); err != nil {
 		t.Fatal(err)
 	}
-	if shown.artifact.Kind != sessionevents.PresentationPluginView || shown.artifact.View.File != "status.json" || shown.artifact.Artifact != nil {
+	if shown.artifact.Kind != sessionevents.PresentationPluginView || shown.artifact.View.File != "status.json" || shown.artifact.View.Reference != "tenders/status" || shown.artifact.Artifact != nil {
 		t.Fatalf("panel view = %+v", shown.artifact)
 	}
 	for label, input := range map[string]ShowViewInput{
 		"data and file": {View: "tenders/status", Title: "x", Data: map[string]any{}, File: "status.json"},
 		"neither":       {View: "tenders/status", Title: "x"},
+		"file nested":   {View: "tenders/status", Title: "x", File: "nested/status.json"},
+		"file windows":  {View: "tenders/status", Title: "x", File: `nested\status.json`},
 		"file outside":  {View: "tenders/status", Title: "x", File: "../status.json"},
 		"unknown view":  {View: "tenders/missing", Title: "x", File: "status.json"},
 		"missing title": {View: "tenders/status", File: "status.json"},

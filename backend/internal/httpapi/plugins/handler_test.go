@@ -30,7 +30,7 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 	store := plugins.New(layout)
 	runtime := mcpruntime.NewManager(store, nil, tools.NewRegistry(), log.New(io.Discard))
 	defer runtime.Close()
-	handler := NewHandler(sessionStore{{ID: "thread", Title: "Tender work", RuntimeRef: &storage.RuntimeRef{Cwd: folder}}}, runtime, store)
+	handler := NewHandler(sessionStore{{ID: "thread", Title: "Tender work", Folder: folder, Reference: "tenders/status", File: "status.json", Seq: 1}}, runtime, store)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/plugins", handler.List)
 	mux.HandleFunc("GET /v1/plugins/{plugin}/page", handler.Page)
@@ -44,7 +44,7 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 	var archive bytes.Buffer
 	writer := zip.NewWriter(&archive)
 	for name, content := range map[string]string{
-		"tenders/plugin.json":       `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tender work","icon":"./assets/icon.svg","page":{"view":"status","file":"status.json"}}}}`,
+		"tenders/plugin.json":       `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tender work","icon":"./assets/icon.svg","page":{"view":"status","file":"ignored.json"}}}}`,
 		"tenders/assets/icon.svg":   `<svg xmlns="http://www.w3.org/2000/svg"><path d="M1 1h12v12H1z"/></svg>`,
 		"tenders/views/status.html": "<p>status</p>",
 		"plain/plugin.json":         `{"name":"plain","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"}`,
@@ -71,8 +71,11 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 	if err := json.Unmarshal(call(http.MethodGet, "/v1/plugins", nil).Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Plugins) != 2 || listed.Plugins[0].Page != nil || listed.Plugins[1].Page == nil || listed.Plugins[1].DisplayName != "Tender work" || listed.Plugins[1].Page.File != "status.json" {
+	if len(listed.Plugins) != 2 || listed.Plugins[0].Page != nil || listed.Plugins[1].Page == nil || listed.Plugins[1].DisplayName != "Tender work" || listed.Plugins[1].Page.View != "status" {
 		t.Fatalf("listed = %#v, want the tenders plugin with its status view", listed.Plugins)
+	}
+	if len(listed.Plugins[1].Warnings) != 1 || listed.Plugins[1].Warnings[0] != `Ignoring unknown manifest field "extensions.chat.jaz.page.file"` {
+		t.Fatalf("obsolete page.file did not warn over HTTP: %+v", listed.Plugins[1])
 	}
 	if listed.Plugins[1].IconDataURL != "data:image/svg+xml;base64,"+base64.StdEncoding.EncodeToString([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><path d="M1 1h12v12H1z"/></svg>`)) {
 		t.Fatalf("icon = %q, want the installed SVG", listed.Plugins[1].IconDataURL)
@@ -106,7 +109,7 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &listed) != nil || len(listed.Plugins) != 2 {
 			t.Fatalf("bad native overlay broke inventory: %d %s", response.Code, response.Body)
 		}
-		if len(listed.Plugins[0].Warnings) != 0 || len(listed.Plugins[1].Warnings) != 1 || !strings.Contains(listed.Plugins[1].Warnings[0], "Native Claude loading skipped:") {
+		if len(listed.Plugins[0].Warnings) != 0 || len(listed.Plugins[1].Warnings) != 2 || !strings.Contains(listed.Plugins[1].Warnings[1], "Native Claude loading skipped:") {
 			t.Fatalf("native warning was not isolated to tenders: %+v", listed.Plugins)
 		}
 		selected, err := store.ClaudePlugins()
@@ -122,14 +125,8 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 	}
 }
 
-type sessionStore []storage.Session
+type sessionStore []storage.SessionPluginView
 
-func (s sessionStore) ListSessionFolders() ([]storage.SessionFolder, error) {
-	var matches []storage.SessionFolder
-	for _, thread := range s {
-		if thread.RuntimeRef != nil && thread.RuntimeRef.Cwd != "" {
-			matches = append(matches, storage.SessionFolder{ID: thread.ID, Title: thread.Title, Status: thread.Status, UpdatedAt: thread.UpdatedAt, Folder: thread.RuntimeRef.Cwd})
-		}
-	}
-	return matches, nil
+func (s sessionStore) ListSessionPluginViews() ([]storage.SessionPluginView, error) {
+	return s, nil
 }

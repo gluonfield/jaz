@@ -37,15 +37,14 @@ Jaz settings belong only under `extensions["chat.jaz"]`:
       "displayName": "Tenders",
       "icon": "./assets/icon.svg",
       "page": {
-        "view": "tenders",
-        "file": "status.json"
+        "view": "tenders"
       }
     }
   }
 }
 ```
 
-`displayName` labels Settings and the navigation button; it defaults to `name`. `icon` is optional and must name an SVG inside the plugin, starting with `./` and containing no `..` segments. Jaz uses a neutral icon when it is omitted. `page` is optional and contains only `view` and `file`. Top-level `title` and `page` have no Jaz meaning.
+`displayName` labels Settings and the navigation button; it defaults to `name`. `icon` is optional and must name an SVG inside the plugin, starting with `./` and containing no `..` segments. Jaz uses a neutral icon when it is omitted. `page` is optional and contains only `view`. Unknown fields in `chat.jaz` and its `page` produce warnings and are ignored, including the obsolete `page.file`. Top-level `title` and `page` have no Jaz meaning.
 
 ```text
 tenders/
@@ -99,9 +98,9 @@ Settings → Plugins lists server names and per-server configuration diagnostics
 
 ## Views and pages
 
-Put HTML views under `views/`. A page's `view: "tenders"` selects `views/tenders.html`; `file` must be a plain filename such as `status.json`.
+Put HTML views under `views/`. A page's `view: "tenders"` selects `views/tenders.html`.
 
-The navigation page reads that JSON file from working folders known to Jaz threads. Its sandbox receives `window.data = {items}`, where each item has `folder`, parsed `data`, and associated `threads` with `id`, `title`, `status`, and `updated_at`. Folders and threads are ordered by their latest thread update. Missing or invalid JSON is skipped. Subscribe with `window.onData(callback)` for updates.
+The navigation page includes only threads that have called `show_view` with a view of that plugin and a `file`. For each thread, Jaz follows its latest such presentation, including archived threads. The file must be a plain filename inside the thread's working folder; subdirectories, traversal, and symlinks outside that folder are rejected. An incidental file with the same name does not link a thread. Older stored presentations without a plugin/view reference still render, but do not link a thread to a page. Its sandbox receives `window.data = {items}`, where each item has `folder`, parsed `data`, and associated `threads` with `id`, `title`, `status`, and `updated_at`. Items group threads by both absolute folder and filename. Items and their threads are ordered by the latest thread update. Missing or invalid JSON is skipped. Subscribe with `window.onData(callback)` for updates.
 
 On a page, `sendPrompt(text)` opens the new-thread composer with the text ready to edit, attach files, and send. `openLink('/sessions/<id>')` opens that thread in Jaz. External links open in the browser.
 

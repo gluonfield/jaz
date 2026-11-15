@@ -35,7 +35,6 @@ type Querier interface {
 	ListChildSessions(ctx context.Context, arg ListChildSessionsParams) ([]Thread, error)
 	ListErrorThreadIDsWithoutError(ctx context.Context, status string) ([]string, error)
 	ListOverviewChildren(ctx context.Context, parentID sql.NullString) ([]ListOverviewChildrenRow, error)
-	ListSessionFolders(ctx context.Context) ([]ListSessionFoldersRow, error)
 	ListSessionSubtree(ctx context.Context, id string) ([]string, error)
 	ListSessions(ctx context.Context, arg ListSessionsParams) ([]Thread, error)
 	// A thread's own children are the threads it started: unsourced ones, or a

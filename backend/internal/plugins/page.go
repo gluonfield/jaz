@@ -18,20 +18,12 @@ import (
 
 type Page struct {
 	View string `json:"view"`
-	File string `json:"file"`
 }
 
 var filename = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]*$`)
 
-func validatePage(p *Page) error {
-	if !name.MatchString(p.View) || !filename.MatchString(p.File) {
-		return fmt.Errorf("%w: page needs a view name and a plain filename", ErrInvalid)
-	}
-	return nil
-}
-
 type SessionStore interface {
-	ListSessionFolders() ([]storage.SessionFolder, error)
+	ListSessionPluginViews() ([]storage.SessionPluginView, error)
 }
 
 type PageContent struct {
@@ -68,43 +60,63 @@ func (s *Store) Page(plugin string, sessions SessionStore) (PageContent, error) 
 	if installed.Name != plugin || installed.Page == nil {
 		return PageContent{}, ErrNotFound
 	}
-	if err := validatePage(&Page{View: installed.Page.View, File: installed.Page.File}); err != nil {
-		return PageContent{}, err
-	}
 	html, err := s.view(plugin + "/" + installed.Page.View)
 	if err != nil {
 		return PageContent{}, err
 	}
-	threads, err := sessions.ListSessionFolders()
+	presentations, err := sessions.ListSessionPluginViews()
 	if err != nil {
 		return PageContent{}, err
 	}
-	slices.SortFunc(threads, func(a, b storage.SessionFolder) int {
+	latest := map[string]storage.SessionPluginView{}
+	for _, presentation := range presentations {
+		owner, view, ok := strings.Cut(presentation.Reference, "/")
+		if !ok || owner != plugin || !name.MatchString(view) || presentation.File == "" {
+			continue
+		}
+		if previous, found := latest[presentation.ID]; !found || presentation.Seq > previous.Seq {
+			latest[presentation.ID] = presentation
+		}
+	}
+	threads := make([]storage.SessionPluginView, 0, len(latest))
+	for _, thread := range latest {
+		threads = append(threads, thread)
+	}
+	slices.SortFunc(threads, func(a, b storage.SessionPluginView) int {
 		if order := b.UpdatedAt.Compare(a.UpdatedAt); order != 0 {
 			return order
 		}
 		return strings.Compare(a.ID, b.ID)
 	})
-	folders := map[string][]PageThread{}
-	var ordered []string
+	type source struct {
+		folder string
+		file   string
+	}
+	groups := map[source][]PageThread{}
+	var ordered []source
 	for _, thread := range threads {
-		if !filepath.IsAbs(thread.Folder) {
+		if !filepath.IsAbs(thread.Folder) || !filename.MatchString(thread.File) {
 			continue
 		}
-		folder := filepath.Clean(thread.Folder)
-		if _, found := folders[folder]; !found {
-			ordered = append(ordered, folder)
+		key := source{folder: filepath.Clean(thread.Folder), file: thread.File}
+		if _, found := groups[key]; !found {
+			ordered = append(ordered, key)
 		}
-		folders[folder] = append(folders[folder], PageThread{ID: thread.ID, Title: thread.Title, Status: thread.Status, UpdatedAt: thread.UpdatedAt})
+		groups[key] = append(groups[key], PageThread{ID: thread.ID, Title: thread.Title, Status: thread.Status, UpdatedAt: thread.UpdatedAt})
 	}
 	page := PageContent{View: html, Items: []PageItem{}}
-	for _, folder := range ordered {
-		data, err := os.ReadFile(filepath.Join(folder, installed.Page.File))
+	for _, key := range ordered {
+		root, err := os.OpenRoot(key.folder)
+		if err != nil {
+			continue
+		}
+		data, err := root.ReadFile(key.file)
+		root.Close()
 		var value any
 		if err != nil || json.Unmarshal(data, &value) != nil {
 			continue
 		}
-		page.Items = append(page.Items, PageItem{Folder: folder, Data: value, Threads: folders[folder]})
+		page.Items = append(page.Items, PageItem{Folder: key.folder, Data: value, Threads: groups[key]})
 	}
 	return page, nil
 }
