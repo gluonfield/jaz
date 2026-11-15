@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/server"
@@ -47,8 +48,16 @@ func (s reconnectInventory) SaveConnection(ctx context.Context, connection integ
 }
 
 func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
-	for _, unavailable := range []bool{false, true} {
-		t.Run(map[bool]string{false: "restores-tools", true: "target-failure"}[unavailable], func(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		warmed      bool
+		unavailable bool
+	}{
+		{name: "restores-tools"},
+		{name: "warmed-existing-client", warmed: true},
+		{name: "target-failure", unavailable: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 			defer cancel()
 			auth := mockAuthServer(t, nil)
@@ -61,13 +70,17 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 				_, _ = io.WriteString(w, `{"error":"invalid_grant"}`)
 			})
 			var fail atomic.Bool
+			var allowOld atomic.Bool
+			var lastAuthorization atomic.Value
 			remote := newEchoHandler()
 			mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
 				if fail.Load() {
 					http.Error(w, "target unavailable", http.StatusServiceUnavailable)
 					return
 				}
-				if r.Header.Get("Authorization") != "Bearer access-token-123" {
+				authorization := r.Header.Get("Authorization")
+				lastAuthorization.Store(authorization)
+				if authorization != "Bearer access-token-123" && !(allowOld.Load() && authorization == "Bearer unexpired-old") {
 					w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+auth.URL+`/.well-known/oauth-protected-resource/mcp"`)
 					http.Error(w, "sign in required", http.StatusUnauthorized)
 					return
@@ -94,18 +107,41 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 			if err := store.SaveConnection(ctx, integrations.Connection{ID: id, Provider: plugin.ID, AccountID: plugin.RemoteMCP.URL}); err != nil {
 				t.Fatal(err)
 			}
-			if err := store.SaveToken(ctx, inventory.server.TokenID(), integrationoauth.Token{AccessToken: "expired", RefreshToken: "old-refresh", ClientID: "old-client", TokenURL: auth.URL + "/old-token", AuthStyle: int(oauth2.AuthStyleInParams), Expiry: time.Now().Add(-time.Hour)}); err != nil {
+			old := integrationoauth.Token{AccessToken: "expired", RefreshToken: "old-refresh", ClientID: "old-client", TokenURL: auth.URL + "/old-token", AuthStyle: int(oauth2.AuthStyleInParams), Expiry: time.Now().Add(-time.Hour)}
+			if test.warmed {
+				old.AccessToken = "unexpired-old"
+				old.Expiry = time.Now().Add(time.Hour)
+			}
+			if err := store.SaveToken(ctx, inventory.server.TokenID(), old); err != nil {
 				t.Fatal(err)
 			}
 			registry := tools.NewRegistry()
 			manager := NewManager(inventory, store, registry, log.New(io.Discard))
 			defer manager.Close()
+			var existing *mcpsdk.ClientSession
+			if test.warmed {
+				allowOld.Store(true)
+				client, err := (integrationoauth.Refresher{Store: store}).Client(ctx, inventory.server.TokenID())
+				if err != nil {
+					t.Fatal(err)
+				}
+				existing, err = mcpsdk.NewClient(&mcpsdk.Implementation{Name: "existing-client"}, nil).Connect(ctx, &mcpsdk.StreamableClientTransport{Endpoint: inventory.server.URL, HTTPClient: client, MaxRetries: -1, DisableStandaloneSSE: true}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer existing.Close()
+				result, err := existing.CallTool(ctx, &mcpsdk.CallToolParams{Name: "echo", Arguments: map[string]any{"value": "before sign-in"}})
+				if err != nil || result.IsError || lastAuthorization.Load() != "Bearer unexpired-old" {
+					t.Fatalf("existing client did not use the unexpired old grant: %+v, %v", result, err)
+				}
+				allowOld.Store(false)
+			}
 			manager.Refresh(ctx)
-			if refreshes.Load() == 0 || manager.Status(id).Status == "connected" || len(registry.Definitions()) != 0 {
+			if (!test.warmed && refreshes.Load() == 0) || manager.Status(id).Status == "connected" || len(registry.Definitions()) != 0 {
 				t.Fatal("fixture did not reproduce an unusable saved grant")
 			}
 			before := unrelatedRequests.Load()
-			if unavailable {
+			if test.unavailable {
 				inventory.fail = &fail
 			}
 			start, err := connections.NewMCPConnectionConnector(inventory, manager).Connect(ctx, plugin, "http://127.0.0.1:5599/callback")
@@ -129,7 +165,7 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 			if loadErr != nil || !ok || grant.ClientID != "dynamic-client-id" || grant.RefreshToken != "refresh-token-456" {
 				t.Fatalf("reconnect did not persist new grant/client: %+v, %v", grant, loadErr)
 			}
-			if unavailable {
+			if test.unavailable {
 				if callback.Code != http.StatusBadRequest || !strings.Contains(callback.Body.String(), "Service Unavailable") || len(registry.Definitions()) != 0 {
 					t.Fatalf("failed target reported successful sign-in: %d %s", callback.Code, callback.Body)
 				}
@@ -140,6 +176,12 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 			}
 			if status := manager.Status(id); status.Status != "connected" || status.ToolCount != 1 {
 				t.Fatalf("sign-in did not restore target tools: %+v", status)
+			}
+			if existing != nil {
+				result, err := existing.CallTool(ctx, &mcpsdk.CallToolParams{Name: "echo", Arguments: map[string]any{"value": "after sign-in"}})
+				if err != nil || result.IsError || lastAuthorization.Load() != "Bearer access-token-123" {
+					t.Fatalf("warmed client retained credentials after Connections sign-in: %+v, %v", result, err)
+				}
 			}
 			definitions := registry.Definitions()
 			if len(definitions) != 1 {
