@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router'
 import { createRoot } from 'react-dom/client'
+import { useState } from 'react'
+import { apiBaseUrl, setApiBaseUrl } from '@/lib/api/client'
 import { BrowserWorkspace } from '@/components/browser/BrowserWorkspace'
 import { SidePanelStateProvider } from '@/components/session/SidePanelState'
 import { ThreadView } from '@/components/session/ThreadView'
@@ -13,6 +15,8 @@ import { TitlebarActionsOutlet, TitlebarProvider, TitlebarSlotOutlet } from '@/l
 import { VoiceProvider } from '@/lib/voice/VoiceProvider'
 
 export async function exerciseSessionConfig(): Promise<void> {
+  const originalBackend = apiBaseUrl()
+  let changeThread: (id: string) => void
   const originalSize = { width: window.innerWidth, height: window.innerHeight }
   const savedChatWidth = localStorage.getItem('jaz.canvasChatWidth')
   localStorage.setItem('jaz.canvasChatWidth', '420')
@@ -47,6 +51,7 @@ export async function exerciseSessionConfig(): Promise<void> {
     if (url.includes('/v1/sessions/config-smoke/seen')) {
       return Response.json(session)
     }
+    if (url.includes('/v1/sessions/config-smoke/file')) return Response.json({ path: '/workspace/canvas.json', content: '{}' })
     if (url.includes('/v1/sessions/config-smoke/canvas')) {
       return Response.json({ version: 'canvas-fixture', dir: '/workspace', pages: [{ id: 'page-1', name: 'Page 1', nodes: [
         { id: 'notes', type: 'text', x: 0, y: 0, width: 240, height: 120, text: 'Canvas Notes' },
@@ -74,17 +79,21 @@ export async function exerciseSessionConfig(): Promise<void> {
   element.append(content, slot)
   const root = createRoot(content)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const route = createRootRoute({ component: () => (
-    <TitlebarProvider><BrowserWorkspace><SidePanelStateProvider>
-      <div className="flex h-full flex-col">
-        <header className="relative z-shell flex h-12 shrink-0 items-center gap-3 px-4">
-          <TitlebarSlotOutlet />
-          <div className="ml-auto"><TitlebarActionsOutlet /></div>
-        </header>
-        <div className="min-h-0 flex-1"><ThreadView sessionId={session.id} /></div>
-      </div>
-    </SidePanelStateProvider></BrowserWorkspace></TitlebarProvider>
-  ) })
+  const route = createRootRoute({ component: () => {
+    const [threadId, setThreadId] = useState(session.id)
+    changeThread = setThreadId
+    return (
+      <TitlebarProvider><BrowserWorkspace><SidePanelStateProvider>
+        <div className="flex h-full flex-col">
+          <header className="relative z-shell flex h-12 shrink-0 items-center gap-3 px-4">
+            <TitlebarSlotOutlet />
+            <div className="ml-auto"><TitlebarActionsOutlet /></div>
+          </header>
+          <div className="min-h-0 flex-1"><ThreadView key={threadId} sessionId={threadId} /></div>
+        </div>
+      </SidePanelStateProvider></BrowserWorkspace></TitlebarProvider>
+    )
+  } })
   const router = createRouter({ routeTree: route, history: createMemoryHistory({ initialEntries: ['/'] }) })
   const until = async (check: () => boolean | Promise<boolean>) => {
     const deadline = Date.now() + 5000
@@ -128,24 +137,30 @@ export async function exerciseSessionConfig(): Promise<void> {
     await window.smoke.key('Escape')
     await until(() => !toggle())
 
-    element.querySelector<HTMLButtonElement>('[aria-label="Side Panel"]')!.click()
-    await until(() => Boolean([...document.querySelectorAll('button')].find((button) => button.textContent === 'Canvas')))
-    const canvasTab = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Canvas')!
-    canvasTab.click()
-    await until(() => !canvasTab.isConnected)
+    client.setQueryData(keys.sessionEvents(session.id), [{
+      session_id: session.id, seq: 2, type: 'artifact', at: new Date().toISOString(),
+      artifact: { presented: true, artifact_type: 'canvas', file: '/workspace/canvas.json', title: 'Canvas', widget_code: '' },
+    }])
+    await until(() => [...element.querySelectorAll('button')].some((button) => button.textContent?.includes('Open canvas')))
+    const presentation = [...element.querySelectorAll('button')].find((button) => button.textContent?.includes('Open canvas'))!
+    presentation.click()
     await until(() => Boolean(element.querySelector('#panel-body-canvas .react-flow__node[data-id="notes"]')))
     if (element.querySelector('.canvas-chat') || !element.querySelector('textarea')) throw new Error('Canvas tab replaced the thread conversation')
     await until(() => Boolean(element.querySelector('textarea[placeholder="Ask about the canvas"]')))
     await window.smoke.capture('thread-canvas-side-panel-tab')
-
+    element.querySelector<HTMLButtonElement>('[aria-label="Close Canvas"]')!.click()
+    await until(() => !element.querySelector('.canvas') && !element.querySelector('textarea[placeholder="Ask about the canvas"]'))
+    presentation.click()
+    await until(() => Boolean(element.querySelector('#panel-body-canvas .canvas')))
     client.setQueryData(keys.sessionMessages(session.id), {
       session: { ...session, status: 'idle', runtime_ref: { ...session.runtime_ref!, artifact_surface: 'canvas' } },
       messages: [], events: [], latest_event_seq: 0,
     })
-    await until(() => element.querySelectorAll('.canvas').length === 1 && Boolean(element.querySelector('#panel-body-canvas .canvas')))
-    if (element.querySelector('.canvas-chat')) throw new Error('Canvas mode did not keep its conversation beside the canvas tab')
-    element.querySelector<HTMLButtonElement>('[aria-label="Close Canvas"]')!.click()
-    element.querySelector<HTMLButtonElement>('[aria-label="Side Panel"]')!.click()
+    await until(() => element.querySelectorAll('.canvas').length === 1 && Boolean(element.querySelector('.canvas-chat')) && !element.querySelector('#panel-body-canvas'))
+    presentation.click()
+    if (element.querySelector('#panel-body-canvas') || !element.querySelector('.canvas-chat')) throw new Error('Presenting a main canvas changed the thread layout')
+    const panelControl = element.querySelector<HTMLButtonElement>('[aria-label="Side Panel"]')!
+    if (panelControl.getAttribute('aria-pressed') === 'true') panelControl.click()
     await until(() => element.querySelector('[aria-label="Side Panel"]')?.getAttribute('aria-pressed') === 'false' && element.querySelector('[aria-label="Resize side panel"]')!.parentElement!.getBoundingClientRect().width < 1)
     const resizeHandle = () => element.querySelector<HTMLElement>('[aria-label="Resize canvas chat"]')!
     const chatWidth = () => element.querySelector('.canvas-chat')!.parentElement!.getBoundingClientRect().width
@@ -254,15 +269,10 @@ export async function exerciseSessionConfig(): Promise<void> {
     }
     await window.smoke.capture('canvas-side-panel')
     element.querySelector<HTMLButtonElement>('[aria-label="New tab"]')!.click()
-    await until(() => Boolean([...document.querySelectorAll('button')].find((button) => button.textContent === 'Canvas')))
-    const canvasOption = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Canvas')!
-    canvasOption.click()
-    await until(() => !canvasOption.isConnected)
-    await until(() => element.querySelectorAll('.canvas').length === 1 && Boolean(element.querySelector('#panel-body-canvas .react-flow__node[data-id="notes"]')))
-    if (element.querySelector('.canvas-chat')) throw new Error('Opening the canvas tab retained the full-mode chat')
-    await window.smoke.capture('canvas-mode-side-panel-tab')
-    element.querySelector<HTMLButtonElement>('[aria-label="Close Canvas"]')!.click()
-    await until(() => element.querySelectorAll('.canvas').length === 1 && Boolean(element.querySelector('.canvas-chat')))
+    await until(() => document.querySelector('[aria-label="New tab"][aria-expanded="true"]') !== null)
+    if ([...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Canvas' && !button.closest('[data-artifact-title]'))) throw new Error('Canvas is offered in the new-tab menu')
+    await window.smoke.key('Escape')
+    if (element.querySelectorAll('.canvas').length !== 1 || !element.querySelector('.canvas-chat')) throw new Error('Selecting another panel changed the main canvas layout')
 
     await window.smoke.resize(390, 844)
     await until(() => window.innerWidth === 390 && Math.abs(drawer().getBoundingClientRect().width - 390) < 1 && Math.abs(drawer().getBoundingClientRect().left) < 1)
@@ -279,6 +289,17 @@ export async function exerciseSessionConfig(): Promise<void> {
     await window.smoke.pointer('mouseUp', x, y)
     await until(() => panelButton().getAttribute('aria-pressed') === 'true' && Math.abs(drawer().getBoundingClientRect().left) < 1)
     await window.smoke.capture('canvas-side-panel-mobile')
+    await window.smoke.resize(1440, 900)
+    setApiBaseUrl(await window.smoke.backend())
+    changeThread('canvas-agent')
+    await until(() => element.querySelector('textarea') !== null && !element.querySelector('.canvas'))
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    const presented = await fetch(`${apiBaseUrl()}/exercise-canvas-present`, { method: 'POST' })
+    if (!presented.ok) throw new Error(await presented.text())
+    await until(() => [...element.querySelectorAll('#panel-body-canvas .react-flow__node')].some((node) => node.textContent?.includes('Agent-created canvas')))
+    if (element.querySelector('.canvas-chat') || !element.querySelector('textarea')) throw new Error('Agent presentation changed the ordinary thread layout')
+    await window.smoke.capture('agent-presented-canvas-tab')
+    console.log('CANVAS_AGENT_AUTOMATIC_TAB_PASSED')
   } finally {
     save.resolve()
     refresh.resolve()
@@ -286,6 +307,7 @@ export async function exerciseSessionConfig(): Promise<void> {
     client.clear()
     element.remove()
     window.fetch = originalFetch
+    setApiBaseUrl(originalBackend)
     if (savedChatWidth === null) {
       localStorage.removeItem('jaz.canvasChatWidth')
     } else {

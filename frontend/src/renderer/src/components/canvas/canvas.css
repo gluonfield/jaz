@@ -17,6 +17,7 @@
   --canvas-next: #8b83d1;
   /* Where floating controls start, clear of the title row. */
   --canvas-top: calc(var(--titlebar-height, 0px) + 16px);
+  container: canvas / inline-size;
   position: absolute;
   inset: 0;
   background: var(--canvas-bg);
@@ -686,15 +687,6 @@
   transition-delay: 400ms;
 }
 
-/* On a narrow screen the tools scroll sideways instead of running off it. */
-@media (max-width: 720px) {
-  .canvas-dock {
-    max-width: calc(100% - var(--canvas-inset) - 16px);
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-}
-
 .canvas-tool-layer {
   position: absolute;
   inset: 0;
@@ -892,34 +884,30 @@
   font-weight: 500;
 }
 
-.canvas-panel {
-  container-type: inline-size;
-}
-
 .canvas-panel .canvas {
   --canvas-top: 16px;
 }
 
-@container (max-width: 720px) {
-  .canvas-panel .canvas-dock {
+@container canvas (max-width: 720px) {
+  .canvas-dock {
     width: max-content;
-    max-width: calc(100% - 16px);
+    max-width: calc(100% - var(--canvas-inset) - 16px);
     flex-wrap: wrap;
     justify-content: center;
   }
 
-  .canvas-panel .canvas-map {
-    bottom: 64px;
+  .canvas-map.canvas-overlay {
+    top: var(--canvas-top);
+    bottom: auto;
     width: 100px;
+    margin: 0 14px;
   }
 
-  .canvas-panel .canvas-map .react-flow__minimap {
+  .canvas-map .react-flow__minimap {
     display: none;
   }
-}
 
-@container (max-width: 440px) {
-  .canvas-panel .canvas-map {
-    bottom: 112px;
+  .canvas-pages {
+    max-width: calc(100% - var(--canvas-pages-left) - 128px);
   }
 }

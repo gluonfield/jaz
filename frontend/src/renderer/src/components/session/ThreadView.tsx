@@ -200,13 +200,10 @@ export function ThreadView({
   const seenRequestedRef = useRef(false)
   const detailSession = detail.data?.session
   const sideChatAvailable = isCodexACPSession(detailSession)
-  const fullCanvas = detailSession?.runtime_ref?.artifact_surface === 'canvas'
+  const canvas = detailSession?.runtime_ref?.artifact_surface === 'canvas'
   // A canvas shows the agent's work on the board, so its browser stays out of
   // sight until the user opens it. Other threads follow it once they are known.
-  const sidePanel = useSidePanelState(sessionId, { sideChatAvailable, startOpen: openDetails, followBrowser: Boolean(detailSession) && !fullCanvas })
-  const canvasInPanel = sidePanel.open && sidePanel.mode === 'tabs' && sidePanel.activeTab?.kind === 'canvas'
-  const canvas = fullCanvas && !canvasInPanel
-  const canvasActive = fullCanvas || canvasInPanel
+  const sidePanel = useSidePanelState(sessionId, { availability: { 'side-chat': sideChatAvailable, canvas: !canvas }, startOpen: openDetails, followBrowser: Boolean(detailSession) && !canvas })
   const { open: panelOpen, mode: panelMode, toggleMode: togglePanel, openView } = sidePanel
   const handleSessionEvent = useCallback((event: SessionEvent) => {
     const at = event.at || new Date().toISOString()
@@ -262,15 +259,15 @@ export function ThreadView({
     storageKey: `${SESSION_DRAFT_KEY_PREFIX}${sessionId}`,
     storage: 'local',
   })
-  const canvasContexts = useCanvasContexts(composerContexts, canvasActive)
+  const canvasContexts = useCanvasContexts(composerContexts)
   const appContexts = useAppContexts(canvasContexts)
   // The composer sends its own contexts and clears them; any other send takes
   // what app views reported, and on a canvas the selection too.
   const { take: takeAppContexts } = appContexts
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
     pinToBottom()
-    return sendMessage(text, { ...options, contexts: options.contexts ?? [...(canvasActive ? canvasContexts.contexts : []), ...takeAppContexts()] })
-  }, [pinToBottom, sendMessage, canvasActive, canvasContexts.contexts, takeAppContexts])
+    return sendMessage(text, { ...options, contexts: options.contexts ?? [...(canvasContexts.present ? canvasContexts.contexts : []), ...takeAppContexts()] })
+  }, [pinToBottom, sendMessage, canvasContexts.present, canvasContexts.contexts, takeAppContexts])
   const appThread = useMemo<MCPAppThread>(() => ({
     id: sessionId,
     send: (text) => void handleSend(text),
@@ -711,7 +708,7 @@ export function ThreadView({
                 <>
                   {goalStatusVisible ? <GoalStatusBar goal={goal} /> : null}
                   <Composer
-                    placeholder={canvasActive ? canvasContexts.placeholder : placeholder}
+                    placeholder={canvasContexts.present ? canvasContexts.placeholder : placeholder}
                     streaming={sessionRunning}
                     suggestedPrompt={derived.suggestedPrompt}
                     commands={derived.agentSession?.commands ?? undefined}

@@ -18,14 +18,17 @@ const contextId = (page: string, node?: string) => `canvas:${JSON.stringify([pag
 
 // The canvas selection rides along as composer context. It lives in the board,
 // never in the stored draft: sending clears it, a removed chip deselects.
-export function useCanvasContexts(draft: DraftContexts, active = true) {
+export function useCanvasContexts(draft: DraftContexts) {
   const [page, setPage] = useState<Pick<CanvasPage, 'id' | 'name'>>()
   const [picks, setPicks] = useState<CanvasPick[]>([])
   const controller = useRef<((picks: CanvasPick[]) => void) | undefined>(undefined)
   const bindSelection = useCallback((select: (picks: CanvasPick[]) => void) => {
     controller.current = select
     return () => {
-      if (controller.current === select) controller.current = undefined
+      if (controller.current !== select) return
+      controller.current = undefined
+      setPage(undefined)
+      setPicks([])
     }
   }, [])
   const onPage = useCallback((next: Pick<CanvasPage, 'id' | 'name'>) => {
@@ -37,10 +40,10 @@ export function useCanvasContexts(draft: DraftContexts, active = true) {
   }, [])
   const contexts = useMemo<ComposerContext[]>(() => [
     ...draft.contexts,
-    ...(!active ? [] : picks.length
+    ...(picks.length
       ? picks.map((pick) => ({ id: contextId(pick.page, pick.node), type: 'canvas' as const, ...pick }))
       : page ? [{ id: contextId(page.id), type: 'canvas' as const, page: page.id, label: page.name }] : []),
-  ], [draft.contexts, page, picks, active])
+  ], [draft.contexts, page, picks])
   const { removeContext, replaceContexts } = draft
   const remove = useCallback((id: string) => {
     if (id.startsWith('canvas:')) controller.current?.(picks.filter((pick) => contextId(pick.page, pick.node) !== id))
@@ -51,5 +54,5 @@ export function useCanvasContexts(draft: DraftContexts, active = true) {
     controller.current?.(next.flatMap((context) => (context.type === 'canvas' && context.node ? [{ page: context.page, node: context.node, label: context.label }] : [])))
   }, [replaceContexts])
   const placeholder = ['Ask about the canvas', 'Ask about this', 'Ask about these'][Math.min(picks.length, 2)]
-  return { bindSelection, onSelect, onPage, contexts, removeContext: remove, replaceContexts: replace, placeholder }
+  return { present: Boolean(page), bindSelection, onSelect, onPage, contexts, removeContext: remove, replaceContexts: replace, placeholder }
 }

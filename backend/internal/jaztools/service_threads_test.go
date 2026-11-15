@@ -9,6 +9,7 @@ import (
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/memoryservice"
@@ -88,6 +89,7 @@ func TestThreadToolsCreateDiscoverAndRead(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	agentService := fakeACPService{spawned: make(chan acp.SpawnRequest, 1)}

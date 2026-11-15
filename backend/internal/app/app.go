@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/jazagent"
@@ -394,7 +395,7 @@ func NewThreadService(store *sqlitestore.Store) *threads.Service {
 	return threads.NewService(sqlitestore.NewSearchQueries(store), store)
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher) *tools.Registry {
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher, canvases *canvas.Service) *tools.Registry {
 	return tools.NewRegistry(
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
 		&exectool.WriteStdinTool{Manager: commandManager},
@@ -403,7 +404,7 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 			ExtraRoots: []string{loops.AutomationsDir(store.RootDir())},
 			PathScope:  applypatch.AbsolutePaths,
 		},
-		&visualizetool.ReadMeTool{},
+		&visualizetool.ReadMeTool{Canvases: canvases},
 		&visualizetool.ShowWidgetTool{},
 		&widgettool.PublishTool{Publisher: widgetPublisher},
 		&viewimagetool.Tool{Workspace: string(workspace)},

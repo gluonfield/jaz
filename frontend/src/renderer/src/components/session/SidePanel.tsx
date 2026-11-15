@@ -100,7 +100,7 @@ export function SidePanel({
                   onUploadAttachment={onUploadAttachment}
                 />
               ) : tab.kind === 'canvas' ? (
-                visible ? <div className="canvas-panel relative h-full">{canvas}</div> : null
+                <div className="canvas-panel relative h-full">{canvas}</div>
               ) : tab.kind === 'terminal' ? (
                 <TerminalPanel session={session} visible={visible} />
               ) : tab.kind === 'file' ? (

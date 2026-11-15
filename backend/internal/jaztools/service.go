@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
+	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/loops"
@@ -141,8 +142,9 @@ func New(
 	whatsAppTools *connections.WhatsAppMCPTools,
 	telegramTools *connections.TelegramMCPTools,
 	installed *plugins.Store,
+	canvases *canvas.Service,
 ) *Service {
-	visualizeTools := visualize.NewMCPTools(sessionEvents, sessions, events)
+	visualizeTools := visualize.NewMCPTools(sessionEvents, sessions, events, canvases)
 	return &Service{
 		Memory:          memory,
 		calendarTools:   calendarTools,
@@ -287,9 +289,11 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 	case canvasSurface:
 		// A canvas thread's visuals belong on its board, not in the narrow chat
 		// beside it.
+		s.visualizeTools.AddCanvasTo(server)
 	default:
 		s.visualizeTools.AddReadMeTo(server)
 		s.visualizeTools.AddShowWidgetTo(server)
+		s.visualizeTools.AddCanvasTo(server)
 		s.pluginTools.AddTo(server)
 	}
 	return server

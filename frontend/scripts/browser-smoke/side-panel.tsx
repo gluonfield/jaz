@@ -91,10 +91,10 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
   const noop = async () => {}
   function Chat({ sessionId }: { sessionId: string }) {
     chatRenders += 1
-    const state = useSidePanelState(sessionId, { sideChatAvailable: true })
+    const state = useSidePanelState(sessionId, { availability: { 'side-chat': true } })
     const currentSession = { ...session, id: sessionId }
     const isMobile = useIsMobile()
-    const contexts = useCanvasContexts({ contexts: [], removeContext: () => {}, replaceContexts: () => {} }, state.open && state.mode === 'tabs' && state.activeTab?.kind === 'canvas')
+    const contexts = useCanvasContexts({ contexts: [], removeContext: () => {}, replaceContexts: () => {} })
     useLayoutEffect(() => {
       panel = state
       activeSessionId = sessionId
@@ -109,7 +109,7 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
         <div className="min-w-0 flex-1 p-8 text-ink" data-tab-chat>
           <FileReaderLinkProvider sessionId={sessionId} onOpen={state.openFile}>
             <PreviewLinkProvider onOpen={state.openPreview}>
-              <RenderedMarkdown text={`# Product research\n\nReview the [analysis](/ANALYSIS.md) and compare it with the [supplier website](${location.origin}/target?tabs=one).\n\n[Local report](${fixture.path})`} />
+              <RenderedMarkdown text={`# Product research\n\nReview the [analysis](/ANALYSIS.md) and compare it with the [supplier website](${location.origin}/target?tabs=one).\n\n[Local report](${fixture.path})\n\n[Open canvas](/workspace/canvas.json)`} />
               <MessageMarkdown text="/ANALYSIS.md" />
               <textarea aria-label="Conversation draft" />
             </PreviewLinkProvider>
@@ -183,7 +183,7 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
       return false
     }
     try {
-      return await evaluate(view, `document.readyState === "complete" && (${condition})`) === true
+      return await evaluate(view, `document.readyState === "complete" && location.href !== "about:blank" && (${condition})`) === true
     } catch (error) {
       if (!isPreviewWebviewPending(error) && !(error instanceof Error && error.message.includes('Cannot find default execution context'))) {
         throw error
@@ -214,6 +214,7 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
     const path = url.pathname
     const file = path === '/v1/sessions/tabs/file' ? documents.find((file) => file.path === url.searchParams.get('path')) : undefined
     if (file) return Response.json(file)
+    if (path === '/v1/sessions/tabs/file' && url.searchParams.get('path') === '/workspace/canvas.json') return Response.json({ path: '/workspace/canvas.json', content: JSON.stringify(canvas) })
     if (path === '/v1/sessions/tabs/canvas/layout') return new Response(null, { status: 204 })
     if (path !== '/v1/sessions/tabs/canvas') return originalFetch(input, init)
     if (init?.method === 'PATCH') {
@@ -233,7 +234,9 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
       await click(button('Side Panel')!)
       await until(() => panel.open && panel.mode === 'tabs' && Math.abs(element.querySelector('[role="separator"]')!.parentElement!.getBoundingClientRect().width - panel.width) < 1)
       session.status = 'running'
-      await click(button('Canvas')!)
+      if (button('Canvas')) throw new Error('Canvas is offered as a new tab')
+      panel.close()
+      await click([...element.querySelectorAll('[role=link]')].find((link) => link.textContent === 'Open canvas')!)
       await until(() => panel?.activeTab?.kind === 'canvas' && Boolean(element.querySelector('.react-flow__node[data-id="two"]')))
       panel.resize(480)
       const body = () => document.getElementById('panel-body-canvas')!
@@ -278,12 +281,26 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
       await click(node('one'))
       await window.smoke.key('D', ['meta'])
       await until(() => canvas.pages[0].nodes.length === 3)
+      const mountedBoard = body().querySelector('.canvas')
+      const savedViewport = transform()
+      panel.openFile('/ANALYSIS.md')
+      await until(() => panel.activeTab?.kind === 'file' && body().hidden)
+      if (body().querySelector('.canvas') !== mountedBoard) throw new Error('Switching tabs unmounted the canvas')
+      await click(tab('canvas'))
+      await until(() => !body().hidden && body().getBoundingClientRect().width > 400)
+      if (transform() !== savedViewport) throw new Error('Switching tabs lost the canvas viewport')
+      await click(node('one'))
+      await window.smoke.key('Z', ['meta'])
+      await until(() => canvas.pages[0].nodes.length === 2)
+      await window.smoke.key('Z', ['meta', 'shift'])
+      await until(() => canvas.pages[0].nodes.length === 3)
+      await click(body().querySelector('.react-flow__node.selected'))
       await window.smoke.key('Backspace')
       await until(() => canvas.pages[0].nodes.length === 2)
       canvas = { ...canvas, version: String(Number(canvas.version) + 1), pages: canvas.pages.map((page) => ({ ...page, nodes: page.nodes.map((item) => item.id === 'two' ? { ...item, text: 'Live agent update' } : item) })) }
       await until(() => node('two').textContent?.includes('Live agent update') === true)
       if (canvasReads < 2) throw new Error('Canvas did not poll for agent edits')
-      panel.addTab('canvas')
+      panel.openFile('/workspace/canvas.json')
       await until(() => panel.tabs.filter((tab) => tab.kind === 'canvas').length === 1)
       await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'other-chat' } })
       await until(() => activeSessionId === 'other-chat')
@@ -710,11 +727,12 @@ window.onData(report);
       return response.json()
     }
     await until(async () => (await fetch(`${backend}/v1/sessions/tabs/browser`, { method: 'POST', body: '{"action":"status"}' })).ok)
+    const agentURL = `${location.origin}/target?tabs=agent`
+    await action({ action: 'navigate', url: agentURL })
     panel.selectTab('tabs')
     await until(() => ready('tabs'))
     const agentView = webview('tabs')
     const agentID = agentView.getWebContentsId()
-    const agentURL = await evaluate(agentView, 'location.href') as string
     const shown = () => panel.open && panel.mode === 'tabs' && panel.activeTab?.id === 'tabs' && !document.querySelector<HTMLElement>('[data-browser-session="tabs"]')!.inert
     for (const input of [
       { action: 'navigate', url: agentURL },

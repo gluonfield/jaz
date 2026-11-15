@@ -86,6 +86,10 @@ func (data Data) normalized() Data {
 	return data
 }
 
+func RenderCanvas(dir string) (string, error) {
+	return renderPromptModule("canvas_format", Data{CanvasDir: dir})
+}
+
 func RenderConnections(connections []connections.AgentConnection) (string, error) {
 	return renderPromptModule("connections", connections)
 }

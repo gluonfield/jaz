@@ -86,7 +86,7 @@ function PanelViewRow({ view }: { view: PanelView }) {
     <button type="button" onClick={() => thread?.openView?.(view)} className="flex w-fit max-w-full cursor-pointer items-center gap-2 rounded-card border border-border bg-surface px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-surface-2">
       <LayoutDashboard size={14} className="shrink-0 text-ink-3" aria-hidden />
       <span className="truncate">{view.title}</span>
-      <span className="shrink-0 text-ink-3">Open in side panel</span>
+      <span className="shrink-0 text-ink-3">{view.artifact_type === 'canvas' ? 'Open canvas' : 'Open in side panel'}</span>
     </button>
   )
 }

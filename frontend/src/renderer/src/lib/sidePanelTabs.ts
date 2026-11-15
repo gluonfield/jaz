@@ -14,7 +14,7 @@ export type SidePanelTab =
   // A view tab shows a plugin's view, drawn from a file in the thread's folder.
   | { id: string; kind: 'view'; view: PanelView }
 // NewSidePanelTab is what the new-tab menu opens: a built-in kind or a thread app.
-export type NewSidePanelTab = Exclude<SidePanelTab['kind'], 'app' | 'view'> | MCPEntrypoint
+export type NewSidePanelTab = Exclude<SidePanelTab['kind'], 'app' | 'view' | 'canvas'> | MCPEntrypoint
 export type SidePanelMode = 'tabs' | 'overview'
 export const OVERVIEW_PANEL_WIDTH = 300
 
