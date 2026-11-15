@@ -127,7 +127,7 @@
     },
     "kimi": {
       "repo": "gluonfield/kimi-code",
-      "tag": "v2.1.1-jaz.1",
+      "tag": "v2.6.2-jaz.1",
       "assets": {
         "darwin-arm64": {
           "name": "kimi-code-darwin-arm64.zip",

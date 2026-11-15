@@ -140,36 +140,36 @@
       }
     },
     "kimi": {
-      "version": "2.1.1-jaz.1",
+      "version": "2.6.2-jaz.1",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.1.1-jaz.1/kimi-code-darwin-arm64.zip",
-          "sha256": "c4b1a896e5ed335a1f4a44de1b4eb95be30de5f2399aa3fc7e447b5acb0265b4",
+          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.6.2-jaz.1/kimi-code-darwin-arm64.zip",
+          "sha256": "141ccc11defe89d04481b3c01575251edbb9fcd71423a54d7c24b2b5f17f8c9b",
           "binary": "kimi"
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.1.1-jaz.1/kimi-code-darwin-x64.zip",
-          "sha256": "dd69d4a59033d1acedd0875d69969190412c804ee6700f4e103faaf36759c1b9",
+          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.6.2-jaz.1/kimi-code-darwin-x64.zip",
+          "sha256": "cbf860290acb0a969a57929701001b031407e23255fff6969d20e9cfcc2e306f",
           "binary": "kimi"
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.1.1-jaz.1/kimi-code-linux-arm64.zip",
-          "sha256": "27e37e899919b139571daeb7c9aac6b61a435c729b12dd6376a688e0d8db605d",
+          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.6.2-jaz.1/kimi-code-linux-arm64.zip",
+          "sha256": "585edb302b18a5b9140813ff811f51daead97e0ba4a05365fd6862c28e38b5e2",
           "binary": "kimi"
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.1.1-jaz.1/kimi-code-linux-x64.zip",
-          "sha256": "479a868cbc0adf05857fbbd071553855ad7d61d6595cf3fb82496ec92a2ec3ba",
+          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.6.2-jaz.1/kimi-code-linux-x64.zip",
+          "sha256": "c87eeac1910895b178e8bd218e31b68a59779ebe3ce4404f6f2a7914be270763",
           "binary": "kimi"
         },
         "win32-arm64": {
-          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.1.1-jaz.1/kimi-code-win32-arm64.zip",
-          "sha256": "870c91468c4750337365fb3de4d88a37212248f0595b71b1edd725ae2de346d9",
+          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.6.2-jaz.1/kimi-code-win32-arm64.zip",
+          "sha256": "d6647b3961555e1102ddbdd9acbe44ab469fe49b2ede41981eb2657b8f2aae17",
           "binary": "kimi.exe"
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.1.1-jaz.1/kimi-code-win32-x64.zip",
-          "sha256": "16da33ea3434a3bf6f27c082419a69ab24ee0cbc6c888e80bdd881a101987aee",
+          "url": "https://github.com/gluonfield/kimi-code/releases/download/v2.6.2-jaz.1/kimi-code-win32-x64.zip",
+          "sha256": "da2201ed021428bfd7249564811ae9f46e7cac1f14a35b906a63318235925042",
           "binary": "kimi.exe"
         }
       }
