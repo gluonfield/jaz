@@ -116,11 +116,12 @@ func TestRefresherUsesResolvedClientConfig(t *testing.T) {
 			AuthStyle:    int(oauth2.AuthStyleInParams),
 		},
 	}
+	clientID := "old-client"
 	src, err := (Refresher{
 		Store: store,
 		ClientConfig: func(_ context.Context, token Token) (ClientConfig, error) {
 			return ClientConfig{
-				ClientID:     "current-client",
+				ClientID:     clientID,
 				ClientSecret: "current-secret",
 				TokenURL:     token.TokenURL,
 				AuthStyle:    oauth2.AuthStyleInParams,
@@ -130,6 +131,8 @@ func TestRefresherUsesResolvedClientConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	clientID = "current-client"
+	store.token.ClientID = "replacement-client"
 	if _, err := src.Token(); err != nil {
 		t.Fatal(err)
 	}

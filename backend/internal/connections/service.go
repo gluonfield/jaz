@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/pkg/integrations"
+	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 var ErrConnectionNotFound = errors.New("connection account not found")
@@ -89,7 +91,11 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) (DisconnectR
 		}
 		return DisconnectResult{}, ErrConnectionNotFound
 	}
+	unlock := integrationoauth.LockToken(id)
+	unlockMCP := integrationoauth.LockToken(mcpconfig.OAuthConnectionID(id))
 	ok, err = s.store.DeleteConnection(ctx, id)
+	unlockMCP()
+	unlock()
 	if err != nil {
 		return DisconnectResult{}, err
 	}

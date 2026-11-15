@@ -138,6 +138,8 @@ func (h *oauthHandler) AuthorizeFromMetadata(ctx context.Context) error {
 }
 
 func (h *oauthHandler) saveToken(ctx context.Context, tok integrationoauth.Token) error {
+	unlock := integrationoauth.LockToken(h.tokenID)
+	defer unlock()
 	if err := h.store.SaveToken(ctx, h.tokenID, tok); err != nil {
 		return fmt.Errorf("persist token: %w", err)
 	}
