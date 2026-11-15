@@ -53,6 +53,8 @@ type PageThread struct {
 }
 
 func (s *Store) Page(plugin string, sessions SessionStore) (PageContent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if !manifest.SafeName(plugin) {
 		return PageContent{}, fmt.Errorf("%w: name %q", ErrInvalid, plugin)
 	}
@@ -66,7 +68,7 @@ func (s *Store) Page(plugin string, sessions SessionStore) (PageContent, error) 
 	if installed.Name != plugin || installed.Page == nil {
 		return PageContent{}, ErrNotFound
 	}
-	html, err := s.View(plugin + "/" + installed.Page.View)
+	html, err := s.view(plugin + "/" + installed.Page.View)
 	if err != nil {
 		return PageContent{}, err
 	}

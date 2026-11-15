@@ -110,6 +110,8 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "GET /v1/plugins", Handler: http.HandlerFunc(installed.List)},
 		server.Route{Pattern: "GET /v1/plugins/{plugin}/page", Handler: http.HandlerFunc(installed.Page)},
 		server.Route{Pattern: "POST /v1/plugins", Handler: http.HandlerFunc(installed.Install)},
+		server.Route{Pattern: "POST /v1/plugins/repository", Handler: http.HandlerFunc(installed.InstallRepository)},
+		server.Route{Pattern: "POST /v1/plugins/{plugin}/update", Handler: http.HandlerFunc(installed.Update)},
 		server.Route{Pattern: "DELETE /v1/plugins/{plugin}", Handler: http.HandlerFunc(installed.Remove)},
 	)
 	routes = append(routes, feedRoutes(deps.Feed)...)

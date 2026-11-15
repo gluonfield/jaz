@@ -34,19 +34,24 @@ type Plugin struct {
 	IconDataURL string   `json:"icon_data_url,omitempty"`
 	Page        *Page    `json:"page,omitempty"`
 	Warnings    []string `json:"warnings,omitempty"`
+	Source      *Source  `json:"source,omitempty"`
 }
 
 type Store struct {
-	dir     string
-	dataDir string
-	mu      sync.Mutex
+	dir            string
+	dataDir        string
+	mu             sync.RWMutex
+	sourcesPath    string
+	commitMetadata func(string, string) error
 }
 
 func New(layout runtimefiles.Layout) *Store {
-	return &Store{dir: layout.Plugins, dataDir: filepath.Join(layout.Root, "plugin-data")}
+	return &Store{dir: layout.Plugins, dataDir: filepath.Join(layout.Root, "plugin-data"), sourcesPath: filepath.Join(layout.Root, "plugin-sources.json"), commitMetadata: os.Rename}
 }
 
 func (s *Store) List() ([]Plugin, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	entries, err := os.ReadDir(s.dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return []Plugin{}, nil
@@ -54,10 +59,17 @@ func (s *Store) List() ([]Plugin, error) {
 	if err != nil {
 		return nil, err
 	}
+	sources, err := s.sources()
+	if err != nil {
+		return nil, err
+	}
 	out := []Plugin{}
 	for _, entry := range entries {
 		plugin, err := read(filepath.Join(s.dir, entry.Name()), s.dataDir)
 		if err == nil && plugin.Name == entry.Name() {
+			if source, ok := sources[plugin.Name]; ok {
+				plugin.Source = &source
+			}
 			out = append(out, plugin)
 		}
 	}
@@ -66,6 +78,12 @@ func (s *Store) List() ([]Plugin, error) {
 
 // View returns a view's HTML by its reference, "<plugin>/<view>".
 func (s *Store) View(ref string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.view(ref)
+}
+
+func (s *Store) view(ref string) (string, error) {
 	plugin, view, ok := strings.Cut(ref, "/")
 	if !ok || !manifest.SafeName(plugin) || !name.MatchString(view) {
 		return "", fmt.Errorf("%w: view %q is not <plugin>/<view>", ErrInvalid, ref)
@@ -85,52 +103,35 @@ func (s *Store) View(ref string) (string, error) {
 // Install adds every plugin found in a zip, at any depth, replacing an
 // installed plugin of the same name. A repository's downloaded zip installs
 // all the plugins it holds.
-func (s *Store) Install(archive []byte) ([]Plugin, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+func (s *Store) Install(archive []byte) (installed []Plugin, err error) {
+	if err = os.MkdirAll(s.dir, 0o755); err != nil {
 		return nil, err
 	}
 	work, err := os.MkdirTemp(s.dir, ".install-")
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = os.RemoveAll(work) }()
-	if err := skills.ExtractArchive(archive, work); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	var found []Plugin
-	var dirs []string
-	if err := filepath.WalkDir(work, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || !entry.IsDir() {
-			return err
+	defer func() {
+		if !errors.Is(err, errKeepStaging) {
+			_ = os.RemoveAll(work)
 		}
-		plugin, err := read(path, s.dataDir)
-		if errors.Is(err, manifest.ErrNotPlugin) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		found = append(found, plugin)
-		dirs = append(dirs, path)
-		return fs.SkipDir
-	}); err != nil {
+	}()
+	tree := filepath.Join(work, "content")
+	if err = os.MkdirAll(tree, 0755); err != nil {
 		return nil, err
 	}
-	if len(found) == 0 {
-		return nil, fmt.Errorf("%w: %w", ErrInvalid, manifest.ErrNotPlugin)
+	if err = skills.ExtractArchive(archive, tree); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	for i, plugin := range found {
-		dest := filepath.Join(s.dir, plugin.Name)
-		if err := os.RemoveAll(dest); err != nil {
-			return nil, err
-		}
-		if err := os.Rename(dirs[i], dest); err != nil {
-			return nil, err
-		}
+	prepared, err := s.discover(tree)
+	if err != nil {
+		return nil, err
 	}
-	return found, nil
+	prepared, err = stagePackages(prepared, filepath.Join(work, "ready"))
+	if err != nil {
+		return nil, err
+	}
+	return s.publish(prepared)
 }
 
 func (s *Store) Remove(plugin string) error {
@@ -143,7 +144,29 @@ func (s *Store) Remove(plugin string) error {
 	if _, err := manifest.Read(dir); errors.Is(err, fs.ErrNotExist) || errors.Is(err, manifest.ErrNotPlugin) {
 		return fmt.Errorf("%w: %s", ErrNotFound, plugin)
 	}
-	return os.RemoveAll(dir)
+	sources, err := s.sources()
+	if err != nil {
+		return err
+	}
+	delete(sources, plugin)
+	metadata, err := s.stageSources(sources)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(metadata)
+	trash, err := os.MkdirTemp(s.dir, ".remove-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(trash)
+	backup := filepath.Join(trash, plugin)
+	if err := os.Rename(dir, backup); err != nil {
+		return err
+	}
+	if err := s.commitMetadata(metadata, s.sourcesPath); err != nil {
+		return errors.Join(err, os.Rename(backup, dir))
+	}
+	return os.RemoveAll(trash)
 }
 
 func read(dir, dataDir string) (Plugin, error) {

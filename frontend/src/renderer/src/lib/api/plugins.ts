@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
-import { apiFetch, del, get } from '@/lib/api/client'
+import { apiFetch, del, get, post } from '@/lib/api/client'
 import { readAPIResponse } from '@/lib/api/response'
 import { keys } from '@/lib/query/keys'
 
@@ -15,6 +15,7 @@ export interface Plugin {
   icon_data_url?: string
   warnings?: string[]
   page?: { view: string; file: string }
+  source?: { repository: string; ref?: string; commit: string }
 }
 
 export interface PluginPage {
@@ -26,7 +27,7 @@ export interface PluginPage {
   }[]
 }
 
-type Installed = { plugins: Plugin[] }
+export type Installed = { plugins: Plugin[]; skipped?: { name: string; reason: string }[] }
 
 export const pluginsQuery = queryOptions({
   queryKey: keys.plugins,
@@ -47,4 +48,12 @@ export async function installPlugins(archive: File): Promise<Plugin[]> {
 
 export function removePlugin(name: string): Promise<void> {
   return del<void>(`/v1/plugins/${encodeURIComponent(name)}`)
+}
+
+export function installRepository(input: { repository: string; ref?: string }): Promise<Installed> {
+  return post<Installed>('/v1/plugins/repository', input)
+}
+
+export function updatePlugin(name: string): Promise<Installed> {
+  return post<Installed>(`/v1/plugins/${encodeURIComponent(name)}/update`)
 }

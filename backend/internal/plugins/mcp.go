@@ -150,6 +150,8 @@ func loadMCP(root, dataDir string, definition manifest.Manifest) ([]mcpconfig.Se
 }
 
 func (s *Store) ListMCPServers() ([]mcpconfig.Server, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	entries, err := os.ReadDir(s.dir)
 	if os.IsNotExist(err) {
 		return nil, nil

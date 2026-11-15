@@ -3,6 +3,7 @@ package plugins
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -58,6 +59,25 @@ func (h *Handler) Install(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	installed, err := h.store.Install(archive)
+	h.writeInstalled(w, r, plugins.InstallResult{Plugins: installed}, err)
+}
+
+func (h *Handler) InstallRepository(w http.ResponseWriter, r *http.Request) {
+	var input plugins.RepositoryInput
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	result, err := h.store.InstallRepository(r.Context(), input)
+	h.writeInstalled(w, r, result, err)
+}
+
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	result, err := h.store.Update(r.Context(), r.PathValue("plugin"))
+	h.writeInstalled(w, r, result, err)
+}
+
+func (h *Handler) writeInstalled(w http.ResponseWriter, r *http.Request, result plugins.InstallResult, err error) {
 	if err != nil {
 		httpapi.WriteError(w, statusFor(err), err)
 		return
@@ -65,7 +85,7 @@ func (h *Handler) Install(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	h.runtime.Refresh(ctx)
-	httpapi.WriteJSON(w, http.StatusOK, listResponse{Plugins: installed})
+	httpapi.WriteJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) Remove(w http.ResponseWriter, r *http.Request) {

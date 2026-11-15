@@ -1,6 +1,16 @@
 # Writing a Jaz plugin
 
-A plugin is a folder installed from Settings → Plugins as a ZIP, or copied into the runtime's `plugins/<name>/` directory. A repository ZIP can contain several plugins. Installing the same name replaces that plugin.
+A plugin is a folder installed from Settings → Plugins using a Git repository or ZIP, or copied into the runtime's `plugins/<name>/` directory. A repository can contain several plugins. Installing the same name replaces that plugin.
+
+## Repository installation and updates
+
+Choose **Add plugin**, enter GitHub `owner/repo` or a Git URL, and optionally choose a branch, tag or commit. Standard HTTPS, SSH, file URLs and backend-local repository paths use the backend machine’s existing Git access. Git runs without interactive credential prompts or checkout hooks; URLs containing passwords or query parameters are rejected. Private repositories must already be accessible to that machine. **Choose ZIP** and ZIP drops remain available.
+
+Jaz reads `.agents/plugins/marketplace.json` first, then `.claude-plugin/marketplace.json`. Local entry sources are `"./plugins/example"` or `{ "source": "local", "path": "./plugins/example" }`, relative to the repository root. Unsupported `github`, `url`, `git-subdir`, `npm`, `archive` and `command` entry sources are skipped and reported by name. Other marketplace metadata is ignored. Without a marketplace, Jaz discovers plugin folders throughout the exported repository as it does for ZIP archives. Git submodules and symbolic-link archive entries are not installed.
+
+Repository, ref and resolved commit appear beside each plugin’s version. **Update** fetches that source and replaces only that plugin. Source records live in the runtime’s `plugin-sources.json`, outside plugin folders. ZIP replacement clears that plugin’s source and Update action.
+
+Packages are fully staged and validated before publication. Replacement uses atomic directory exchange on macOS/Linux filesystems that support it, with rollback if source publication fails. Other platforms/filesystems preserve the existing package and report unsupported replacement. Store readers see coherent package/source records. Installation, update and removal reuse MCP refresh, so changed code reconnects even when its server config stays the same.
 
 ## Manifest
 
