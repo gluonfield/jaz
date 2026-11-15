@@ -3,7 +3,6 @@ import { appendFileSync, readFileSync } from "node:fs"
 
 const spec = JSON.parse(readFileSync(".github/acp-adapter-assets.json", "utf8"))
 const verified = JSON.parse(readFileSync(".github/acp-verified-native-versions.json", "utf8"))
-const config = readFileSync("backend/internal/acp/config.go", "utf8")
 const rows = []
 const adapters = {
   codex: ["@agentclientprotocol/codex-acp", "package.json", "@openai/codex"],
@@ -27,22 +26,19 @@ await Promise.all([
     const latest = execFileSync("gh", ["api", `repos/${repo}/releases/latest`, "--jq", ".tag_name"], { encoding: "utf8", timeout: 30_000 }).trim()
     compare(`${name} adapter`, tag.replace(/^v/, ""), latest.replace(/^v/, ""))
   })),
-  check("muse runtime", async () => compare("muse runtime (last observed)", verified.muse, (await json("https://api.meta.ai/muse-code/channels/muse-stable")).version)),
-  check("opencode", async () => compare("opencode", config.match(/opencode-ai@([\d.]+)/)?.[1], await npmVersion("opencode-ai"))),
-  check("grok", async () => compare("grok (last observed)", verified.grok, await npmVersion("@xai-official/grok"))),
-  check("antigravity", async () => {
-    const manifest = await json("https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json")
-    compare("antigravity (last observed)", verified.antigravity, manifest.version)
-  }),
+  check("muse runtime", async () => compare("muse runtime (last verified)", verified.muse, (await json("https://api.meta.ai/muse-code/channels/muse-stable")).version)),
+  check("opencode", async () => compare("opencode", spec.adapters.opencode.tag.replace(/^v/, ""), await npmVersion("@opencode/cli"))),
+  check("copilot", async () => compare("copilot", spec.adapters.copilot.tag.replace(/^v/, ""), await npmVersion("@github/copilot"))),
+  check("grok", async () => compare("grok (last verified)", verified.grok, await npmVersion("@xai-official/grok"))),
 ])
 
 rows.sort((a, b) => a.name.localeCompare(b.name))
 const report = [
-  "| Component | Bundled / observed | Latest upstream | Status |",
+  "| Component | Bundled / verified | Latest upstream | Status |",
   "| --- | --- | --- | --- |",
   ...rows.map((row) => `| ${row.name} | ${row.current ?? "unknown"} | ${row.latest ?? "unknown"} | ${row.status} |`),
   "",
-  "Grok, Antigravity and Muse use native updaters; their baseline is the last installed native version observed. Runtime changes require native-parity checks before release.",
+  "Grok and Muse use native updaters; their baseline is the last native version verified. Runtime changes require native-parity checks before release.",
 ].join("\n")
 console.log(report)
 if (process.env.GITHUB_STEP_SUMMARY) {
@@ -70,7 +66,7 @@ async function npmVersion(name) {
 }
 
 async function json(url) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+  const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(30_000) })
   if (!response.ok) {
     throw new Error(`${url}: HTTP ${response.status}`)
   }

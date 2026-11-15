@@ -379,7 +379,13 @@ func (s *Server) managedToolBinDir(tool string, env map[string]string) string {
 
 func (s *Server) agentLoginBinDirs(cfg acp.AgentConfig) string {
 	dirs := []string{}
-	if dir := strings.TrimSpace(cfg.AdapterBinDir); dir != "" {
+	adapterDirs := cfg.AdapterBinDir
+	if s.ACPAdapters != nil && cfg.ManagedAdapter != "" {
+		if status := s.ACPAdapters.Status(cfg.ManagedAdapter); status.BinDirs != "" {
+			adapterDirs = status.BinDirs
+		}
+	}
+	if dir := strings.TrimSpace(adapterDirs); dir != "" {
 		dirs = append(dirs, dir)
 	}
 	if dir := strings.TrimSpace(s.managedToolBinDir(cfg.ManagedTool, cfg.Env)); dir != "" {

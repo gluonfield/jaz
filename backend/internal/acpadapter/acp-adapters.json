@@ -1,11 +1,11 @@
 {
   "adapters": {
     "codex": {
-      "version": "2.2.2-jaz.5",
+      "version": "2.6.0-jaz.1",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.2.2-jaz.5/codex-acp-app-server-2.2.2-jaz.5-darwin-arm64.tar.gz",
-          "sha256": "988de70821bd0b4515332201558c2f0e6e65acd4c60e33e3036efa4f3f62eafe",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.6.0-jaz.1/codex-acp-app-server-2.6.0-jaz.1-darwin-arm64.tar.gz",
+          "sha256": "7a52c00c79ed0ac7b2924981857f60f3a005c31e9ff3d77aa282796352c29e64",
           "binary": "codex-acp",
           "env": {
             "CODEX_PATH": "codex-runtime/aarch64-apple-darwin/bin/codex",
@@ -13,8 +13,8 @@
           }
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.2.2-jaz.5/codex-acp-app-server-2.2.2-jaz.5-darwin-x64.tar.gz",
-          "sha256": "2a12a12c955b378e1074b37320764aa2f3cefdc156372b79b451d2884cc6594e",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.6.0-jaz.1/codex-acp-app-server-2.6.0-jaz.1-darwin-x64.tar.gz",
+          "sha256": "0b0d90b65576f72977b3e36fbaa107483dfa0e22efb1152a5f244f1fa6a423ca",
           "binary": "codex-acp",
           "env": {
             "CODEX_PATH": "codex-runtime/x86_64-apple-darwin/bin/codex",
@@ -22,8 +22,8 @@
           }
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.2.2-jaz.5/codex-acp-app-server-2.2.2-jaz.5-linux-arm64.tar.gz",
-          "sha256": "61799a17be259b49556a751bad5c369ea092af6b9b39dda8f4a403623ae8ac3d",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.6.0-jaz.1/codex-acp-app-server-2.6.0-jaz.1-linux-arm64.tar.gz",
+          "sha256": "6c38b8f0753e7d847db2631e8753b7e673c9dd9c2eca796bb099b36b92fb9a4b",
           "binary": "codex-acp",
           "env": {
             "CODEX_PATH": "codex-runtime/aarch64-unknown-linux-musl/bin/codex",
@@ -31,8 +31,8 @@
           }
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.2.2-jaz.5/codex-acp-app-server-2.2.2-jaz.5-linux-x64.tar.gz",
-          "sha256": "d0d287815c399eaace5833b0c727d58af8528799f70b4a3d7dea059cc97adaf6",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.6.0-jaz.1/codex-acp-app-server-2.6.0-jaz.1-linux-x64.tar.gz",
+          "sha256": "9d661956257c86536a1db96b775faece5e23db0738c809bfe3d2e92e5a1868c4",
           "binary": "codex-acp",
           "env": {
             "CODEX_PATH": "codex-runtime/x86_64-unknown-linux-musl/bin/codex",
@@ -40,8 +40,8 @@
           }
         },
         "win32-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.2.2-jaz.5/codex-acp-app-server-2.2.2-jaz.5-win32-arm64.tar.gz",
-          "sha256": "f5de5c31d53bbc713062650fc21fd2b259189fefab89f3cefe5516550916805c",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.6.0-jaz.1/codex-acp-app-server-2.6.0-jaz.1-win32-arm64.tar.gz",
+          "sha256": "1d78a914adcad1ba18b2e09358c486650b1a3565de3ada3d4b43950aada36a5f",
           "binary": "codex-acp.exe",
           "env": {
             "CODEX_PATH": "codex-runtime/aarch64-pc-windows-msvc/bin/codex.exe",
@@ -49,8 +49,8 @@
           }
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.2.2-jaz.5/codex-acp-app-server-2.2.2-jaz.5-win32-x64.tar.gz",
-          "sha256": "fab76758b181ceab405c1c70667ffc686023a97467d1b6a908027180f7c49f8a",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v2.6.0-jaz.1/codex-acp-app-server-2.6.0-jaz.1-win32-x64.tar.gz",
+          "sha256": "ba4b7751682e68e4214309546680bed1b92c11d38e58afb75e1f1c2180d6df5f",
           "binary": "codex-acp.exe",
           "env": {
             "CODEX_PATH": "codex-runtime/x86_64-pc-windows-msvc/bin/codex.exe",
@@ -60,78 +60,78 @@
       }
     },
     "antigravity": {
-      "version": "0.4.1",
+      "version": "1.5.9",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.4.1/agy-acp-0.4.1-darwin-arm64.tar.gz",
-          "sha256": "d89c9bf7412ea289229ac86854adf5c5a5a7de76fdcedb0f61d3bdac5107d102",
-          "binary": "agy-acp"
+          "url": "https://github.com/google-antigravity/antigravity-cli/releases/download/1.5.9/agy_cli_mac_arm64.tar.gz",
+          "sha256": "51fb8eb7e18c53d4665f0043b761f04f4d0d4b2eb046bac6c2dcbe32473b5b2e",
+          "binary": "antigravity"
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.4.1/agy-acp-0.4.1-darwin-x64.tar.gz",
-          "sha256": "968d4db92f1bdb9fbcbb1ab35ba0f9f4bbec7914d73c86b966c8860b591ac6fb",
-          "binary": "agy-acp"
+          "url": "https://github.com/google-antigravity/antigravity-cli/releases/download/1.5.9/agy_cli_mac_x64.tar.gz",
+          "sha256": "d0fb8e28c233fadbe612fa273d06b6c189932a33f1c16f0d2c1cb6732123d6c3",
+          "binary": "antigravity"
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.4.1/agy-acp-0.4.1-linux-arm64.tar.gz",
-          "sha256": "0bcb3acad8204281628b2af0b0b6eccdf5b60e41f073b00c77617258322c81c3",
-          "binary": "agy-acp"
+          "url": "https://github.com/google-antigravity/antigravity-cli/releases/download/1.5.9/agy_cli_linux_arm64.tar.gz",
+          "sha256": "3a18c238c7ee6661e43df7e824a7d4c1bed78aeeda09430921a0f1dbfe825bca",
+          "binary": "antigravity"
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.4.1/agy-acp-0.4.1-linux-x64.tar.gz",
-          "sha256": "4339f46a935109b4eda9ee6622297afa3bd0e810f92d900e27f754c227c0a7d7",
-          "binary": "agy-acp"
+          "url": "https://github.com/google-antigravity/antigravity-cli/releases/download/1.5.9/agy_cli_linux_x64.tar.gz",
+          "sha256": "8b1f5e56779f2434a0af36f1b715a8392a084de550f8c68bc79821f95fabf3fa",
+          "binary": "antigravity"
         },
         "win32-arm64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.4.1/agy-acp-0.4.1-win32-arm64.tar.gz",
-          "sha256": "10ab065dfbf7ae53714bf7c79cf0bc4b311bd342f304c9bc4f879fe2225ddaea",
-          "binary": "agy-acp.exe"
+          "url": "https://github.com/google-antigravity/antigravity-cli/releases/download/1.5.9/agy_cli_windows_arm64.zip",
+          "sha256": "9e54f3dc7b89856d8d1d019fd4b1928b69d6b4c5c4628407461ceab0e8404f06",
+          "binary": "antigravity.exe"
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.4.1/agy-acp-0.4.1-win32-x64.tar.gz",
-          "sha256": "6c44c571c922ff49a5ae87eb56bcd468efc00fba996463ac28d474eb9f71d598",
-          "binary": "agy-acp.exe"
+          "url": "https://github.com/google-antigravity/antigravity-cli/releases/download/1.5.9/agy_cli_windows_x64.zip",
+          "sha256": "14066ebc90e6350ee8922960e561c4831b37700b1827415d63480eef6d1e470b",
+          "binary": "antigravity.exe"
         }
       }
     },
     "claude": {
-      "version": "0.93.0-jaz.4",
+      "version": "0.107.0-jaz.1",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.93.0-jaz.4/claude-agent-acp-0.93.0-jaz.4-darwin-arm64.tar.gz",
-          "sha256": "d8dd536ba08e1be0dd7eb584e9ac033ce6ef3230d516ec62e12f8c8bbfb4e660",
+          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.107.0-jaz.1/claude-agent-acp-0.107.0-jaz.1-darwin-arm64.tar.gz",
+          "sha256": "92341512e2008487cdb8123d6825f09d529ecbe20f64ba7ff7c3a500530745a1",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.93.0-jaz.4/claude-agent-acp-0.93.0-jaz.4-darwin-x64.tar.gz",
-          "sha256": "817b70c4033bc454b627a08e1a6f4463bfa4efa1b856cb62d38f7d75221aab03",
+          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.107.0-jaz.1/claude-agent-acp-0.107.0-jaz.1-darwin-x64.tar.gz",
+          "sha256": "e54b77576963ce0b1c7c2c55d46890724899055312b1a5122900cab07c796577",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.93.0-jaz.4/claude-agent-acp-0.93.0-jaz.4-linux-arm64.tar.gz",
-          "sha256": "abc197e444311e0a61cf70b60890f73ec895c878846c22420d65d7918b2d7c93",
+          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.107.0-jaz.1/claude-agent-acp-0.107.0-jaz.1-linux-arm64.tar.gz",
+          "sha256": "b696776dc1a399e8ab34ab39c4a5f1cc67c507c857bbf9c5afbfe854f0557fb8",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.93.0-jaz.4/claude-agent-acp-0.93.0-jaz.4-linux-x64.tar.gz",
-          "sha256": "e60610c49a40ed5992c0c30b42bea83b201b5c5e20211820bb28f119a6c83051",
+          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.107.0-jaz.1/claude-agent-acp-0.107.0-jaz.1-linux-x64.tar.gz",
+          "sha256": "8ee5c3752c085f6030edaf5b0c82932ffaa7f51377a30f1e63f289375ce49974",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.93.0-jaz.4/claude-agent-acp-0.93.0-jaz.4-win32-x64.tar.gz",
-          "sha256": "33066e2580a95c176447c83484d65f94b9f2d1068a9d05d62c127d1a791005ab",
+          "url": "https://github.com/gluonfield/claude-agent-acp/releases/download/v0.107.0-jaz.1/claude-agent-acp-0.107.0-jaz.1-win32-x64.tar.gz",
+          "sha256": "4aa8bfcc942a1192060b993e08d65db00b99e1e8a6acd91fd748ba28542cc422",
           "binary": "claude-agent-acp.exe",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude.exe"
@@ -175,37 +175,107 @@
       }
     },
     "muse": {
-      "version": "0.16.0",
+      "version": "0.23.1",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-aarch64-apple-darwin.tar.gz",
-          "sha256": "c21f2140ee066081df7069252c530a4642ea3ac2bafb3bf08341894f4d63598c",
-          "binary": "muse-acp-v0.16.0-aarch64-apple-darwin/muse-acp"
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.23.1/muse-acp-v0.23.1-aarch64-apple-darwin.tar.gz",
+          "sha256": "d174cf13bd55ac3c786f08cbfa7b211e6e1c5fdbb4f2f72d3a74d63bd88d7d9d",
+          "binary": "muse-acp-v0.23.1-aarch64-apple-darwin/muse-acp"
         },
         "darwin-x64": {
-          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-x86_64-apple-darwin.tar.gz",
-          "sha256": "8f834f964e382de89dac5fe83cc8b69d1b48e56db8add78c241ef8e227d990cd",
-          "binary": "muse-acp-v0.16.0-x86_64-apple-darwin/muse-acp"
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.23.1/muse-acp-v0.23.1-x86_64-apple-darwin.tar.gz",
+          "sha256": "40dddf230aadebdae6c7529a56b7293a0983e20bd50bdb422b70ad09c13aa0c8",
+          "binary": "muse-acp-v0.23.1-x86_64-apple-darwin/muse-acp"
         },
         "linux-arm64": {
-          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-aarch64-unknown-linux-gnu.tar.gz",
-          "sha256": "b309dc6edcff6ef97161bd2224aa82a8986a14ea7eccd0e8e4f47cb29b96abaf",
-          "binary": "muse-acp-v0.16.0-aarch64-unknown-linux-gnu/muse-acp"
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.23.1/muse-acp-v0.23.1-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "6af3860cef787dad924516377afc637fb22364ce7b266366a893ca87ec982b65",
+          "binary": "muse-acp-v0.23.1-aarch64-unknown-linux-gnu/muse-acp"
         },
         "linux-x64": {
-          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-x86_64-unknown-linux-gnu.tar.gz",
-          "sha256": "d7f14e9c02825e8d9b849cbec6faab2a5263b8973ab99a8b72224fe2e54722d9",
-          "binary": "muse-acp-v0.16.0-x86_64-unknown-linux-gnu/muse-acp"
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.23.1/muse-acp-v0.23.1-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "a60ca9f6fdbde2466444618cdc51dc9f6acf6322b4eaee268c560a00875033a7",
+          "binary": "muse-acp-v0.23.1-x86_64-unknown-linux-gnu/muse-acp"
         },
         "win32-arm64": {
-          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-aarch64-pc-windows-msvc.zip",
-          "sha256": "c31f65c52b2470e33bcbc418964c3b30c8a6be12c05fbf1ed9c16b5acd205f24",
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.23.1/muse-acp-v0.23.1-aarch64-pc-windows-msvc.zip",
+          "sha256": "2d1f21f201ad463fe8a76524d1ab58ff38c52c718122863fe39104710c1f3a08",
           "binary": "muse-acp.exe"
         },
         "win32-x64": {
-          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-x86_64-pc-windows-msvc.zip",
-          "sha256": "b646f7959db98e6b8802b467ea69ea1e8c81e59f88e629e361db03ea501f98d7",
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.23.1/muse-acp-v0.23.1-x86_64-pc-windows-msvc.zip",
+          "sha256": "e6a638380254a195110ea923a9f0ecc49dad69ba541d2542bf07c8c5a63e33d9",
           "binary": "muse-acp.exe"
+        }
+      }
+    },
+    "copilot": {
+      "version": "1.0.112",
+      "assets": {
+        "darwin-arm64": {
+          "url": "https://github.com/github/copilot-cli/releases/download/v1.0.112/copilot-darwin-arm64.tar.gz",
+          "sha256": "4a4a6aa624dceb76a23e1a53fb5f64e87a0bb5a2161a5017e0edf78d7082ce68",
+          "binary": "copilot"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/github/copilot-cli/releases/download/v1.0.112/copilot-darwin-x64.tar.gz",
+          "sha256": "fda4b6661269589b15447c9c6ebde96939a4cd32d08d6595a9dad6e92d1e83f5",
+          "binary": "copilot"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/github/copilot-cli/releases/download/v1.0.112/copilot-linux-arm64.tar.gz",
+          "sha256": "491d18303505935675dc20987ef0c5f3ae899f81e66c53d567ad97a8b03e504e",
+          "binary": "copilot"
+        },
+        "linux-x64": {
+          "url": "https://github.com/github/copilot-cli/releases/download/v1.0.112/copilot-linux-x64.tar.gz",
+          "sha256": "dfe7e59acf04f0b7f59b024ea9db101a9246503e9bf7152eb668fbb2a469b151",
+          "binary": "copilot"
+        },
+        "win32-arm64": {
+          "url": "https://github.com/github/copilot-cli/releases/download/v1.0.112/copilot-win32-arm64.zip",
+          "sha256": "ddbfa7145274ad568d831bab12959e2577dff558476d0bec79d3a53a171d4362",
+          "binary": "copilot.exe"
+        },
+        "win32-x64": {
+          "url": "https://github.com/github/copilot-cli/releases/download/v1.0.112/copilot-win32-x64.zip",
+          "sha256": "159a5e610c7b64c4b68b97a812fd7913182f372cb84ce688d81167d5277896d9",
+          "binary": "copilot.exe"
+        }
+      }
+    },
+    "opencode": {
+      "version": "2.3.0",
+      "assets": {
+        "darwin-arm64": {
+          "url": "https://github.com/anomalyco/opencode/releases/download/v2.3.0/opencode-darwin-arm64.zip",
+          "sha256": "7907df2b12720a840fbb49c5b978b9b82925b6bf75479a5fd216afa8932b6702",
+          "binary": "opencode"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/anomalyco/opencode/releases/download/v2.3.0/opencode-darwin-x64-baseline.zip",
+          "sha256": "b4985f65e2e4d624ebe5a490df66cbbce06a4146b8ddfab86473f73c2cc57ea2",
+          "binary": "opencode"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/anomalyco/opencode/releases/download/v2.3.0/opencode-linux-arm64.tar.gz",
+          "sha256": "3207fb5cdec448d479242c0f1a14f4f7bdfcad3a79209b5eb8f9003725e93711",
+          "binary": "opencode"
+        },
+        "linux-x64": {
+          "url": "https://github.com/anomalyco/opencode/releases/download/v2.3.0/opencode-linux-x64-baseline.tar.gz",
+          "sha256": "fc0f81522aceeabac47693d88389efa2bc517ce74c2c38fd6967819fcc6e4d3b",
+          "binary": "opencode"
+        },
+        "win32-arm64": {
+          "url": "https://github.com/anomalyco/opencode/releases/download/v2.3.0/opencode-windows-arm64.zip",
+          "sha256": "86217da9616447404b96c599bee08a1c2d932c92fb58b0f60cfe835e2b61926a",
+          "binary": "opencode.exe"
+        },
+        "win32-x64": {
+          "url": "https://github.com/anomalyco/opencode/releases/download/v2.3.0/opencode-windows-x64-baseline.zip",
+          "sha256": "a3abde3f736a1b51acb28466001333189184507096cb2fe0d684fe822cbd37ec",
+          "binary": "opencode.exe"
         }
       }
     }

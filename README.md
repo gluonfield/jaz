@@ -134,7 +134,7 @@ Jaz runs eight coding agents over [ACP](https://agentclientprotocol.com), and yo
 | **OpenCode** | Open source | OpenRouter or OpenAI API key |
 | **GitHub Copilot** | GitHub | GitHub account with Copilot access |
 
-For Copilot, install the [official CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli) on the Jaz server, then connect GitHub Copilot in Settings → Agents. Jaz uses the CLI's [OAuth device-code sign-in](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli) and existing credentials. Copilot stays disabled until connected; its native CLI owns authentication, model availability and compaction.
+In Settings → Agents, install GitHub Copilot and connect your GitHub account. Jaz installs the [official CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli) on the server and uses its [OAuth device-code sign-in](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli) and existing credentials. Copilot stays disabled until connected; its native CLI owns authentication, model availability and compaction.
 
 ## Architecture
 

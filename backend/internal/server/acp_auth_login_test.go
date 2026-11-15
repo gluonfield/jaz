@@ -472,26 +472,20 @@ func waitForACPAuthLogin(t *testing.T, handler http.Handler, id string) acpAuthL
 	return got
 }
 
-func TestACPAuthLoginAntigravityTailsLogAndRelaysCode(t *testing.T) {
+func TestACPAuthLoginAntigravityRelaysTerminalLoginCode(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the antigravity login PTY is unix-only")
 	}
 	home := t.TempDir()
 	bin := t.TempDir()
-	testexec.Write(t, filepath.Join(bin, "agy"), `#!/bin/sh
+	testexec.Write(t, filepath.Join(bin, "antigravity"), `#!/bin/sh
 if [ "$1" = "models" ]; then echo "Fake Model"; exit 0; fi
-log=""
-prev=""
-for arg in "$@"; do
-  if [ "$prev" = "--log-file" ]; then log="$arg"; fi
-  prev="$arg"
-done
-printf 'I0707 12:00:00.000000 1 server.go:1] glog noise\n' >> "$log"
-printf 'Authentication required. Please visit the URL to log in:\n' >> "$log"
-printf '  https://accounts.google.com/o/oauth2/auth?code_challenge=test\n' >> "$log"
-printf 'Or, paste the authorization code here and press Enter: \n' >> "$log"
+if [ "$1" != "acp" ] || [ "$2" != "--login" ]; then exit 2; fi
+printf 'Authentication required. Please visit the URL to log in:\n'
+printf '  https://accounts.google.com/o/oauth2/auth?code_challenge=test\n'
+printf 'Or, paste the authorization code here and press Enter: \n'
 read code
-printf 'received=%s\n' "$code" >> "$log"
+printf 'received=%s\n' "$code"
 exit 0
 `, "")
 	t.Setenv("HOME", home)
@@ -516,7 +510,6 @@ exit 0
 		t.Fatal(err)
 	}
 
-	// The sign-in URL only exists in agy's log; the tail must surface it.
 	deadline := time.Now().Add(10 * time.Second)
 	var current acpAuthLoginResponse
 	for {
@@ -530,14 +523,10 @@ exit 0
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("auth url never surfaced from the agy log: %#v", current)
+			t.Fatalf("auth url never surfaced from native terminal login: %#v", current)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if strings.Contains(current.Output, "glog noise") {
-		t.Fatalf("glog lines leaked into login output: %q", current.Output)
-	}
-
 	in := httptest.NewRequest(http.MethodPost, "/v1/acp/auth-logins/"+started.ID+"/input", strings.NewReader(`{"input":"SIGN-CODE-7"}`))
 	in.Header.Set("Content-Type", "application/json")
 	inRes := httptest.NewRecorder()
