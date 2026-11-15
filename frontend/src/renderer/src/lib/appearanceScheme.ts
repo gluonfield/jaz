@@ -50,6 +50,11 @@ export const washChroma = (saturation: number) => 0.03 + saturation * 0.15
 // The stock look: equal to it, colorCss emits nothing and the globals.css defaults rule.
 const STOCK: ColorTheme = { hue: 264, colors: 2, harmony: 1, saturation: 0.6, strength: 0.45, grain: 0 }
 
+// How much of the accent's colour shows, 0–1: muted colours give a deeper,
+// quieter accent, and the stock saturation and above give the full one.
+export const tintOf = (c: Pick<ColorTheme, 'colors' | 'saturation'>) =>
+  c.colors ? Math.min(1, c.saturation / STOCK.saturation) : 0
+
 export const sameTheme = (a: ColorTheme, b: ColorTheme): boolean =>
   (Object.keys(STOCK) as (keyof ColorTheme)[]).every((key) => a[key] === b[key])
 
@@ -79,7 +84,7 @@ export function colorCss(c: ColorTheme): string {
   const [h1 = c.hue, h2 = h1, h3 = h2] = linkedHues(c)
   const vars = {
     '--hue': c.hue,
-    '--tint': c.colors ? 1 : 0,
+    '--tint': tintOf(c).toFixed(3),
     '--wash-1': h1,
     '--wash-2': h2,
     '--wash-3': h3,
