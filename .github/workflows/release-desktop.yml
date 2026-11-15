@@ -34,7 +34,7 @@ jobs:
               exit 1
             fi
           else
-            gh release create "$RELEASE_TAG" --draft --verify-tag --title "$RELEASE_TAG" --generate-notes
+            gh release create "$RELEASE_TAG" --draft --verify-tag --title "$RELEASE_TAG" --notes-file docs/RELEASE-NOTES.md
           fi
 
   backend:

@@ -1,6 +1,6 @@
 # Releasing Jaz
 
-Bump the version, commit it and push the matching `v` tag. That triggers
+Bump the version, update [`RELEASE-NOTES.md`](RELEASE-NOTES.md), commit both and push the matching `v` tag. That triggers
 [`Release`](../.github/workflows/release-desktop.yml), which creates a draft,
 builds and uploads all artifacts, then publishes it as the latest release
 only after every build succeeds. The previous complete release stays available
@@ -10,9 +10,9 @@ The tag must equal `frontend/package.json` version with a `v` prefix
 (`0.0.11` → `v0.0.11`), or the build fails.
 
 ```sh
-# Bump frontend/package.json first, then commit that file and push main.
-git add frontend/package.json
-git commit -m "Release v0.0.11" -- frontend/package.json
+# Bump frontend/package.json and update docs/RELEASE-NOTES.md first.
+git add frontend/package.json docs/RELEASE-NOTES.md
+git commit -m "Release v0.0.11" -- frontend/package.json docs/RELEASE-NOTES.md
 git push origin main
 
 # Start the release build from that exact commit.
