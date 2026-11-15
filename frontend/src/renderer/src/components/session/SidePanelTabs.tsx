@@ -12,14 +12,15 @@ import { useBrowserSessions } from '@/lib/browserSessions'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 import type { NewSidePanelTab, SidePanelTab } from '@/lib/sidePanelTabs'
 
-const TAB_TYPES = {
+const MENU_TYPES = {
   file: { label: 'Files', icon: FileText },
-  canvas: { label: 'Canvas', icon: PencilRuler },
   'side-chat': { label: 'Side chat', icon: MessageCirclePlus },
   preview: { label: 'Browser', icon: Globe },
   terminal: { label: 'Terminal', icon: Terminal },
   diff: { label: 'Code diff', icon: FolderGit2 },
 }
+
+const TAB_TYPES = { ...MENU_TYPES, canvas: { label: 'Canvas', icon: PencilRuler } }
 
 function KindIcon({ kind }: { kind: keyof typeof TAB_TYPES }) {
   const Icon = TAB_TYPES[kind].icon
@@ -35,7 +36,7 @@ export function SidePanelTabMenu({ sideChatAvailable, onAdd, empty = false }: {
 }) {
   const [open, setOpen] = useState(false)
   const apps = (useQuery(mcpEntrypointsQuery).data ?? []).filter((entry) => entry.type === 'thread')
-  const options = (Object.keys(TAB_TYPES) as (keyof typeof TAB_TYPES)[]).filter((kind): kind is Exclude<keyof typeof TAB_TYPES, 'canvas'> => kind !== 'canvas' && (kind !== 'side-chat' || sideChatAvailable))
+  const options = (Object.keys(MENU_TYPES) as (keyof typeof MENU_TYPES)[]).filter((kind) => kind !== 'side-chat' || sideChatAvailable)
   const row = (key: string, tab: NewSidePanelTab, icon: ReactNode, label: string) => (
     <button type="button" className="flex h-7 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink pointer-coarse:h-10" key={key} onClick={() => {
       onAdd(tab)

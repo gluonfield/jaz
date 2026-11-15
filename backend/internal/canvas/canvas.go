@@ -68,16 +68,15 @@ func (s *Service) Dir(sessionID string) string {
 	return Dir(s.root, sessionID)
 }
 
-func (s *Service) ExistingFile(sessionID string) (string, error) {
-	dir := s.Dir(sessionID)
-	raw, _, err := readDocument(dir)
+func (s *Service) ValidateFile(sessionID string) error {
+	raw, _, err := readDocument(s.Dir(sessionID))
 	if err != nil {
-		return "", err
+		return err
 	}
 	if raw == nil {
-		return "", os.ErrNotExist
+		return os.ErrNotExist
 	}
-	return filepath.Join(dir, FileName), nil
+	return nil
 }
 
 func Dir(canvasesRoot, sessionID string) string {

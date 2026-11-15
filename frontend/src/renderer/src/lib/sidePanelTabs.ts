@@ -1,10 +1,10 @@
 import type { FileReference } from '@shared/fileReader'
-import type { ArtifactEvent, MCPAppEvent, MCPEntrypoint } from '@/lib/api/types'
+import type { PluginView, PresentationEvent, MCPAppEvent, MCPEntrypoint } from '@/lib/api/types'
 import type { OpenedFile } from '@/lib/mcpAppFiles'
 
-// A plugin's view that names a file lives in the side panel and follows that file.
-export type PanelView = ArtifactEvent & { file: string }
-export const isPanelView = (view?: ArtifactEvent): view is PanelView => Boolean(view?.file)
+export type PanelView = PluginView
+export type PanelPresentation = Exclude<PresentationEvent, { kind: 'artifact' }>
+export const isPanelPresentation = (view?: PresentationEvent): view is PanelPresentation => Boolean(view && view.kind !== 'artifact')
 
 export type SidePanelTab =
   | { id: string; kind: 'preview' | 'terminal' | 'side-chat' | 'diff' | 'canvas' }

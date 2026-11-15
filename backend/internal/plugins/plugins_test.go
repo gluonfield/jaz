@@ -120,9 +120,11 @@ func TestInstallRefusesWhatIsNotAPlugin(t *testing.T) {
 	}
 }
 
-type presented struct{ artifact *sessionevents.ArtifactEvent }
+type presented struct {
+	artifact *sessionevents.PresentationEvent
+}
 
-func (p *presented) Present(_ *mcp.CallToolRequest, artifact *sessionevents.ArtifactEvent) (*mcp.CallToolResult, any, error) {
+func (p *presented) Present(_ string, artifact *sessionevents.PresentationEvent) (*mcp.CallToolResult, any, error) {
 	p.artifact = artifact
 	return &mcp.CallToolResult{}, nil, nil
 }
@@ -137,13 +139,13 @@ func TestShowViewPresentsTheViewWithItsData(t *testing.T) {
 	if _, _, err := tools.ShowView(context.Background(), nil, ShowViewInput{View: "tenders/question", Title: "Point 9", Data: map[string]any{"number": 9}}); err != nil {
 		t.Fatal(err)
 	}
-	if shown.artifact.WidgetCode != "<p id=question></p>" || string(shown.artifact.Data) != `{"number":9}` || shown.artifact.File != "" {
+	if shown.artifact.Kind != sessionevents.PresentationArtifact || shown.artifact.Artifact.WidgetCode != "<p id=question></p>" || string(shown.artifact.Artifact.Data) != `{"number":9}` || shown.artifact.View != nil {
 		t.Fatalf("card = %+v", shown.artifact)
 	}
 	if _, _, err := tools.ShowView(context.Background(), nil, ShowViewInput{View: "tenders/status", Title: "Tender status", File: "status.json"}); err != nil {
 		t.Fatal(err)
 	}
-	if shown.artifact.File != "status.json" || shown.artifact.Data != nil {
+	if shown.artifact.Kind != sessionevents.PresentationPluginView || shown.artifact.View.File != "status.json" || shown.artifact.Artifact != nil {
 		t.Fatalf("panel view = %+v", shown.artifact)
 	}
 	for label, input := range map[string]ShowViewInput{

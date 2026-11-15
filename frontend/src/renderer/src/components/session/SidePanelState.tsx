@@ -10,10 +10,9 @@ import { entrypointKey, fileEntrypoint, mcpEntrypointsQuery } from '@/lib/api/mc
 import { previewDisplayUrl } from '@/lib/api/preview'
 import { openedFile } from '@/lib/mcpAppFiles'
 import { useBrowserSessions, useSessionPreview } from '@/lib/browserSessions'
-import { isCanvasFile } from '@/lib/canvasNavigation'
 import { SidebarVisibility } from '@/lib/sidebar'
 import type { MCPAppThread } from '@/lib/mcpAppThread'
-import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, type NewSidePanelTab, type PanelView, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
+import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, type NewSidePanelTab, type PanelPresentation, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
 
 const PANEL_MAX_WIDTH = 1180
 const PANEL_MIN_THREAD_WIDTH = 360
@@ -31,8 +30,9 @@ export function SidePanelStateProvider({ children }: { children: ReactNode }) {
 // A thread's panel starts closed unless its owner opens it with `startOpen`,
 // then keeps its own state while the app runs. The agent's browser activity
 // opens it only while `followBrowser` is set.
-export function useSidePanelState(sessionId: string, { availability = { 'side-chat': false }, startOpen = false, followBrowser = true }: {
-  availability?: Partial<Record<SidePanelTab['kind'], boolean>>
+export function useSidePanelState(sessionId: string, { sideChatAvailable = false, canvasAvailable = true, startOpen = false, followBrowser = true }: {
+  sideChatAvailable?: boolean
+  canvasAvailable?: boolean
   startOpen?: boolean
   followBrowser?: boolean
 } = {}) {
@@ -69,7 +69,7 @@ export function useSidePanelState(sessionId: string, { availability = { 'side-ch
   const [widthOverride, setWidthOverride] = useState(saved?.widthOverride)
   const [resizing, setResizing] = useState(false)
   const closeGuards = useRef(new Map<string, () => Promise<boolean>>())
-  const tabs = useMemo(() => state.tabs.filter((tab) => availability[tab.kind] !== false), [state.tabs, availability])
+  const tabs = useMemo(() => state.tabs.filter((tab) => (tab.kind !== 'side-chat' || sideChatAvailable) && (tab.kind !== 'canvas' || canvasAvailable)), [state.tabs, sideChatAvailable, canvasAvailable])
   const activeTab = tabs.find((tab) => tab.id === state.activeId) ?? tabs[0]
   const availableWidth = containerWidth - PANEL_MIN_THREAD_WIDTH
   const minWidth = Math.min(400, Math.max(240, availableWidth))
@@ -83,8 +83,8 @@ export function useSidePanelState(sessionId: string, { availability = { 'side-ch
     : `${width}px`
 
   useLayoutEffect(() => {
-    panels.set(sessionId, { state: { tabs, activeId: activeTab?.id ?? null }, open, mode, widthOverride })
-  }, [panels, sessionId, tabs, activeTab, open, mode, widthOverride])
+    panels.set(sessionId, { state, open, mode, widthOverride })
+  }, [panels, sessionId, state, open, mode, widthOverride])
 
   const showTabs = useCallback(() => {
     setSidebarOpen?.(false)
@@ -153,16 +153,9 @@ export function useSidePanelState(sessionId: string, { availability = { 'side-ch
   const openFile = useCallback((file: string | FileReference) => {
     const ref = typeof file === 'string' ? parseFileReference(file) : file
     if (!ref) return false
-    if (/(^|[/\\])canvas\.json$/.test(ref.path)) {
-      void isCanvasFile(sessionId, ref.path).then((canvas) => {
-        if (!canvas) showFile(ref)
-        else if (availability.canvas !== false) openTab({ id: 'canvas', kind: 'canvas' })
-      }).catch(() => showFile(ref))
-    } else {
-      showFile(ref)
-    }
+    showFile(ref)
     return true
-  }, [sessionId, availability.canvas, openTab, showFile])
+  }, [showFile])
   // An inline app view opens larger as a tab showing the same call.
   const openApp = useCallback<NonNullable<MCPAppThread['expand']>>((view, app, call) => {
     const points = (entrypoints ?? []).filter((point) => point.server_id === app.server_id)
@@ -173,13 +166,13 @@ export function useSidePanelState(sessionId: string, { availability = { 'side-ch
       call,
     })
   }, [entrypoints, openTab])
-  const openView = useCallback((view: PanelView) => {
-    if (view.artifact_type === 'canvas') {
-      if (availability.canvas !== false) openTab({ id: 'canvas', kind: 'canvas' })
+  const openView = useCallback((presentation: PanelPresentation) => {
+    if (presentation.kind === 'canvas') {
+      if (canvasAvailable) openTab({ id: 'canvas', kind: 'canvas' })
     } else {
-      openTab({ id: `view:${view.file}`, kind: 'view', view })
+      openTab({ id: `view:${presentation.view.file}`, kind: 'view', view: presentation.view })
     }
-  }, [openTab, availability.canvas])
+  }, [openTab, canvasAvailable])
   const openPreview = useCallback((url: string) => {
     const display = previewDisplayUrl(url) ?? url
     if (openFile(display)) {
@@ -228,7 +221,7 @@ export function useSidePanelState(sessionId: string, { availability = { 'side-ch
     }
     const shortcuts = { j: 'side-chat', d: 'diff', p: 'preview', t: 'terminal' } as const
     const kind = shortcuts[key as keyof typeof shortcuts]
-    if (!kind || availability[kind] === false) {
+    if (!kind || kind === 'side-chat' && !sideChatAvailable) {
       return
     }
     event.preventDefault()

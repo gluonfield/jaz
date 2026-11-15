@@ -59,7 +59,7 @@ import type { AgentSessionState, ChatMessage, SessionEvent, SessionOverview } fr
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { MCPAppThreadContext, type MCPAppThread } from '@/lib/mcpAppThread'
 import { SidePanelSlot } from '@/lib/sidePanelSlot'
-import { isPanelView } from '@/lib/sidePanelTabs'
+import { isPanelPresentation } from '@/lib/sidePanelTabs'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { type HistoryPaging, useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
@@ -203,7 +203,7 @@ export function ThreadView({
   const canvas = detailSession?.runtime_ref?.artifact_surface === 'canvas'
   // A canvas shows the agent's work on the board, so its browser stays out of
   // sight until the user opens it. Other threads follow it once they are known.
-  const sidePanel = useSidePanelState(sessionId, { availability: { 'side-chat': sideChatAvailable, canvas: !canvas }, startOpen: openDetails, followBrowser: Boolean(detailSession) && !canvas })
+  const sidePanel = useSidePanelState(sessionId, { sideChatAvailable, canvasAvailable: !canvas, startOpen: openDetails, followBrowser: Boolean(detailSession) && !canvas })
   const { open: panelOpen, mode: panelMode, toggleMode: togglePanel, openView } = sidePanel
   const handleSessionEvent = useCallback((event: SessionEvent) => {
     const at = event.at || new Date().toISOString()
@@ -211,7 +211,7 @@ export function ThreadView({
     notifySessionEventError(event)
     // A side-panel view opens as the agent shows it; one from the thread's
     // history waits for its row to be clicked.
-    if (isPanelView(event.artifact)) openView(event.artifact)
+    if (isPanelPresentation(event.artifact)) openView(event.artifact)
   }, [notifySessionEventError, openView])
   useEffect(() => setLastSessionEventAt(undefined), [sessionId])
   useSessionEvents(sessionId, detail.data?.latest_event_seq, handleSessionEvent)
