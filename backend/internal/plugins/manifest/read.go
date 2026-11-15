@@ -8,10 +8,10 @@ import (
 	"os"
 )
 
-func Read(dir string) (Plugin, error) {
+func Read(dir string) (Manifest, error) {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return Plugin{}, err
+		return Manifest{}, err
 	}
 	defer root.Close()
 	for _, path := range []string{"plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"} {
@@ -20,28 +20,27 @@ func Read(dir string) (Plugin, error) {
 			continue
 		}
 		if err != nil {
-			return Plugin{}, err
+			return Manifest{}, err
 		}
-		var plugin Plugin
+		var plugin Manifest
 		if path == "plugin.json" {
 			plugin, err = readCore(data)
 		} else {
 			plugin, err = readNative(data, path)
 		}
 		if err != nil {
-			return Plugin{}, fmt.Errorf("%s: %w", path, err)
+			return Manifest{}, fmt.Errorf("%s: %w", path, err)
 		}
 		if !SafeName(plugin.Name) {
-			return Plugin{}, fmt.Errorf("%s: invalid plugin name", path)
+			return Manifest{}, fmt.Errorf("%s: invalid plugin name", path)
 		}
 		if plugin.DisplayName == "" {
 			plugin.DisplayName = plugin.Name
 		}
 		plugin.ManifestPath = path
-		plugin.SkillDirs = append([]string{"./skills/"}, plugin.SkillDirs...)
 		return plugin, nil
 	}
-	return Plugin{}, ErrNotPlugin
+	return Manifest{}, ErrNotPlugin
 }
 
 type paths []string
@@ -80,17 +79,17 @@ type codexManifest struct {
 	} `json:"interface"`
 }
 
-func readNative(data []byte, path string) (Plugin, error) {
+func readNative(data []byte, path string) (Manifest, error) {
 	if path == ".claude-plugin/plugin.json" {
 		var input claudeManifest
 		if err := json.Unmarshal(data, &input); err != nil {
-			return Plugin{}, err
+			return Manifest{}, err
 		}
-		return Plugin{Name: input.Name, DisplayName: input.DisplayName, Description: input.Description, Version: input.Version, SkillDirs: input.Skills, MCPServers: input.MCPServers}, nil
+		return Manifest{Name: input.Name, DisplayName: input.DisplayName, Description: input.Description, Version: input.Version, ExtraSkillPaths: input.Skills, MCPServers: input.MCPServers}, nil
 	}
 	var input codexManifest
 	if err := json.Unmarshal(data, &input); err != nil {
-		return Plugin{}, err
+		return Manifest{}, err
 	}
-	return Plugin{Name: input.Name, DisplayName: input.Interface.DisplayName, Description: input.Description, Version: input.Version, SkillDirs: input.Skills, MCPServers: input.MCPServers}, nil
+	return Manifest{Name: input.Name, DisplayName: input.Interface.DisplayName, Description: input.Description, Version: input.Version, ExtraSkillPaths: input.Skills, MCPServers: input.MCPServers}, nil
 }

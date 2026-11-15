@@ -23,7 +23,17 @@ var (
 	name        = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 )
 
-type Plugin = manifest.Plugin
+type Plugin struct {
+	Name        string   `json:"name"`
+	DisplayName string   `json:"display_name"`
+	Description string   `json:"description"`
+	Version     string   `json:"version"`
+	Skills      []string `json:"skills"`
+	Views       []string `json:"views"`
+	IconDataURL string   `json:"icon_data_url,omitempty"`
+	Page        *Page    `json:"page,omitempty"`
+	Warnings    []string `json:"warnings,omitempty"`
+}
 
 type Store struct {
 	dir string
@@ -135,11 +145,15 @@ func (s *Store) Remove(plugin string) error {
 }
 
 func read(dir string) (Plugin, error) {
-	plugin, err := manifest.Read(dir)
+	definition, err := manifest.Read(dir)
 	if err != nil {
 		return Plugin{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	held, warnings := skills.LoadPlugin(dir, plugin)
+	plugin := Plugin{Name: definition.Name, DisplayName: definition.DisplayName, Description: definition.Description, Version: definition.Version, Warnings: definition.Warnings}
+	if definition.Page != nil {
+		plugin.Page = &Page{View: definition.Page.View, File: definition.Page.File}
+	}
+	held, warnings := skills.LoadPlugin(dir, definition.Name, definition.ExtraSkillPaths)
 	plugin.Warnings = append(plugin.Warnings, warnings...)
 	plugin.Skills = make([]string, len(held))
 	for i, skill := range held {
@@ -158,7 +172,7 @@ func read(dir string) (Plugin, error) {
 			return Plugin{}, err
 		}
 	}
-	plugin.IconDataURL, err = readIcon(dir, plugin.IconPath)
+	plugin.IconDataURL, err = readIcon(dir, definition.IconPath)
 	if err != nil {
 		return Plugin{}, err
 	}

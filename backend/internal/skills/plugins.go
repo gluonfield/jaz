@@ -8,7 +8,7 @@ import (
 	"github.com/wins/jaz/backend/internal/plugins/manifest"
 )
 
-func LoadPlugin(root string, plugin manifest.Plugin) ([]Skill, []string) {
+func LoadPlugin(root, pluginName string, extraSkillPaths []string) ([]Skill, []string) {
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return nil, []string{err.Error()}
@@ -34,30 +34,30 @@ func LoadPlugin(root string, plugin manifest.Plugin) ([]Skill, []string) {
 		}
 		seen[path] = true
 		if skill, ok := readSkill(path); ok {
-			skill.Plugin = plugin.Name
+			skill.Plugin = pluginName
 			out = append(out, skill)
 		} else {
 			warnings = append(warnings, "Skipping invalid skill "+relative)
 		}
 	}
-	for i, source := range plugin.SkillDirs {
+	load := func(source string, isDefault bool) {
 		directory, err := manifest.Resolve(root, source)
 		if err != nil {
-			if !os.IsNotExist(err) || i > 0 {
+			if !os.IsNotExist(err) || !isDefault {
 				warnings = append(warnings, fmt.Sprintf("Skipping skills path %s: %v", source, err))
 			}
-			continue
+			return
 		}
-		if i > 0 {
+		if !isDefault {
 			if info, err := os.Stat(filepath.Join(directory, "SKILL.md")); err == nil && info.Mode().IsRegular() {
 				add(filepath.Join(directory, "SKILL.md"))
-				continue
+				return
 			}
 		}
 		entries, err := os.ReadDir(directory)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("Skipping skills path %s: %v", source, err))
-			continue
+			return
 		}
 		for _, entry := range entries {
 			child := filepath.Join(directory, entry.Name())
@@ -65,6 +65,10 @@ func LoadPlugin(root string, plugin manifest.Plugin) ([]Skill, []string) {
 				add(filepath.Join(child, "SKILL.md"))
 			}
 		}
+	}
+	load("./skills/", true)
+	for _, source := range extraSkillPaths {
+		load(source, false)
 	}
 	return out, warnings
 }

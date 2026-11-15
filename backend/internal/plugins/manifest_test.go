@@ -22,7 +22,7 @@ func TestManifestLayoutsDriveInventoryAndAgentSkills(t *testing.T) {
 		want    []string
 	}{
 		{"plugin.json", portable(t, "acme.tools", map[string]any{"displayName": "Portable tools"}), "Portable tools", []string{"default"}},
-		{".claude-plugin/plugin.json", `{"name":"acme.tools","displayName":"Claude tools","skills":["./extra/","./single/","."],"hooks":{"command":"ignored"}}`, "Claude tools", []string{"default", "extra", "single", "root"}},
+		{".claude-plugin/plugin.json", `{"name":"acme.tools","displayName":"Claude tools","skills":["./extra/","./single/",".","./skills/"],"hooks":{"command":"ignored"}}`, "Claude tools", []string{"default", "extra", "single", "root", "skills-root"}},
 		{".codex-plugin/plugin.json", `{"name":"acme.tools","interface":{"displayName":"Codex tools"},"skills":"./extra/","mcpServers":"./custom-mcp.json","apps":"./.app.json"}`, "Codex tools", []string{"default", "extra"}},
 	} {
 		t.Run(test.layout, func(t *testing.T) {
@@ -31,6 +31,7 @@ func TestManifestLayoutsDriveInventoryAndAgentSkills(t *testing.T) {
 			files := map[string]string{
 				"bundle/" + test.layout:                            test.body,
 				"bundle/skills/default/SKILL.md":                   "---\nname: default\ndescription: Default skill\n---\n",
+				"bundle/skills/SKILL.md":                           "---\nname: skills-root\ndescription: Explicit directory skill\n---\n",
 				"bundle/skills/README.md":                          "Not a skill directory",
 				"bundle/skills/default/references/nested/SKILL.md": "---\nname: hidden\ndescription: Nested reference\n---\n",
 				"bundle/extra/more/SKILL.md":                       "---\nname: extra\ndescription: Extra skill\n---\n",
@@ -103,8 +104,11 @@ func TestPortableManifestValidationAtInstall(t *testing.T) {
 	}{
 		{"$schema", nil}, {"$schema", "https://example.com/unknown"},
 		{"name", "Uppercase"}, {"name", "trailing-"}, {"name", "double--dash"}, {"name", "double..dot"}, {"name", strings.Repeat("a", 65)},
-		{"version", 3}, {"description", nil}, {"author", "invalid"}, {"author", map[string]any{"unknown": "invalid"}}, {"author", map[string]any{"name": nil}},
-		{"homepage", false}, {"repository", []string{}}, {"license", nil}, {"keywords", []any{"valid", nil}},
+		{"version", 3}, {"description", false}, {"author", "invalid"}, {"author", map[string]any{"name": false}},
+		{"homepage", false}, {"repository", []string{}}, {"license", false}, {"keywords", []any{"valid", false}},
+		{"extensions", []any{}}, {"extensions", false},
+		{"extensions", map[string]any{"chat.jaz": map[string]any{"unknown": true}}},
+		{"extensions", map[string]any{"chat.jaz": map[string]any{"page": map[string]any{"view": "status", "file": "status.json", "icon": "legacy"}}}},
 	} {
 		t.Run(test.field, func(t *testing.T) {
 			fields := map[string]any{"$schema": manifest.Schema, "name": "valid"}
@@ -118,13 +122,6 @@ func TestPortableManifestValidationAtInstall(t *testing.T) {
 				t.Fatalf("accepted invalid %s=%v: %v", test.field, test.value, err)
 			}
 		})
-	}
-	for _, extension := range []string{`null`, `[]`, `false`} {
-		store := New(runtimefiles.New(t.TempDir()))
-		installed, err := store.Install(archive(t, map[string]string{"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"valid","extensions":` + extension + `,"version":"any version","homepage":"opaque metadata"}`}))
-		if err != nil || len(installed[0].Warnings) != 1 {
-			t.Fatalf("non-object extensions = %+v, %v", installed, err)
-		}
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/plugins/manifest"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -144,7 +145,8 @@ func TestPageIconCannotFollowASymlinkOutsideThePlugin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if installed[0].IconPath != "./icon.svg" || !strings.HasPrefix(installed[0].IconDataURL, "data:image/svg+xml;base64,") {
+	definition, err := manifest.Read(filepath.Join(layout.Plugins, "tenders"))
+	if err != nil || definition.IconPath != "./icon.svg" || !strings.HasPrefix(installed[0].IconDataURL, "data:image/svg+xml;base64,") {
 		t.Fatalf("icon path and display data were conflated: %+v", installed[0])
 	}
 	icon := filepath.Join(layout.Plugins, "tenders", "icon.svg")

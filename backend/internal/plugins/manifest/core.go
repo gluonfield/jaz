@@ -1,113 +1,72 @@
 package manifest
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
-	"sync"
-
-	"github.com/google/jsonschema-go/jsonschema"
 )
 
 type coreManifest struct {
 	Schema      string `json:"$schema"`
 	Name        string `json:"name"`
-	Version     string `json:"version,omitempty"`
-	Description string `json:"description,omitempty"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
 	Author      struct {
-		Name  string `json:"name,omitempty"`
-		Email string `json:"email,omitempty"`
-		URL   string `json:"url,omitempty"`
-	} `json:"author,omitempty"`
-	Homepage   string   `json:"homepage,omitempty"`
-	Repository string   `json:"repository,omitempty"`
-	License    string   `json:"license,omitempty"`
-	Keywords   []string `json:"keywords,omitempty"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+		URL   string `json:"url"`
+	} `json:"author"`
+	Homepage   string                     `json:"homepage"`
+	Repository string                     `json:"repository"`
+	License    string                     `json:"license"`
+	Keywords   []string                   `json:"keywords"`
+	Extensions map[string]json.RawMessage `json:"extensions"`
 }
 
 type jazExtension struct {
-	DisplayName string `json:"displayName,omitempty"`
-	Icon        string `json:"icon,omitempty"`
-	Page        *Page  `json:"page,omitempty"`
+	DisplayName string `json:"displayName"`
+	Icon        string `json:"icon"`
+	Page        *struct {
+		View string `json:"view"`
+		File string `json:"file"`
+	} `json:"page"`
 }
 
-var coreSchema = sync.OnceValues(schemaFor[coreManifest])
-var jazSchema = sync.OnceValues(schemaFor[jazExtension])
-
-func schemaFor[T any]() (*jsonschema.Resolved, error) {
-	schema, err := jsonschema.For[T](nil)
-	if err != nil {
-		return nil, err
+func readCore(data []byte) (Manifest, error) {
+	var input coreManifest
+	if err := json.Unmarshal(data, &input); err != nil {
+		return Manifest{}, err
 	}
-	return schema.Resolve(nil)
-}
-
-func readCore(data []byte) (Plugin, error) {
-	var fields map[string]any
-	if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
-		return Plugin{}, errors.New("manifest must be a JSON object")
+	if input.Schema != Schema || !validName(input.Name) {
+		return Manifest{}, errors.New("unsupported $schema or invalid plugin name")
 	}
-	plugin := Plugin{}
-	extensions, hasExtensions := fields["extensions"]
-	delete(fields, "extensions")
+	plugin := Manifest{Name: input.Name, Description: input.Description, Version: input.Version}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return Manifest{}, err
+	}
 	for field := range fields {
 		switch field {
-		case "$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords":
+		case "$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords", "extensions":
 		default:
 			plugin.Warnings = append(plugin.Warnings, fmt.Sprintf("Ignoring unknown manifest field %q", field))
-			delete(fields, field)
 		}
 	}
 	sort.Strings(plugin.Warnings)
-	schema, err := coreSchema()
-	if err != nil {
-		return Plugin{}, err
-	}
-	if err := schema.Validate(fields); err != nil {
-		return Plugin{}, err
-	}
-	cleaned, err := json.Marshal(fields)
-	if err != nil {
-		return Plugin{}, err
-	}
-	var input coreManifest
-	if err := json.Unmarshal(cleaned, &input); err != nil {
-		return Plugin{}, err
-	}
-	if input.Schema != Schema || !validName(input.Name) {
-		return Plugin{}, errors.New("unsupported $schema or invalid plugin name")
-	}
-	plugin.Name = input.Name
-	plugin.Description = input.Description
-	plugin.Version = input.Version
-	if !hasExtensions {
-		return plugin, nil
-	}
-	namespaces, ok := extensions.(map[string]any)
-	if !ok {
-		plugin.Warnings = append(plugin.Warnings, "Ignoring non-object extensions")
-		return plugin, nil
-	}
-	if value, exists := namespaces["chat.jaz"]; exists {
-		schema, err := jazSchema()
-		if err != nil {
-			return Plugin{}, err
-		}
-		if err := schema.Validate(value); err != nil {
-			return Plugin{}, fmt.Errorf("chat.jaz: %w", err)
-		}
-		encoded, err := json.Marshal(value)
-		if err != nil {
-			return Plugin{}, err
-		}
+	if value, exists := input.Extensions["chat.jaz"]; exists {
 		var jaz jazExtension
-		if err := json.Unmarshal(encoded, &jaz); err != nil {
-			return Plugin{}, err
+		decoder := json.NewDecoder(bytes.NewReader(value))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&jaz); err != nil {
+			return Manifest{}, fmt.Errorf("chat.jaz: %w", err)
 		}
 		plugin.DisplayName = jaz.DisplayName
 		plugin.IconPath = jaz.Icon
-		plugin.Page = jaz.Page
+		if jaz.Page != nil {
+			plugin.Page = &Page{View: jaz.Page.View, File: jaz.Page.File}
+		}
 	}
 	return plugin, nil
 }
