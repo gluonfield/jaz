@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Store) ListSessionPluginViews() ([]storage.SessionPluginView, error) {
-	rows, err := eventdb.New(s.db).ListSessionPresentations(context.Background())
+	rows, err := eventdb.New(s.db).ListSessionPluginViews(context.Background())
 	if err != nil {
 		return nil, err
 	}

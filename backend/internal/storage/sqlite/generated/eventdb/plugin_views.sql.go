@@ -10,14 +10,16 @@ import (
 	"database/sql"
 )
 
-const listSessionPresentations = `-- name: ListSessionPresentations :many
+const listSessionPluginViews = `-- name: ListSessionPluginViews :many
 SELECT t.id, t.title, t.status, t.updated_at_ms, t.cwd, e.seq, e.content
 FROM session_events AS e
 JOIN threads AS t ON t.id = e.thread_id
-WHERE e.type = 'artifact' AND t.cwd IS NOT NULL AND t.cwd <> ''
+WHERE e.type = 'artifact'
+  AND json_extract(e.content, '$.kind') = 'plugin-view'
+  AND t.cwd IS NOT NULL AND t.cwd <> ''
 `
 
-type ListSessionPresentationsRow struct {
+type ListSessionPluginViewsRow struct {
 	ID          string         `json:"id"`
 	Title       sql.NullString `json:"title"`
 	Status      string         `json:"status"`
@@ -27,15 +29,15 @@ type ListSessionPresentationsRow struct {
 	Content     string         `json:"content"`
 }
 
-func (q *Queries) ListSessionPresentations(ctx context.Context) ([]ListSessionPresentationsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listSessionPresentations)
+func (q *Queries) ListSessionPluginViews(ctx context.Context) ([]ListSessionPluginViewsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionPluginViews)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListSessionPresentationsRow{}
+	items := []ListSessionPluginViewsRow{}
 	for rows.Next() {
-		var i ListSessionPresentationsRow
+		var i ListSessionPluginViewsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
