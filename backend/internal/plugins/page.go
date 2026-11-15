@@ -16,7 +16,10 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-type Page = manifest.Page
+type Page struct {
+	View string `json:"view"`
+	File string `json:"file"`
+}
 
 var filename = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]*$`)
 

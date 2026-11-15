@@ -54,7 +54,7 @@ func Load(root string) (Catalog, error) {
 		if err != nil || plugin.Name != entry.Name() {
 			continue
 		}
-		held, _ := LoadPlugin(pluginRoot, plugin)
+		held, _ := LoadPlugin(pluginRoot, plugin.Name, plugin.ExtraSkillPaths)
 		packaged = mergeSkills(packaged, held)
 	}
 	return Catalog{Root: userRoot, Skills: mergeSkills(packaged, out)}, nil

@@ -4,7 +4,7 @@ A plugin is a folder installed from Settings → Plugins as a ZIP, or copied int
 
 ## Manifest
 
-Use [Agent Plugins 1.0](https://agent-plugins.org/specification) with `plugin.json` at the plugin root. `$schema` and `name` are required. The standard metadata fields are `version`, `description`, `author`, `homepage`, `repository`, `license`, and `keywords`. Unknown root fields produce warnings and are ignored; other schema violations reject the plugin.
+Use [Agent Plugins 1.0](https://agent-plugins.org/specification) with `plugin.json` at the plugin root. `$schema` and `name` are required. The standard metadata fields are `version`, `description`, `author`, `homepage`, `repository`, `license`, and `keywords`. Unknown root fields produce warnings and are ignored. Jaz checks the schema identifier, plugin name, metadata types, and supported Jaz fields.
 
 Jaz settings belong only under `extensions["chat.jaz"]`:
 

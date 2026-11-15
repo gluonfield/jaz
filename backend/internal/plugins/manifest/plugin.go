@@ -11,25 +11,22 @@ const Schema = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
 
 var ErrNotPlugin = errors.New("not a plugin: no supported manifest")
 
-type Plugin struct {
-	Name         string          `json:"name"`
-	DisplayName  string          `json:"display_name"`
-	Description  string          `json:"description"`
-	Version      string          `json:"version"`
-	Skills       []string        `json:"skills"`
-	Views        []string        `json:"views"`
-	IconDataURL  string          `json:"icon_data_url,omitempty"`
-	Page         *Page           `json:"page,omitempty"`
-	Warnings     []string        `json:"warnings,omitempty"`
-	IconPath     string          `json:"-"`
-	ManifestPath string          `json:"-"`
-	SkillDirs    []string        `json:"-"`
-	MCPServers   json.RawMessage `json:"-"`
+type Manifest struct {
+	Name            string
+	DisplayName     string
+	Description     string
+	Version         string
+	IconPath        string
+	Page            *Page
+	Warnings        []string
+	ManifestPath    string
+	ExtraSkillPaths []string
+	MCPServers      json.RawMessage
 }
 
 type Page struct {
-	View string `json:"view"`
-	File string `json:"file"`
+	View string
+	File string
 }
 
 var safeName = regexp.MustCompile(`^[a-zA-Z0-9_-][a-zA-Z0-9._-]*$`)
