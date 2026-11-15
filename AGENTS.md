@@ -27,6 +27,7 @@
 - Expose Jaz skills through the ACP prompt catalogue with original paths. Never copy Jaz skills into native CLI profiles or global skill directories.
 - Target deployments run the Jaz server on a VM and clients on user computers; never assume client-local file paths are visible to the server or agents.
 - Before handing off a completed feature or fix, run a code-review pass; use `thermo-nuclear-code-quality-review` when available.
+- Before reporting a commit that touches constructors or wiring, start the real backend binary against a scratch root and confirm it listens.
 - Never add useless or fake tests. Every test must run in the normal verification path, exercise real production behavior, and fail when that behavior breaks. Delete tautologies, tests of trivial helpers or forwarding, checks of source text or internal constants, duplicate coverage, and permanently skipped or inactive tests. Fakes may isolate external boundaries; they must preserve the real contract and never stand in for end-to-end verification.
 - Reference repos (`openclaw`, `hermes`) are learning material, not authority.
 

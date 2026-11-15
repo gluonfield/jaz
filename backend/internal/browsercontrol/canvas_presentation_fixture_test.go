@@ -33,7 +33,7 @@ func mountCanvasPresentationFixture(t *testing.T, mux *http.ServeMux, store *sql
 		t.Fatal(err)
 	}
 	bus := sessionevents.New()
-	tools := visualize.NewMCPTools(store, store, bus, boards)
+	tools := visualize.NewService(store, store, bus, boards)
 	server := mcp.NewServer(&mcp.Implementation{Name: "jaztools", Version: "test"}, nil)
 	tools.AddReadMeTo(server)
 	tools.AddCanvasTo(server)

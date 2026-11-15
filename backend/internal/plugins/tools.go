@@ -16,7 +16,7 @@ const ShowViewMCPToolName = "show_view"
 
 // Presenter shows an artifact in the thread the call came from.
 type Presenter interface {
-	Present(sessionID string, artifact *sessionevents.PresentationEvent) (*mcp.CallToolResult, any, error)
+	PresentMCP(sessionID string, artifact *sessionevents.PresentationEvent) (*mcp.CallToolResult, any, error)
 }
 
 type MCPTools struct {
@@ -56,11 +56,11 @@ func (t *MCPTools) ShowView(_ context.Context, req *mcp.CallToolRequest, input S
 		return nil, nil, err
 	}
 	if file != "" {
-		return t.Presenter.Present(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Title: title, WidgetCode: html, File: file}})
+		return t.Presenter.PresentMCP(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Title: title, WidgetCode: html, File: file}})
 	}
 	artifact := &sessionevents.ArtifactEvent{Title: title, WidgetCode: html, ArtifactType: "html"}
 	if artifact.Data, err = json.Marshal(input.Data); err != nil {
 		return nil, nil, err
 	}
-	return t.Presenter.Present(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationArtifact, Artifact: artifact})
+	return t.Presenter.PresentMCP(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationArtifact, Artifact: artifact})
 }

@@ -118,11 +118,11 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 	}
 
 	widgetService := widgets.NewService(store, nil)
+	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
-		sessionevents.New(),
+		events,
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
@@ -131,7 +131,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, fakeWhatsAppProvider{}, fakeWhatsAppProvider{}),
 		connections.NewTelegramMCPTools(store, fakeTelegramProvider{}, fakeTelegramProvider{}),
 		plugins.New(runtimefiles.New(t.TempDir())),
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
 	service.SetLoops(loops.NewService(store, executor, nil))
@@ -338,11 +338,11 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	t.Cleanup(func() { _ = memory.Close() })
 
 	widgetService := widgets.NewService(store, nil)
+	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
-		sessionevents.New(),
+		events,
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
@@ -351,7 +351,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
@@ -450,11 +450,11 @@ func TestCanvasThreadsGetThreadToolsWithoutInlineArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = memory.Close() })
+	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
-		sessionevents.New(),
+		events,
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
@@ -463,7 +463,7 @@ func TestCanvasThreadsGetThreadToolsWithoutInlineArtifacts(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
@@ -500,11 +500,11 @@ func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = memory.Close() })
 
+	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
-		sessionevents.New(),
+		events,
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
@@ -513,7 +513,7 @@ func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	// Configure the full kit so the absence of these tools proves a real
 	// restriction, not just unconfigured services.
@@ -567,11 +567,11 @@ func TestBotOnlyToolsStayOnTheBotSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = memory.Close() })
+	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
-		sessionevents.New(),
+		events,
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
@@ -580,7 +580,7 @@ func TestBotOnlyToolsStayOnTheBotSurface(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetBots(bots.NewMCPTools(nil))
@@ -651,11 +651,11 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = memory.Close() })
 
+	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
-		sessionevents.New(),
+		events,
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
@@ -664,7 +664,7 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -692,11 +692,11 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 	t.Cleanup(func() { _ = memory.Close() })
 
 	widgetService := widgets.NewService(store, nil)
+	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
-		sessionevents.New(),
+		events,
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
@@ -705,7 +705,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -755,11 +755,11 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = memory.Close() })
 
+	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jazmem"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
-		sessionevents.New(),
+		events,
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
@@ -768,7 +768,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -824,11 +824,11 @@ func TestBrowserToolsUseDirectThreadSurface(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = memory.Close() })
 
+	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
-		sessionevents.New(),
+		events,
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
@@ -837,7 +837,7 @@ func TestBrowserToolsUseDirectThreadSurface(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetBrowser(store, fakeBrowserBackend{})

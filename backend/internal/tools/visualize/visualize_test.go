@@ -51,7 +51,7 @@ func TestReadMeExecuteFiltersByModule(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		result, err := ReadMeTool{Visualize: &visualizesvc.MCPTools{}}.Execute(context.Background(), map[string]any{"modules": tc.modules})
+		result, err := ReadMeTool{Visualize: &visualizesvc.Service{}}.Execute(context.Background(), map[string]any{"modules": tc.modules})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,7 +69,7 @@ func TestReadMeExecuteFiltersByModule(t *testing.T) {
 }
 
 func TestReadMeExecuteEmptyReturnsCore(t *testing.T) {
-	result, err := ReadMeTool{Visualize: &visualizesvc.MCPTools{}}.Execute(context.Background(), nil)
+	result, err := ReadMeTool{Visualize: &visualizesvc.Service{}}.Execute(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestNativeCanvasDiscoveryAndPresentation(t *testing.T) {
 	boards := canvas.NewService(runtimefiles.New(store.RootDir()))
 	bus := sessionevents.New()
 	events := bus.Subscribe(t.Context(), session.ID)
-	service := visualizesvc.NewMCPTools(store, store, bus, boards)
+	service := visualizesvc.NewService(store, store, bus, boards)
 	read := ReadMeTool{Visualize: service}
 	show := ShowCanvasTool{Visualize: service}
 	input := map[string]any{"modules": []any{"canvas", "diagram"}}
@@ -127,7 +127,7 @@ func TestNativeCanvasDiscoveryAndPresentation(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err = show.Execute(ctx, nil)
-	if err != nil || !strings.Contains(result.Content, visualizesvc.SavedMessage) {
+	if err != nil || result.Content != visualizesvc.SavedMessage+"\n\n"+visualizesvc.DisplayReminder {
 		t.Fatalf("native presentation = %+v, %v", result, err)
 	}
 	select {

@@ -25,6 +25,7 @@ import (
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/sourcequeue"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
 
@@ -57,7 +58,6 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 	tools := jaztools.New(
 		svc,
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
 		events,
 		store,
 		store,
@@ -67,7 +67,7 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	return &Server{
 		Store:                 store,

@@ -75,24 +75,24 @@ type ShowWidgetOutput struct {
 	ArtifactType string `json:"artifact_type"`
 }
 
-type MCPTools struct {
+type Service struct {
 	Store    SessionEventAppender
 	Sessions SessionSource
 	Events   SessionEventPublisher
 	Canvases *canvas.Service
 }
 
-func NewMCPTools(store SessionEventAppender, sessions SessionSource, events SessionEventPublisher, canvases *canvas.Service) *MCPTools {
-	return &MCPTools{Store: store, Sessions: sessions, Events: events, Canvases: canvases}
+func NewService(store SessionEventAppender, sessions SessionSource, events SessionEventPublisher, canvases *canvas.Service) *Service {
+	return &Service{Store: store, Sessions: sessions, Events: events, Canvases: canvases}
 }
 
-func (t *MCPTools) AddTo(server *mcp.Server) {
+func (t *Service) AddTo(server *mcp.Server) {
 	t.AddReadMeTo(server)
 	t.AddShowWidgetTo(server)
 	t.AddCanvasTo(server)
 }
 
-func (t *MCPTools) AddReadMeTo(server *mcp.Server) {
+func (t *Service) AddReadMeTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ReadMeMCPToolName,
 		Title:       "Read artifact guidance",
@@ -101,7 +101,7 @@ func (t *MCPTools) AddReadMeTo(server *mcp.Server) {
 	}, t.ReadMe)
 }
 
-func (t *MCPTools) AddShowWidgetTo(server *mcp.Server) {
+func (t *Service) AddShowWidgetTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ShowWidgetMCPToolName,
 		Title:       "Show inline artifact",
@@ -110,7 +110,7 @@ func (t *MCPTools) AddShowWidgetTo(server *mcp.Server) {
 	}, t.ShowWidget)
 }
 
-func (t *MCPTools) ReadMe(_ context.Context, req *mcp.CallToolRequest, input ReadMeInput) (*mcp.CallToolResult, any, error) {
+func (t *Service) ReadMe(_ context.Context, req *mcp.CallToolRequest, input ReadMeInput) (*mcp.CallToolResult, any, error) {
 	guide, err := t.Guide(mcpsession.SessionID(req), input)
 	if err != nil {
 		return nil, nil, err
@@ -118,35 +118,43 @@ func (t *MCPTools) ReadMe(_ context.Context, req *mcp.CallToolRequest, input Rea
 	return textResult(guide)
 }
 
-func (t *MCPTools) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input ShowWidgetInput) (*mcp.CallToolResult, any, error) {
+func (t *Service) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input ShowWidgetInput) (*mcp.CallToolResult, any, error) {
 	_, artifact, err := BuildArtifact(input)
 	if err != nil {
 		return nil, nil, err
 	}
-	return t.Present(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationArtifact, Artifact: artifact})
+	return t.PresentMCP(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationArtifact, Artifact: artifact})
 }
 
-// Present shows an artifact in the user's thread and keeps it in the transcript.
-func (t *MCPTools) Present(sessionID string, artifact *sessionevents.PresentationEvent) (*mcp.CallToolResult, any, error) {
-	if sessionID == "" {
-		return nil, nil, errors.New("artifact delivery requires a session")
-	}
-	session, err := t.Sessions.LoadSession(sessionID)
+func (t *Service) PresentMCP(sessionID string, artifact *sessionevents.PresentationEvent) (*mcp.CallToolResult, any, error) {
+	text, err := t.Present(sessionID, artifact)
 	if err != nil {
 		return nil, nil, err
 	}
+	return textResult(text...)
+}
+
+// Present shows an artifact in the user's thread and keeps it in the transcript.
+func (t *Service) Present(sessionID string, artifact *sessionevents.PresentationEvent) ([]string, error) {
+	if sessionID == "" {
+		return nil, errors.New("artifact delivery requires a session")
+	}
+	session, err := t.Sessions.LoadSession(sessionID)
+	if err != nil {
+		return nil, err
+	}
 	if !session.PresentsToUser() {
-		return textResult("Artifact not displayed in the user's chat: this turn answers a bot or group. Use this turn's delivery channel to report the result.")
+		return []string{"Artifact not displayed in the user's chat: this turn answers a bot or group. Use this turn's delivery channel to report the result."}, nil
 	}
 	artifact.Presented = true
 	events := []sessionevents.Event{{SessionID: sessionID, Type: sessionevents.TypeArtifact, Artifact: artifact}}
 	if err := t.Store.AppendSessionEvents(sessionID, events...); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if t.Events != nil {
 		t.Events.Publish(events[0])
 	}
-	return textResult(SavedMessage, DisplayReminder)
+	return []string{SavedMessage, DisplayReminder}, nil
 }
 
 // textResult builds a text-only MCP result with a deliberately nil structured

@@ -46,6 +46,7 @@ import (
 	"github.com/wins/jaz/backend/internal/terminal"
 	"github.com/wins/jaz/backend/internal/threads"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
+	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/voice"
 	"github.com/wins/jaz/backend/internal/widgets"
 	"go.uber.org/fx"
@@ -108,8 +109,8 @@ func serveOptions(args []string) []fx.Option {
 			app.NewTelegramMCPTools,
 			app.NewGmailSyncer,
 			newMemoryService,
+			fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus))),
 			jaztools.New,
-			(*jaztools.Service).VisualizeTools,
 			terminal.New,
 			app.NewACPMCPServerReader,
 			exectool.NewCommandManager,

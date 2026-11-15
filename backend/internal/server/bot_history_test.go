@@ -130,7 +130,7 @@ func TestBotHistoryKeepsChatSurfacesAndWorkerTranscripts(t *testing.T) {
 			events := []sessionevents.Event{
 				{Type: "bot_activity", BotActivity: &sessionevents.BotActivityEvent{Kind: "message_received", Label: "Planner"}},
 				{Type: "room_message", RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Name: "Bot", Text: "Ready"}},
-				{Type: "artifact", Artifact: &sessionevents.ArtifactEvent{Title: "Map", WidgetCode: "<svg></svg>"}},
+				{Type: "artifact", Artifact: &sessionevents.PresentationEvent{Kind: sessionevents.PresentationArtifact, Artifact: &sessionevents.ArtifactEvent{Title: "Map", WidgetCode: "<svg></svg>"}}},
 				{Type: "mcp_app", MCPApp: &sessionevents.MCPAppEvent{ServerID: "tasks", Tool: "show", Presented: true, Result: json.RawMessage(`{"content":[]}`)}},
 				{Type: "permission_request", Permission: &sessionevents.ACPPermission{ID: "question", Title: "Which project?", Questions: []sessionevents.ACPQuestion{{ID: "project", Question: "Which project?"}}}},
 				{Type: "permission_response", Permission: &sessionevents.ACPPermission{ID: "question", Answers: map[string][]string{"project": {"Prototype"}}}},
@@ -170,7 +170,7 @@ func TestBotHistoryKeepsChatSurfacesAndWorkerTranscripts(t *testing.T) {
 			if !slices.EqualFunc(page.Events, events[:wantEvents], func(a, b sessionevents.Event) bool {
 				return a.Type == b.Type
 			}) ||
-				page.Events[2].Artifact.WidgetCode != "<svg></svg>" || page.Events[3].MCPApp.Tool != "show" || page.Events[4].Permission.Questions[0].Question != "Which project?" ||
+				page.Events[2].Artifact.Artifact.WidgetCode != "<svg></svg>" || page.Events[3].MCPApp.Tool != "show" || page.Events[4].Permission.Questions[0].Question != "Which project?" ||
 				page.Events[5].Permission.Answers["project"][0] != "Prototype" || page.Events[6].LoopCreated.LoopID != "review" || page.Events[8].ACP.SuggestedPrompt != "Review the plan" {
 				t.Fatal("chat surfaces lost their content")
 			}
@@ -221,7 +221,7 @@ func TestHistoricalArtifactVisibilityIsIndependentOfItsHistoryPage(t *testing.T)
 			for i := range 14 {
 				events = append(events, sessionevents.Event{Type: "room_message", At: at.Add(time.Duration(i+3) * time.Second), RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: fmt.Sprintf("Public reply %d", i)}})
 			}
-			events = append(events, sessionevents.Event{Type: sessionevents.TypeArtifact, At: at.Add(17 * time.Second), Artifact: &sessionevents.ArtifactEvent{Title: "Historical map", WidgetCode: "<svg></svg>"}})
+			events = append(events, sessionevents.Event{Type: sessionevents.TypeArtifact, At: at.Add(17 * time.Second), Artifact: &sessionevents.PresentationEvent{Kind: sessionevents.PresentationArtifact, Artifact: &sessionevents.ArtifactEvent{Title: "Historical map", WidgetCode: "<svg></svg>"}}})
 			if err := store.AppendSessionEvents(bot.ID, events...); err != nil {
 				t.Fatal(err)
 			}
@@ -254,7 +254,7 @@ func TestHistoricalArtifactVisibilityIsIndependentOfItsHistoryPage(t *testing.T)
 				t.Fatal("merging earlier history changed artifact provenance")
 			}
 			raw, err := store.LoadSessionEvents(bot.ID)
-			if err != nil || raw[15].Artifact.Presented || raw[15].Artifact.WidgetCode != "<svg></svg>" {
+			if err != nil || raw[15].Artifact.Presented || raw[15].Artifact.Artifact.WidgetCode != "<svg></svg>" {
 				t.Fatalf("history projection changed stored content: %+v, %v", raw, err)
 			}
 		})

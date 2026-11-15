@@ -51,7 +51,7 @@ func TestNewToolRegistryAllowsApplyPatchAbsolutePaths(t *testing.T) {
 		store,
 		sessionevents.New(),
 		nil,
-		visualize.NewMCPTools(store, store, sessionevents.New(), canvas.NewService(runtimefiles.New(store.RootDir()))),
+		visualize.NewService(store, store, sessionevents.New(), canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	tool, ok := registry.Get("apply_patch")
 	if !ok {

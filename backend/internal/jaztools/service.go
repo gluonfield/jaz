@@ -10,7 +10,6 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
-	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/loops"
@@ -74,7 +73,7 @@ type Service struct {
 	gmailTools      *connections.GmailMCPTools
 	whatsAppTools   *connections.WhatsAppMCPTools
 	telegramTools   *connections.TelegramMCPTools
-	visualizeTools  *visualize.MCPTools
+	visualizeTools  *visualize.Service
 	pluginTools     *plugins.MCPTools
 	widgetPublisher *widgets.SessionPublisher
 	sessions        sessionSource
@@ -132,7 +131,6 @@ type goalStoreAdapter struct {
 func New(
 	memory *memoryservice.Service,
 	urls serverconfig.URLs,
-	sessionEvents storage.SessionEventAppender,
 	events *sessionevents.Bus,
 	sessions storage.SessionStore,
 	usage storage.UsageEventStore,
@@ -142,9 +140,8 @@ func New(
 	whatsAppTools *connections.WhatsAppMCPTools,
 	telegramTools *connections.TelegramMCPTools,
 	installed *plugins.Store,
-	canvases *canvas.Service,
+	visualizeTools *visualize.Service,
 ) *Service {
-	visualizeTools := visualize.NewMCPTools(sessionEvents, sessions, events, canvases)
 	return &Service{
 		Memory:          memory,
 		calendarTools:   calendarTools,
@@ -170,10 +167,6 @@ func newGoalTools(events *sessionevents.Bus, sessions storage.SessionStore, usag
 
 func (s *Service) URL() string {
 	return s.url
-}
-
-func (s *Service) VisualizeTools() *visualize.MCPTools {
-	return s.visualizeTools
 }
 
 func (s *Service) SetLoops(service loops.MCPService, opts ...loops.MCPOption) {

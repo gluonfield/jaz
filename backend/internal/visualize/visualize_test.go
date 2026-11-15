@@ -30,7 +30,7 @@ func TestShowWidgetSavesAndPublishesTheSameDelivery(t *testing.T) {
 	}
 	bus := sessionevents.New()
 	events := bus.Subscribe(t.Context(), session.ID)
-	tools := visualize.NewMCPTools(store, store, bus, nil)
+	tools := visualize.NewService(store, store, bus, nil)
 	result, structured, err := tools.ShowWidget(t.Context(), &mcp.CallToolRequest{
 		Extra: &mcp.RequestExtra{Header: mcpsession.Header(session.ID)},
 	}, widgetInput())
@@ -84,7 +84,7 @@ func TestShowWidgetDoesNotClaimDeliveryWithoutASessionOrForPrivateTurns(t *testi
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	tools := visualize.NewMCPTools(store, store, sessionevents.New(), nil)
+	tools := visualize.NewService(store, store, sessionevents.New(), nil)
 	for _, id := range []string{"", "missing"} {
 		result, _, err := tools.ShowWidget(t.Context(), &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(id)}}, widgetInput())
 		if err == nil || result != nil {
@@ -127,7 +127,7 @@ func widgetInput() visualize.ShowWidgetInput {
 }
 
 func TestReadMeFiltersToRequestedModules(t *testing.T) {
-	tools := visualize.NewMCPTools(nil, nil, nil, nil)
+	tools := visualize.NewService(nil, nil, nil, nil)
 	result, structured, err := tools.ReadMe(context.Background(), &mcp.CallToolRequest{}, visualize.ReadMeInput{Modules: []string{"chart"}})
 	if err != nil {
 		t.Fatal(err)

@@ -9,9 +9,9 @@ import (
 	visualizesvc "github.com/wins/jaz/backend/internal/visualize"
 )
 
-type ReadMeTool struct{ Visualize *visualizesvc.MCPTools }
+type ReadMeTool struct{ Visualize *visualizesvc.Service }
 
-type ShowCanvasTool struct{ Visualize *visualizesvc.MCPTools }
+type ShowCanvasTool struct{ Visualize *visualizesvc.Service }
 
 type ShowWidgetTool struct{}
 

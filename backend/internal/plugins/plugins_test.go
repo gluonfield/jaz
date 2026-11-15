@@ -139,7 +139,7 @@ type presented struct {
 	artifact *sessionevents.PresentationEvent
 }
 
-func (p *presented) Present(_ string, artifact *sessionevents.PresentationEvent) (*mcp.CallToolResult, any, error) {
+func (p *presented) PresentMCP(_ string, artifact *sessionevents.PresentationEvent) (*mcp.CallToolResult, any, error) {
 	p.artifact = artifact
 	return &mcp.CallToolResult{}, nil, nil
 }

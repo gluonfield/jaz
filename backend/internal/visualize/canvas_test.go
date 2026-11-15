@@ -34,7 +34,7 @@ func TestCanvasDiscoveryAndPresentationInAnOrdinaryThread(t *testing.T) {
 	boards := canvas.NewService(layout)
 	bus := sessionevents.New()
 	events := bus.Subscribe(t.Context(), session.ID)
-	tools := visualize.NewMCPTools(store, store, bus, boards)
+	tools := visualize.NewService(store, store, bus, boards)
 	server := mcp.NewServer(&mcp.Implementation{Name: "canvas-test", Version: "1"}, nil)
 	tools.AddTo(server)
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil)
@@ -81,7 +81,7 @@ func TestCanvasDiscoveryAndPresentationInAnOrdinaryThread(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: visualize.ShowCanvasMCPToolName, Arguments: map[string]any{}})
-	if err != nil || result.IsError {
+	if err != nil || result.IsError || result.StructuredContent != nil || len(result.Content) != 2 || result.Content[0].(*mcp.TextContent).Text != visualize.SavedMessage || result.Content[1].(*mcp.TextContent).Text != visualize.DisplayReminder {
 		t.Fatalf("canvas presentation = %+v, %v", result, err)
 	}
 	select {

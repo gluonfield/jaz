@@ -20,6 +20,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/threads"
+	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
 
@@ -76,11 +77,11 @@ func TestThreadToolsCreateDiscoverAndRead(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = memory.Close() })
 
+	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
 		serverconfig.URLs{JazToolsMCP: "http://127.0.0.1:5299/mcp/jaztools"},
-		store,
-		sessionevents.New(),
+		events,
 		store,
 		store,
 		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
@@ -89,7 +90,7 @@ func TestThreadToolsCreateDiscoverAndRead(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
-		canvas.NewService(runtimefiles.New(store.RootDir())),
+		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	agentService := fakeACPService{spawned: make(chan acp.SpawnRequest, 1)}

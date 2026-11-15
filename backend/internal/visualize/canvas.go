@@ -13,7 +13,7 @@ import (
 
 const ShowCanvasDescription = "Presents this thread's existing canvas as a side-panel tab, or its existing main board in a canvas thread. First request the canvas module from visualise_read_me, then write the canvas file. Does not create a canvas or change the thread layout."
 
-func (t *MCPTools) Guide(sessionID string, input ReadMeInput) (string, error) {
+func (t *Service) Guide(sessionID string, input ReadMeInput) (string, error) {
 	if !slices.Contains(input.Modules, "canvas") {
 		return BuildReadMeGuide(input.Modules, input.Platform), nil
 	}
@@ -35,7 +35,7 @@ func (t *MCPTools) Guide(sessionID string, input ReadMeInput) (string, error) {
 	return guide, nil
 }
 
-func (t *MCPTools) AddCanvasTo(server *mcp.Server) {
+func (t *Service) AddCanvasTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ShowCanvasMCPToolName,
 		Title:       "Show thread canvas",
@@ -43,16 +43,20 @@ func (t *MCPTools) AddCanvasTo(server *mcp.Server) {
 	}, t.ShowCanvas)
 }
 
-func (t *MCPTools) ShowCanvas(_ context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
-	return t.PresentCanvas(mcpsession.SessionID(req))
+func (t *Service) ShowCanvas(_ context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	text, err := t.PresentCanvas(mcpsession.SessionID(req))
+	if err != nil {
+		return nil, nil, err
+	}
+	return textResult(text...)
 }
 
-func (t *MCPTools) PresentCanvas(sessionID string) (*mcp.CallToolResult, any, error) {
+func (t *Service) PresentCanvas(sessionID string) ([]string, error) {
 	if sessionID == "" {
-		return nil, nil, errors.New("canvas presentation requires a session")
+		return nil, errors.New("canvas presentation requires a session")
 	}
 	if err := t.Canvases.ValidateFile(sessionID); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	return t.Present(sessionID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationCanvas})
 }
