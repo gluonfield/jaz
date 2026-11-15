@@ -207,6 +207,49 @@ func (s *Store) UpdateSessionTitleFromRuntime(id, title string) (storage.Session
 	return session, updated > 0, nil
 }
 
+func (s *Store) UpdateGeneratedSessionTitle(id, title string) (storage.Session, bool, error) {
+	s.writeMu.Lock()
+	updated, err := threaddb.New(s.db).UpdateGeneratedSessionTitle(context.Background(), threaddb.UpdateGeneratedSessionTitleParams{
+		Title:       nullDBString(title),
+		ID:          id,
+		UpdatedAtMs: timeToMs(time.Now().UTC()),
+	})
+	if err != nil {
+		s.writeMu.Unlock()
+		return storage.Session{}, false, err
+	}
+	session, err := s.loadSession(id)
+	s.writeMu.Unlock()
+	if err != nil {
+		return storage.Session{}, false, err
+	}
+	if updated > 0 {
+		s.mirrorSession(session)
+	}
+	return session, updated > 0, nil
+}
+
+func (s *Store) UpdateSessionTitleFromAgent(id, title string) (storage.Session, bool, error) {
+	s.writeMu.Lock()
+	updated, err := threaddb.New(s.db).UpdateSessionTitleFromAgent(context.Background(), threaddb.UpdateSessionTitleFromAgentParams{
+		Title: nullDBString(title),
+		ID:    id,
+	})
+	if err != nil {
+		s.writeMu.Unlock()
+		return storage.Session{}, false, err
+	}
+	session, err := s.loadSession(id)
+	s.writeMu.Unlock()
+	if err != nil {
+		return storage.Session{}, false, err
+	}
+	if updated > 0 {
+		s.mirrorSession(session)
+	}
+	return session, updated > 0, nil
+}
+
 func (s *Store) UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error {
 	now := time.Now().UTC()
 	params := threaddb.UpdateSessionStatusParams{

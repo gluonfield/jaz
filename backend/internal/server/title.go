@@ -79,12 +79,15 @@ func (s *Server) generateAndSaveSessionTitle(ctx context.Context, session storag
 	if current.ManualTitle || current.TitleLocked {
 		return current
 	}
-	current.Title = title
-	current.TitleLocked = true
-	if err := s.Store.SaveSession(current); err != nil {
+	current, updated, err := s.Store.UpdateGeneratedSessionTitle(session.ID, title)
+	if err != nil {
 		s.logger().Debug("saving generated session title failed", "session", session.ID, "error", err)
 		return session
 	}
+	if !updated {
+		return current
+	}
+
 	s.publishSessionChanged(current.ID)
 	return current
 }

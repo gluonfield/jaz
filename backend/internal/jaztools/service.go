@@ -68,6 +68,7 @@ type Service struct {
 	botTools        *bots.MCPTools
 	agentTools      *acp.MCPTools
 	threadTools     *threads.Service
+	titleTools      *threads.TitleTools
 	goalTools       *sessiongoal.MCPTools
 	calendarTools   *connections.CalendarMCPTools
 	gmailTools      *connections.GmailMCPTools
@@ -151,6 +152,7 @@ func New(
 		visualizeTools:  visualizeTools,
 		pluginTools:     &plugins.MCPTools{Plugins: installed, Presenter: visualizeTools},
 		goalTools:       newGoalTools(events, sessions, usage),
+		titleTools:      &threads.TitleTools{Store: sessions, Events: events},
 		widgetPublisher: widgetPublisher,
 		sessions:        sessions,
 		url:             strings.TrimSpace(urls.JazToolsMCP),
@@ -265,6 +267,7 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 	if surface.workerOnly() {
 		return server
 	}
+	s.titleTools.AddTo(server)
 	s.loopTools.AddTo(server)
 	if s.botTools != nil {
 		s.botTools.AddTo(server)

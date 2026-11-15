@@ -269,6 +269,16 @@ SET
   manual_title = 0
 WHERE id = sqlc.arg(id) AND manual_title = 0 AND title_locked = 0;
 
+-- name: UpdateSessionTitleFromAgent :execrows
+UPDATE threads
+SET title = sqlc.narg(title), title_locked = 1
+WHERE id = sqlc.arg(id) AND manual_title = 0;
+
+-- name: UpdateGeneratedSessionTitle :execrows
+UPDATE threads
+SET title = sqlc.narg(title), title_locked = 1, updated_at_ms = sqlc.arg(updated_at_ms)
+WHERE id = sqlc.arg(id) AND manual_title = 0 AND title_locked = 0;
+
 -- name: ReplaceRuntimeSessionID :execrows
 UPDATE threads
 SET

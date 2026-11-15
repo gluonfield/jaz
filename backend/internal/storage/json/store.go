@@ -347,6 +347,42 @@ func (s *Store) UpdateSessionTitleFromRuntime(id, title string) (storage.Session
 	return session, true, nil
 }
 
+func (s *Store) UpdateSessionTitleFromAgent(id, title string) (storage.Session, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return storage.Session{}, false, err
+	}
+	if session.ManualTitle {
+		return session, false, nil
+	}
+	session.Title = title
+	session.TitleLocked = true
+	if err := s.saveSession(session); err != nil {
+		return storage.Session{}, false, err
+	}
+	return session, true, nil
+}
+
+func (s *Store) UpdateGeneratedSessionTitle(id, title string) (storage.Session, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return storage.Session{}, false, err
+	}
+	if session.ManualTitle || session.TitleLocked {
+		return session, false, nil
+	}
+	session.Title = title
+	session.TitleLocked = true
+	if err := s.saveSession(session); err != nil {
+		return storage.Session{}, false, err
+	}
+	return session, true, nil
+}
+
 func (s *Store) updateSessionTitleLocked(id, title string) error {
 	session, err := s.loadSessionByID(id)
 	if err != nil {

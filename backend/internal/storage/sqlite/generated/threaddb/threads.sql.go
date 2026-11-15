@@ -908,6 +908,26 @@ func (q *Queries) TouchThread(ctx context.Context, arg TouchThreadParams) error 
 	return err
 }
 
+const updateGeneratedSessionTitle = `-- name: UpdateGeneratedSessionTitle :execrows
+UPDATE threads
+SET title = ?1, title_locked = 1, updated_at_ms = ?2
+WHERE id = ?3 AND manual_title = 0 AND title_locked = 0
+`
+
+type UpdateGeneratedSessionTitleParams struct {
+	Title       sql.NullString `json:"title"`
+	UpdatedAtMs int64          `json:"updated_at_ms"`
+	ID          string         `json:"id"`
+}
+
+func (q *Queries) UpdateGeneratedSessionTitle(ctx context.Context, arg UpdateGeneratedSessionTitleParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateGeneratedSessionTitle, arg.Title, arg.UpdatedAtMs, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateGoal = `-- name: UpdateGoal :exec
 UPDATE threads
 SET
@@ -1006,6 +1026,25 @@ type UpdateSessionTitleParams struct {
 func (q *Queries) UpdateSessionTitle(ctx context.Context, arg UpdateSessionTitleParams) error {
 	_, err := q.db.ExecContext(ctx, updateSessionTitle, arg.Title, arg.ID)
 	return err
+}
+
+const updateSessionTitleFromAgent = `-- name: UpdateSessionTitleFromAgent :execrows
+UPDATE threads
+SET title = ?1, title_locked = 1
+WHERE id = ?2 AND manual_title = 0
+`
+
+type UpdateSessionTitleFromAgentParams struct {
+	Title sql.NullString `json:"title"`
+	ID    string         `json:"id"`
+}
+
+func (q *Queries) UpdateSessionTitleFromAgent(ctx context.Context, arg UpdateSessionTitleFromAgentParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateSessionTitleFromAgent, arg.Title, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateSessionTitleFromRuntime = `-- name: UpdateSessionTitleFromRuntime :execrows

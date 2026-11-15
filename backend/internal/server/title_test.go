@@ -284,6 +284,39 @@ func TestGeneratedSessionTitleLocksTitle(t *testing.T) {
 	}
 }
 
+type agentTitleAfterRead struct {
+	storage.Store
+}
+
+func (s agentTitleAfterRead) LoadSession(id string) (storage.Session, error) {
+	snapshot, err := s.Store.LoadSession(id)
+	if err == nil {
+		_, _, err = s.Store.UpdateSessionTitleFromAgent(id, "Agent chosen title")
+	}
+	return snapshot, err
+}
+
+func TestGeneratedSessionTitleCannotOverwriteAgentTitleAfterItsFinalRead(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Title: "Placeholder"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{
+		Store: agentTitleAfterRead{store},
+		ACP:   &fakeACPManager{utilityText: `{"title":"Late generated title"}`},
+	}
+	updated := server.generateAndSaveSessionTitle(t.Context(), session, "Topic")
+	stored, err := store.LoadSession(session.ID)
+	if err != nil || updated.Title != "Agent chosen title" || stored.Title != updated.Title || !stored.TitleLocked || stored.ManualTitle {
+		t.Fatalf("generator overwrote a title set after its read: result=%+v stored=%+v err=%v", updated, stored, err)
+	}
+}
+
 func waitForSessionTitle(t *testing.T, store storage.SessionStore, sessionID, want string) {
 	t.Helper()
 	deadline := time.After(10 * time.Second)
