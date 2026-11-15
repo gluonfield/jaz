@@ -341,6 +341,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 		if auth.Config.Mode == AuthModeJazProfile {
 			delete(env, "ANTHROPIC_AUTH_TOKEN")
 			delete(env, "CLAUDE_CODE_OAUTH_TOKEN")
+			env["ANTHROPIC_CONFIG_DIR"] = claudeSDKConfigDir(auth.Config.Path, env)
 		}
 		switch {
 		case auth.Config.Mode == AuthModeExistingCLI && auth.Config.Path == "":
