@@ -418,7 +418,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
           zoomOnDoubleClick={false}
           elevateNodesOnSelect={false}
           nodeDragThreshold={3}
-          deleteKeyCode={['Backspace', 'Delete']}
+          deleteKeyCode={null}
           multiSelectionKeyCode={['Meta', 'Shift']}
           defaultViewport={initialViewport}
           minZoom={0.1}

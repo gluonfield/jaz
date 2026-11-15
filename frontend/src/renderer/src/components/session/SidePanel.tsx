@@ -21,9 +21,10 @@ import { SidePanelCloseGuard, type useSidePanelState } from '@/components/sessio
 export function SidePanel({
   session, panel, progress, subagents, spawnedThreads, working,
   sideChatAvailable, sideChatEvents, onAddBrowserAnnotation, onUploadAttachment,
-  onSend, onQueuePrompt, onQueueAction, onSendSideChat, overview, overviewLabel,
+  onSend, onQueuePrompt, onQueueAction, onSendSideChat, overview, overviewLabel, canvas,
 }: {
   session: Session
+  canvas: ReactNode
   panel: ReturnType<typeof useSidePanelState>
   progress?: TaskSurface
   subagents: ProviderSubagentView[]
@@ -98,6 +99,8 @@ export function SidePanel({
                   onAddBrowserAnnotation={onAddBrowserAnnotation}
                   onUploadAttachment={onUploadAttachment}
                 />
+              ) : tab.kind === 'canvas' ? (
+                visible ? <div className="canvas-panel relative h-full">{canvas}</div> : null
               ) : tab.kind === 'terminal' ? (
                 <TerminalPanel session={session} visible={visible} />
               ) : tab.kind === 'file' ? (

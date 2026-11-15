@@ -18,7 +18,7 @@ const contextId = (page: string, node?: string) => `canvas:${JSON.stringify([pag
 
 // The canvas selection rides along as composer context. It lives in the board,
 // never in the stored draft: sending clears it, a removed chip deselects.
-export function useCanvasContexts(draft: DraftContexts) {
+export function useCanvasContexts(draft: DraftContexts, active = true) {
   const [page, setPage] = useState<Pick<CanvasPage, 'id' | 'name'>>()
   const [picks, setPicks] = useState<CanvasPick[]>([])
   const controller = useRef<((picks: CanvasPick[]) => void) | undefined>(undefined)
@@ -37,10 +37,10 @@ export function useCanvasContexts(draft: DraftContexts) {
   }, [])
   const contexts = useMemo<ComposerContext[]>(() => [
     ...draft.contexts,
-    ...(picks.length
+    ...(!active ? [] : picks.length
       ? picks.map((pick) => ({ id: contextId(pick.page, pick.node), type: 'canvas' as const, ...pick }))
       : page ? [{ id: contextId(page.id), type: 'canvas' as const, page: page.id, label: page.name }] : []),
-  ], [draft.contexts, page, picks])
+  ], [draft.contexts, page, picks, active])
   const { removeContext, replaceContexts } = draft
   const remove = useCallback((id: string) => {
     if (id.startsWith('canvas:')) controller.current?.(picks.filter((pick) => contextId(pick.page, pick.node) !== id))

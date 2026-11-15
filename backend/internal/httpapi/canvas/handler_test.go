@@ -49,33 +49,39 @@ func serve(mux *http.ServeMux, method, path, body string) *httptest.ResponseReco
 }
 
 func TestCanvasRoundTripAndUnchangedPolls(t *testing.T) {
-	mux, board, _, _ := newTestServer(t)
-	path := "/v1/sessions/" + board + "/canvas"
+	mux, board, chat, _ := newTestServer(t)
+	for _, session := range []string{board, chat} {
+		path := "/v1/sessions/" + session + "/canvas"
 
-	res := serve(mux, http.MethodPatch, path, `{"page":"page-1","nodes":[{"id":"note","type":"text","text":"Hi","x":0,"y":0,"width":200,"height":200}]}`)
-	if res.Code != http.StatusOK {
-		t.Fatalf("patch status = %d, body = %s", res.Code, res.Body.String())
-	}
-	res = serve(mux, http.MethodGet, path, "")
-	var view canvas.View
-	if err := json.Unmarshal(res.Body.Bytes(), &view); err != nil || res.Code != http.StatusOK {
-		t.Fatalf("get status = %d, err = %v", res.Code, err)
-	}
-	if len(view.Pages) != 1 || view.Pages[0].Name != "Page 1" || len(view.Pages[0].Nodes) != 1 || view.Pages[0].Nodes[0]["text"] != "Hi" {
-		t.Fatalf("pages = %#v", view.Pages)
-	}
-	if res := serve(mux, http.MethodGet, path+"?version="+view.Version, ""); res.Code != http.StatusNoContent {
-		t.Fatalf("unchanged poll status = %d, want 204", res.Code)
+		res := serve(mux, http.MethodPatch, path, `{"page":"page-1","nodes":[{"id":"note","type":"text","text":"Hi","x":0,"y":0,"width":200,"height":200}]}`)
+		if res.Code != http.StatusOK {
+			t.Fatalf("patch status = %d, body = %s", res.Code, res.Body.String())
+		}
+		res = serve(mux, http.MethodGet, path, "")
+		var view canvas.View
+		if err := json.Unmarshal(res.Body.Bytes(), &view); err != nil || res.Code != http.StatusOK {
+			t.Fatalf("get status = %d, err = %v", res.Code, err)
+		}
+		if len(view.Pages) != 1 || view.Pages[0].Name != "Page 1" || len(view.Pages[0].Nodes) != 1 || view.Pages[0].Nodes[0]["text"] != "Hi" {
+			t.Fatalf("pages = %#v", view.Pages)
+		}
+		if res := serve(mux, http.MethodGet, path+"?version="+view.Version, ""); res.Code != http.StatusNoContent {
+			t.Fatalf("unchanged poll status = %d, want 204", res.Code)
+		}
 	}
 }
 
-func TestCanvasIsOnlyServedForCanvasThreads(t *testing.T) {
-	mux, _, chat, _ := newTestServer(t)
-	if res := serve(mux, http.MethodGet, "/v1/sessions/"+chat+"/canvas", ""); res.Code != http.StatusNotFound {
-		t.Fatalf("chat thread status = %d, want 404", res.Code)
-	}
-	if res := serve(mux, http.MethodPatch, "/v1/sessions/"+chat+"/canvas", `{"remove":["x"]}`); res.Code != http.StatusNotFound {
-		t.Fatalf("chat thread patch status = %d, want 404", res.Code)
+func TestMissingSessionsCannotReadOrCreateCanvas(t *testing.T) {
+	mux, _, _, _ := newTestServer(t)
+	for _, request := range []struct{ method, path string }{
+		{http.MethodGet, "/canvas"},
+		{http.MethodPatch, "/canvas"},
+		{http.MethodPut, "/canvas/layout"},
+		{http.MethodPost, "/canvas/files"},
+	} {
+		if res := serve(mux, request.method, "/v1/sessions/missing"+request.path, ""); res.Code != http.StatusNotFound {
+			t.Fatalf("%s %s status = %d, want 404", request.method, request.path, res.Code)
+		}
 	}
 }
 
@@ -139,7 +145,7 @@ func TestLegacyCanvasVersionCannotReuseFlatResponse(t *testing.T) {
 	}
 }
 
-func TestLayoutIsSavedForCanvasPagesOnly(t *testing.T) {
+func TestLayoutIsSavedForThreadCanvasPages(t *testing.T) {
 	mux, board, chat, service := newTestServer(t)
 	body := `{"page":"page-1","items":[{"id":"a","x":0,"y":0,"width":200,"height":88}],"issues":["` + "`a` overlaps `b`" + `"]}`
 
@@ -153,7 +159,7 @@ func TestLayoutIsSavedForCanvasPagesOnly(t *testing.T) {
 	if res := serve(mux, http.MethodPut, "/v1/sessions/"+board+"/canvas/layout", strings.Replace(body, "page-1", "gone", 1)); res.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("unknown page status = %d", res.Code)
 	}
-	if res := serve(mux, http.MethodPut, "/v1/sessions/"+chat+"/canvas/layout", body); res.Code != http.StatusNotFound {
+	if res := serve(mux, http.MethodPut, "/v1/sessions/"+chat+"/canvas/layout", body); res.Code != http.StatusNoContent {
 		t.Fatalf("chat thread status = %d", res.Code)
 	}
 }
@@ -187,7 +193,7 @@ func TestUploadedFilesLandInTheCanvasFolder(t *testing.T) {
 	if res := upload(board, "other", "a.png", "x"); res.Code != http.StatusBadRequest {
 		t.Fatalf("missing file field status = %d", res.Code)
 	}
-	if res := upload(chat, "file", "a.png", "x"); res.Code != http.StatusNotFound {
+	if res := upload(chat, "file", "a.png", "x"); res.Code != http.StatusOK {
 		t.Fatalf("chat thread status = %d", res.Code)
 	}
 }

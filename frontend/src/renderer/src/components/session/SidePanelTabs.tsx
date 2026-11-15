@@ -1,4 +1,4 @@
-import { Copy, FileSpreadsheet, FileText, FolderGit2, Globe, LayoutDashboard, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
+import { Copy, PencilRuler, FileSpreadsheet, FileText, FolderGit2, Globe, LayoutDashboard, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, Reorder } from 'motion/react'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
@@ -14,6 +14,7 @@ import type { NewSidePanelTab, SidePanelTab } from '@/lib/sidePanelTabs'
 
 const TAB_TYPES = {
   file: { label: 'Files', icon: FileText },
+  canvas: { label: 'Canvas', icon: PencilRuler },
   'side-chat': { label: 'Side chat', icon: MessageCirclePlus },
   preview: { label: 'Browser', icon: Globe },
   terminal: { label: 'Terminal', icon: Terminal },

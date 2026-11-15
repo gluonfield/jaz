@@ -3,13 +3,11 @@ package canvas
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/storage"
-	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 const (
@@ -131,10 +129,6 @@ func (h *Handler) canvasSession(w http.ResponseWriter, r *http.Request) (string,
 	}
 	if err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, err)
-		return "", false
-	}
-	if session.RuntimeRef == nil || visualize.NormalizeSurface(session.RuntimeRef.ArtifactSurface) != visualize.SurfaceCanvas {
-		httpapi.WriteError(w, http.StatusNotFound, fmt.Errorf("session %s is not a canvas thread", session.ID))
 		return "", false
 	}
 	return session.ID, true

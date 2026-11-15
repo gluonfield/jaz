@@ -240,7 +240,7 @@ function Fixture() {
       if (new URLSearchParams(location.search).get('suite') === 'session-config') {
         progress('session settings and canvas side panel')
         await exerciseSessionConfig()
-        window.smoke.result({ ok: true, checks: ['existing composer setting changes across menu closure; Canvas panel controls, real browser navigation, retained board and close/reopen'] })
+        window.smoke.result({ ok: true, checks: ['existing composer setting changes across menu closure; Canvas tab in regular and canvas-mode threads, composer context, single board, return to full mode; Canvas panel controls, real browser navigation, retained board and close/reopen'] })
         return
       }
       if (new URLSearchParams(location.search).get('suite') === 'model-picker') {

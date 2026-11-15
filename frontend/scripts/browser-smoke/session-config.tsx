@@ -7,6 +7,7 @@ import { ThreadView } from '@/components/session/ThreadView'
 import type { PreviewWebviewElement } from '@/components/session/previewWebview'
 import { ToastProvider } from '@/components/ui/toast'
 import type { AgentSessionConfigOption, Session } from '@/lib/api/types'
+import { SidePanelSlot } from '@/lib/sidePanelSlot'
 import { keys } from '@/lib/query/keys'
 import { TitlebarActionsOutlet, TitlebarProvider, TitlebarSlotOutlet } from '@/lib/titlebar'
 import { VoiceProvider } from '@/lib/voice/VoiceProvider'
@@ -64,9 +65,14 @@ export async function exerciseSessionConfig(): Promise<void> {
     return originalFetch(input, init)
   }
   const element = document.createElement('div')
-  element.style.cssText = 'position:fixed;inset:0;background:var(--color-bg);z-index:1'
+  element.style.cssText = 'position:fixed;inset:0;background:var(--color-bg);z-index:1;display:flex'
   document.body.append(element)
-  const root = createRoot(element)
+  const content = document.createElement('div')
+  content.style.cssText = 'flex:1;min-width:0;height:100%'
+  const slot = document.createElement('div')
+  slot.className = 'contents'
+  element.append(content, slot)
+  const root = createRoot(content)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const route = createRootRoute({ component: () => (
     <TitlebarProvider><BrowserWorkspace><SidePanelStateProvider>
@@ -96,7 +102,7 @@ export async function exerciseSessionConfig(): Promise<void> {
   }
   try {
     root.render(<QueryClientProvider client={client}><ToastProvider><VoiceProvider>
-      <RouterProvider router={router} />
+      <SidePanelSlot.Provider value={{ slot, row: element }}><RouterProvider router={router} /></SidePanelSlot.Provider>
     </VoiceProvider></ToastProvider></QueryClientProvider>)
     await until(() => Boolean(element.querySelector('button[aria-label="Composer options"]')))
     if (element.querySelector('button[aria-label^="Model:"]')) {
@@ -122,11 +128,25 @@ export async function exerciseSessionConfig(): Promise<void> {
     await window.smoke.key('Escape')
     await until(() => !toggle())
 
+    element.querySelector<HTMLButtonElement>('[aria-label="Side Panel"]')!.click()
+    await until(() => Boolean([...document.querySelectorAll('button')].find((button) => button.textContent === 'Canvas')))
+    const canvasTab = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Canvas')!
+    canvasTab.click()
+    await until(() => !canvasTab.isConnected)
+    await until(() => Boolean(element.querySelector('#panel-body-canvas .react-flow__node[data-id="notes"]')))
+    if (element.querySelector('.canvas-chat') || !element.querySelector('textarea')) throw new Error('Canvas tab replaced the thread conversation')
+    await until(() => Boolean(element.querySelector('textarea[placeholder="Ask about the canvas"]')))
+    await window.smoke.capture('thread-canvas-side-panel-tab')
+
     client.setQueryData(keys.sessionMessages(session.id), {
       session: { ...session, status: 'idle', runtime_ref: { ...session.runtime_ref!, artifact_surface: 'canvas' } },
       messages: [], events: [], latest_event_seq: 0,
     })
-    await until(() => Boolean(element.querySelector('.canvas')))
+    await until(() => element.querySelectorAll('.canvas').length === 1 && Boolean(element.querySelector('#panel-body-canvas .canvas')))
+    if (element.querySelector('.canvas-chat')) throw new Error('Canvas mode did not keep its conversation beside the canvas tab')
+    element.querySelector<HTMLButtonElement>('[aria-label="Close Canvas"]')!.click()
+    element.querySelector<HTMLButtonElement>('[aria-label="Side Panel"]')!.click()
+    await until(() => element.querySelector('[aria-label="Side Panel"]')?.getAttribute('aria-pressed') === 'false' && element.querySelector('[aria-label="Resize side panel"]')!.parentElement!.getBoundingClientRect().width < 1)
     const resizeHandle = () => element.querySelector<HTMLElement>('[aria-label="Resize canvas chat"]')!
     const chatWidth = () => element.querySelector('.canvas-chat')!.parentElement!.getBoundingClientRect().width
     const dragChat = async (targetWidth: number) => {
@@ -216,15 +236,15 @@ export async function exerciseSessionConfig(): Promise<void> {
         return false
       }
     })
-    const drawer = element.querySelector<HTMLElement>('[aria-label="Resize side panel"]')!.parentElement!
+    const drawer = () => element.querySelector<HTMLElement>('[aria-label="Resize side panel"]')!.parentElement!
     panelButton().click()
-    await until(() => panelButton().getAttribute('aria-pressed') === 'false' && drawer.getBoundingClientRect().width < 1)
+    await until(() => panelButton().getAttribute('aria-pressed') === 'false' && drawer().getBoundingClientRect().width < 1)
     panelButton().click()
     await until(() => panelButton().getAttribute('aria-pressed') === 'true' && webview.getBoundingClientRect().width > 200)
     let lastWidth = 0
     let stableFrames = 0
     await until(() => {
-      const width = drawer.getBoundingClientRect().width
+      const width = drawer().getBoundingClientRect().width
       stableFrames = Math.abs(width - lastWidth) < 0.25 ? stableFrames + 1 : 0
       lastWidth = width
       return width > 200 && stableFrames > 5
@@ -233,8 +253,19 @@ export async function exerciseSessionConfig(): Promise<void> {
       throw new Error('Opening the browser removed the canvas')
     }
     await window.smoke.capture('canvas-side-panel')
+    element.querySelector<HTMLButtonElement>('[aria-label="New tab"]')!.click()
+    await until(() => Boolean([...document.querySelectorAll('button')].find((button) => button.textContent === 'Canvas')))
+    const canvasOption = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Canvas')!
+    canvasOption.click()
+    await until(() => !canvasOption.isConnected)
+    await until(() => element.querySelectorAll('.canvas').length === 1 && Boolean(element.querySelector('#panel-body-canvas .react-flow__node[data-id="notes"]')))
+    if (element.querySelector('.canvas-chat')) throw new Error('Opening the canvas tab retained the full-mode chat')
+    await window.smoke.capture('canvas-mode-side-panel-tab')
+    element.querySelector<HTMLButtonElement>('[aria-label="Close Canvas"]')!.click()
+    await until(() => element.querySelectorAll('.canvas').length === 1 && Boolean(element.querySelector('.canvas-chat')))
+
     await window.smoke.resize(390, 844)
-    await until(() => window.innerWidth === 390 && Math.abs(drawer.getBoundingClientRect().width - 390) < 1 && Math.abs(drawer.getBoundingClientRect().left) < 1)
+    await until(() => window.innerWidth === 390 && Math.abs(drawer().getBoundingClientRect().width - 390) < 1 && Math.abs(drawer().getBoundingClientRect().left) < 1)
     if (resizeHandle() || chatWidth() > 390) {
       throw new Error('Desktop chat resizing leaked into the phone layout')
     }
@@ -243,10 +274,10 @@ export async function exerciseSessionConfig(): Promise<void> {
     const y = Math.round(controlBounds.y + controlBounds.height / 2)
     await window.smoke.pointer('mouseDown', x, y)
     await window.smoke.pointer('mouseUp', x, y)
-    await until(() => panelButton().getAttribute('aria-pressed') === 'false' && drawer.getBoundingClientRect().left >= 389)
+    await until(() => panelButton().getAttribute('aria-pressed') === 'false' && drawer().getBoundingClientRect().left >= 389)
     await window.smoke.pointer('mouseDown', x, y)
     await window.smoke.pointer('mouseUp', x, y)
-    await until(() => panelButton().getAttribute('aria-pressed') === 'true' && Math.abs(drawer.getBoundingClientRect().left) < 1)
+    await until(() => panelButton().getAttribute('aria-pressed') === 'true' && Math.abs(drawer().getBoundingClientRect().left) < 1)
     await window.smoke.capture('canvas-side-panel-mobile')
   } finally {
     save.resolve()

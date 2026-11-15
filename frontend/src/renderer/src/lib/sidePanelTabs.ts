@@ -7,7 +7,7 @@ export type PanelView = ArtifactEvent & { file: string }
 export const isPanelView = (view?: ArtifactEvent): view is PanelView => Boolean(view?.file)
 
 export type SidePanelTab =
-  | { id: string; kind: 'preview' | 'terminal' | 'side-chat' | 'diff' }
+  | { id: string; kind: 'preview' | 'terminal' | 'side-chat' | 'diff' | 'canvas' }
   | { id: string; kind: 'file'; file: FileReference | null }
   // An app tab shows a thread app, a file's viewer, or the call an inline view opened larger.
   | { id: string; kind: 'app'; app: Pick<MCPEntrypoint, 'server_id' | 'tool' | 'title' | 'icon'>; file?: OpenedFile; call?: Pick<MCPAppEvent, 'arguments' | 'result'> }

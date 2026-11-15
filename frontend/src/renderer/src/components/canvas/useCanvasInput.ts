@@ -94,7 +94,16 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, onFiles,
     commit({ remove: sections.map((node) => node.id) })
   }
 
+  const remove = () => {
+    const nodes = flow.getNodes().filter((node) => node.selected)
+    const edges = flow.getEdges().filter((edge) => edge.selected)
+    if (!nodes.length && !edges.length) return false
+    void flow.deleteElements({ nodes, edges })
+  }
+
   const bindings = (): Bindings => ({
+    Backspace: remove,
+    Delete: remove,
     'Mod+Z': () => replay('undo'),
     'Mod+Shift+Z': () => replay('redo'),
     'Mod+Y': () => replay('redo'),
