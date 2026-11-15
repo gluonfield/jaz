@@ -106,9 +106,10 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "DELETE /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.Unregister)},
 		server.Route{Pattern: "GET /v1/notifications/stream", Handler: http.HandlerFunc(push.Stream)},
 	)
-	installed := pluginsapi.NewHandler(deps.Plugins)
+	installed := pluginsapi.NewHandler(deps.Plugins, deps.Store)
 	routes = append(routes,
 		server.Route{Pattern: "GET /v1/plugins", Handler: http.HandlerFunc(installed.List)},
+		server.Route{Pattern: "GET /v1/plugins/{plugin}/page", Handler: http.HandlerFunc(installed.Page)},
 		server.Route{Pattern: "POST /v1/plugins", Handler: http.HandlerFunc(installed.Install)},
 		server.Route{Pattern: "DELETE /v1/plugins/{plugin}", Handler: http.HandlerFunc(installed.Remove)},
 	)

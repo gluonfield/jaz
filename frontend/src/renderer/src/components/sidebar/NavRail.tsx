@@ -3,10 +3,12 @@ import { Link, linkOptions, useRouterState } from '@tanstack/react-router'
 import { LayoutDashboard, MessageSquare, Plus, Settings } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { AppIcon } from '@/components/apps/AppIcon'
+import { PluginIcon } from '@/components/plugins/PluginIcon'
 import { BotsGlyph } from '@/components/bots/BotAvatar'
 import type { SettingsSection } from '@/components/settings/sections'
 import { botsQuery } from '@/lib/api/bots'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
+import { pluginsQuery } from '@/lib/api/plugins'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
@@ -19,13 +21,15 @@ export const SECTIONS = [
   { to: '/boards', label: 'Boards', Icon: LayoutDashboard },
 ] as const
 
-export type RailTab = 'chat' | 'settings' | (typeof SECTIONS)[number]['to'] | `/apps/${string}/${string}`
+export type RailTab = 'chat' | 'settings' | (typeof SECTIONS)[number]['to'] | `/apps/${string}/${string}` | `/plugins/${string}`
 
 // Settings rides in the URL search over any page, so it outranks the path.
 export function railTab(pathname: string, settingsOpen: boolean): RailTab {
   if (settingsOpen) return 'settings'
   const app = /^\/apps\/([^/]+\/[^/]+)/.exec(pathname)?.[1]
   if (app) return `/apps/${app}` as RailTab
+  const plugin = /^\/plugins\/([^/]+)$/.exec(pathname)?.[1]
+  if (plugin) return `/plugins/${plugin}`
   // Loops open from the Bots panel, so they keep it.
   const section = pathname.startsWith('/loops') ? '/bots' : pathname
   return SECTIONS.find(({ to }) => section.startsWith(to))?.to ?? 'chat'
@@ -35,6 +39,7 @@ export function railTab(pathname: string, settingsOpen: boolean): RailTab {
 // then each sidebar app a connected MCP server declares.
 export function useRailSections() {
   const apps = (useQuery(mcpEntrypointsQuery).data ?? []).filter((entry) => entry.type === 'global')
+  const plugins = useQuery(pluginsQuery).data ?? []
   return [
     ...SECTIONS.map(({ to, label, Icon }) => ({ path: to, label, icon: <Icon aria-hidden />, link: linkOptions({ to }) })),
     ...apps.map((app) => ({
@@ -43,6 +48,12 @@ export function useRailSections() {
       icon: <AppIcon app={app} />,
       link: linkOptions({ to: '/apps/$serverId/$tool', params: { serverId: app.server_id, tool: app.tool } }),
     })),
+    ...plugins.flatMap((plugin) => plugin.page ? [{
+      path: `/plugins/${plugin.name}`,
+      label: plugin.page.title,
+      icon: <PluginIcon icon={plugin.page.icon} />,
+      link: linkOptions({ to: '/plugins/$plugin', params: { plugin: plugin.name } }),
+    }] : []),
   ]
 }
 

@@ -13,15 +13,25 @@ import (
 const maxArchiveBytes = 64 << 20
 
 type Handler struct {
-	store *plugins.Store
+	store    *plugins.Store
+	sessions plugins.SessionStore
 }
 
 type listResponse struct {
 	Plugins []plugins.Plugin `json:"plugins"`
 }
 
-func NewHandler(store *plugins.Store) *Handler {
-	return &Handler{store: store}
+func NewHandler(store *plugins.Store, sessions plugins.SessionStore) *Handler {
+	return &Handler{store: store, sessions: sessions}
+}
+
+func (h *Handler) Page(w http.ResponseWriter, r *http.Request) {
+	page, err := h.store.Page(r.PathValue("plugin"), h.sessions)
+	if err != nil {
+		httpapi.WriteError(w, statusFor(err), err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, page)
 }
 
 func (h *Handler) List(w http.ResponseWriter, _ *http.Request) {

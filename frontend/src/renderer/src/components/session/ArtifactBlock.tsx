@@ -1,28 +1,7 @@
-import { LoaderCircle } from 'lucide-react'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useMemo } from 'react'
+import { ArtifactFrame } from '@/components/artifacts/ArtifactFrame'
 import type { ArtifactEvent } from '@/lib/api/types'
-import {
-  artifactErrorForDisplay,
-  artifactInputFromEvent,
-  buildArtifactDocument,
-  parseArtifactToolArgs,
-} from '@/lib/artifacts'
-import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
-
-interface ArtifactMessage {
-  type?: string
-  height?: number
-  message?: string
-  text?: string
-  href?: string
-}
-
-const MIN_HEIGHT = 180
-
-function clampHeight(height: number): number {
-  if (!Number.isFinite(height)) return MIN_HEIGHT
-  return Math.max(MIN_HEIGHT, Math.ceil(height))
-}
+import { artifactErrorForDisplay, artifactInputFromEvent, parseArtifactToolArgs } from '@/lib/artifacts'
 
 function toolError(result?: string): string {
   if (!result) return ''
@@ -34,98 +13,21 @@ function toolError(result?: string): string {
   }
 }
 
-export const ArtifactBlock = memo(function ArtifactBlock({
-  artifact,
-  args,
-  result,
-  pending = false,
-  data = artifact?.data,
-  onSendPrompt,
-  onOpenFile,
-}: {
+export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, result, pending = false, data = artifact?.data, onSendPrompt, onOpenFile }: {
   artifact?: ArtifactEvent
   args?: string
   result?: string
   pending?: boolean
-  // What a plugin's view draws. Later values reach the view without reloading it.
   data?: unknown
   onSendPrompt?: (text: string) => void
-  // Opens a link when it names a file, and says whether it did.
   onOpenFile?: (href: string) => boolean
 }) {
   const input = useMemo(
     () => (artifact ? artifactInputFromEvent(artifact) : parseArtifactToolArgs(args)),
     [artifact, args],
   )
-  const theme = useArtifactThemeCSS()
-  const frameRef = useRef<HTMLIFrameElement>(null)
-  const [height, setHeight] = useState(280)
-  const [error, setError] = useState('')
-  const executionError = artifactErrorForDisplay(toolError(result)) ?? ''
-  const [built] = useState(data)
-  const doc = useMemo(() => {
-    if (!input || executionError) return ''
-    return buildArtifactDocument(input, theme, { data: built })
-  }, [built, executionError, input, theme])
-  const sendData = useCallback(() => {
-    if (data !== built) frameRef.current?.contentWindow?.postMessage({ type: 'jaz:canvas-data', data }, '*')
-  }, [built, data])
-  useEffect(sendData, [sendData])
-
-  useEffect(() => {
-    setHeight(280)
-    setError('')
-  }, [doc])
-
-  useEffect(() => {
-    const onMessage = (event: MessageEvent<ArtifactMessage>) => {
-      if (event.source !== frameRef.current?.contentWindow) return
-      const message = event.data
-      if (message?.type === 'jaz:artifact-height') setHeight(clampHeight(message.height ?? 0))
-      if (message?.type === 'jaz:artifact-error') {
-        const error = artifactErrorForDisplay(message.message ?? 'Artifact error')
-        if (error) setError(error)
-      }
-      if (message?.type === 'jaz:artifact-link' && message.href && !onOpenFile?.(message.href)) window.open(message.href, '_blank', 'noopener,noreferrer')
-      if (message?.type === 'jaz:artifact-send-prompt' && message.text?.trim()) onSendPrompt?.(message.text.trim())
-    }
-    window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [onOpenFile, onSendPrompt])
-
   if (!input) {
-    return (
-      <div className="rounded-card border border-border bg-surface px-3 py-2 text-sm text-ink-2">
-        Could not render artifact: invalid visualise_show_widget input.
-      </div>
-    )
+    return <div className="rounded-card border border-border bg-surface px-3 py-2 text-sm text-ink-2">Could not render artifact: invalid visualise_show_widget input.</div>
   }
-
-  const displayError = executionError || error
-
-  return (
-    <div className="w-full">
-      {displayError ? (
-        <pre className="m-0 whitespace-pre-wrap bg-danger-soft px-3 py-2 font-mono text-[12px] text-danger">
-          {displayError}
-        </pre>
-      ) : pending ? (
-        <div className="flex min-h-10 items-center gap-1.5 px-3 py-2 text-[11px] text-ink-3">
-          <LoaderCircle className="size-3 animate-spin text-running" aria-hidden />
-          {input.loadingMessages[0] ?? 'Rendering'}
-        </div>
-      ) : (
-        <iframe
-          ref={frameRef}
-          title={input.title}
-          sandbox="allow-scripts allow-forms"
-          referrerPolicy="no-referrer"
-          srcDoc={doc}
-          onLoad={sendData}
-          style={{ height }}
-          className="block w-full border-0 bg-transparent"
-        />
-      )}
-    </div>
-  )
+  return <ArtifactFrame input={input} data={data} pending={pending} executionError={artifactErrorForDisplay(toolError(result))} onSendPrompt={onSendPrompt} onOpenLink={onOpenFile} />
 })

@@ -4,6 +4,7 @@ import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { NewThreadOptions } from '@/components/home/NewThreadOptions'
 import { ThreadModeSwitch } from '@/components/home/ThreadModeSwitch'
 import { deleteAttachmentDraft } from '@/components/session/composerAttachmentDraftStore'
+import { useComposerDraft } from '@/components/session/useComposerDraft'
 import { ProjectPicker } from '@/components/session/NewThreadControls'
 import { AgentModelControls, useNewThreadControls } from '@/components/session/useNewThreadControls'
 import { FastModeOption } from '@/components/session/NativeModelOptions'
@@ -32,6 +33,7 @@ declare module '@tanstack/history' {
   interface HistoryState {
     startVoice?: boolean
     appPrompt?: string
+    draftPrompt?: string
   }
 }
 
@@ -57,6 +59,13 @@ function NewSessionPage() {
   const toast = useToast()
   const [creating, setCreating] = useState(false)
   const controls = useNewThreadControls()
+  const draftPrompt = useLocation({ select: (location) => location.state.draftPrompt })
+  const { setDraft } = useComposerDraft({ storageKey: NEW_SESSION_DRAFT_KEY })
+  useEffect(() => {
+    if (!draftPrompt) return
+    setDraft({ text: draftPrompt, tokens: new Map() })
+    void navigate({ replace: true, state: (previous) => ({ ...previous, draftPrompt: undefined }) })
+  }, [draftPrompt, navigate, setDraft])
   const { runtimeAvailable, runtime } = controls
   const [directory, setDirectory] = useState(
     () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),

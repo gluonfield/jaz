@@ -11,6 +11,16 @@ export interface Plugin {
   version: string
   skills: string[]
   views: string[]
+  page?: { title: string; icon: string; view: string; file: string }
+}
+
+export interface PluginPage {
+  view: string
+  items: {
+    folder: string
+    data: unknown
+    threads: { id: string; title: string; status: string; updated_at: string }[]
+  }[]
 }
 
 type Installed = { plugins: Plugin[] }
@@ -18,6 +28,12 @@ type Installed = { plugins: Plugin[] }
 export const pluginsQuery = queryOptions({
   queryKey: keys.plugins,
   queryFn: async () => (await get<Installed>('/v1/plugins')).plugins,
+})
+
+export const pluginPageQuery = (plugin: string) => queryOptions({
+  queryKey: keys.pluginPage(plugin),
+  queryFn: () => get<PluginPage>(`/v1/plugins/${encodeURIComponent(plugin)}/page`),
+  refetchInterval: 5000,
 })
 
 // Installs every plugin in a zip: one plugin's folder, or a whole repository.
