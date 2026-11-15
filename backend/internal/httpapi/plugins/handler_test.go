@@ -21,7 +21,7 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(folder, "status.json"), []byte(`{"title":"Tender A"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	handler := NewHandler(plugins.New(runtimefiles.New(t.TempDir())), sessionStore{{ID: "thread", Title: "Tender work", RuntimeRef: &storage.RuntimeRef{Cwd: folder}}})
+	handler := NewHandler(sessionStore{{ID: "thread", Title: "Tender work", RuntimeRef: &storage.RuntimeRef{Cwd: folder}}}, plugins.New(runtimefiles.New(t.TempDir())))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/plugins", handler.List)
 	mux.HandleFunc("GET /v1/plugins/{plugin}/page", handler.Page)
@@ -88,11 +88,11 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 
 type sessionStore []storage.Session
 
-func (s sessionStore) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
-	var matches []storage.Session
-	for _, session := range s {
-		if storage.SessionMatchesFilter(session, filter) {
-			matches = append(matches, session)
+func (s sessionStore) ListSessionFolders() ([]storage.SessionFolder, error) {
+	var matches []storage.SessionFolder
+	for _, thread := range s {
+		if thread.RuntimeRef != nil && thread.RuntimeRef.Cwd != "" {
+			matches = append(matches, storage.SessionFolder{ID: thread.ID, Title: thread.Title, Status: thread.Status, UpdatedAt: thread.UpdatedAt, Folder: thread.RuntimeRef.Cwd})
 		}
 	}
 	return matches, nil

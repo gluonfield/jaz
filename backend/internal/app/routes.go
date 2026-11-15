@@ -32,7 +32,6 @@ import (
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/mobilepush"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
-	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -60,7 +59,7 @@ type routeDeps struct {
 	ConnectionOAuth  *connections.OAuthService         `optional:"true"`
 	ConnectionQR     *connections.QRService            `optional:"true"`
 	MCP              *mcpruntime.Manager               `optional:"true"`
-	Plugins          *plugins.Store
+	Plugins          *pluginsapi.Handler
 	Preview          *previewapi.Handler
 	SessionMessages  *sessionsapi.MessagesHandler
 	SessionOverview  *sessionsapi.OverviewHandler
@@ -106,7 +105,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "DELETE /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.Unregister)},
 		server.Route{Pattern: "GET /v1/notifications/stream", Handler: http.HandlerFunc(push.Stream)},
 	)
-	installed := pluginsapi.NewHandler(deps.Plugins, deps.Store)
+	installed := deps.Plugins
 	routes = append(routes,
 		server.Route{Pattern: "GET /v1/plugins", Handler: http.HandlerFunc(installed.List)},
 		server.Route{Pattern: "GET /v1/plugins/{plugin}/page", Handler: http.HandlerFunc(installed.Page)},

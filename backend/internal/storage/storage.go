@@ -452,6 +452,14 @@ type SessionFilter struct {
 	Limit    int
 }
 
+type SessionFolder struct {
+	ID        string
+	Title     string
+	Status    string
+	UpdatedAt time.Time
+	Folder    string
+}
+
 type SessionPosition struct {
 	AttentionAt time.Time
 	ID          string

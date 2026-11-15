@@ -19,11 +19,11 @@ type pageSessions struct {
 	err     error
 }
 
-func (s pageSessions) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
-	var matches []storage.Session
+func (s pageSessions) ListSessionFolders() ([]storage.SessionFolder, error) {
+	var matches []storage.SessionFolder
 	for _, thread := range s.threads {
-		if storage.SessionMatchesFilter(thread, filter) {
-			matches = append(matches, thread)
+		if thread.RuntimeRef != nil && thread.RuntimeRef.Cwd != "" {
+			matches = append(matches, storage.SessionFolder{ID: thread.ID, Title: thread.Title, Status: thread.Status, UpdatedAt: thread.UpdatedAt, Folder: thread.RuntimeRef.Cwd})
 		}
 	}
 	return matches, s.err
@@ -83,6 +83,11 @@ func TestPageGroupsFoldersAndReloadsTheirData(t *testing.T) {
 	page, err = store.Page("tenders", sessions)
 	if err != nil || page.View != "<p>updated view</p>" || page.Items[0].Data.(map[string]any)["title"] != "Updated" {
 		t.Fatalf("reloaded page = %+v, %v", page, err)
+	}
+	write(filepath.Join(folders[3], "status.json"), `null`)
+	page, err = store.Page("tenders", sessions)
+	if err != nil || len(page.Items) != 3 || page.Items[0].Folder != folders[3] || page.Items[0].Data != nil {
+		t.Fatalf("new JSON file was not immediately visible: %+v, %v", page, err)
 	}
 	write(filepath.Join(layout.Plugins, "tenders", "plugin.json"), `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tenders","page":{"view":"status","file":"next.json"}}}}`)
 	page, err = store.Page("tenders", sessions)
