@@ -25,7 +25,10 @@ export function useCanvasContexts(draft: DraftContexts) {
   const bindSelection = useCallback((select: (picks: CanvasPick[]) => void) => {
     controller.current = select
     return () => {
-      if (controller.current === select) controller.current = undefined
+      if (controller.current !== select) return
+      controller.current = undefined
+      setPage(undefined)
+      setPicks([])
     }
   }, [])
   const onPage = useCallback((next: Pick<CanvasPage, 'id' | 'name'>) => {
@@ -51,5 +54,5 @@ export function useCanvasContexts(draft: DraftContexts) {
     controller.current?.(next.flatMap((context) => (context.type === 'canvas' && context.node ? [{ page: context.page, node: context.node, label: context.label }] : [])))
   }, [replaceContexts])
   const placeholder = ['Ask about the canvas', 'Ask about this', 'Ask about these'][Math.min(picks.length, 2)]
-  return { bindSelection, onSelect, onPage, contexts, removeContext: remove, replaceContexts: replace, placeholder }
+  return { present: Boolean(page), bindSelection, onSelect, onPage, contexts, removeContext: remove, replaceContexts: replace, placeholder }
 }

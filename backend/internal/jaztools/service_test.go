@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
+	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
@@ -130,6 +131,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, fakeWhatsAppProvider{}, fakeWhatsAppProvider{}),
 		connections.NewTelegramMCPTools(store, fakeTelegramProvider{}, fakeTelegramProvider{}),
 		plugins.New(runtimefiles.New(t.TempDir())),
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	executor := &fakeExecutor{started: make(chan loops.Run, 1)}
 	service.SetLoops(loops.NewService(store, executor, nil))
@@ -349,6 +351,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
@@ -460,6 +463,7 @@ func TestCanvasThreadsGetThreadToolsWithoutInlineArtifacts(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
@@ -509,6 +513,7 @@ func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	// Configure the full kit so the absence of these tools proves a real
 	// restriction, not just unconfigured services.
@@ -575,6 +580,7 @@ func TestBotOnlyToolsStayOnTheBotSurface(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetBots(bots.NewMCPTools(nil))
@@ -658,6 +664,7 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -698,6 +705,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -760,6 +768,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
@@ -828,6 +837,7 @@ func TestBrowserToolsUseDirectThreadSurface(t *testing.T) {
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 	service.SetBrowser(store, fakeBrowserBackend{})

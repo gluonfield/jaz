@@ -203,7 +203,7 @@ export function ThreadView({
   const canvas = detailSession?.runtime_ref?.artifact_surface === 'canvas'
   // A canvas shows the agent's work on the board, so its browser stays out of
   // sight until the user opens it. Other threads follow it once they are known.
-  const sidePanel = useSidePanelState(sessionId, { sideChatAvailable, startOpen: openDetails, followBrowser: Boolean(detailSession) && !canvas })
+  const sidePanel = useSidePanelState(sessionId, { availability: { 'side-chat': sideChatAvailable, canvas: !canvas }, startOpen: openDetails, followBrowser: Boolean(detailSession) && !canvas })
   const { open: panelOpen, mode: panelMode, toggleMode: togglePanel, openView } = sidePanel
   const handleSessionEvent = useCallback((event: SessionEvent) => {
     const at = event.at || new Date().toISOString()
@@ -266,8 +266,8 @@ export function ThreadView({
   const { take: takeAppContexts } = appContexts
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
     pinToBottom()
-    return sendMessage(text, { ...options, contexts: options.contexts ?? [...(canvas ? canvasContexts.contexts : []), ...takeAppContexts()] })
-  }, [pinToBottom, sendMessage, canvas, canvasContexts.contexts, takeAppContexts])
+    return sendMessage(text, { ...options, contexts: options.contexts ?? [...(canvasContexts.present ? canvasContexts.contexts : []), ...takeAppContexts()] })
+  }, [pinToBottom, sendMessage, canvasContexts.present, canvasContexts.contexts, takeAppContexts])
   const appThread = useMemo<MCPAppThread>(() => ({
     id: sessionId,
     send: (text) => void handleSend(text),
@@ -508,9 +508,11 @@ export function ThreadView({
   const overviewLabel = details ? 'Details' : undefined
   // Docked, never overlapping: the chat pane flexes and stays centered
   // between the sidebar and this panel.
+  const canvasBoard = <ThreadCanvas page={page} item={item} navigationKey={navigationKey} onPage={canvasContexts.onPage} sessionId={session.id} inset={canvas && canvasChat.shown ? canvasChat.width + 8 : 0} working={sessionRunning} bindSelection={canvasContexts.bindSelection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
   const sidePanelDrawer = (
     <SidePanelDrawer panel={sidePanel} isMobile={isMobile}>
       <SidePanel
+        canvas={canvasBoard}
         session={session}
         progress={panelProgress}
         subagents={providerSubagents}
@@ -706,7 +708,7 @@ export function ThreadView({
                 <>
                   {goalStatusVisible ? <GoalStatusBar goal={goal} /> : null}
                   <Composer
-                    placeholder={canvas ? canvasContexts.placeholder : placeholder}
+                    placeholder={canvasContexts.present ? canvasContexts.placeholder : placeholder}
                     streaming={sessionRunning}
                     suggestedPrompt={derived.suggestedPrompt}
                     commands={derived.agentSession?.commands ?? undefined}
@@ -746,7 +748,7 @@ export function ThreadView({
           <div ref={canvas && !floatPanel ? sidePanel.containerRef : undefined} className={canvas ? 'flex h-full min-w-0 flex-1' : 'contents'}>
             {canvas ? (
               <div ref={canvasChat.containerRef} className={`relative h-full min-w-0 flex-1${canvasChat.resizing ? ' canvas-chat-resizing' : ''}`}>
-                <ThreadCanvas page={page} item={item} navigationKey={navigationKey} onPage={canvasContexts.onPage} sessionId={session.id} inset={canvasChat.shown ? canvasChat.width + 8 : 0} working={sessionRunning} bindSelection={canvasContexts.bindSelection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
+                {canvasBoard}
               </div>
             ) : null}
 

@@ -2,9 +2,14 @@ package visualize
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/canvas"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/tools"
 	visualizesvc "github.com/wins/jaz/backend/internal/visualize"
 )
@@ -72,6 +77,26 @@ func TestReadMeExecuteEmptyReturnsCore(t *testing.T) {
 		if strings.Contains(result.Content, skip) {
 			t.Fatalf("empty modules should exclude module section %q", skip)
 		}
+	}
+}
+
+func TestCanvasGuidanceUsesTheNativeTurnSession(t *testing.T) {
+	boards := canvas.NewService(runtimefiles.New(t.TempDir()))
+	tool := ReadMeTool{Canvases: boards}
+	input := map[string]any{"modules": []any{"canvas"}}
+	if _, err := tool.Execute(t.Context(), input); err == nil {
+		t.Fatal("canvas guidance accepted a turn without a session")
+	}
+	result, err := tool.Execute(sessioncontext.WithSessionID(t.Context(), "ordinary-thread"), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(boards.Dir("ordinary-thread"), canvas.FileName)
+	if !strings.Contains(result.Content, file) || !strings.Contains(result.Content, "visualise_show_canvas") {
+		t.Fatalf("native canvas guidance did not resolve its own thread: %s", result.Content)
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatalf("discovery created a canvas: %v", err)
 	}
 }
 

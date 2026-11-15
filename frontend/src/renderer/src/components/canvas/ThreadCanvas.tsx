@@ -96,7 +96,6 @@ export function ThreadCanvas(props: Props) {
 }
 
 function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string }) {
-  const { onPage } = props
   const sync = useCanvasSync(props.sessionId, props.working)
   const [location, setLocation] = useState(() => readCanvasLocation(storageKey))
   const [jump, setJump] = useState<{ page: string; item: string } | null>(null)
@@ -110,9 +109,8 @@ function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string })
       if (selectedPage || sync.refreshed) {
         setLocation((current) => current.page === page.id ? current : { ...current, page: page.id })
       }
-      onPage({ id: page.id, name: page.name })
     }
-  }, [page, selectedPage, sync.refreshed, onPage])
+  }, [page, selectedPage, sync.refreshed])
   useEffect(() => {
     if (location.page) saveCanvasLocation(storageKey, location)
   }, [storageKey, location])
@@ -153,6 +151,7 @@ function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string })
         <Board
           {...props}
           pageId={page.id}
+          pageName={page.name}
           view={view}
           local={local}
           commit={(change) => sync.commit(page.id, change)}
@@ -177,6 +176,7 @@ function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string })
 
 interface BoardProps extends Props {
   pageId: string
+  pageName: string
   initialViewport?: Viewport
   onViewport: (viewport: Viewport) => void
   targetItem?: string
@@ -189,7 +189,7 @@ interface BoardProps extends Props {
   error: Error | null
 }
 
-function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, view, local, commit, apply, replay, error, initialViewport, onViewport, targetItem, onJump }: BoardProps) {
+function Board({ sessionId, pageId, pageName, inset, bindSelection, onPage, onSelect, onPrompt, view, local, commit, apply, replay, error, initialViewport, onViewport, targetItem, onJump }: BoardProps) {
   const flow = useReactFlow<BoardNode, BoardEdge>()
   const { zoom } = useViewport()
   const theme = useArtifactThemeCSS()
@@ -224,6 +224,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
     setNodes((current) => current.map((node) => ({ ...node, selected: picks.some((pick) => pick.page === pageId && pick.node === node.id) })))
   }, [pageId, setNodes])
   useEffect(() => bindSelection(select), [bindSelection, select])
+  useEffect(() => onPage({ id: pageId, name: pageName }), [onPage, pageId, pageName])
 
   const [tool, setTool] = useState<Tool>('select')
   const [shape, setShape] = useState<Shape>('rounded')
@@ -418,7 +419,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
           zoomOnDoubleClick={false}
           elevateNodesOnSelect={false}
           nodeDragThreshold={3}
-          deleteKeyCode={['Backspace', 'Delete']}
+          deleteKeyCode={null}
           multiSelectionKeyCode={['Meta', 'Shift']}
           defaultViewport={initialViewport}
           minZoom={0.1}

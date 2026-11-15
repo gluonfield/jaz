@@ -144,8 +144,7 @@ type ArtifactEvent struct {
 	ArtifactType    string   `json:"artifact_type,omitempty"`
 	// Data is what a plugin's view draws; the view reads it as window.data.
 	Data json.RawMessage `json:"data,omitempty"`
-	// File names a JSON file in the thread's folder. A view with one stays
-	// open in the side panel and redraws when the file changes.
+	// File names a stored canvas or a plugin view's JSON data source.
 	File string `json:"file,omitempty"`
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/canvas"
 	telegramconnector "github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
@@ -49,6 +50,7 @@ func TestNewToolRegistryAllowsApplyPatchAbsolutePaths(t *testing.T) {
 		store,
 		sessionevents.New(),
 		nil,
+		canvas.NewService(runtimefiles.New(store.RootDir())),
 	)
 	tool, ok := registry.Get("apply_patch")
 	if !ok {
