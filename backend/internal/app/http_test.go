@@ -15,12 +15,14 @@ import (
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
+	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/tools"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
@@ -70,7 +72,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	var publicRoutes server.PublicRoutes
 	app := fx.New(
 		fx.NopLogger,
-		fx.Supply(Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager, acp.AgentCatalog{}, runtimefiles.New(store.RootDir())),
+		fx.Supply(mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil), Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager, acp.AgentCatalog{}, runtimefiles.New(store.RootDir())),
 		fx.Provide(NewProviderSource, sessionevents.New),
 		fx.Provide(func() storage.Store { return store }),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
@@ -304,6 +306,9 @@ func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 		fx.NopLogger,
 		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}, Config{}, serverconfig.Config{}),
 		fx.Provide(NewStore, NewRuntimeAuthKey, NewProviderSource, sessionevents.New),
+		fx.Provide(func(store *sqlitestore.Store) *mcpruntime.Manager {
+			return mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil)
+		}),
 		fx.Provide(func(store *sqlitestore.Store) *acp.Manager {
 			return acp.NewManager(store, acp.Config{}, nil)
 		}),

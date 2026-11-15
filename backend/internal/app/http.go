@@ -11,6 +11,7 @@ import (
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	voiceapi "github.com/wins/jaz/backend/internal/httpapi/voice"
+	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/sessionoverview"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -46,7 +47,7 @@ func HTTPModule() fx.Option {
 		fx.Annotate(sessionsapi.NewGoalHandler, fx.From(new(*acp.Manager))),
 		canvas.NewService,
 		plugins.New,
-		fx.Annotate(pluginsapi.NewHandler, fx.From(new(*sqlitestore.Store))),
+		fx.Annotate(pluginsapi.NewHandler, fx.From(new(*sqlitestore.Store), new(*mcpruntime.Manager))),
 		fx.Annotate(canvasapi.NewHandler, fx.From(new(*sqlitestore.Store))),
 		NewRoutes,
 		NewPublicRoutes,

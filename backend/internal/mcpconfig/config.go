@@ -18,7 +18,10 @@ import (
 const (
 	TransportStreamableHTTP = "streamable_http"
 	TransportStdio          = "stdio"
+	TransportSSE            = "sse"
 	TransportInProcess      = "in_process"
+	SourcePlugin            = "plugin"
+	SourceConnection        = "connection"
 )
 
 var (
@@ -39,6 +42,8 @@ type OAuthConfig struct {
 }
 
 type Server struct {
+	Source            string            `json:"source,omitempty"`
+	Cwd               string            `json:"cwd,omitempty"`
 	ID                string            `json:"id"`
 	Name              string            `json:"name"`
 	Transport         string            `json:"transport"`
@@ -156,6 +161,19 @@ type ServerReader interface {
 	ListMCPServers() ([]Server, error)
 }
 
+func FindServer(reader ServerReader, id string) (Server, error) {
+	servers, err := reader.ListMCPServers()
+	if err != nil {
+		return Server{}, err
+	}
+	for _, server := range servers {
+		if server.ID == id {
+			return server, nil
+		}
+	}
+	return Server{}, fmt.Errorf("MCP server %q not found", id)
+}
+
 type Store interface {
 	ServerReader
 	LoadMCPServer(id string) (Server, error)
@@ -185,8 +203,8 @@ func ValidateInput(input ServerInput) (ServerInput, error) {
 	if input.Transport == TransportStdio {
 		return validateStdio(input)
 	}
-	if input.Transport != TransportStreamableHTTP {
-		return input, errors.New("transport must be streamable_http or stdio")
+	if input.Transport != TransportStreamableHTTP && input.Transport != TransportSSE {
+		return input, errors.New("transport must be streamable_http, sse or stdio")
 	}
 	if input.Command != "" || len(input.Args) != 0 || len(input.Env) != 0 {
 		return input, errors.New("command, args and env require stdio transport")

@@ -21,9 +21,9 @@ func TestManifestLayoutsDriveInventoryAndAgentSkills(t *testing.T) {
 		display string
 		want    []string
 	}{
-		{"plugin.json", portable(t, "acme.tools", map[string]any{"displayName": "Portable tools"}), "Portable tools", []string{"default"}},
-		{".claude-plugin/plugin.json", `{"name":"acme.tools","displayName":"Claude tools","skills":["./extra/","./single/",".","./skills/"],"hooks":{"command":"ignored"}}`, "Claude tools", []string{"default", "extra", "single", "root", "skills-root"}},
-		{".codex-plugin/plugin.json", `{"name":"acme.tools","interface":{"displayName":"Codex tools"},"skills":"./extra/","mcpServers":"./custom-mcp.json","apps":"./.app.json"}`, "Codex tools", []string{"default", "extra"}},
+		{"plugin.json", portable(t, "acme.tools", map[string]any{"displayName": "Portable tools"}), "Portable tools", []string{"acme.tools:default"}},
+		{".claude-plugin/plugin.json", `{"name":"acme.tools","displayName":"Claude tools","skills":["./extra/","./single/",".","./skills/"],"hooks":{"command":"ignored"}}`, "Claude tools", []string{"acme.tools:default", "acme.tools:extra", "acme.tools:single", "acme.tools:root", "acme.tools:skills-root"}},
+		{".codex-plugin/plugin.json", `{"name":"acme.tools","interface":{"displayName":"Codex tools"},"skills":"./extra/","mcpServers":"./custom-mcp.json","apps":"./.app.json"}`, "Codex tools", []string{"acme.tools:default", "acme.tools:extra"}},
 	} {
 		t.Run(test.layout, func(t *testing.T) {
 			layout := runtimefiles.New(t.TempDir())
@@ -38,7 +38,7 @@ func TestManifestLayoutsDriveInventoryAndAgentSkills(t *testing.T) {
 				"bundle/single/SKILL.md":                           "---\nname: single\ndescription: Single skill\n---\n",
 				"bundle/SKILL.md":                                  "---\nname: root\ndescription: Root skill\n---\n",
 				"bundle/commands/unrequested/SKILL.md":             "---\nname: command\ndescription: Unsupported component\n---\n",
-				"bundle/custom-mcp.json":                           `{not read in B1}`,
+				"bundle/custom-mcp.json":                           `{"mcpServers":{}}`,
 				"bundle/.app.json":                                 `{not read}`,
 			}
 			installed, err := store.Install(archive(t, files))
@@ -164,5 +164,47 @@ func TestPluginFilesCannotResolveOutsideThePackage(t *testing.T) {
 	}
 	if _, err := manifest.Read(root); err == nil {
 		t.Fatal("external manifest loaded")
+	}
+}
+
+func TestPluginSkillNamespacesPreserveCollisionsAndOriginalPaths(t *testing.T) {
+	layout := runtimefiles.New(t.TempDir())
+	store := New(layout)
+	if _, err := store.Install(archive(t, map[string]string{
+		"tenders/plugin.json":                     portable(t, "tenders", nil),
+		"tenders/skills/query-sheet/SKILL.md":     "---\nname: query-sheet\ndescription: Tender query\n---\n",
+		"tenders/skills/bid-preparation/SKILL.md": "---\nname: bid-preparation\ndescription: Tender bid\n---\n",
+		"other.tools/plugin.json":                 portable(t, "other.tools", nil),
+		"other.tools/skills/query-sheet/SKILL.md": "---\nname: query-sheet\ndescription: Other query\n---\n",
+	})); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"tenders:query-sheet":     filepath.Join(layout.Plugins, "tenders", "skills", "query-sheet", "SKILL.md"),
+		"tenders:bid-preparation": filepath.Join(layout.Plugins, "tenders", "skills", "bid-preparation", "SKILL.md"),
+		"other.tools:query-sheet": filepath.Join(layout.Plugins, "other.tools", "skills", "query-sheet", "SKILL.md"),
+	}
+	for _, name := range []string{"query-sheet", "tenders", "other"} {
+		path := filepath.Join(layout.UserSkills, name, "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("---\nname: "+name+"\ndescription: Standalone skill\n---\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		want[name] = path
+	}
+	catalog, err := skills.Load(layout.Root)
+	if err != nil || len(catalog.Skills) != 6 {
+		t.Fatalf("catalogue lost a colliding skill: %+v %v", catalog, err)
+	}
+	for _, skill := range catalog.Skills {
+		if skill.Path != want[skill.Name] || !strings.Contains(catalog.Prompt(), "<name>"+skill.Name+"</name>") || !strings.Contains(catalog.Prompt(), skill.Path) {
+			t.Fatalf("catalogue name or original path changed: %+v", skill)
+		}
+	}
+	installed, err := store.List()
+	if err != nil || !slices.Equal(installed[0].Skills, []string{"other.tools:query-sheet"}) || !slices.Equal(installed[1].Skills, []string{"tenders:bid-preparation", "tenders:query-sheet"}) {
+		t.Fatalf("Settings inventory = %+v %v", installed, err)
 	}
 }

@@ -1,6 +1,16 @@
 # Writing a Jaz plugin
 
-A plugin is a folder installed from Settings → Plugins as a ZIP, or copied into the runtime's `plugins/<name>/` directory. A repository ZIP can contain several plugins. Installing the same name replaces that plugin.
+A plugin is a folder installed from Settings → Plugins using a Git repository or ZIP, or copied into the runtime's `plugins/<name>/` directory. A repository can contain several plugins. Installing the same name replaces that plugin.
+
+## Repository installation and updates
+
+Choose **Add plugin**, enter GitHub `owner/repo` or a Git URL, and optionally choose a branch, tag or commit. Standard HTTPS, SSH, file URLs and backend-local repository paths use the backend machine’s existing Git access. Git runs without interactive credential prompts or checkout hooks; URLs containing passwords or query parameters are rejected. Private repositories must already be accessible to that machine. **Choose ZIP** and ZIP drops remain available.
+
+Jaz reads `.agents/plugins/marketplace.json` first, then `.claude-plugin/marketplace.json`. Local entry sources are `"./plugins/example"` or `{ "source": "local", "path": "./plugins/example" }`, relative to the repository root. Unsupported `github`, `url`, `git-subdir`, `npm`, `archive` and `command` entry sources are skipped and reported by name. Other marketplace metadata is ignored. Without a marketplace, Jaz discovers plugin folders throughout the exported repository as it does for ZIP archives. Git submodules and symbolic-link archive entries are not installed.
+
+Repository, ref and resolved commit appear beside each plugin’s version. **Update** fetches that source and replaces only that plugin. Source records live in the runtime’s `plugin-sources.json`, outside plugin folders. ZIP replacement clears that plugin’s source and Update action.
+
+Packages are fully staged and validated before publication. Replacement uses atomic directory exchange on macOS/Linux filesystems that support it, with rollback if source publication fails. Other platforms/filesystems preserve the existing package and report unsupported replacement. Store readers see coherent package/source records. Installation, update and removal reuse MCP refresh, so changed code reconnects even when its server config stays the same.
 
 ## Manifest
 
@@ -39,7 +49,7 @@ tenders/
 
 ## Skills and compatible manifests
 
-Jaz loads each immediate `skills/*/SKILL.md`; it does not search deeper reference or example folders. Skills remain at their installed paths, which are supplied directly to agents.
+Jaz loads each immediate `skills/*/SKILL.md`; it does not search deeper reference or example folders. Plugin skills are named `<plugin>:<skill>` in agent catalogues, `$` mentions and Settings, such as `tenders:query-sheet`. Skills remain at their installed absolute paths, which are supplied directly to agents. Standalone skills keep their plain names.
 
 When root `plugin.json` is absent, Jaz checks `.claude-plugin/plugin.json`, then `.codex-plugin/plugin.json`. An invalid higher-priority manifest is an error. A folder without any of these manifests is not a plugin.
 
@@ -51,7 +61,33 @@ When root `plugin.json` is absent, Jaz checks `.claude-plugin/plugin.json`, then
 
 A declared skills directory can hold `SKILL.md` directly or immediate skill folders. Paths start with `./`; `.` and `./` also name the plugin root. Package paths and symlinks must stay inside the plugin. Missing default component locations are allowed.
 
-Commands, agents, hooks, LSP configuration, other client extensions, and `.app.json` are ignored. Jaz never runs plugin hooks. MCP declarations are retained for subsequent runtime support; this loader does not connect to plugin MCP servers.
+Commands, agents, hooks, LSP configuration, other client extensions, and `.app.json` are ignored. Jaz never runs plugin hooks. Plugin MCP servers run through Jaz’s managed MCP proxy and expose their tools to agents. MCP Apps reuse Jaz’s existing app frames.
+
+## MCP servers
+
+Portable plugins use root `mcp.json`:
+
+```json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "validator": {
+      "type": "stdio",
+      "command": "./bin/validator",
+      "args": ["--data", "${PLUGIN_DATA}"],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}
+```
+
+Jaz supports `stdio`, `streamable-http`, and legacy `sse`. A stdio command is a bare executable name or a contained `./` package path; no shell is inserted. The working directory defaults to the plugin root. `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` expand once in arguments, environment values and working directories; other placeholders remain literal. Commands, environment keys, remote URLs and headers are not expanded. The reserved variables are also supplied to subprocesses. Persistent writable data lives in the runtime’s `plugin-data/<name>/` directory, outside the replaceable package, and survives removal.
+
+Portable remote endpoints require HTTPS except for loopback hosts. Configured headers stay on the declared origin and cannot override protocol or authorization headers generated by the client. Streamable HTTP uses Jaz’s existing OAuth sign-in. Legacy SSE supports configured headers; interactive SSE OAuth sign-in is not supported.
+
+Claude/Codex layouts load `.mcp.json`, then manifest `mcpServers` JSON paths or inline maps in order. Later names replace earlier ones. Legacy `type: "http"` means Streamable HTTP. These configs expand `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_DATA}`, environment references and `${VAR:-default}` in commands, arguments, environment values, URLs and headers. MCP bundles and executable credential helpers are not loaded.
+
+Settings → Plugins lists server names and per-server configuration diagnostics. Derived servers are managed by their plugin; edit or remove the package to change them. ZIP install/replacement/removal refreshes tools and MCP Apps before the request completes. Direct filesystem changes are read on the next MCP reconnect or server restart. Configurations are not copied into saved MCP settings. An invalid server does not prevent the plugin’s other components from loading.
 
 ## Views and pages
 

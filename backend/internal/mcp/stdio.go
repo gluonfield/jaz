@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -16,7 +15,8 @@ import (
 func (m *Manager) connectStdio(ctx context.Context, server mcpconfig.Server) (*serverSession, error) {
 	// The connection owns the process, not the short-lived discovery context.
 	command := exec.Command(server.Command, server.Args...)
-	command.Env = os.Environ()
+	command.Dir = server.Cwd
+	command.Env = command.Environ()
 	for name, value := range server.Env {
 		command.Env = append(command.Env, name+"="+value)
 	}

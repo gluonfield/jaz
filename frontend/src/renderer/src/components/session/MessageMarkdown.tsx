@@ -96,7 +96,7 @@ function linkifyKnownSkills(text: string, skills: SkillInfo[]): string {
       if (i % 2 === 1) return part
       let out = part
       for (const skill of skills) {
-        const pattern = new RegExp(`(?<![\\w[\\\\-])\\$${escapeRegExp(skill.name)}(?![\\w-])`, 'g')
+        const pattern = new RegExp(`(?<![\\w.[\\\\:-])\\$${escapeRegExp(skill.name)}(?![\\w.:-])`, 'g')
         out = out.replace(pattern, () => encodeMention('$', skill.name, skill.path))
       }
       return out

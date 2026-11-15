@@ -1203,9 +1203,10 @@ export interface MCPOAuthConfig {
 }
 
 export interface MCPServer {
+  source?: 'plugin' | 'connection'
   id: string
   name: string
-  transport: 'streamable_http' | 'stdio'
+  transport: 'streamable_http' | 'stdio' | 'sse'
   url: string
   command?: string
   args?: string[]
@@ -1231,7 +1232,7 @@ export interface MCPTool {
 }
 
 export interface MCPServerInput {
-  transport?: 'streamable_http' | 'stdio'
+  transport?: 'streamable_http' | 'stdio' | 'sse'
   name: string
   url: string
   command?: string

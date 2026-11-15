@@ -56,7 +56,7 @@ function isTokenAt(value: string, start: number, display: string): boolean {
   if (!value.startsWith(display, start)) return false
   if (start > 0 && !/\s/.test(value[start - 1])) return false
   const after = value[start + display.length]
-  return after === undefined || !/[A-Za-z0-9_./\\-]/.test(after)
+  return after === undefined || !/[A-Za-z0-9_./\\:-]/.test(after)
 }
 
 // segmentValue splits value into plain and token segments with a single

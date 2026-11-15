@@ -5,7 +5,9 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -188,10 +190,14 @@ func NewManager(store mcpconfig.ServerReader, tokens tokenStore, registry *tools
 // tokens (refreshing them when possible) but never opens a browser. Returns nil
 // when no token store is configured or the server uses a bearer token.
 func (m *Manager) backgroundHandler(server mcpconfig.Server) *oauthHandler {
-	if m.tokens == nil || server.UsesBearer() || server.Transport == mcpconfig.TransportStdio {
+	if m.tokens == nil || server.UsesBearer() || server.Transport == mcpconfig.TransportStdio || server.Transport == mcpconfig.TransportSSE {
 		return nil
 	}
 	return newOAuthHandler(server, m.tokens, http.DefaultClient)
+}
+
+func (m *Manager) ListMCPServers() ([]mcpconfig.Server, error) {
+	return m.store.ListMCPServers()
 }
 
 func (m *Manager) Refresh(ctx context.Context) {
@@ -545,10 +551,21 @@ func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler 
 		return nil, err
 	}
 	client := newClient()
+	transport := headerTransport{headers: headers, base: http.DefaultTransport}
+	if server.Source == mcpconfig.SourcePlugin {
+		transport.origin, err = url.Parse(server.URL)
+		if err != nil {
+			return nil, err
+		}
+	}
+	httpClient := &http.Client{Transport: transport}
 	dial := func(ctx context.Context) (*mcpsdk.ClientSession, error) {
+		if server.Transport == mcpconfig.TransportSSE {
+			return client.Connect(ctx, sseTransport{mcpsdk.SSEClientTransport{Endpoint: server.URL, HTTPClient: httpClient}}, nil)
+		}
 		return client.Connect(ctx, &mcpsdk.StreamableClientTransport{
 			Endpoint:             server.URL,
-			HTTPClient:           &http.Client{Transport: headerTransport{headers: headers, base: http.DefaultTransport}},
+			HTTPClient:           httpClient,
 			MaxRetries:           -1,
 			DisableStandaloneSSE: true,
 			OAuthHandler:         handler,
@@ -600,17 +617,23 @@ func (m *Manager) connectLocal(ctx context.Context, server mcpconfig.Server, loc
 }
 
 type headerTransport struct {
+	origin  *url.URL
 	headers []mcpconfig.Header
 	base    http.RoundTripper
 }
 
 func (t headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.origin != nil && (req.URL.Scheme != t.origin.Scheme || !strings.EqualFold(req.URL.Host, t.origin.Host)) {
+		return nil, fmt.Errorf("plugin MCP request cannot change origin")
+	}
 	clone := req.Clone(req.Context())
 	for _, header := range t.headers {
 		if strings.TrimSpace(header.Name) == "" {
 			continue
 		}
-		clone.Header.Set(header.Name, header.Value)
+		if t.origin == nil || clone.Header.Get(header.Name) == "" {
+			clone.Header.Set(header.Name, header.Value)
+		}
 	}
 	base := t.base
 	if base == nil {
