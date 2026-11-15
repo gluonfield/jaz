@@ -1190,6 +1190,7 @@ export interface MCPOAuthConfig {
 }
 
 export interface MCPServer {
+  source?: 'connection' | 'plugin'
   id: string
   name: string
   transport: 'streamable_http' | 'stdio'

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 type AuthorizationHook = func(context.Context) error
@@ -99,13 +100,11 @@ func (m *Manager) runAuthorize(ctx context.Context, server mcpconfig.Server, red
 		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
 	}
 
-	// Reconnect everything so this server's tools are installed in the registry
-	// using the token we just persisted.
-	m.Refresh(context.Background())
-	if status := m.Status(server.ID); status.Status != "" {
-		return status
+	status := m.RefreshServer(sessionCtx, server.ID)
+	if status.Status == "" {
+		return mcpconfig.ServerStatus{Status: "error", Error: "The signed-in server is no longer available", CheckedAt: time.Now().UTC()}
 	}
-	return connectedStatus(ss.tools)
+	return status
 }
 
 func (m *Manager) runAuthorizationHook(ctx context.Context, serverID string, onAuthorized AuthorizationHook) error {
@@ -114,6 +113,8 @@ func (m *Manager) runAuthorizationHook(ctx context.Context, serverID string, onA
 	}
 	if err := onAuthorized(ctx); err != nil {
 		tokenID := mcpconfig.OAuthConnectionID(serverID)
+		unlock := integrationoauth.LockToken(tokenID)
+		defer unlock()
 		if deleteErr := m.tokens.DeleteToken(ctx, tokenID); deleteErr != nil {
 			return fmt.Errorf("%w; rollback token: %v", err, deleteErr)
 		}

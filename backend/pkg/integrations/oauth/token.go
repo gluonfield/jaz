@@ -55,19 +55,14 @@ func (r Refresher) TokenSource(ctx context.Context, connectionID string) (oauth2
 	if r.Store == nil {
 		return nil, ErrTokenNotFound
 	}
-	stored, ok, err := r.Store.LoadToken(ctx, connectionID)
+	_, ok, err := r.Store.LoadToken(ctx, connectionID)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		return nil, ErrTokenNotFound
 	}
-	clientConfig, err := r.clientConfig(ctx, stored)
-	if err != nil {
-		return nil, err
-	}
-	lock, _ := refreshLocks.LoadOrStore(connectionID, &sync.Mutex{})
-	return &persistingTokenSource{ctx: r.context(ctx), config: clientConfig.config(), store: r.Store, connectionID: connectionID, mu: lock.(*sync.Mutex), stored: stored}, nil
+	return &persistingTokenSource{ctx: r.context(ctx), refresher: r, connectionID: connectionID}, nil
 }
 
 func (r Refresher) Client(ctx context.Context, connectionID string) (*http.Client, error) {
@@ -75,7 +70,9 @@ func (r Refresher) Client(ctx context.Context, connectionID string) (*http.Clien
 	if err != nil {
 		return nil, err
 	}
-	return oauth2.NewClient(r.context(ctx), src), nil
+	client := *oauth2.NewClient(r.context(ctx), nil)
+	client.Transport = &oauth2.Transport{Base: client.Transport, Source: src}
+	return &client, nil
 }
 
 func (r Refresher) context(ctx context.Context) context.Context {
@@ -131,30 +128,39 @@ var refreshLocks sync.Map
 // refreshTimeout bounds how long a refresh holds its connection's lock.
 const refreshTimeout = 30 * time.Second
 
+// LockToken serializes grant replacement and removal with refresh.
+func LockToken(connectionID string) func() {
+	lock, _ := refreshLocks.LoadOrStore(connectionID, &sync.Mutex{})
+	mu := lock.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
 type persistingTokenSource struct {
 	ctx          context.Context
-	config       *oauth2.Config
-	store        Store
+	refresher    Refresher
 	connectionID string
-	mu           *sync.Mutex
-	stored       Token
 }
 
 func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if tok := p.stored.oauth2Token(); tok.Valid() {
-		return tok, nil
-	}
-	stored, ok, err := p.store.LoadToken(p.ctx, p.connectionID)
+	unlock := LockToken(p.connectionID)
+	defer unlock()
+	ctx, cancel := context.WithTimeout(p.ctx, refreshTimeout)
+	defer cancel()
+	stored, ok, err := p.refresher.Store.LoadToken(ctx, p.connectionID)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		return nil, ErrTokenNotFound
 	}
-	ctx, cancel := context.WithTimeout(p.ctx, refreshTimeout)
-	defer cancel()
+	if tok := stored.oauth2Token(); tok.Valid() {
+		return tok, nil
+	}
+	config, err := p.refresher.clientConfig(ctx, stored)
+	if err != nil {
+		return nil, err
+	}
 	if stored.Resource != "" {
 		client := *oauth2.NewClient(ctx, nil)
 		base := client.Transport
@@ -164,17 +170,16 @@ func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 		client.Transport = resourceTransport{base: base, resource: stored.Resource}
 		ctx = context.WithValue(ctx, oauth2.HTTPClient, &client)
 	}
-	tok, err := p.config.TokenSource(ctx, stored.oauth2Token()).Token()
+	tok, err := config.config().TokenSource(ctx, stored.oauth2Token()).Token()
 	if err != nil {
 		return nil, err
 	}
 	if !sameToken(stored, tok) {
 		stored = mergeToken(stored, tok)
-		if err := p.store.SaveToken(context.Background(), p.connectionID, stored); err != nil {
+		if err := p.refresher.Store.SaveToken(context.Background(), p.connectionID, stored); err != nil {
 			return nil, err
 		}
 	}
-	p.stored = stored
 	return tok, nil
 }
 
