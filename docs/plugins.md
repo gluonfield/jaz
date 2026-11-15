@@ -39,7 +39,7 @@ tenders/
 
 ## Skills and compatible manifests
 
-Jaz loads each immediate `skills/*/SKILL.md`; it does not search deeper reference or example folders. Skills remain at their installed paths, which are supplied directly to agents.
+Jaz loads each immediate `skills/*/SKILL.md`; it does not search deeper reference or example folders. Plugin skills are named `<plugin>:<skill>` in agent catalogues, `$` mentions and Settings, such as `tenders:query-sheet`. Skills remain at their installed absolute paths, which are supplied directly to agents. Standalone skills keep their plain names.
 
 When root `plugin.json` is absent, Jaz checks `.claude-plugin/plugin.json`, then `.codex-plugin/plugin.json`. An invalid higher-priority manifest is an error. A folder without any of these manifests is not a plugin.
 

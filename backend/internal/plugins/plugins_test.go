@@ -74,7 +74,7 @@ func TestInstallAddsEveryPluginInARepositoryArchive(t *testing.T) {
 		t.Fatalf("installed = %+v, want quality and tenders", installed)
 	}
 	tenders := installed[1]
-	if tenders.DisplayName != "Tenders" || tenders.Version != "0.2.0" || !slices.Equal(tenders.Skills, []string{"query-sheet"}) || !slices.Equal(tenders.Views, []string{"question", "status"}) {
+	if tenders.DisplayName != "Tenders" || tenders.Version != "0.2.0" || !slices.Equal(tenders.Skills, []string{"tenders:query-sheet"}) || !slices.Equal(tenders.Views, []string{"question", "status"}) {
 		t.Fatalf("tenders = %+v", tenders)
 	}
 	html, err := store.View("tenders/status")
@@ -90,7 +90,7 @@ func TestInstallAddsEveryPluginInARepositoryArchive(t *testing.T) {
 		names[i] = skill.Name
 	}
 	slices.Sort(names)
-	if !slices.Equal(names, []string{"inspection", "query-sheet"}) {
+	if !slices.Equal(names, []string{"quality:inspection", "tenders:query-sheet"}) {
 		t.Fatalf("agent skills = %v, want the plugins' skills", names)
 	}
 }

@@ -18,6 +18,7 @@ import { exerciseModelPicker } from './model-picker'
 import { exerciseKeyboardFocus } from './keyboard-focus'
 import { exerciseSessionConfig } from './session-config'
 import { exerciseComposerSend } from './composer-send'
+import { exerciseComposerSkills } from './composer-skills'
 import { exerciseComposerWrap } from './composer-wrap'
 import { exerciseComposerSuggestion } from './composer-suggestion'
 import { exerciseComposerSendMenu } from './composer-send-menu'
@@ -276,6 +277,8 @@ function Fixture() {
         window.smoke.result({ ok: true, checks: ['sandboxed app page history, cross-app Back/Forward, remembered pages, tool-target entry, repeated opens, query restoration, focused keyboard shortcuts, threads started only by the app in use, titlebar New chat except Bots; trusted Chat/Bots rail clicks expand collapsed sidebars, keep open sidebars open and return to the last chat, including an already selected Bots tab; app navigation keeps the sidebar hidden'] })
         return
       }
+      progress('qualified plugin skill completion and rendering')
+      await exerciseComposerSkills()
       progress('composer submission across chat navigation')
       await exerciseComposerSend()
       progress('bot chat composer rows as the draft wraps')

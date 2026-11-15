@@ -35,6 +35,7 @@ func LoadPlugin(root, pluginName string, extraSkillPaths []string) ([]Skill, []s
 		seen[path] = true
 		if skill, ok := readSkill(path); ok {
 			skill.Plugin = pluginName
+			skill.Name = pluginName + ":" + skill.Name
 			out = append(out, skill)
 		} else {
 			warnings = append(warnings, "Skipping invalid skill "+relative)
