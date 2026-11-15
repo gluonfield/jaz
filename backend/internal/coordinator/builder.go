@@ -101,7 +101,7 @@ func (b *Builder) ACPPromptForContext(ctx context.Context, cwd, surface string) 
 		return "", err
 	}
 	agents := b.agentNames()
-	return platformPrompt(ctx, b.root, cwd, b.runtimeWorkspace(), memoryRoot, catalog.Prompt(), connections, agents, b.browserToolsEnabled(), visualize.NormalizeSurface(surface), now)
+	return platformPrompt(ctx, b.root, cwd, b.runtimeWorkspace(), memoryRoot, catalog.PromptForContext(ctx), connections, agents, b.browserToolsEnabled(), visualize.NormalizeSurface(surface), now)
 }
 
 func (b *Builder) build(ctx context.Context, workspace string, surface visualize.Surface) (system, skillsPrompt string, err error) {

@@ -12,6 +12,14 @@ Repository, ref and resolved commit appear beside each plugin’s version. **Upd
 
 Packages are fully staged and validated before publication. Replacement moves the previous package aside, publishes the new package and source, and restores the previous package on failure. Store readers see coherent package/source records. Installation, update and removal respond after publication and refresh the changed MCP servers in the background, so changed code reconnects even when its server config stays the same. Settings status and App entrypoints refresh within five seconds once connected.
 
+## Native agents
+
+The bundled managed Claude adapter loads installed folders for each new or restored session through Claude Code's session-scoped plugin flags. Running sessions keep their startup folder selection. Claude owns their hooks, commands, agents and native skills; Jaz never runs hooks or interprets those other components. Plugin MCP servers remain on Jaz's proxy and are excluded from Claude's native discovery. No native profile or global plugin configuration is changed.
+
+Only skills selected for native loading are omitted from Jaz's generated Claude catalogue. The composer keeps the complete `plugin:skill` catalogue and original paths, and other providers keep Jaz's catalogue. Native Claude uses `.claude-plugin/plugin.json`'s name, or the installed folder name without that manifest; a conflicting native name is an explicit error. Custom/remote Claude adapters retain Jaz skill ownership because their startup support is unknown. Codex currently has no supported session-scoped folder option, so Jaz does not install plugins into its native configuration.
+
+Restoring a Claude conversation passes the current native folder selection without rewriting its provider history. Older prompt snapshots can retain the previous Jaz catalogue until native compaction rebuilds them.
+
 ## Manifest
 
 Use [Agent Plugins 1.0](https://agent-plugins.org/specification) with `plugin.json` at the plugin root. `$schema` and `name` are required. The standard metadata fields are `version`, `description`, `author`, `homepage`, `repository`, `license`, and `keywords`. Unknown root fields produce warnings and are ignored. Jaz checks the schema identifier, plugin name, metadata types, and supported Jaz fields.

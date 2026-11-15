@@ -1,0 +1,150 @@
+package acp_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/plugins"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
+	"github.com/wins/jaz/backend/internal/skills"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+)
+
+func TestNativePluginOwnershipAcrossNewAndRestore(t *testing.T) {
+	for _, target := range []struct {
+		agent   string
+		managed bool
+	}{
+		{acp.AgentClaude, true},
+		{acp.AgentClaude, false},
+		{acp.AgentKimi, false},
+	} {
+		t.Run(target.agent+"/managed="+strconv.FormatBool(target.managed), func(t *testing.T) {
+			root := t.TempDir()
+			files := map[string]string{
+				"plugins/alpha/plugin.json":              `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"alpha"}`,
+				"plugins/alpha/skills/native/SKILL.md":   "---\nname: native\ndescription: Native-owned skill\n---\nRead the original skill.\n",
+				"work/.agents/skills/query/SKILL.md":     "---\nname: alpha:query\ndescription: Workspace skill with a native name\n---\nKeep the workspace path in Jaz.\n",
+				"plugins/alpha/skills/query/SKILL.md":    "---\nname: query\ndescription: Native default skill\n---\nRead the original skill.\n",
+				"plugins/beta/.codex-plugin/plugin.json": `{"name":"beta","skills":"./extra"}`,
+				"plugins/beta/extra/only/SKILL.md":       "---\nname: only\ndescription: Codex extra skill\n---\nKeep this in the Jaz catalogue.\n",
+				"skills/plain/SKILL.md":                  "---\nname: plain\ndescription: Standalone skill\n---\nKeep this in the Jaz catalogue.\n",
+			}
+			for path, body := range files {
+				path = filepath.Join(root, filepath.FromSlash(path))
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			store, err := sqlitestore.New(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = store.Close() })
+			installed := plugins.New(runtimefiles.New(root))
+			workspace := filepath.Join(root, "work")
+			requests := filepath.Join(root, "requests.jsonl")
+			newManager := func() *acp.Manager {
+				return newFakeNamedAgentManagerWithOptions(t, store, root, target.agent, map[string]string{"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_REQUEST_LOG": requests}, "", "", func(cfg *acp.Config) {
+					cfg.ClaudePlugins = installed.ClaudePlugins
+					cfg.Workspace = workspace
+					cfg.SystemPrompt = coordinator.NewBuilder(root, workspace, "", nil)
+					if target.managed {
+						agent := cfg.Agents[target.agent]
+						agent.ManagedAdapter = acp.AgentClaude
+						agent.Command = ""
+						agent.Args = nil
+						cfg.Agents[target.agent] = agent
+						cfg.Adapters = fakeAdapterResolver{launch: acp.AdapterLaunch{Command: os.Args[0], Args: []string{"-test.run=TestFakeACPAgentProcess"}}}
+					}
+				})
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+			defer cancel()
+			first := newManager()
+			job, err := first.Spawn(ctx, acp.SpawnRequest{ACPAgent: target.agent, Slug: "native-plugin", Directory: workspace})
+			if err != nil {
+				first.Close()
+				t.Fatal(err)
+			}
+			sendAndWait(t, ctx, first, job.SessionID, "first")
+			first.Close()
+			second := newManager()
+			t.Cleanup(second.Close)
+			sendAndWait(t, ctx, second, job.SessionID, "restored")
+			seen := map[string]int{}
+			for _, request := range readFakeACPRequests(t, requests) {
+				if request.Method != "session/new" && request.Method != "session/resume" {
+					continue
+				}
+				var params struct {
+					Meta struct {
+						SystemPrompt any `json:"systemPrompt"`
+						ClaudeCode   struct {
+							Options struct {
+								Plugins []map[string]any `json:"plugins"`
+							} `json:"options"`
+						} `json:"claudeCode"`
+					} `json:"_meta"`
+				}
+				if err := json.Unmarshal(request.Params, &params); err != nil {
+					t.Fatal(err)
+				}
+				prompt, _ := params.Meta.SystemPrompt.(string)
+				if target.agent == acp.AgentClaude {
+					prompt, _ = params.Meta.SystemPrompt.(map[string]any)["append"].(string)
+				}
+				if strings.Contains(prompt, "<name>alpha:native</name>") == target.managed || !strings.Contains(prompt, "<name>alpha:query</name>") || !strings.Contains(prompt, filepath.Join(workspace, ".agents", "skills", "query", "SKILL.md")) || !strings.Contains(prompt, "<name>beta:only</name>") || !strings.Contains(prompt, "<name>plain</name>") {
+					t.Fatalf("incorrect skill ownership in %s: %s", request.Method, prompt)
+				}
+				native := params.Meta.ClaudeCode.Options.Plugins
+				if target.managed {
+					if len(native) != 2 {
+						t.Fatalf("native startup folders in %s = %+v", request.Method, native)
+					}
+					for i, name := range []string{"alpha", "beta"} {
+						expected := map[string]any{"type": "local", "path": filepath.Join(root, "plugins", name), "skipMcpDiscovery": true}
+						if !reflect.DeepEqual(native[i], expected) {
+							t.Fatalf("native startup option in %s = %+v", request.Method, native[i])
+						}
+					}
+				} else if len(native) != 0 {
+					t.Fatalf("unsupported adapter received native startup folders: %+v", native)
+				}
+				seen[request.Method]++
+			}
+			if seen["session/new"] != 1 || seen["session/resume"] != 1 {
+				t.Fatalf("new/restore requests = %+v", seen)
+			}
+			catalog, err := skills.LoadForWorkspace(root, workspace)
+			if err != nil || len(catalog.Skills) != 4 || !strings.Contains(catalog.Prompt(), filepath.Join(root, "plugins", "alpha", "skills", "native", "SKILL.md")) || !strings.Contains(catalog.Prompt(), filepath.Join(workspace, ".agents", "skills", "query", "SKILL.md")) {
+				t.Fatalf("composer catalogue changed: %+v %v", catalog, err)
+			}
+			if target.managed {
+				path := filepath.Join(root, "plugins", "alpha", ".claude-plugin")
+				if err := os.MkdirAll(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(path, "plugin.json"), []byte(`{"name":"different"}`), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := installed.ClaudePlugins(); !errors.Is(err, plugins.ErrInvalid) {
+					t.Fatalf("native namespace mismatch was hidden: %v", err)
+				}
+			}
+		})
+	}
+}

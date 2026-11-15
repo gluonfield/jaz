@@ -19,6 +19,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
+	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -399,11 +400,31 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 // sessionMeta builds the session _meta payload for prompt and agent-specific
 // options.
 func (m *Manager) sessionMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy, sourceType string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+	var native []map[string]any
+	if CanonicalAgentName(agent) == AgentClaude && cfg.ManagedAdapter == AgentClaude && m.cfg.ClaudePlugins != nil {
+		selected, err := m.cfg.ClaudePlugins()
+		if err != nil {
+			return nil, err
+		}
+		var held []skills.Skill
+		for _, plugin := range selected {
+			native = append(native, map[string]any{"type": "local", "path": plugin.Path, "skipMcpDiscovery": true})
+			held = append(held, plugin.Skills...)
+		}
+		ctx = skills.WithNativeSkills(ctx, held)
+	}
 	meta, err := m.sessionPromptMeta(ctx, agent, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}
-	return agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg, sourceType), nil
+	meta = agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg, sourceType)
+	if len(native) > 0 {
+		if meta == nil {
+			meta = map[string]any{}
+		}
+		nestedMap(nestedMap(meta, "claudeCode"), "options")["plugins"] = native
+	}
+	return meta, nil
 }
 
 // An adapter that persists the system prompt in provider history must not
