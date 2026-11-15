@@ -50,8 +50,8 @@ export function useRailSections() {
     })),
     ...plugins.flatMap((plugin) => plugin.page ? [{
       path: `/plugins/${plugin.name}`,
-      label: plugin.page.title,
-      icon: <PluginIcon icon={plugin.page.icon} />,
+      label: plugin.display_name,
+      icon: <PluginIcon icon={plugin.icon_data_url ?? ''} />,
       link: linkOptions({ to: '/plugins/$plugin', params: { plugin: plugin.name } }),
     }] : []),
   ]

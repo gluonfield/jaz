@@ -30,7 +30,7 @@ The plugin is a folder in a private repository for Sterling Green work, [`gluonf
 gluonfield/sg
 └── plugins/
     ├── tenders/
-    │   ├── plugin.json  name, title, description, version
+    │   ├── plugin.json  Agent Plugins metadata and chat.jaz extension
     │   ├── skills/      query-sheet, bid-preparation
     │   ├── views/       status.html
     │   ├── scripts/     read the pack, export to Excel, status
@@ -97,7 +97,7 @@ The alternative is a plugin view in the side panel: a sheet with filters and acc
 
 This part is built on the task branch and not yet merged or released.
 
-**A plugin is a folder.** `plugin.json` names it; `skills/` holds its skills, `views/` its interface as plain HTML files, and `scripts/` and `reference/` what the skills use. Jaz keeps installed plugins in `~/.jaz/plugins` and offers their skills to every agent, beside the user's own ([`plugins.go`](../backend/internal/plugins/plugins.go), [`skills.go`](../backend/internal/skills/skills.go)).
+**A plugin is a folder.** The [author guide](plugins.md) defines the current Agent Plugins manifest, native manifest fallbacks, skills, views, and optional Jaz page. Jaz keeps installed plugins in `~/.jaz/plugins` and offers their skills to every agent, beside the user's own ([`plugins.go`](../backend/internal/plugins/plugins.go), [`skills.go`](../backend/internal/skills/skills.go)).
 
 **A skill shows a view by name.** The agent has one new tool, `show_view`, and passes a view's name and what to draw, never the HTML ([`tools.go`](../backend/internal/plugins/tools.go)):
 
@@ -134,7 +134,7 @@ The pack itself can already come from a Drive folder link: this proposal's sampl
 
 ## Installing a plugin
 
-**From Settings.** Settings → Plugins lists what is installed, with each plugin's skills and views, and has an **Add plugin** button; a zip can also be dropped on the page ([`PluginsSettings.tsx`](../frontend/src/renderer/src/components/settings/PluginsSettings.tsx)). The zip can be one plugin's folder or a whole repository as GitHub downloads it: every folder with a `plugin.json` is installed, and a newer zip replaces the plugin of the same name. Removing is one click.
+**From Settings.** Settings → Plugins lists what is installed, with each plugin's skills and views, and has an **Add plugin** button; a zip can also be dropped on the page ([`PluginsSettings.tsx`](../frontend/src/renderer/src/components/settings/PluginsSettings.tsx)). The zip can be one plugin's folder or a whole repository as GitHub downloads it: every folder with a supported manifest is installed, and a newer zip replaces the plugin of the same name. Removing is one click.
 
 ![Settings, Plugins, with the tenders plugin installed](images/settings-plugins.png)
 

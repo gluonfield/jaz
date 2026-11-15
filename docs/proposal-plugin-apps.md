@@ -49,7 +49,7 @@ Sizes are estimates.
 ### 4. Make plugins data instead of Go (medium)
 
 - [ ] **Move link-only plugins out of the binary.** The catalogue is a Go list of ten plugins ([`catalog.go:23`](../backend/internal/connections/catalog.go)). Granola, Deployink, Tasks and CRM are only a name, a description and a server address ([`jazapps/plugin.go`](../backend/internal/connectors/jazapps/plugin.go)). Skills already install from a remote list with pinned checksums ([`sync.go`](../backend/internal/skills/sync.go)); plugins can ride the same mechanism. Gmail, Calendar, Drive, Slack, Telegram and WhatsApp stay in Go because they sync data in the background.
-- [ ] **A plugin is a folder of skills and views, kept in its own repository** (for example `gluonfield/sg/plugins/tenders`), installed by copying it into the skills folder and later shipped with a Jaz build. This replaces the earlier idea of reading another tool's package format. The design is in the [tender-queries proposal](proposal-tender-queries-plugin.md#installing-a-plugin).
+- [ ] **Ship plugins with a Jaz build.** Plugins are installable folders of skills and views today, using the formats in the [author guide](plugins.md). Bundling them with a build remains future work; see the [tender-queries proposal](proposal-tender-queries-plugin.md#installing-a-plugin).
 - [ ] **Write the contributor page.** `docs/` holds request logs but no page that says what a plugin can declare and what Jaz gives a view. Write it once items 1 to 3 land.
 
 ## Not proposed

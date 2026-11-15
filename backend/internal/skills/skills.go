@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/plugins/manifest"
 	"github.com/wins/jaz/backend/internal/templates/skillsprompt"
 )
 
@@ -14,6 +15,7 @@ type Skill struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Path        string `json:"path"`
+	Plugin      string `json:"plugin,omitempty"`
 }
 
 type Catalog struct {
@@ -41,9 +43,19 @@ func Load(root string) (Catalog, error) {
 	if err != nil {
 		return Catalog{}, err
 	}
-	packaged, err := LoadDir(filepath.Join(root, pluginsDir))
-	if err != nil {
+	entries, err := os.ReadDir(filepath.Join(root, pluginsDir))
+	if err != nil && !os.IsNotExist(err) {
 		return Catalog{}, err
+	}
+	var packaged []Skill
+	for _, entry := range entries {
+		pluginRoot := filepath.Join(root, pluginsDir, entry.Name())
+		plugin, err := manifest.Read(pluginRoot)
+		if err != nil || plugin.Name != entry.Name() {
+			continue
+		}
+		held, _ := LoadPlugin(pluginRoot, plugin)
+		packaged = mergeSkills(packaged, held)
 	}
 	return Catalog{Root: userRoot, Skills: mergeSkills(packaged, out)}, nil
 }

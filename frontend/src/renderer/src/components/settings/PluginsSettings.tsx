@@ -18,7 +18,7 @@ export function PluginsSettings() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.plugins })
   const install = useMutation({
     mutationFn: installPlugins,
-    onSuccess: (installed) => toast(`Installed ${installed.map((plugin) => plugin.title || plugin.name).join(', ')}`),
+    onSuccess: (installed) => toast(`Installed ${installed.map((plugin) => plugin.display_name).join(', ')}`),
     onError: (error: Error) => toast(`Couldn't install: ${error.message}`, 'danger'),
     onSettled: refresh,
   })
@@ -81,7 +81,7 @@ export function PluginsSettings() {
 }
 
 function PluginCard({ plugin, removing, onRemove }: { plugin: Plugin; removing: boolean; onRemove: () => void }) {
-  const title = plugin.title || plugin.name
+  const title = plugin.display_name
   return (
     <SettingsCard className="px-3 py-2.5">
       <div className="flex items-start gap-3">
@@ -93,6 +93,7 @@ function PluginCard({ plugin, removing, onRemove }: { plugin: Plugin; removing: 
           {plugin.description ? <p className="mt-0.5 text-[12px] text-ink-2">{plugin.description}</p> : null}
           <Names label="Skills" names={plugin.skills} />
           <Names label="Views" names={plugin.views} />
+          {plugin.warnings?.map((warning) => <p key={warning} className="mt-1.5 text-[12px] text-ink-3">{warning}</p>)}
         </div>
         <IconButton variant="ghost" size="xs" aria-label={`Remove ${title}`} title={`Remove ${title}`} disabled={removing} onClick={onRemove}>
           <Trash2 size={14} />

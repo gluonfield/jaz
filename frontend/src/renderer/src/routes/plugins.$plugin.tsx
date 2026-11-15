@@ -12,7 +12,7 @@ function PluginPage() {
   const { plugin } = Route.useParams()
   const page = useQuery(pluginPageQuery(plugin))
   const plugins = useQuery(pluginsQuery).data
-  const title = plugins?.find((installed) => installed.name === plugin)?.page?.title ?? plugin
+  const title = plugins?.find((installed) => installed.name === plugin)?.display_name ?? plugin
   const heading = useMemo(() => <span className="truncate text-[13px] font-medium text-ink-2">{title}</span>, [title])
   useTitlebarSlot(heading)
   const navigate = useNavigate()
