@@ -14,6 +14,17 @@ type NativePlugin struct {
 	Skills []skills.Skill
 }
 
+func readClaudePlugin(root, name string) (manifest.Manifest, error) {
+	native, err := manifest.ReadClaude(root)
+	if err == nil && native.ManifestPath != "" && native.Name != name {
+		err = fmt.Errorf("native name %q differs from installed name %q", native.Name, name)
+	}
+	if err != nil {
+		err = fmt.Errorf("Native Claude loading skipped: %w", err)
+	}
+	return native, err
+}
+
 func (s *Store) ClaudePlugins() ([]NativePlugin, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -35,12 +46,9 @@ func (s *Store) ClaudePlugins() ([]NativePlugin, error) {
 		if err != nil || plugin.Name != entry.Name() {
 			continue
 		}
-		native, err := manifest.ReadClaude(root)
+		native, err := readClaudePlugin(root, plugin.Name)
 		if err != nil {
-			return nil, fmt.Errorf("Claude plugin %s: %w", plugin.Name, err)
-		}
-		if native.Name != plugin.Name {
-			return nil, fmt.Errorf("%w: Claude plugin name %q differs from installed name %q", ErrInvalid, native.Name, plugin.Name)
+			continue
 		}
 		held, _ := skills.LoadPlugin(root, native.Name, native.ExtraSkillPaths)
 		out = append(out, NativePlugin{Path: root, Skills: held})

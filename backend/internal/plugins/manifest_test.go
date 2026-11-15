@@ -87,8 +87,8 @@ func TestManifestPrecedenceAndUnknownCoreFields(t *testing.T) {
 		if err != nil || installed[0].DisplayName != want || installed[0].Page != nil {
 			t.Fatalf("precedence = %+v, %v", installed, err)
 		}
-		if hasRoot && len(installed[0].Warnings) != 2 {
-			t.Fatalf("unknown root fields were not reported: %+v", installed[0])
+		if hasRoot && (len(installed[0].Warnings) != 3 || !strings.Contains(installed[0].Warnings[2], "native name")) {
+			t.Fatalf("unknown root fields and conflicting native overlay were not reported: %+v", installed[0])
 		}
 	}
 	store := New(runtimefiles.New(t.TempDir()))

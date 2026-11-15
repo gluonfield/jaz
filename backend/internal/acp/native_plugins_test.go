@@ -3,7 +3,6 @@ package acp_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -40,6 +39,13 @@ func TestNativePluginOwnershipAcrossNewAndRestore(t *testing.T) {
 				"plugins/beta/extra/only/SKILL.md":       "---\nname: only\ndescription: Codex extra skill\n---\nKeep this in the Jaz catalogue.\n",
 				"skills/plain/SKILL.md":                  "---\nname: plain\ndescription: Standalone skill\n---\nKeep this in the Jaz catalogue.\n",
 			}
+			for _, name := range []string{"broken-json", "broken-name", "broken-file"} {
+				files["plugins/"+name+"/plugin.json"] = `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"` + name + `"}`
+				files["plugins/"+name+"/skills/query/SKILL.md"] = "---\nname: query\ndescription: Skill retained after native loading fails\n---\nUse the original skill path.\n"
+			}
+			files["plugins/broken-json/.claude-plugin/plugin.json"] = "{invalid"
+			files["plugins/broken-name/.claude-plugin/plugin.json"] = `{"name":"different"}`
+
 			for path, body := range files {
 				path = filepath.Join(root, filepath.FromSlash(path))
 				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -49,6 +55,10 @@ func TestNativePluginOwnershipAcrossNewAndRestore(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if err := os.MkdirAll(filepath.Join(root, "plugins", "broken-file", ".claude-plugin", "plugin.json"), 0700); err != nil {
+				t.Fatal(err)
+			}
+
 			store, err := sqlitestore.New(root)
 			if err != nil {
 				t.Fatal(err)
@@ -110,6 +120,12 @@ func TestNativePluginOwnershipAcrossNewAndRestore(t *testing.T) {
 				if strings.Contains(prompt, "<name>alpha:native</name>") == target.managed || !strings.Contains(prompt, "<name>alpha:query</name>") || !strings.Contains(prompt, filepath.Join(workspace, ".agents", "skills", "query", "SKILL.md")) || !strings.Contains(prompt, "<name>beta:only</name>") || !strings.Contains(prompt, "<name>plain</name>") {
 					t.Fatalf("incorrect skill ownership in %s: %s", request.Method, prompt)
 				}
+				for _, name := range []string{"broken-json", "broken-name", "broken-file"} {
+					if !strings.Contains(prompt, "<name>"+name+":query</name>") || !strings.Contains(prompt, filepath.Join(root, "plugins", name, "skills", "query", "SKILL.md")) {
+						t.Fatalf("%s lost the skipped plugin's original skill: %s", request.Method, name)
+					}
+				}
+
 				native := params.Meta.ClaudeCode.Options.Plugins
 				if target.managed {
 					if len(native) != 2 {
@@ -130,19 +146,20 @@ func TestNativePluginOwnershipAcrossNewAndRestore(t *testing.T) {
 				t.Fatalf("new/restore requests = %+v", seen)
 			}
 			catalog, err := skills.LoadForWorkspace(root, workspace)
-			if err != nil || len(catalog.Skills) != 4 || !strings.Contains(catalog.Prompt(), filepath.Join(root, "plugins", "alpha", "skills", "native", "SKILL.md")) || !strings.Contains(catalog.Prompt(), filepath.Join(workspace, ".agents", "skills", "query", "SKILL.md")) {
+			if err != nil || len(catalog.Skills) != 7 || !strings.Contains(catalog.Prompt(), filepath.Join(root, "plugins", "alpha", "skills", "native", "SKILL.md")) || !strings.Contains(catalog.Prompt(), filepath.Join(workspace, ".agents", "skills", "query", "SKILL.md")) {
 				t.Fatalf("composer catalogue changed: %+v %v", catalog, err)
 			}
-			if target.managed {
-				path := filepath.Join(root, "plugins", "alpha", ".claude-plugin")
-				if err := os.MkdirAll(path, 0700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(path, "plugin.json"), []byte(`{"name":"different"}`), 0600); err != nil {
-					t.Fatal(err)
-				}
-				if _, err := installed.ClaudePlugins(); !errors.Is(err, plugins.ErrInvalid) {
-					t.Fatalf("native namespace mismatch was hidden: %v", err)
+			listed, err := installed.List()
+			if err != nil || len(listed) != 5 {
+				t.Fatalf("plugin inventory = %+v %v", listed, err)
+			}
+			for _, plugin := range listed {
+				if strings.HasPrefix(plugin.Name, "broken-") {
+					if len(plugin.Warnings) != 1 || !strings.Contains(plugin.Warnings[0], "Native Claude loading skipped:") {
+						t.Fatalf("missing native fallback warning on %s: %+v", plugin.Name, plugin.Warnings)
+					}
+				} else if len(plugin.Warnings) != 0 {
+					t.Fatalf("valid plugin %s received another plugin's warning: %+v", plugin.Name, plugin.Warnings)
 				}
 			}
 		})

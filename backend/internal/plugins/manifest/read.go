@@ -58,6 +58,7 @@ func ReadClaude(dir string) (Manifest, error) {
 		return Manifest{}, err
 	}
 	plugin, err := readNative(data, ".claude-plugin/plugin.json")
+	plugin.ManifestPath = ".claude-plugin/plugin.json"
 	if err == nil && !SafeName(plugin.Name) {
 		err = errors.New("invalid Claude plugin name")
 	}

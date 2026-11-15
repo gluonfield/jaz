@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/log"
@@ -25,7 +26,8 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(folder, "status.json"), []byte(`{"title":"Tender A"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	store := plugins.New(runtimefiles.New(t.TempDir()))
+	layout := runtimefiles.New(t.TempDir())
+	store := plugins.New(layout)
 	runtime := mcpruntime.NewManager(store, nil, tools.NewRegistry(), log.New(io.Discard))
 	defer runtime.Close()
 	handler := NewHandler(sessionStore{{ID: "thread", Title: "Tender work", RuntimeRef: &storage.RuntimeRef{Cwd: folder}}}, runtime, store)
@@ -83,6 +85,33 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 	for _, path := range []string{"/v1/plugins/plain/page", "/v1/plugins/missing/page"} {
 		if response := call(http.MethodGet, path, nil); response.Code != http.StatusNotFound {
 			t.Fatalf("%s = %d: %s", path, response.Code, response.Body)
+		}
+	}
+	native := filepath.Join(layout.Plugins, "tenders", ".claude-plugin", "plugin.json")
+	if err := os.MkdirAll(filepath.Dir(native), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{"{invalid", `{"name":"different"}`, ""} {
+		if err := os.RemoveAll(native); err != nil {
+			t.Fatal(err)
+		}
+		if body == "" {
+			if err := os.Mkdir(native, 0700); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := os.WriteFile(native, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		response := call(http.MethodGet, "/v1/plugins", nil)
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &listed) != nil || len(listed.Plugins) != 2 {
+			t.Fatalf("bad native overlay broke inventory: %d %s", response.Code, response.Body)
+		}
+		if len(listed.Plugins[0].Warnings) != 0 || len(listed.Plugins[1].Warnings) != 1 || !strings.Contains(listed.Plugins[1].Warnings[0], "Native Claude loading skipped:") {
+			t.Fatalf("native warning was not isolated to tenders: %+v", listed.Plugins)
+		}
+		selected, err := store.ClaudePlugins()
+		if err != nil || len(selected) != 1 || selected[0].Path != filepath.Join(layout.Plugins, "plain") {
+			t.Fatalf("invalid native overlay blocked the valid plugin: %+v %v", selected, err)
 		}
 	}
 	if got := call(http.MethodDelete, "/v1/plugins/tenders", nil); got.Code != http.StatusNoContent {

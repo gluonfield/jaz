@@ -179,5 +179,8 @@ func read(dir, dataDir string) (Plugin, error) {
 	for i, server := range servers {
 		plugin.MCPServers[i] = strings.TrimPrefix(server.Name, definition.Name+":")
 	}
+	if _, err := readClaudePlugin(dir, definition.Name); err != nil {
+		plugin.Warnings = append(plugin.Warnings, err.Error())
+	}
 	return plugin, nil
 }
