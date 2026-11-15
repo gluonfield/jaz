@@ -16,8 +16,7 @@ type AuthorizationHook = func(context.Context) error
 // Authorize runs the interactive OAuth authorization-code flow for a server,
 // persists the resulting token, and reconnects so the server's tools become
 // available. Browser clients receive the provider URL immediately and finish
-// through the shared callback route; desktop callers keep the historical blocking
-// loopback flow.
+// through the shared callback route.
 func (m *Manager) Authorize(ctx context.Context, server mcpconfig.Server, opts mcpconfig.AuthorizeOptions) mcpconfig.ServerStatus {
 	return m.authorize(ctx, server, opts, nil)
 }
@@ -33,50 +32,46 @@ func (m *Manager) authorize(ctx context.Context, server mcpconfig.Server, opts m
 	if m.tokens == nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: "token store is not configured", CheckedAt: time.Now().UTC()}
 	}
-	if opts.ReturnAuthURL {
-		return m.authorizeWithCallback(ctx, server, opts, onAuthorized)
-	}
-	receiver, err := newLoopbackReceiver()
-	if err != nil {
-		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
-	}
-	defer receiver.close()
-
-	return m.runAuthorize(ctx, server, receiver.redirectURL, receiver.fetch, onAuthorized)
-}
-
-func (m *Manager) authorizeWithCallback(ctx context.Context, server mcpconfig.Server, opts mcpconfig.AuthorizeOptions, onAuthorized AuthorizationHook) mcpconfig.ServerStatus {
-	if strings.TrimSpace(opts.RedirectURL) == "" {
+	redirectURL := strings.TrimSpace(opts.RedirectURL)
+	if redirectURL == "" {
 		return mcpconfig.ServerStatus{Status: "error", Error: "OAuth redirect URL is not configured", CheckedAt: time.Now().UTC()}
 	}
-	started := make(chan authorizationStart, 1)
+	started := make(chan string, 1)
 	pending := newAuthorizationPending()
 	receiver := &callbackReceiver{
-		manager:     m,
-		redirectURL: strings.TrimSpace(opts.RedirectURL),
-		started:     started,
-		openBrowser: opts.OpenBrowser,
-		pending:     pending,
+		manager: m,
+		started: started,
+		pending: pending,
 	}
 	flowCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	m.authMu.Lock()
+	if m.authFlows == nil {
+		m.authFlows = make(map[string]context.CancelFunc)
+	}
+	if _, exists := m.authFlows[server.TokenID()]; exists {
+		m.authMu.Unlock()
+		cancel()
+		return mcpconfig.ServerStatus{Status: "error", Error: "Sign-in is already in progress for this server", CheckedAt: time.Now().UTC()}
+	}
+	m.authFlows[server.TokenID()] = cancel
+	m.authMu.Unlock()
 	go func() {
 		defer cancel()
-		status := m.runAuthorize(flowCtx, server, receiver.redirectURL, receiver.fetch, onAuthorized)
+		status := m.runAuthorize(flowCtx, server, redirectURL, receiver.fetch, onAuthorized)
 		m.setServerStatus(server.ID, status)
+		m.authMu.Lock()
+		delete(m.authFlows, server.TokenID())
+		m.authMu.Unlock()
 		pending.complete(status)
 	}()
 
 	select {
 	case start := <-started:
-		return mcpconfig.ServerStatus{
-			Status:    "needs_auth",
-			Error:     "Sign in required",
-			AuthURL:   start.authURL,
-			CheckedAt: time.Now().UTC(),
-		}
-	case status := <-pending.done:
-		return status
+		return mcpconfig.ServerStatus{Status: "needs_auth", Error: "Sign in required", AuthURL: start, CheckedAt: time.Now().UTC()}
+	case <-pending.done:
+		return pending.status
 	case <-ctx.Done():
+		cancel()
 		return mcpconfig.ServerStatus{Status: "error", Error: ctx.Err().Error(), CheckedAt: time.Now().UTC()}
 	}
 }
@@ -127,86 +122,74 @@ func (m *Manager) runAuthorizationHook(ctx context.Context, serverID string, onA
 	return nil
 }
 
-type authorizationStart struct {
-	authURL string
+func (m *Manager) OAuthRedirectURL(localCallback string) string {
+	return m.broker.RedirectURL(localCallback)
 }
 
 type callbackReceiver struct {
-	manager     *Manager
-	redirectURL string
-	started     chan<- authorizationStart
-	openBrowser bool
-	pending     *authorizationPending
+	manager *Manager
+	started chan<- string
+	pending *authorizationPending
 }
 
 type authorizationPending struct {
-	result chan loopbackResult
-	done   chan mcpconfig.ServerStatus
+	result chan mcpconfig.AuthorizationResponse
+	done   chan struct{}
+	status mcpconfig.ServerStatus
+	ctx    context.Context
 }
 
 func newAuthorizationPending() *authorizationPending {
 	return &authorizationPending{
-		result: make(chan loopbackResult, 1),
-		done:   make(chan mcpconfig.ServerStatus, 1),
+		result: make(chan mcpconfig.AuthorizationResponse, 1),
+		done:   make(chan struct{}),
 	}
 }
 
 func (p *authorizationPending) complete(status mcpconfig.ServerStatus) {
-	select {
-	case p.done <- status:
-	default:
-	}
+	p.status = status
+	close(p.done)
 }
 
-func (r *callbackReceiver) fetch(ctx context.Context, authURL string) (string, string, error) {
+func (r *callbackReceiver) fetch(ctx context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
 	state := authorizationStateFromURL(authURL)
 	if state == "" {
-		return "", "", errors.New("authorization URL did not include state")
+		return mcpconfig.AuthorizationResponse{}, errors.New("authorization URL did not include state")
 	}
+	r.pending.ctx = ctx
 	if err := r.manager.registerAuthorizationState(state, r.pending); err != nil {
-		return "", "", err
+		return mcpconfig.AuthorizationResponse{}, err
 	}
 	defer r.manager.unregisterAuthorizationState(state, r.pending)
 
-	if r.openBrowser {
-		if err := openBrowser(authURL); err != nil {
-			fmt.Printf("Open this URL to authorize the MCP server:\n%s\n", authURL)
-		}
-	}
 	select {
-	case r.started <- authorizationStart{authURL: authURL}:
+	case r.started <- authURL:
 	default:
 	}
 	select {
 	case res := <-r.pending.result:
-		if res.err != "" {
-			return "", "", fmt.Errorf("authorization failed: %s", res.err)
-		}
-		if res.code == "" {
-			return "", "", errors.New("authorization returned no code")
-		}
-		return res.code, res.state, nil
+		return res, nil
 	case <-ctx.Done():
-		return "", "", ctx.Err()
+		return mcpconfig.AuthorizationResponse{}, ctx.Err()
 	}
 }
 
-func (m *Manager) CompleteAuthorization(ctx context.Context, state, code, failure string) error {
-	state = strings.TrimSpace(state)
-	if state == "" {
+func (m *Manager) CompleteAuthorization(ctx context.Context, response mcpconfig.AuthorizationResponse) error {
+	if response.State == "" {
 		return errors.New("authorization state is required")
 	}
-	pending, ok := m.takeAuthorizationState(state)
+	pending, ok := m.takeAuthorizationState(response.State)
 	if !ok {
 		return errors.New("authorization state expired or was not started by Jaz")
 	}
 	select {
-	case pending.result <- loopbackResult{code: strings.TrimSpace(code), state: state, err: strings.TrimSpace(failure)}:
+	case pending.result <- response:
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 	select {
-	case status := <-pending.done:
+	case <-pending.done:
+		status := pending.status
 		if status.Status == "connected" {
 			return nil
 		}
@@ -246,6 +229,9 @@ func (m *Manager) takeAuthorizationState(state string) (*authorizationPending, b
 	pending, ok := m.authStates[state]
 	if ok {
 		delete(m.authStates, state)
+		if pending.ctx.Err() != nil {
+			return nil, false
+		}
 	}
 	return pending, ok
 }

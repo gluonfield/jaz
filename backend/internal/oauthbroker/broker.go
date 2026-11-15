@@ -21,6 +21,13 @@ type Broker struct {
 	URL string
 }
 
+func (b Broker) RedirectURL(localCallback string) string {
+	if b.URL != "" {
+		return b.URL
+	}
+	return localCallback
+}
+
 // ClientMetadataURL is the OAuth Client ID Metadata Document the broker host
 // publishes for Jaz. Its only redirect URI is the broker callback.
 func (b Broker) ClientMetadataURL() string {

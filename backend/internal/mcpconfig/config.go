@@ -149,9 +149,7 @@ func Declare(store Store, raw string) error {
 }
 
 type AuthorizeOptions struct {
-	RedirectURL   string
-	ReturnAuthURL bool
-	OpenBrowser   bool
+	RedirectURL string
 }
 
 type ServerReader interface {

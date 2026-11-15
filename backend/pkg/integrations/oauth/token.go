@@ -18,6 +18,7 @@ type Token struct {
 	TokenType    string    `json:"token_type,omitempty"`
 	Expiry       time.Time `json:"expiry,omitempty"`
 	ClientID     string    `json:"client_id,omitempty"`
+	Issuer       string    `json:"issuer,omitempty"`
 	ClientSecret string    `json:"client_secret,omitempty"`
 	AuthURL      string    `json:"auth_url"`
 	TokenURL     string    `json:"token_url"`
@@ -154,6 +155,15 @@ func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 	}
 	ctx, cancel := context.WithTimeout(p.ctx, refreshTimeout)
 	defer cancel()
+	if stored.Resource != "" {
+		client := *oauth2.NewClient(ctx, nil)
+		base := client.Transport
+		if base == nil {
+			base = http.DefaultTransport
+		}
+		client.Transport = resourceTransport{base: base, resource: stored.Resource}
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, &client)
+	}
 	tok, err := p.config.TokenSource(ctx, stored.oauth2Token()).Token()
 	if err != nil {
 		return nil, err

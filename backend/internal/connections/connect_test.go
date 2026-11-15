@@ -122,7 +122,7 @@ func TestConnectServiceStartsDeployinkAsConnectionBackedMCP(t *testing.T) {
 	if authorizer.server.ID != connection.ID || authorizer.server.URL != deployink.RemoteMCPURL {
 		t.Fatalf("server = %#v connection = %#v", authorizer.server, connection)
 	}
-	if authorizer.options.RedirectURL != "https://jaz.example.com/v1/mcp/oauth/callback" || !authorizer.options.ReturnAuthURL {
+	if authorizer.options.RedirectURL != "https://jaz.example.com/v1/mcp/oauth/callback" {
 		t.Fatalf("authorize options = %#v", authorizer.options)
 	}
 }
