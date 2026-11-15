@@ -139,7 +139,7 @@ func TestInstallRejectsInvalidIconPaths(t *testing.T) {
 	}
 }
 
-func TestPageIconCannotFollowASymlinkOutsideThePlugin(t *testing.T) {
+func TestIconCannotFollowASymlinkOutsideThePlugin(t *testing.T) {
 	layout := runtimefiles.New(t.TempDir())
 	store := New(layout)
 	installed, err := store.Install(archive(t, map[string]string{
@@ -162,7 +162,10 @@ func TestPageIconCannotFollowASymlinkOutsideThePlugin(t *testing.T) {
 	if err := os.Symlink(outside, icon); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Page("tenders", pageSessions{}); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("icon escaped plugin: %v", err)
+	if listed, err := store.List(); err != nil || len(listed) != 0 {
+		t.Fatalf("icon escaped plugin: %+v %v", listed, err)
+	}
+	if page, err := store.Page("tenders", pageSessions{}); err != nil || page.View != "<p>status</p>" {
+		t.Fatalf("page depended on unrelated icon loading: %+v %v", page, err)
 	}
 }

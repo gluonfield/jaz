@@ -49,14 +49,15 @@ export async function exerciseComposerSkills(): Promise<void> {
   }
   try {
     root.render(<QueryClientProvider client={client}>
-      <div data-skill-transcript><MessageMarkdown text="$tenders:query-sheet $tenders.extra:query-sheet $query-sheet $tenders.extra:unknown $tenders" /></div>
+      <div data-skill-transcript><MessageMarkdown text="$tenders:query-sheet $tenders.extra:query-sheet $query-sheet $tenders.extra:unknown $tenders $tenders:query-sheet. $tenders.md $tenders.extra:query-sheet.md" /></div>
       <Composer draftStorageKey="composer-plugin-skills-smoke" onSend={(text) => { sent.push(text) }} />
     </QueryClientProvider>)
-    await until(() => Boolean(field()) && element.querySelectorAll('[data-skill-transcript] button').length === 4)
+    await until(() => Boolean(field()) && element.querySelectorAll('[data-skill-transcript] button').length === 5)
     for (const skill of skills) {
       const pill = [...element.querySelectorAll<HTMLButtonElement>('[data-skill-transcript] button')].find((button) => button.textContent === '$' + skill.name)
       if (pill?.title !== skill.path) throw new Error('Rendered skill did not retain its exact name and original path: ' + skill.name)
     }
+    if (!element.querySelector('[data-skill-transcript]')!.textContent?.includes('$tenders:query-sheet. $tenders.md $tenders.extra:query-sheet.md')) throw new Error('Sentence punctuation or filename skill boundaries changed')
     for (const literal of ['$tenders:query-sheet', '$tenders.extra:query-sheet']) {
       await select('tenders')
       await type(literal)

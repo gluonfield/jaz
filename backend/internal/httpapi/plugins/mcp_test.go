@@ -64,7 +64,7 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 		writer := zip.NewWriter(&archive)
 		for name, content := range map[string]string{
 			"fixture/plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"fixture"}`,
-			"fixture/mcp.json":    `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"local":{"type":"stdio","command":"plugin-fixture","args":["-test.run=^TestPluginMCPProcess$"],"env":{"JAZ_PLUGIN_MCP_PROCESS":"1","VALUE":"` + value + `"}}}}`,
+			"fixture/mcp.json":    `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"local":{"type":"stdio","command":"plugin-fixture","cwd":"${PLUGIN_DATA}","args":["-test.run=^TestPluginMCPProcess$"],"env":{"JAZ_PLUGIN_MCP_PROCESS":"1","VALUE":"` + value + `"}}}}`,
 		} {
 			file, err := writer.Create(name)
 			if err != nil {
@@ -106,7 +106,7 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 		if err := json.Unmarshal([]byte(result.Content[0].(*mcpsdk.TextContent).Text), &output); err != nil {
 			t.Fatal(err)
 		}
-		resolved, err := filepath.EvalSymlinks(filepath.Join(layout.Plugins, "fixture"))
+		resolved, err := filepath.EvalSymlinks(filepath.Join(layout.Root, "plugin-data", "fixture"))
 		if err != nil {
 			t.Fatal(err)
 		}

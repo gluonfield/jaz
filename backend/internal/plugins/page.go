@@ -23,9 +23,9 @@ type Page struct {
 
 var filename = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]*$`)
 
-func validatePage(p *Page, views []string) error {
-	if !name.MatchString(p.View) || !slices.Contains(views, p.View) || !filename.MatchString(p.File) {
-		return fmt.Errorf("%w: page needs an existing view name and a plain filename", ErrInvalid)
+func validatePage(p *Page) error {
+	if !name.MatchString(p.View) || !filename.MatchString(p.File) {
+		return fmt.Errorf("%w: page needs a view name and a plain filename", ErrInvalid)
 	}
 	return nil
 }
@@ -58,15 +58,18 @@ func (s *Store) Page(plugin string, sessions SessionStore) (PageContent, error) 
 	if !manifest.SafeName(plugin) {
 		return PageContent{}, fmt.Errorf("%w: name %q", ErrInvalid, plugin)
 	}
-	installed, err := read(filepath.Join(s.dir, plugin), s.dataDir)
+	installed, err := manifest.Read(filepath.Join(s.dir, plugin))
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, manifest.ErrNotPlugin) {
 		return PageContent{}, ErrNotFound
 	}
 	if err != nil {
-		return PageContent{}, err
+		return PageContent{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	if installed.Name != plugin || installed.Page == nil {
 		return PageContent{}, ErrNotFound
+	}
+	if err := validatePage(&Page{View: installed.Page.View, File: installed.Page.File}); err != nil {
+		return PageContent{}, err
 	}
 	html, err := s.view(plugin + "/" + installed.Page.View)
 	if err != nil {

@@ -23,9 +23,6 @@ func normalizeStdioMCP(root, data string, raw json.RawMessage, portable bool) (m
 	if err != nil {
 		return mcpconfig.Server{}, err
 	}
-	if err := os.MkdirAll(data, 0o700); err != nil {
-		return mcpconfig.Server{}, err
-	}
 	if config.Env == nil {
 		config.Env = map[string]string{}
 	}
@@ -37,7 +34,7 @@ func normalizeStdioMCP(root, data string, raw json.RawMessage, portable bool) (m
 	if err != nil {
 		return mcpconfig.Server{}, err
 	}
-	if info, err := os.Stat(config.Cwd); err != nil || !info.IsDir() {
+	if info, err := os.Stat(config.Cwd); config.Cwd != data && (err != nil || !info.IsDir()) {
 		return mcpconfig.Server{}, fmt.Errorf("cwd must be an existing directory")
 	}
 	config.Env["PLUGIN_ROOT"] = root
@@ -80,7 +77,11 @@ func expandPortableStdio(config *stdioConfig, root, data string) error {
 	}
 	expand := strings.NewReplacer("${PLUGIN_ROOT}", root, "${PLUGIN_DATA}", data).Replace
 	var err error
-	config.Cwd, err = manifest.Resolve(base, expand(relative))
+	if base == data && relative == "." {
+		config.Cwd = data
+	} else {
+		config.Cwd, err = manifest.Resolve(base, expand(relative))
+	}
 	if err != nil {
 		return err
 	}

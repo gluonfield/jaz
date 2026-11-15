@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -13,6 +14,11 @@ import (
 )
 
 func (m *Manager) connectStdio(ctx context.Context, server mcpconfig.Server) (*serverSession, error) {
+	if server.Source == mcpconfig.SourcePlugin {
+		if err := os.MkdirAll(server.Env["PLUGIN_DATA"], 0o700); err != nil {
+			return nil, fmt.Errorf("prepare plugin data: %w", err)
+		}
+	}
 	// The connection owns the process, not the short-lived discovery context.
 	command := exec.Command(server.Command, server.Args...)
 	command.Dir = server.Cwd

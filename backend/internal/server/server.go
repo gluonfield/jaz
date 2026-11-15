@@ -64,6 +64,7 @@ type ACPManager interface {
 }
 
 type MCPRuntime interface {
+	mcpconfig.ServerReader
 	Refresh(context.Context)
 	RefreshServer(context.Context, string) mcpconfig.ServerStatus
 	Status(string) mcpconfig.ServerStatus

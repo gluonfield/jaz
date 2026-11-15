@@ -11,6 +11,7 @@ import (
 )
 
 type proxyRuntime struct {
+	mcpconfig.ServerReader
 	called bool
 }
 

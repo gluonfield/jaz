@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -47,82 +48,90 @@ func decodeStrict(data []byte, target any) error {
 	return nil
 }
 
+func readMCP(root, path string, portable bool) (map[string]json.RawMessage, error) {
+	held, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer held.Close()
+	data, err := held.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var document mcpDocument
+	if portable {
+		err = decodeStrict(data, &document)
+		if err == nil && (document.Schema != mcpSchema || document.Servers == nil) {
+			err = fmt.Errorf("requires the Agent Plugins MCP schema and mcpServers object")
+		}
+	} else {
+		err = json.Unmarshal(data, &document)
+	}
+	return document.Servers, err
+}
+
+func collectNativeMCP(root string, raw json.RawMessage, entries map[string]json.RawMessage) []string {
+	var path string
+	var list []json.RawMessage
+	var inline map[string]json.RawMessage
+	switch {
+	case json.Unmarshal(raw, &path) == nil:
+		resolved, err := manifest.Resolve(root, path)
+		if err != nil {
+			return []string{fmt.Sprintf("MCP %s: %v", path, err)}
+		}
+		relative, err := filepath.Rel(root, resolved)
+		if err != nil {
+			return []string{fmt.Sprintf("MCP %s: %v", path, err)}
+		}
+		loaded, err := readMCP(root, relative, false)
+		if err != nil {
+			return []string{fmt.Sprintf("MCP %s: %v", filepath.Base(path), err)}
+		}
+		maps.Copy(entries, loaded)
+	case json.Unmarshal(raw, &list) == nil && list != nil:
+		var warnings []string
+		for _, item := range list {
+			warnings = append(warnings, collectNativeMCP(root, item, entries)...)
+		}
+		return warnings
+	case json.Unmarshal(raw, &inline) == nil && inline != nil:
+		maps.Copy(entries, inline)
+	default:
+		return []string{"MCP declaration must be a path, server map or array"}
+	}
+	return nil
+}
+
 func loadMCP(root, dataDir string, definition manifest.Manifest) ([]mcpconfig.Server, []string) {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return nil, []string{err.Error()}
+	}
 	info, err := os.Stat(root)
 	if err != nil {
 		return nil, []string{err.Error()}
 	}
+	portable := definition.ManifestPath == "plugin.json"
+	path := ".mcp.json"
+	if portable {
+		path = "mcp.json"
+	}
+	loaded, err := readMCP(root, path, portable)
 	entries := map[string]json.RawMessage{}
 	var warnings []string
-	load := func(path string, portable bool) {
-		held, err := os.OpenRoot(root)
-		var data []byte
-		if err == nil {
-			relative, relErr := filepath.Rel(root, path)
-			if relErr == nil {
-				data, err = held.ReadFile(relative)
-			} else {
-				err = relErr
-			}
-			_ = held.Close()
-		}
-		if os.IsNotExist(err) {
-			return
-		}
-		if err == nil {
-			var document mcpDocument
-			if portable {
-				err = decodeStrict(data, &document)
-				if err == nil && (document.Schema != mcpSchema || document.Servers == nil) {
-					err = fmt.Errorf("requires the Agent Plugins MCP schema and mcpServers object")
-				}
-			} else {
-				err = json.Unmarshal(data, &document)
-			}
-			if err == nil {
-				for name, entry := range document.Servers {
-					entries[name] = entry
-				}
-			}
-		}
-		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("MCP %s: %v", filepath.Base(path), err))
-		}
-	}
-	portable := definition.ManifestPath == "plugin.json"
-	if portable {
-		load(filepath.Join(root, "mcp.json"), true)
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf("MCP %s: %v", path, err))
 	} else {
-		load(filepath.Join(root, ".mcp.json"), false)
-		var extra func(json.RawMessage)
-		extra = func(raw json.RawMessage) {
-			var path string
-			var list []json.RawMessage
-			var inline map[string]json.RawMessage
-			switch {
-			case json.Unmarshal(raw, &path) == nil:
-				resolved, err := manifest.Resolve(root, path)
-				if err != nil {
-					warnings = append(warnings, fmt.Sprintf("MCP %s: %v", path, err))
-					return
-				}
-				load(resolved, false)
-			case json.Unmarshal(raw, &list) == nil && list != nil:
-				for _, item := range list {
-					extra(item)
-				}
-			case json.Unmarshal(raw, &inline) == nil && inline != nil:
-				for name, entry := range inline {
-					entries[name] = entry
-				}
-			default:
-				warnings = append(warnings, "MCP declaration must be a path, server map or array")
-			}
-		}
-		if len(definition.MCPServers) != 0 {
-			extra(definition.MCPServers)
-		}
+		maps.Copy(entries, loaded)
 	}
+	if !portable && len(definition.MCPServers) != 0 {
+		warnings = append(warnings, collectNativeMCP(root, definition.MCPServers, entries)...)
+	}
+
 	names := make([]string, 0, len(entries))
 	for name := range entries {
 		names = append(names, name)

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -193,8 +194,11 @@ func read(dir, dataDir string) (Plugin, error) {
 		plugin.Views[i] = strings.TrimSuffix(filepath.Base(view), ".html")
 	}
 	if plugin.Page != nil {
-		if err := validatePage(plugin.Page, plugin.Views); err != nil {
+		if err := validatePage(plugin.Page); err != nil {
 			return Plugin{}, err
+		}
+		if !slices.Contains(plugin.Views, plugin.Page.View) {
+			return Plugin{}, fmt.Errorf("%w: page view does not exist", ErrInvalid)
 		}
 	}
 	plugin.IconDataURL, err = readIcon(dir, definition.IconPath)

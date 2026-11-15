@@ -35,16 +35,11 @@ type mcpProxySessionStore interface {
 }
 
 func (s *Server) handleListMCPServers(w http.ResponseWriter, r *http.Request) {
-	store, ok := s.Store.(mcpStore)
-	if !ok {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("mcp store is not configured"))
+	if s.MCP == nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("mcp runtime is not configured"))
 		return
 	}
-	reader := mcpconfig.ServerReader(store)
-	if runtime, ok := s.MCP.(mcpconfig.ServerReader); ok {
-		reader = runtime
-	}
-	servers, err := reader.ListMCPServers()
+	servers, err := s.MCP.ListMCPServers()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -139,10 +134,6 @@ func (s *Server) handleMCPServerAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Request, store mcpStore, id, action string) {
-	reader := mcpconfig.ServerReader(store)
-	if runtime, ok := s.MCP.(mcpconfig.ServerReader); ok {
-		reader = runtime
-	}
 	switch action {
 	case "enable", "disable":
 		server, err := store.SetMCPServerEnabled(id, action == "enable")
@@ -153,13 +144,13 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 		s.refreshMCP()
 		writeJSON(w, http.StatusOK, s.mcpServerView(server))
 	case "test":
-		server, err := mcpconfig.FindServer(reader, id)
-		if err != nil {
-			writeError(w, http.StatusNotFound, err)
-			return
-		}
 		if s.MCP == nil {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("mcp runtime is not configured"))
+			return
+		}
+		server, err := mcpconfig.FindServer(s.MCP, id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err)
 			return
 		}
 		ctx, cancel := serverActionContext()
@@ -180,13 +171,13 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 		}
 		writeJSON(w, http.StatusOK, s.MCP.RefreshServer(ctx, id))
 	case "authorize":
-		server, err := mcpconfig.FindServer(reader, id)
-		if err != nil {
-			writeError(w, http.StatusNotFound, err)
-			return
-		}
 		if s.MCP == nil {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("mcp runtime is not configured"))
+			return
+		}
+		server, err := mcpconfig.FindServer(s.MCP, id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err)
 			return
 		}
 		// The browser sign-in flow can take a while; allow generous time, bounded

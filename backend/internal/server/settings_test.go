@@ -72,7 +72,7 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, MCP: &recordingMCPRuntime{ServerReader: store}}).Handler()
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers", strings.NewReader(`{
 		"name":"Docs",
@@ -960,6 +960,7 @@ func TestCORSAllowsStaticWebClient(t *testing.T) {
 }
 
 type blockingMCPRuntime struct {
+	mcpconfig.ServerReader
 	started chan struct{}
 	release chan struct{}
 	once    sync.Once
@@ -991,6 +992,7 @@ func (r *blockingMCPRuntime) Authorize(context.Context, mcpconfig.Server, mcpcon
 }
 
 type recordingMCPRuntime struct {
+	mcpconfig.ServerReader
 	options mcpconfig.AuthorizeOptions
 }
 
@@ -1035,7 +1037,7 @@ func TestMCPAuthorizeClientsUsePublicCallbackAndReturnAuthURL(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			runtime := &recordingMCPRuntime{}
+			runtime := &recordingMCPRuntime{ServerReader: store}
 			handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, MCP: runtime}).Handler()
 
 			req := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/"+server.ID+"/authorize", nil)
@@ -1080,7 +1082,7 @@ func TestMCPAuthorizeUsesConfiguredPublicCallbackBeforeForwardedHost(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &recordingMCPRuntime{}
+	runtime := &recordingMCPRuntime{ServerReader: store}
 	handler := (&Server{
 		ModelCatalog: modelcatalog.NewService(nil),
 		Store:        store,
@@ -1110,8 +1112,9 @@ func TestMCPServerSettingsRefreshDoesNotBlockResponse(t *testing.T) {
 	}
 	defer store.Close()
 	runtime := &blockingMCPRuntime{
-		started: make(chan struct{}),
-		release: make(chan struct{}),
+		ServerReader: store,
+		started:      make(chan struct{}),
+		release:      make(chan struct{}),
 	}
 	defer close(runtime.release)
 	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, MCP: runtime}).Handler()
@@ -1189,7 +1192,7 @@ func TestMCPSettingsExposeConfiguredOAuthCallback(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer store.Close()
-			runtime := &callbackMCPRuntime{callback: callback}
+			runtime := &callbackMCPRuntime{recordingMCPRuntime: recordingMCPRuntime{ServerReader: store}, callback: callback}
 			handler := (&Server{Store: store, MCP: runtime, ServerConfig: serverconfig.Config{PublicURL: "https://deployment.example"}}).Handler()
 			res := httptest.NewRecorder()
 			handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/mcp/servers", nil))

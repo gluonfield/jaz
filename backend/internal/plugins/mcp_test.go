@@ -15,7 +15,8 @@ func TestPortableMCPDiscoveryPreservesVariablesAndIsolatesBadEntries(t *testing.
 	layout := runtimefiles.New(filepath.Join(t.TempDir(), "literal-${PLUGIN_DATA}"))
 	store := New(layout)
 	installed, err := store.Install(archive(t, map[string]string{
-		"fixture/plugin.json": portable(t, "fixture", nil),
+		"fixture/plugin.json":       portable(t, "fixture", map[string]any{"page": map[string]string{"view": "status", "file": "status.json"}}),
+		"fixture/views/status.html": "<p>status</p>",
 		"fixture/mcp.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{
 "local":{"type":"stdio","command":"printf","cwd":"${PLUGIN_DATA}","args":["${PLUGIN_ROOT}","${PLUGIN_DATA}","${UNKNOWN}","${UNKNOWN:-literal}"],"env":{"VALUE":"${PLUGIN_ROOT}"}},
 "default":{"type":"stdio","command":"printf"},
@@ -61,17 +62,23 @@ func TestPortableMCPDiscoveryPreservesVariablesAndIsolatesBadEntries(t *testing.
 			}
 		}
 	}
-	if err := os.WriteFile(filepath.Join(data, "state"), []byte("persistent"), 0600); err != nil {
+	if _, err := store.List(); err != nil {
 		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "mcp.json"), []byte("{invalid"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if page, err := store.Page("fixture", pageSessions{}); err != nil || page.View != "<p>status</p>" {
+		t.Fatalf("malformed MCP blocked the plugin page: %+v %v", page, err)
+	}
+	if _, err := os.Stat(data); !os.IsNotExist(err) {
+		t.Fatalf("inventory created plugin data before process startup: %v", err)
 	}
 	if err := store.Remove("fixture"); err != nil {
 		t.Fatal(err)
 	}
 	if servers, err := store.ListMCPServers(); err != nil || len(servers) != 0 {
 		t.Fatalf("removed servers = %+v, %v", servers, err)
-	}
-	if _, err := os.Stat(filepath.Join(data, "state")); err != nil {
-		t.Fatal("plugin removal deleted persistent data", err)
 	}
 }
 
