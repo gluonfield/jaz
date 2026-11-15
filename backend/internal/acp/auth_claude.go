@@ -18,6 +18,13 @@ const (
 	claudeCredentialReadLimit = 5 * time.Second
 )
 
+func claudeSDKConfigDir(configDir string, env map[string]string) string {
+	if strings.TrimSpace(env["ANTHROPIC_PROFILE"]) != "" {
+		return env["ANTHROPIC_CONFIG_DIR"]
+	}
+	return firstNonEmpty(env["ANTHROPIC_CONFIG_DIR"], filepath.Join(configDir, "anthropic"))
+}
+
 func (j *jobState) claudeAuthFailed() bool {
 	j.mu.RLock()
 	defer j.mu.RUnlock()

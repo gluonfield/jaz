@@ -467,6 +467,7 @@ func TestProcessEnvUsesJazConfigForClaudeCodeWithoutHostAuthTokens(t *testing.T)
 		"CLAUDE_CODE_EXECUTABLE": "/usr/local/bin/claude",
 		"CLAUDE_CODE_USE_VERTEX": "0",
 		"CLAUDE_CONFIG_DIR":      wantConfigDir,
+		"ANTHROPIC_CONFIG_DIR":   filepath.Join(wantConfigDir, "anthropic"),
 		"USER":                   "wins",
 	})
 }
@@ -512,9 +513,10 @@ func TestProcessEnvUsesHostHomeForClaude(t *testing.T) {
 		t.Fatalf("CLAUDE_CONFIG_DIR = %q, want %q", env["CLAUDE_CONFIG_DIR"], wantConfigDir)
 	}
 	assertEnv(t, env, map[string]string{
-		"HOME":              hostHome,
-		"PATH":              "/bin",
-		"CLAUDE_CONFIG_DIR": wantConfigDir,
+		"HOME":                 hostHome,
+		"PATH":                 "/bin",
+		"CLAUDE_CONFIG_DIR":    wantConfigDir,
+		"ANTHROPIC_CONFIG_DIR": filepath.Join(wantConfigDir, "anthropic"),
 	})
 }
 

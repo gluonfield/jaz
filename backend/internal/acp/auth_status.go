@@ -98,7 +98,13 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 		return loginInvocation(map[string]string{"CODEX_HOME": home}, false, binDir, "codex", "login", "--device-auth")
 	case AgentClaude:
 		configDir := firstNonEmpty(auth.Path, layout.ACPClaudeConfig)
-		return loginInvocation(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, false, binDir, "claude", "auth", "login", "--claudeai")
+		loginEnv := map[string]string{"CLAUDE_CONFIG_DIR": configDir}
+		preserveRuntimeHome(loginEnv)
+		if auth.Mode == AuthModeJazProfile {
+			loginEnv["ANTHROPIC_CONFIG_DIR"] = claudeSDKConfigDir(configDir, env)
+			loginEnv["ANTHROPIC_PROFILE"] = env["ANTHROPIC_PROFILE"]
+		}
+		return loginInvocation(loginEnv, false, binDir, "claude", "auth", "login", "--claudeai")
 	case AgentKimi:
 		home := firstNonEmpty(auth.Path, layout.ACPKimiHome)
 		return loginInvocation(map[string]string{"KIMI_CODE_HOME": home}, false, binDir, "kimi", "login", "--region", "global")

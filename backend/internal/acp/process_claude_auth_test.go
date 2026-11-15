@@ -27,6 +27,36 @@ func TestProcessEnvScrubsClaudeHostOAuthWhenAutoSelectsJazProfile(t *testing.T) 
 	if env["CLAUDE_CODE_OAUTH_TOKEN"] != "" || env["ANTHROPIC_AUTH_TOKEN"] != "" {
 		t.Fatalf("Claude OAuth token leaked into Jaz-profile subprocess env: %#v", env)
 	}
+	if got := env["ANTHROPIC_CONFIG_DIR"]; got != filepath.Join(jazConfigDir, "anthropic") {
+		t.Fatalf("ANTHROPIC_CONFIG_DIR = %q, want SDK credentials inside the Jaz profile", got)
+	}
+}
+
+func TestClaudeJazProfileSDKConfigMatchesLogin(t *testing.T) {
+	root := t.TempDir()
+	managed := filepath.Join(root, "acp", "claude", "anthropic")
+	for _, test := range []struct {
+		name string
+		env  map[string]string
+		dir  string
+	}{
+		{"managed", nil, managed},
+		{"sdk_directory", map[string]string{"ANTHROPIC_CONFIG_DIR": "/configured/anthropic"}, "/configured/anthropic"},
+		{"sdk_profile", map[string]string{"ANTHROPIC_PROFILE": "selected"}, ""},
+		{"empty_sdk_profile", map[string]string{"ANTHROPIC_PROFILE": " \t"}, managed},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			clearHostEnv(t)
+			auth := AgentAuthConfig{Mode: AuthModeJazProfile}
+			env := NewManager(nil, Config{Root: root}, nil).processEnv(AgentClaude, AgentConfig{Auth: auth, Env: test.env})
+			login := AgentLoginInvocationFor(AgentClaude, root, auth, "", test.env)
+			for _, actual := range []map[string]string{env, login.Env} {
+				if actual["ANTHROPIC_CONFIG_DIR"] != test.dir || actual["ANTHROPIC_PROFILE"] != test.env["ANTHROPIC_PROFILE"] {
+					t.Fatalf("SDK profile env = %v; want directory %q and profile %q", actual, test.dir, test.env["ANTHROPIC_PROFILE"])
+				}
+			}
+		})
+	}
 }
 
 func TestProcessEnvLeavesClaudeConfigDirUnsetForExistingCLIWithoutPath(t *testing.T) {
@@ -40,6 +70,9 @@ func TestProcessEnvLeavesClaudeConfigDirUnsetForExistingCLIWithoutPath(t *testin
 
 	if got, ok := env["CLAUDE_CONFIG_DIR"]; ok {
 		t.Fatalf("CLAUDE_CONFIG_DIR = %q, want unset", got)
+	}
+	if got := env["ANTHROPIC_CONFIG_DIR"]; got != "" {
+		t.Fatalf("ANTHROPIC_CONFIG_DIR = %q, want native SDK discovery", got)
 	}
 	status := ProbeAgentAuth(AgentClaude, AgentConfig{
 		Auth: AgentAuthConfig{Mode: AuthModeExistingCLI},
