@@ -6,12 +6,14 @@ import { keys } from '@/lib/query/keys'
 // A plugin is a folder of skills and the views they show, installed on the Jaz server.
 export interface Plugin {
   name: string
-  title: string
+  display_name: string
   description: string
   version: string
   skills: string[]
   views: string[]
-  page?: { title: string; icon: string; view: string; file: string }
+  icon_data_url?: string
+  warnings?: string[]
+  page?: { view: string; file: string }
 }
 
 export interface PluginPage {

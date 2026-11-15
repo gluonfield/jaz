@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func TestPageGroupsFoldersAndReloadsTheirData(t *testing.T) {
 	layout := runtimefiles.New(t.TempDir())
 	store := New(layout)
 	if _, err := store.Install(archive(t, map[string]string{
-		"tenders/plugin.json":       `{"name":"tenders","page":{"title":"Tenders","view":"status","file":"status.json"}}`,
+		"tenders/plugin.json":       `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tenders","page":{"view":"status","file":"status.json"}}}}`,
 		"tenders/views/status.html": "<p>status</p>",
 	})); err != nil {
 		t.Fatal(err)
@@ -82,7 +83,7 @@ func TestPageGroupsFoldersAndReloadsTheirData(t *testing.T) {
 	if err != nil || page.View != "<p>updated view</p>" || page.Items[0].Data.(map[string]any)["title"] != "Updated" {
 		t.Fatalf("reloaded page = %+v, %v", page, err)
 	}
-	write(filepath.Join(layout.Plugins, "tenders", "plugin.json"), `{"name":"tenders","page":{"title":"Tenders","view":"status","file":"next.json"}}`)
+	write(filepath.Join(layout.Plugins, "tenders", "plugin.json"), `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tenders","page":{"view":"status","file":"next.json"}}}}`)
 	page, err = store.Page("tenders", sessions)
 	if err != nil || len(page.Items) != 0 {
 		t.Fatalf("changed filename = %+v, %v", page, err)
@@ -99,37 +100,34 @@ func TestPageGroupsFoldersAndReloadsTheirData(t *testing.T) {
 
 func TestInstallRejectsInvalidPagePaths(t *testing.T) {
 	for _, page := range []Page{
-		{Title: "Tenders", View: "status", File: "../status.json"},
-		{Title: "Tenders", View: "status", File: `nested\status.json`},
-		{Title: "Tenders", View: "status", File: "/status.json"},
-		{Title: "Tenders", View: "status", File: "nested/status.json"},
-		{Title: "Tenders", View: "status", File: `C:\status.json`},
-		{Title: "Tenders", View: "status", File: ".."},
-		{Title: "Tenders", View: "status", File: "status.json\x00"},
-		{Title: "Tenders", View: "status", File: " status.json"},
-		{Title: "Tenders", View: "../status", File: "status.json"},
-		{Title: "Tenders", View: "status.html", File: "status.json"},
-		{Title: "Tenders", View: "missing", File: "status.json"},
-		{Title: " ", View: "status", File: "status.json"},
-		{Title: "Tenders", View: "status", File: "status.json", Icon: "assets/icon.svg"},
-		{Title: "Tenders", View: "status", File: "status.json", Icon: "./../icon.svg"},
-		{Title: "Tenders", View: "status", File: "status.json", Icon: "./assets/../icon.svg"},
-		{Title: "Tenders", View: "status", File: "status.json", Icon: "./assets/./icon.svg"},
-		{Title: "Tenders", View: "status", File: "status.json", Icon: "./assets//icon.svg"},
-		{Title: "Tenders", View: "status", File: "status.json", Icon: `./assets\icon.svg`},
-		{Title: "Tenders", View: "status", File: "status.json", Icon: "/assets/icon.svg"},
-		{Title: "Tenders", View: "status", File: "status.json", Icon: "https://example.com/icon.svg"},
-		{Title: "Tenders", View: "status", File: "status.json", Icon: "./assets/icon.png"},
-		{Title: "Tenders", View: "status", File: "status.json", Icon: "./missing.svg"},
+		{View: "status", File: "../status.json"},
+		{View: "status", File: `nested\status.json`},
+		{View: "status", File: "/status.json"},
+		{View: "status", File: "nested/status.json"},
+		{View: "status", File: `C:\status.json`},
+		{View: "status", File: ".."},
+		{View: "status", File: "status.json\x00"},
+		{View: "status", File: " status.json"},
+		{View: "../status", File: "status.json"},
+		{View: "status.html", File: "status.json"},
+		{View: "missing", File: "status.json"},
 	} {
 		t.Run(page.View+"/"+page.File, func(t *testing.T) {
-			manifest, err := json.Marshal(Plugin{Name: "tenders", Page: &page})
-			if err != nil {
-				t.Fatal(err)
-			}
 			store := New(runtimefiles.New(t.TempDir()))
-			if _, err := store.Install(archive(t, map[string]string{"tenders/plugin.json": string(manifest), "tenders/views/status.html": "<p>status</p>"})); !errors.Is(err, ErrInvalid) {
+			manifest := portable(t, "tenders", map[string]any{"page": page})
+			if _, err := store.Install(archive(t, map[string]string{"tenders/plugin.json": manifest, "tenders/views/status.html": "<p>status</p>"})); !errors.Is(err, ErrInvalid) {
 				t.Fatalf("accepted page %+v: %v", page, err)
+			}
+		})
+	}
+}
+
+func TestInstallRejectsInvalidIconPaths(t *testing.T) {
+	for _, icon := range []string{"assets/icon.svg", "./../icon.svg", "./assets/../icon.svg", "./assets/./icon.svg", "./assets//icon.svg", `./assets\icon.svg`, "/assets/icon.svg", "https://example.com/icon.svg", "./assets/icon.png", "./missing.svg"} {
+		t.Run(icon, func(t *testing.T) {
+			store := New(runtimefiles.New(t.TempDir()))
+			if _, err := store.Install(archive(t, map[string]string{"tenders/plugin.json": portable(t, "tenders", map[string]any{"icon": icon})})); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("accepted icon %q: %v", icon, err)
 			}
 		})
 	}
@@ -138,12 +136,16 @@ func TestInstallRejectsInvalidPagePaths(t *testing.T) {
 func TestPageIconCannotFollowASymlinkOutsideThePlugin(t *testing.T) {
 	layout := runtimefiles.New(t.TempDir())
 	store := New(layout)
-	if _, err := store.Install(archive(t, map[string]string{
-		"tenders/plugin.json":       `{"name":"tenders","page":{"title":"Tenders","icon":"./icon.svg","view":"status","file":"status.json"}}`,
+	installed, err := store.Install(archive(t, map[string]string{
+		"tenders/plugin.json":       `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tenders","icon":"./icon.svg","page":{"view":"status","file":"status.json"}}}}`,
 		"tenders/icon.svg":          `<svg xmlns="http://www.w3.org/2000/svg"/>`,
 		"tenders/views/status.html": "<p>status</p>",
-	})); err != nil {
+	}))
+	if err != nil {
 		t.Fatal(err)
+	}
+	if installed[0].IconPath != "./icon.svg" || !strings.HasPrefix(installed[0].IconDataURL, "data:image/svg+xml;base64,") {
+		t.Fatalf("icon path and display data were conflated: %+v", installed[0])
 	}
 	icon := filepath.Join(layout.Plugins, "tenders", "icon.svg")
 	outside := filepath.Join(layout.Root, "outside.svg")

@@ -35,10 +35,10 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 	var archive bytes.Buffer
 	writer := zip.NewWriter(&archive)
 	for name, content := range map[string]string{
-		"tenders/plugin.json":       `{"name":"tenders","title":"Tenders","page":{"title":"Tender work","icon":"./assets/icon.svg","view":"status","file":"status.json"}}`,
+		"tenders/plugin.json":       `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tender work","icon":"./assets/icon.svg","page":{"view":"status","file":"status.json"}}}}`,
 		"tenders/assets/icon.svg":   `<svg xmlns="http://www.w3.org/2000/svg"><path d="M1 1h12v12H1z"/></svg>`,
 		"tenders/views/status.html": "<p>status</p>",
-		"plain/plugin.json":         `{"name":"plain"}`,
+		"plain/plugin.json":         `{"name":"plain","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"}`,
 	} {
 		file, err := writer.Create(name)
 		if err != nil {
@@ -62,11 +62,11 @@ func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
 	if err := json.Unmarshal(call(http.MethodGet, "/v1/plugins", nil).Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Plugins) != 2 || listed.Plugins[0].Page != nil || listed.Plugins[1].Page == nil || listed.Plugins[1].Page.Title != "Tender work" || listed.Plugins[1].Page.File != "status.json" {
+	if len(listed.Plugins) != 2 || listed.Plugins[0].Page != nil || listed.Plugins[1].Page == nil || listed.Plugins[1].DisplayName != "Tender work" || listed.Plugins[1].Page.File != "status.json" {
 		t.Fatalf("listed = %#v, want the tenders plugin with its status view", listed.Plugins)
 	}
-	if listed.Plugins[1].Page.Icon != "data:image/svg+xml;base64,"+base64.StdEncoding.EncodeToString([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><path d="M1 1h12v12H1z"/></svg>`)) {
-		t.Fatalf("icon = %q, want the installed SVG", listed.Plugins[1].Page.Icon)
+	if listed.Plugins[1].IconDataURL != "data:image/svg+xml;base64,"+base64.StdEncoding.EncodeToString([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><path d="M1 1h12v12H1z"/></svg>`)) {
+		t.Fatalf("icon = %q, want the installed SVG", listed.Plugins[1].IconDataURL)
 	}
 	response := call(http.MethodGet, "/v1/plugins/tenders/page", nil)
 	var page plugins.PageContent

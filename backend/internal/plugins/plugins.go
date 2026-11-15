@@ -3,7 +3,6 @@
 package plugins
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -13,11 +12,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/wins/jaz/backend/internal/plugins/manifest"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/skills"
 )
-
-const manifestFile = "plugin.json"
 
 var (
 	ErrNotFound = errors.New("plugin not found")
@@ -25,15 +23,7 @@ var (
 	name        = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 )
 
-type Plugin struct {
-	Name        string   `json:"name"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Version     string   `json:"version"`
-	Skills      []string `json:"skills"`
-	Views       []string `json:"views"`
-	Page        *Page    `json:"page,omitempty"`
-}
+type Plugin = manifest.Plugin
 
 type Store struct {
 	dir string
@@ -65,10 +55,15 @@ func (s *Store) List() ([]Plugin, error) {
 // View returns a view's HTML by its reference, "<plugin>/<view>".
 func (s *Store) View(ref string) (string, error) {
 	plugin, view, ok := strings.Cut(ref, "/")
-	if !ok || !name.MatchString(plugin) || !name.MatchString(view) {
+	if !ok || !manifest.SafeName(plugin) || !name.MatchString(view) {
 		return "", fmt.Errorf("%w: view %q is not <plugin>/<view>", ErrInvalid, ref)
 	}
-	html, err := os.ReadFile(filepath.Join(s.dir, plugin, "views", view+".html"))
+	root, err := os.OpenRoot(filepath.Join(s.dir, plugin))
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrNotFound, err)
+	}
+	defer root.Close()
+	html, err := root.ReadFile("views/" + view + ".html")
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", fmt.Errorf("%w: view %q", ErrNotFound, ref)
 	}
@@ -98,10 +93,10 @@ func (s *Store) Install(archive []byte) ([]Plugin, error) {
 		if err != nil || !entry.IsDir() {
 			return err
 		}
-		if _, err := os.Stat(filepath.Join(path, manifestFile)); err != nil {
+		plugin, err := read(path)
+		if errors.Is(err, manifest.ErrNotPlugin) {
 			return nil
 		}
-		plugin, err := read(path)
 		if err != nil {
 			return err
 		}
@@ -112,7 +107,7 @@ func (s *Store) Install(archive []byte) ([]Plugin, error) {
 		return nil, err
 	}
 	if len(found) == 0 {
-		return nil, fmt.Errorf("%w: the archive holds no %s", ErrInvalid, manifestFile)
+		return nil, fmt.Errorf("%w: %w", ErrInvalid, manifest.ErrNotPlugin)
 	}
 	for i, plugin := range found {
 		dest := filepath.Join(s.dir, plugin.Name)
@@ -127,34 +122,25 @@ func (s *Store) Install(archive []byte) ([]Plugin, error) {
 }
 
 func (s *Store) Remove(plugin string) error {
-	if !name.MatchString(plugin) {
+	if !manifest.SafeName(plugin) {
 		return fmt.Errorf("%w: name %q", ErrInvalid, plugin)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := filepath.Join(s.dir, plugin)
-	if _, err := os.Stat(filepath.Join(dir, manifestFile)); errors.Is(err, fs.ErrNotExist) {
+	if _, err := manifest.Read(dir); errors.Is(err, fs.ErrNotExist) || errors.Is(err, manifest.ErrNotPlugin) {
 		return fmt.Errorf("%w: %s", ErrNotFound, plugin)
 	}
 	return os.RemoveAll(dir)
 }
 
 func read(dir string) (Plugin, error) {
-	data, err := os.ReadFile(filepath.Join(dir, manifestFile))
+	plugin, err := manifest.Read(dir)
 	if err != nil {
-		return Plugin{}, err
+		return Plugin{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	var plugin Plugin
-	if err := json.Unmarshal(data, &plugin); err != nil {
-		return Plugin{}, fmt.Errorf("%w: %s: %v", ErrInvalid, manifestFile, err)
-	}
-	if !name.MatchString(plugin.Name) {
-		return Plugin{}, fmt.Errorf("%w: name %q must be lower-case letters, digits and hyphens", ErrInvalid, plugin.Name)
-	}
-	held, err := skills.LoadDir(filepath.Join(dir, "skills"))
-	if err != nil {
-		return Plugin{}, err
-	}
+	held, warnings := skills.LoadPlugin(dir, plugin)
+	plugin.Warnings = append(plugin.Warnings, warnings...)
 	plugin.Skills = make([]string, len(held))
 	for i, skill := range held {
 		plugin.Skills[i] = skill.Name
@@ -168,13 +154,13 @@ func read(dir string) (Plugin, error) {
 		plugin.Views[i] = strings.TrimSuffix(filepath.Base(view), ".html")
 	}
 	if plugin.Page != nil {
-		if err := plugin.Page.validate(plugin.Views); err != nil {
+		if err := validatePage(plugin.Page, plugin.Views); err != nil {
 			return Plugin{}, err
 		}
-		plugin.Page.Icon, err = readIcon(dir, plugin.Page.Icon)
-		if err != nil {
-			return Plugin{}, err
-		}
+	}
+	plugin.IconDataURL, err = readIcon(dir, plugin.IconPath)
+	if err != nil {
+		return Plugin{}, err
 	}
 	return plugin, nil
 }

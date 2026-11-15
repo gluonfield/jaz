@@ -12,21 +12,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/plugins/manifest"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-type Page struct {
-	Title string `json:"title"`
-	Icon  string `json:"icon"`
-	View  string `json:"view"`
-	File  string `json:"file"`
-}
+type Page = manifest.Page
 
 var filename = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]*$`)
 
-func (p Page) validate(views []string) error {
-	if strings.TrimSpace(p.Title) == "" || !name.MatchString(p.View) || !slices.Contains(views, p.View) || !filename.MatchString(p.File) {
-		return fmt.Errorf("%w: page needs a title, an existing view name and a plain filename", ErrInvalid)
+func validatePage(p *Page, views []string) error {
+	if !name.MatchString(p.View) || !slices.Contains(views, p.View) || !filename.MatchString(p.File) {
+		return fmt.Errorf("%w: page needs an existing view name and a plain filename", ErrInvalid)
 	}
 	return nil
 }
@@ -54,11 +50,11 @@ type PageThread struct {
 }
 
 func (s *Store) Page(plugin string, sessions SessionStore) (PageContent, error) {
-	if !name.MatchString(plugin) {
+	if !manifest.SafeName(plugin) {
 		return PageContent{}, fmt.Errorf("%w: name %q", ErrInvalid, plugin)
 	}
 	installed, err := read(filepath.Join(s.dir, plugin))
-	if errors.Is(err, fs.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, manifest.ErrNotPlugin) {
 		return PageContent{}, ErrNotFound
 	}
 	if err != nil {
