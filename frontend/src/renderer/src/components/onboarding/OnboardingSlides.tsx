@@ -2,7 +2,7 @@ import { ArrowRight } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { SystemPermission } from '@shared/systemPermissions'
 import { DitherWordmark, type Silhouette } from '@/components/launch/DitherArt'
-import { PaletteIdeas } from '@/components/settings/ColorThemeSettings'
+import { ThemePresets } from '@/components/settings/ColorThemeSettings'
 import { ThemeModePicker } from '@/components/settings/ThemeModePicker'
 import { Button } from '@/components/ui/Button'
 import { type Mark, type SetupStep, onboardingEase, slideExit } from './OnboardingParts'
@@ -210,9 +210,9 @@ export function ThemeChoice() {
   return (
     <>
       <ThemeModePicker />
-      <div className="mt-4 flex items-center justify-between gap-3 rounded-[14px] bg-surface p-3.5">
-        <p className="text-[13.5px] font-medium text-ink">Color</p>
-        <PaletteIdeas />
+      <div className="mt-4 rounded-[14px] bg-surface p-3.5 text-left">
+        <p className="mb-3 text-[13.5px] font-medium text-ink">Color</p>
+        <ThemePresets />
       </div>
     </>
   )

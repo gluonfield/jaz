@@ -172,6 +172,10 @@ func (s *Service) URL() string {
 	return s.url
 }
 
+func (s *Service) VisualizeTools() *visualize.MCPTools {
+	return s.visualizeTools
+}
+
 func (s *Service) SetLoops(service loops.MCPService, opts ...loops.MCPOption) {
 	s.loopTools = loops.NewMCPTools(service, opts...)
 }

@@ -109,6 +109,7 @@ func serveOptions(args []string) []fx.Option {
 			app.NewGmailSyncer,
 			newMemoryService,
 			jaztools.New,
+			(*jaztools.Service).VisualizeTools,
 			terminal.New,
 			app.NewACPMCPServerReader,
 			exectool.NewCommandManager,
