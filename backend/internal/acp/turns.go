@@ -100,6 +100,10 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 		job.mu.Unlock()
 		return
 	}
+	if failure != nil {
+		turn.promptFailure = failure
+		turn.failureStopReason = stopReason
+	}
 	// A stop is read under the lock that starts a retry wait, so it either
 	// keeps the turn from waiting or finds the wait to end.
 	cancelRequested := turn.cancelRequested
@@ -125,12 +129,14 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 		return
 	}
 	turn.promptCalls = 0
+	failure = turn.promptFailure
 	switch {
 	case state != StateIdle:
 	case failure != nil:
 		// The retry is recorded before it waits, so a restart resumes the turn
 		// with the retries it used; one that cannot be recorded is not made.
 		if delay, ok := turn.retryDelay(*failure); ok && job.ActiveOperation == "" && m.recordRetry(job, turn.retries+1) {
+			turn.promptFailure = nil
 			wait := turn.waitToRetry(delay)
 			job.Error = retryNotice(*failure, delay, turn.retries)
 			job.UpdatedAt = time.Now().UTC()
@@ -170,6 +176,34 @@ func (m *Manager) recordRetry(job *jobState, retries int) bool {
 
 func hasVisibleTurnResult(job *jobState) bool {
 	return strings.TrimSpace(job.Assistant) != "" || len(job.ToolCalls) > 0 || len(job.Plan) > 0
+}
+
+func (m *Manager) failSteerCall(done chan struct{}, job *jobState, err error) {
+	job.mu.Lock()
+	turn := job.turn
+	if turn == nil || turn.done != done || turn.promptCalls == 0 {
+		job.mu.Unlock()
+		return
+	}
+	if turn.promptCalls == 1 {
+		failure, reason := turn.promptFailure, turn.failureStopReason
+		if failure != nil {
+			job.mu.Unlock()
+			m.completePromptCall(done, job, reason, failure)
+		} else {
+			turn.promptCalls = 0
+			job.mu.Unlock()
+			m.failTurn(job, err)
+			m.finishTurn(done, job)
+		}
+		return
+	}
+	turn.promptCalls--
+	job.Error = acpTurnErrorMessage(err)
+	job.UpdatedAt = time.Now().UTC()
+	job.mu.Unlock()
+	m.log.Warn("acp steering failed", "session", job.ID, "error", err)
+	m.publishACPStatus(job.eventView())
 }
 
 func (m *Manager) failPromptCall(done chan struct{}, job *jobState, err error) {

@@ -69,8 +69,9 @@ type sentSignal struct{}
 
 // whenSent has the request sent with the returned context close sent once
 // it went out. jsonrpc.Peer.Call hands its context to Send.
-func whenSent(ctx context.Context, sent chan struct{}) context.Context {
-	return context.WithValue(ctx, sentSignal{}, sync.OnceFunc(func() { close(sent) }))
+func whenSent(ctx context.Context, sent chan struct{}) (context.Context, func()) {
+	signal := sync.OnceFunc(func() { close(sent) })
+	return context.WithValue(ctx, sentSignal{}, signal), signal
 }
 
 func (c *promptTrackingConn) Receive(ctx context.Context) (*jsonrpc.Message, error) {

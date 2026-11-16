@@ -155,6 +155,8 @@ type activeTurn struct {
 	firstPromptSentClosed bool
 	promptHandoff         chan struct{}
 	promptCalls           int
+	promptFailure         *sessionFailure
+	failureStopReason     string
 	allowSilence          bool
 	grokInterjections     map[string]*grokInterjection
 	grokStopReason        string
@@ -173,7 +175,8 @@ type activeTurn struct {
 	// kept counts the steers the stored turn keeps (see storage.Turn.Steers).
 	kept int
 	// steerSent closes once the turn's latest steer is on the wire.
-	steerSent <-chan struct{}
+	steerSent    <-chan struct{}
+	steerSettled <-chan struct{}
 	// agentRun marks a turn that the agent began on its own while that run
 	// goes on: it ends with the agent's report, not a prompt response.
 	agentRun bool

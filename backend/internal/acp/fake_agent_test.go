@@ -123,6 +123,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	}
 	claim := newFakeSessionClaim()
 	var pendingPrompt *jsonrpc.Message
+	var nativeSteering fakeNativeSteering
 	grokInterjections := 0
 	cancelArrived := false
 	typedFailures := false
@@ -470,6 +471,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			pendingPrompt = fakeGrokInterject(t, conn, msg, pendingPrompt, grokInterjections)
 		case "_session/steering":
 			fakeHold(os.Getenv("JAZ_FAKE_ACP_NATIVE_STEER_HOLD"))
+			if handled, pending := nativeSteering.handle(t, conn, msg, pendingPrompt); handled {
+				pendingPrompt = pending
+				continue
+			}
 			var req struct {
 				WaitForCompletion bool `json:"waitForCompletion"`
 			}
