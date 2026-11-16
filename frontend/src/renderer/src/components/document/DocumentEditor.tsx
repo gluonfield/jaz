@@ -130,13 +130,13 @@ export function DocumentEditor({
     if (editor) follow(editor, versionOf(file))
   }, [editor, follow, file])
 
-  const target = useMemo(() => {
-    if (!editor || !location?.line || location.text) return location
+  const lineText = useMemo(() => {
+    if (!editor || !location?.line || location.text) return
     const source = (file.content ?? '').split('\n')[location.line - 1] ?? ''
     const parsed = editor.markdown?.parse(source)
-    return parsed ? { ...location, text: editor.schema.nodeFromJSON(parsed).textContent } : location
+    return parsed ? editor.schema.nodeFromJSON(parsed).textContent : undefined
   }, [editor, location, file.content])
-  useFileLocation(editor?.view.dom ?? null, target, file.content ?? '', active)
+  useFileLocation(editor?.view.dom ?? null, location, file.content ?? '', active, lineText)
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">

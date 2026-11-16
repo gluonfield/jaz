@@ -51,8 +51,9 @@ export function resolveFileLink(value: string, documentPath?: string): FileRefer
     const range = split < 0 ? selection : selection.slice(split + 1)
     if (/^\$?[a-z]+\$?[1-9]\d*(?::\$?[a-z]+\$?[1-9]\d*)?$/i.test(range)) {
       location.range = range.toUpperCase()
-      if (split >= 0) location.sheet = selection.slice(0, split).replace(/^'(.*)'$/, '$1').replace(/''/g, "'")
     }
+    const sheet = split >= 0 ? selection.slice(0, split) : location.range ? '' : selection
+    if (sheet) location.sheet = sheet.replace(/^'(.*)'$/, '$1').replace(/''/g, "'")
   }
   if (Object.keys(location).length) return { path, location }
   return { path: isHTMLPath(path) && fragment ? path + '#' + fragment : path }
