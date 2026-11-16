@@ -11,6 +11,10 @@ declare module '*?url' {
   const url: string
   export default url
 }
+declare module '*?worker' {
+  const WorkerConstructor: { new(options?: WorkerOptions): Worker }
+  export default WorkerConstructor
+}
 declare module '@fontsource-variable/inter'
 declare module '@fontsource-variable/jetbrains-mono'
 
