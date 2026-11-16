@@ -1,4 +1,4 @@
-import { SaxesParser } from 'saxes'
+import { parser as createXMLParser } from 'sax'
 import { legacySpreadsheetPanes } from '@/lib/spreadsheetLegacy'
 import { utils, type CellObject, type WorkBook, type WorkSheet } from 'xlsx'
 
@@ -47,8 +47,8 @@ function color(value?: Color) {
 
 function visit(xml: string, onTag: (name: string, attributes: Record<string, string>) => void) {
   if (!xml) return
-  const parser = new SaxesParser({ xmlns: true })
-  parser.on('opentag', (tag) => onTag(tag.local, Object.fromEntries(Object.values(tag.attributes).map((attribute) => [attribute.local, attribute.value]))))
+  const parser = createXMLParser(true, { xmlns: true })
+  parser.onopentag = (tag) => onTag(tag.local, Object.fromEntries(Object.values(tag.attributes).map((attribute) => [attribute.local, attribute.value])))
   parser.write(xml).close()
 }
 
