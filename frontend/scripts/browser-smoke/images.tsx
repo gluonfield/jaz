@@ -20,7 +20,7 @@ export async function exerciseImages() {
   function View({ count, suffix }: { count: number; suffix: string }) {
     const [file, setFile] = useState<FileReference | null>(null)
     return <FileReaderLinkProvider sessionId="tabs" onOpen={setFile}>
-      <MessageMarkdown text={`![Remote chart](${remoteURL.href})\n\n[Remote page](${remoteURL.origin}/)\n\n[PNG file](icon-1024.png)\n\n[SVG file](cache-chart.svg)`} />
+      <MessageMarkdown text={`![Remote chart](${remoteURL.href})\n\n[Remote page](${remoteURL.origin}/)\n\n[PNG file](icon-1024.png)\n\n[SVG file](cache-chart.svg)\n\n[Generated image](generated.png)`} />
       {Array.from({ length: count }, (_, index) => (
         <MessageMarkdown key={index} text={`![Chart](cache-chart.svg)${suffix}`} />
       ))}
@@ -91,6 +91,15 @@ export async function exerciseImages() {
         if (await window.smoke.fileDownload() !== 'icon-1024.png') throw new Error('Download did not retain the image filename and contents')
       }
     }
+    const generated = [...host.querySelectorAll<HTMLElement>('[role="link"]')].find((node) => node.textContent === 'Generated image')!
+    generated.click()
+    await until(() => Boolean(host.querySelector('[data-image-reader]')?.textContent?.includes('Couldn’t open this image')))
+    if (!(await fetch('/generated-image-fixture', { method: 'POST' })).ok) throw new Error('Could not finish generating the image fixture')
+    generated.click()
+    const retry = [...host.querySelectorAll<HTMLButtonElement>('[data-image-reader] button')].find((node) => node.textContent === 'Retry')
+    if (!retry) throw new Error('A failed image has no recovery action')
+    retry.click()
+    await until(() => host.querySelector<HTMLImageElement>('[data-image-reader] img')?.naturalWidth === 1024)
     host.querySelectorAll<HTMLButtonElement>('button[aria-label="Expand image: Chart"]')[1].click()
     await until(() => document.querySelector<HTMLImageElement>('[role="dialog"] img')?.naturalWidth === 24)
   } finally {

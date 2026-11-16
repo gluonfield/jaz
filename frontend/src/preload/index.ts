@@ -74,8 +74,8 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
     browserPasswords,
     browserDownloads,
     fileActions: {
-      canReveal: (sessionId) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'canReveal', sessionId),
-      reveal: (sessionId, path) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'reveal', sessionId, path),
+      canReveal: (backendUrl, sessionId) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'canReveal', backendUrl, sessionId),
+      reveal: (backendUrl, sessionId, path) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'reveal', backendUrl, sessionId, path),
     } satisfies FileActionsAPI,
     computer: {
       status: () => ipcRenderer.invoke(COMPUTER_CHANNEL + 'status'),

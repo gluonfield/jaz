@@ -10,6 +10,7 @@ import { useRefetchAfterWork } from '@/lib/hooks/useRefetchAfterWork'
 import type { HealthResponse } from '@/lib/api/types'
 import { markdownDocumentTitle } from '@/lib/markdownDocuments'
 import { FileActions } from '@/components/session/FileActions'
+import { Button } from '@/components/ui/Button'
 import { isMarkdownPath, isSpreadsheetPath, parseFileReference, type FileReference } from '@shared/fileReader'
 
 const SpreadsheetFileView = lazy(() => import('@/components/session/SpreadsheetFileView'))
@@ -216,10 +217,13 @@ function PDFFileView({ url }: { url: string }) {
 }
 
 function ImageFileView({ url, name }: { url: string; name: string }) {
-  const [failed, setFailed] = useState(false)
-  return failed ? <p className="px-3 py-4 text-[12px] text-danger">Couldn’t open this image. Try opening it again.</p> : (
+  const [failedSource, setFailedSource] = useState('')
+  return failedSource === url ? <div className="flex items-center gap-2 px-3 py-4 text-[12px]">
+    <p className="text-danger">Couldn’t open this image.</p>
+    <Button size="sm" onClick={() => setFailedSource('')}>Retry</Button>
+  </div> : (
     <div className="flex h-full items-center justify-center p-4">
-      <img src={url} alt={name} referrerPolicy="no-referrer" onError={() => setFailed(true)}
+      <img src={url} alt={name} referrerPolicy="no-referrer" onError={() => setFailedSource(url)}
         className="max-h-full max-w-full object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />
     </div>
   )

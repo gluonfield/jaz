@@ -30,9 +30,10 @@ export function installFileActions(connection: Pick<ReturnType<typeof createConn
       await rm(directory, { recursive: true, force: true })
     }
   }
-  ipcMain.handle(FILE_ACTIONS_CHANNEL, async (event, action: 'canReveal' | 'reveal', sessionId: string, path?: string) => {
+  ipcMain.handle(FILE_ACTIONS_CHANNEL, async (event, action: 'canReveal' | 'reveal', backendUrl: string, sessionId: string, path?: string) => {
     const document = connection.authorize(event).document
     const active = connection.current()
+    if (active.url !== backendUrl) throw new Error('Backend connection changed')
     let available = false
     try {
       available = await canReveal(active, sessionId)

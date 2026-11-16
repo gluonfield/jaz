@@ -48,7 +48,7 @@ if (process.env.JAZ_FILE_ACTIONS_TEST_CHILD === '1') {
     },
     current: () => active,
   })
-  const invoke = (action, path = target, event = { trusted: true }) => handlers.get('jaz:file-actions')(event, action, 'thread', path)
+  const invoke = (action, path = target, event = { trusted: true }, url = active.url) => handlers.get('jaz:file-actions')(event, action, url, 'thread', path)
   beforeEach(() => {
     active = { phase: 'connected', revision: 1, url: backend.url.origin, session: { token: 'device-token' } }
     probe = 'local'
@@ -96,6 +96,12 @@ if (process.env.JAZ_FILE_ACTIONS_TEST_CHILD === '1') {
     active = { ...active, url: 'https://remote.example' }
     expect(await invoke('canReveal')).toBe(false)
     await expect(invoke('reveal', target, { trusted: false })).rejects.toThrow('Untrusted renderer')
+    expect(requests).toEqual([])
+    expect(revealed).toEqual([])
+  })
+
+  test('a queued action from another backend is rejected before probing the current local backend', async () => {
+    await expect(invoke('reveal', target, { trusted: true }, 'https://previous.example')).rejects.toThrow('connection changed')
     expect(requests).toEqual([])
     expect(revealed).toEqual([])
   })

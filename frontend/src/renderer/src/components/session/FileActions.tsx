@@ -7,16 +7,17 @@ import { sessionFileDownloadUrl } from '@/lib/api/sessions'
 
 export function FileActions({ sessionId, path, beforeDownload }: { sessionId: string; path: string; beforeDownload?: () => Promise<boolean> }) {
   const toast = useToast()
+  const backendUrl = apiBaseUrl()
   const local = useQuery({
-    queryKey: ['fileFolder', apiBaseUrl(), sessionId],
-    queryFn: () => window.jaz?.fileActions?.canReveal(sessionId) ?? Promise.resolve(false),
+    queryKey: ['fileFolder', backendUrl, sessionId],
+    queryFn: () => window.jaz?.fileActions?.canReveal(backendUrl, sessionId) ?? Promise.resolve(false),
     staleTime: 60_000,
     retry: false,
   })
   return <div className="flex shrink-0 items-center gap-1">
     <Button size="sm" className="h-10 min-w-10 px-2" whileTap={{ scale: 0.96 }} disabled={!local.data}
       aria-label="Open folder" title={local.data ? 'Open folder' : 'Available in Jaz desktop when connected to the server on this machine'}
-      onClick={() => void window.jaz?.fileActions.reveal(sessionId, path).catch((error: Error) => toast(error.message, 'danger'))}>
+      onClick={() => void window.jaz?.fileActions.reveal(backendUrl, sessionId, path).catch((error: Error) => toast(error.message, 'danger'))}>
       <FolderOpen size={15} aria-hidden /><span className="hidden @min-[540px]/file:inline">Open folder</span>
     </Button>
     <a href={sessionFileDownloadUrl(sessionId, path)} download aria-label="Download file" title="Download file"

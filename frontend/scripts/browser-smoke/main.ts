@@ -125,6 +125,12 @@ const server = createServer(async (request, response) => {
     response.end()
     return
   }
+  if (request.method === 'POST' && request.url === '/generated-image-fixture') {
+    await writeFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'generated.png'), await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'icon-1024.png')))
+    response.writeHead(204)
+    response.end()
+    return
+  }
   if (request.url === '/v1/preview/files' || request.url?.startsWith('/v1/sessions/tabs/file?')) {
     const body: Buffer[] = []
     for await (const chunk of request) {
