@@ -57,6 +57,7 @@ test('file links preserve typed PDF, workbook, text and line locations', () => {
     ['tender/Commercial/BOQ.xlsx#Line level cost -DG!A21', { path: '/work/tender/Commercial/BOQ.xlsx', location: { sheet: 'Line level cost -DG', range: 'A21' } }],
     ['file.xlsx#Sheet%20name!B7:D9', { path: '/work/file.xlsx', location: { sheet: 'Sheet name', range: 'B7:D9' } }],
     ['file.xlsx#b7', { path: '/work/file.xlsx', location: { range: 'B7' } }],
+    ['file.xlsx#Line%20level%20cost%20-DG', { path: '/work/file.xlsx', location: { sheet: 'Line level cost -DG' } }],
     ['notes.md#text=some%20words', { path: '/work/notes.md', location: { text: 'some words' } }],
     ['code.ts:27', { path: '/work/code.ts', location: { line: 27 } }],
     ['Makefile:27', { path: '/work/Makefile', location: { line: 27 } }],

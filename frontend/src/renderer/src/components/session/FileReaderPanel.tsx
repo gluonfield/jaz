@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { FileText, LoaderCircle } from 'lucide-react'
-import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/session/HighlightedCode'
 import { DocumentEditor, DocumentHeader, isEditableDocument } from '@/components/document/DocumentEditor'
 import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button'
 import { isMarkdownPath, isSpreadsheetPath, resolveFileLink, type FileLocation, type FileReference } from '@shared/fileReader'
 
 const SpreadsheetFileView = lazy(() => import('@/components/session/SpreadsheetFileView'))
+const PDFFileView = lazy(() => import('@/components/session/PDFFileView'))
 
 export const FileReaderPanel = memo(function FileReaderPanel({
   sessionId,
@@ -33,11 +34,12 @@ export const FileReaderPanel = memo(function FileReaderPanel({
 }) {
   const filePath = fileRef?.path ?? ''
   const pdf = isPDFPath(filePath)
+  const pdfSource = useCallback(() => sessionFileRawUrl(sessionId, filePath), [sessionId, filePath])
   const spreadsheet = isSpreadsheetPath(filePath)
   const markdown = isMarkdownPath(filePath)
   const image = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico)(?:[?#].*)?$/i.test(filePath)
   // A document follows the agent while it writes, and once more when it stops.
-  const file = useQuery({ ...sessionFileQuery(sessionId, filePath), enabled: visible && Boolean(filePath) && !spreadsheet && !image, refetchInterval: markdown && working ? 2000 : false })
+  const file = useQuery({ ...sessionFileQuery(sessionId, filePath), enabled: visible && Boolean(filePath) && !spreadsheet && !image && !pdf, refetchInterval: markdown && working ? 2000 : false })
   useRefetchAfterWork(markdown && working, file.refetch)
   const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) })
   const [draft, setDraft] = useState(filePath)
@@ -96,6 +98,10 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           </div>
         ) : image ? (
           <ImageFileView key={`${sessionId}:${filePath}`} url={sessionFileRawUrl(sessionId, filePath)} name={filePath.split(/[\\/]/).at(-1) ?? 'Image'} />
+        ) : pdf ? (
+          <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading PDF…</p>}>
+            <PDFFileView url={pdfSource} location={fileRef?.location} visible={visible} />
+          </Suspense>
         ) : spreadsheet ? (
           <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading spreadsheet…</p>}>
             <SpreadsheetFileView key={`${filePath}:${fileRef?.location?.sheet ?? ''}:${fileRef?.location?.range ?? ''}`} sessionId={sessionId} path={filePath} visible={visible} initialSheet={fileRef?.location?.sheet} initialSelection={fileRef?.location?.range} />
@@ -120,8 +126,6 @@ export const FileReaderPanel = memo(function FileReaderPanel({
               {markdown ? 'Couldn’t open this document. Try opening it again.' : <>Couldn&apos;t open the file: {(file.error as Error).message}</>}
             </p>
           )
-        ) : pdf ? (
-          <PDFFileView url={sessionFileRawUrl(sessionId, filePath)} location={fileRef?.location} />
         ) : file.data.binary ? (
           <p className="px-3 py-4 text-[12px] text-ink-3">Binary file — no text preview.</p>
         ) : (
@@ -200,19 +204,6 @@ function FileTextView({
         </tbody>
       </table>
     </div>
-  )
-}
-
-function PDFFileView({ url, location }: { url: string; location?: FileLocation }) {
-  const fragment = new URLSearchParams({ toolbar: '0', navpanes: '0' })
-  if (location?.page) fragment.set('page', String(location.page))
-  return (
-    <iframe
-      src={url + (fragment.size ? '#' + fragment : '')}
-      title="PDF file preview"
-      referrerPolicy="no-referrer"
-      className="h-full w-full border-0 bg-bg"
-    />
   )
 }
 

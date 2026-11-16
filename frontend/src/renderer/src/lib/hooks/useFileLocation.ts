@@ -1,14 +1,16 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FileLocation } from '@shared/fileReader'
 
-export function useFileLocation(root: HTMLElement | null, location: FileLocation | undefined, content: string, active: boolean) {
+export function useFileLocation(root: HTMLElement | null, location: FileLocation | undefined, content: string, active: boolean, lineText?: string) {
+  const [navigation, setNavigation] = useState<{ location: FileLocation; target: HTMLElement | null } | null>(null)
+  const applied = useRef<FileLocation | undefined>(undefined)
   useEffect(() => {
-    if (!root || !active || !location) return
+    if (!root || !location) return
     const line = location.line && root.querySelector<HTMLElement>(`[data-file-line="${location.line}"]`)
     const range = document.createRange()
     if (line && !location.text) range.selectNodeContents(line)
     else {
-      const quote = location.text ?? content.split('\n')[(location.line ?? 0) - 1]?.trim()
+      const quote = location.text ?? lineText ?? content.split('\n')[(location.line ?? 0) - 1]?.trim()
       if (!quote) return
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
       const nodes: Text[] = []
@@ -31,16 +33,18 @@ export function useFileLocation(root: HTMLElement | null, location: FileLocation
       }
     }
     const target = location.text ? range.startContainer.parentElement : line || range.startContainer.parentElement
-    target?.scrollIntoView({ block: 'center' })
-    const highlight = new Highlight(range)
+    setNavigation({ location, target })
+    const highlight = CSS.highlights.get('file-location') ?? new Highlight()
+    highlight.add(range)
     CSS.highlights.set('file-location', highlight)
-    const clear = () => {
-      if (CSS.highlights.get('file-location') === highlight) CSS.highlights.delete('file-location')
-    }
-    const timer = setTimeout(clear, 3500)
     return () => {
-      clearTimeout(timer)
-      clear()
+      highlight.delete(range)
+      if (!highlight.size) CSS.highlights.delete('file-location')
     }
-  }, [root, location, content, active])
+  }, [root, location, content, lineText])
+  useEffect(() => {
+    if (!active || !navigation || navigation.location !== location || applied.current === location) return
+    navigation.target?.scrollIntoView({ block: 'center' })
+    applied.current = location
+  }, [active, location, navigation])
 }
