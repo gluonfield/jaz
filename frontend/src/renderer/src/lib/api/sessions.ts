@@ -117,6 +117,10 @@ export function sessionFileRawUrl(sessionId: string, path: string): string {
   return apiEmbeddedGetUrl(sessionFilePath(sessionId, path))
 }
 
+export function sessionFileDownloadUrl(sessionId: string, path: string): string {
+  return apiEmbeddedGetUrl(sessionFilePath(sessionId, path) + '&download=1')
+}
+
 export function sessionAttachmentUrl(sessionId: string, attachmentId: string): string {
   return apiEmbeddedGetUrl(
     `/v1/sessions/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(attachmentId)}`,

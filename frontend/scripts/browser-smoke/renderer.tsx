@@ -67,6 +67,7 @@ declare global {
       key(key: string, modifiers?: string[], contentsId?: number): Promise<void>
       wheel(x: number, y: number, deltaY: number, control?: boolean): Promise<void>
       capture(name?: string): Promise<void>
+      fileDownload(): Promise<string>
       paint(name: string, rect?: { x: number; y: number; width: number; height: number }): Promise<{ contrast: number; inkPixels: number; frames: number; paintedAt: number }>
       reducedMotion(reduce: boolean): Promise<void>
       resize(width: number, height: number): Promise<void>
@@ -217,7 +218,7 @@ function Fixture() {
         progress('inline images after a file overwrite')
         await exerciseImages()
         if (suite === 'images') {
-          window.smoke.result({ ok: true, checks: ['new inline images load overwritten files without reloading; text streaming keeps image URLs stable; expanded images show the same contents'] })
+          window.smoke.result({ ok: true, checks: ['PNG and SVG links open fitted side-tab previews; Download file keeps the PNG filename and bytes; native folder access is unavailable without a local desktop connection; inline and expanded images retain current contents and stable streaming URLs'] })
           return
         }
       }

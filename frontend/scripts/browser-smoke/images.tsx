@@ -1,8 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { StrictMode } from 'react'
+import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { FileReaderLinkProvider, MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { apiBaseUrl, setApiBaseUrl } from '@/lib/api/client'
+import { FileReaderPanel } from '@/components/session/FileReaderPanel'
+import type { FileReference } from '@shared/fileReader'
+import { LOCAL_BACKEND_TRANSPORT_URL } from '@shared/localBackend'
 
 export async function exerciseImages() {
   const remoteURL = new URL('/remote-chart.svg', location.origin)
@@ -14,15 +17,22 @@ export async function exerciseImages() {
   const client = new QueryClient()
   const previousBackend = apiBaseUrl()
   setApiBaseUrl(await window.smoke.backend())
+  function View({ count, suffix }: { count: number; suffix: string }) {
+    const [file, setFile] = useState<FileReference | null>(null)
+    return <FileReaderLinkProvider sessionId="tabs" onOpen={setFile}>
+      <MessageMarkdown text={`![Remote chart](${remoteURL.href})\n\n[Remote page](${remoteURL.origin}/)\n\n[PNG file](icon-1024.png)\n\n[SVG file](cache-chart.svg)`} />
+      {Array.from({ length: count }, (_, index) => (
+        <MessageMarkdown key={index} text={`![Chart](cache-chart.svg)${suffix}`} />
+      ))}
+      {file ? <div className="absolute inset-y-0 right-0 w-[55%] bg-bg" data-image-reader>
+        <FileReaderPanel sessionId="tabs" fileRef={file} visible onOpenFile={setFile} onClose={() => setFile(null)} />
+      </div> : null}
+    </FileReaderLinkProvider>
+  }
   const render = (count: number, suffix = '') => root.render(
     <StrictMode>
       <QueryClientProvider client={client}>
-        <FileReaderLinkProvider sessionId="tabs" onOpen={() => {}}>
-          <MessageMarkdown text={`![Remote chart](${remoteURL.href})\n\n[Remote page](${remoteURL.origin}/)`} />
-          {Array.from({ length: count }, (_, index) => (
-            <MessageMarkdown key={index} text={`![Chart](cache-chart.svg)${suffix}`} />
-          ))}
-        </FileReaderLinkProvider>
+        <View count={count} suffix={suffix} />
       </QueryClientProvider>
     </StrictMode>,
   )
@@ -62,6 +72,24 @@ export async function exerciseImages() {
     })
     if (images()[0].src !== originalSource || images()[1].src !== updatedSource) {
       throw new Error('Text streaming changed the image request identity')
+    }
+    for (const [label, width] of [['PNG file', 1024], ['SVG file', 24]] as const) {
+      const link = [...host.querySelectorAll<HTMLElement>('[role="link"]')].find((node) => node.textContent === label)
+      link?.click()
+      await until(() => host.querySelector<HTMLImageElement>('[data-image-reader] img')?.naturalWidth === width)
+      const reader = host.querySelector<HTMLElement>('[data-image-reader]')!
+      const image = reader.querySelector('img')!.getBoundingClientRect()
+      if (image.height > reader.clientHeight || image.width > reader.clientWidth || reader.textContent?.includes('Binary file')) throw new Error('Image file did not fit its side tab')
+      const folder = reader.querySelector<HTMLButtonElement>('[aria-label="Open folder"]')!
+      if (!folder.disabled || !folder.title.includes('this machine')) throw new Error('A browser without native file access offers Open folder')
+      if (label === 'PNG file') {
+        await window.smoke.capture('image-file-tab')
+        const download = reader.querySelector<HTMLAnchorElement>('[aria-label="Download file"]')!
+        const url = new URL(download.href)
+        download.href = LOCAL_BACKEND_TRANSPORT_URL + url.pathname + url.search
+        download.click()
+        if (await window.smoke.fileDownload() !== 'icon-1024.png') throw new Error('Download did not retain the image filename and contents')
+      }
     }
     host.querySelectorAll<HTMLButtonElement>('button[aria-label="Expand image: Chart"]')[1].click()
     await until(() => document.querySelector<HTMLImageElement>('[role="dialog"] img')?.naturalWidth === 24)

@@ -9,6 +9,7 @@ import { healthQuery, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sess
 import { useRefetchAfterWork } from '@/lib/hooks/useRefetchAfterWork'
 import type { HealthResponse } from '@/lib/api/types'
 import { markdownDocumentTitle } from '@/lib/markdownDocuments'
+import { FileActions } from '@/components/session/FileActions'
 import { isMarkdownPath, isSpreadsheetPath, parseFileReference, type FileReference } from '@shared/fileReader'
 
 const SpreadsheetFileView = lazy(() => import('@/components/session/SpreadsheetFileView'))
@@ -34,8 +35,9 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   const pdf = isPDFPath(filePath)
   const spreadsheet = isSpreadsheetPath(filePath)
   const markdown = isMarkdownPath(filePath)
+  const image = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico)(?:[?#].*)?$/i.test(filePath)
   // A document follows the agent while it writes, and once more when it stops.
-  const file = useQuery({ ...sessionFileQuery(sessionId, filePath), enabled: visible && Boolean(filePath) && !spreadsheet, refetchInterval: markdown && working ? 2000 : false })
+  const file = useQuery({ ...sessionFileQuery(sessionId, filePath), enabled: visible && Boolean(filePath) && !spreadsheet && !image, refetchInterval: markdown && working ? 2000 : false })
   useRefetchAfterWork(markdown && working, file.refetch)
   const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) })
   const [draft, setDraft] = useState(filePath)
@@ -62,13 +64,15 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {markdown ? (
-        <DocumentHeader title={markdownDocumentTitle(file.data?.content ?? '', filePath)} onClose={onClose} />
+        <DocumentHeader title={markdownDocumentTitle(file.data?.content ?? '', filePath)} onClose={onClose}>
+          <FileActions sessionId={sessionId} path={filePath} />
+        </DocumentHeader>
       ) : <form
         onSubmit={(event) => {
           event.preventDefault()
           submit()
         }}
-        className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3"
+        className="@container/file flex h-11 shrink-0 items-center gap-2 border-b border-border px-3"
       >
         <FileText size={15} className="shrink-0 text-ink-3" aria-hidden />
         <input
@@ -78,6 +82,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
         />
+        {filePath ? <FileActions sessionId={sessionId} path={filePath} /> : null}
       </form>}
       {inputError ? (
         <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">
@@ -89,6 +94,8 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-3">
             No file selected.
           </div>
+        ) : image ? (
+          <ImageFileView key={`${sessionId}:${filePath}`} url={sessionFileRawUrl(sessionId, filePath)} name={filePath.split(/[\\/]/).at(-1) ?? 'Image'} />
         ) : spreadsheet ? (
           <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading spreadsheet…</p>}>
             <SpreadsheetFileView key={filePath} sessionId={sessionId} path={filePath} visible={visible} />
@@ -205,6 +212,16 @@ function PDFFileView({ url }: { url: string }) {
       referrerPolicy="no-referrer"
       className="h-full w-full border-0 bg-bg"
     />
+  )
+}
+
+function ImageFileView({ url, name }: { url: string; name: string }) {
+  const [failed, setFailed] = useState(false)
+  return failed ? <p className="px-3 py-4 text-[12px] text-danger">Couldn’t open this image. Try opening it again.</p> : (
+    <div className="flex h-full items-center justify-center p-4">
+      <img src={url} alt={name} referrerPolicy="no-referrer" onError={() => setFailed(true)}
+        className="max-h-full max-w-full object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />
+    </div>
   )
 }
 
