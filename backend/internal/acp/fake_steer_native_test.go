@@ -12,7 +12,7 @@ import (
 )
 
 type fakeNativeSteering struct {
-	delayed *jsonrpc.Message
+	pending []*jsonrpc.Message
 }
 
 func (f *fakeNativeSteering) handle(t *testing.T, conn jsonrpc.MessageConn, msg, pending *jsonrpc.Message) (bool, *jsonrpc.Message) {
@@ -27,9 +27,10 @@ func (f *fakeNativeSteering) handle(t *testing.T, conn jsonrpc.MessageConn, msg,
 				IdleBehavior string `json:"idleBehavior"`
 			} `json:"steering"`
 		} `json:"_meta"`
+		Prompt []struct{ Text string } `json:"prompt"`
 	}
-	if err := json.Unmarshal(msg.Params, &req); err != nil || !req.WaitForCompletion || req.Meta.Steering.IdleBehavior != "promptRequired" {
-		t.Fatal("expected completion-aware steering with host-owned idle fallback")
+	if err := json.Unmarshal(msg.Params, &req); err != nil || !req.WaitForCompletion {
+		t.Fatal("expected completion-aware native steering")
 	}
 	text := string(msg.Params)
 	if strings.Contains(text, "reject followup") {
@@ -46,23 +47,38 @@ func (f *fakeNativeSteering) handle(t *testing.T, conn jsonrpc.MessageConn, msg,
 		}
 		return true, pending
 	}
-	if !strings.Contains(text, "idle followup") {
+	if response != "nativeIdle" {
 		return false, pending
 	}
 	if pending != nil {
-		sendResult(conn, pending, map[string]any{"stopReason": "end_turn"})
+		sendResult(conn, pending, map[string]any{"stopReason": "end_turn", "usage": map[string]any{"inputTokens": 50, "outputTokens": 10, "totalTokens": 60}, "_meta": map[string]any{"usageId": "original-turn"}})
 		pending = nil
 	}
-	if strings.Contains(text, "one") {
-		f.delayed = msg
+	if req.Meta.Steering.IdleBehavior == "promptRequired" {
+		sendResult(conn, msg, map[string]any{"outcome": "promptRequired", "reason": "noRunningTurn"})
 		return true, pending
 	}
-	result := map[string]any{"outcome": "promptRequired", "reason": "noRunningTurn"}
-	sendResult(conn, msg, result)
-	if f.delayed != nil {
-		time.Sleep(100 * time.Millisecond)
-		sendResult(conn, f.delayed, result)
-		f.delayed = nil
+	f.pending = append(f.pending, msg)
+	for _, block := range req.Prompt {
+		notify(conn, "session/update", map[string]any{"sessionId": fakeSessionID, "update": map[string]any{
+			"sessionUpdate": "agent_message_chunk",
+			"messageId":     "native-idle-reply",
+			"content":       map[string]any{"type": "text", "text": block.Text + "\n"},
+		}})
+	}
+	notify(conn, "session/update", map[string]any{"sessionId": fakeSessionID, "update": map[string]any{
+		"sessionUpdate": "usage_update", "used": 120, "size": 1000,
+		"_meta": map[string]any{"usageId": "native-idle-turn", "usage": map[string]any{"inputTokens": 100, "outputTokens": 20, "totalTokens": 120}},
+	}})
+	if strings.Contains(text, "third") {
+		for i, call := range f.pending {
+			outcome := "injected"
+			if i == 0 {
+				outcome = "startedNewTurn"
+			}
+			sendResult(conn, call, map[string]any{"outcome": outcome, "stopReason": "end_turn"})
+		}
+		f.pending = nil
 	}
 	return true, pending
 }

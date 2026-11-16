@@ -358,11 +358,9 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 // steerSlot is a steer's place in its turn. Steers go out in the order they
 // were made: each waits until the one before it is on the wire.
 type steerSlot struct {
-	done         chan struct{}
-	afterSent    <-chan struct{}
-	sent         chan struct{}
-	afterSettled <-chan struct{}
-	settled      chan struct{}
+	done  chan struct{}
+	after <-chan struct{}
+	sent  chan struct{}
 }
 
 func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext, prepared string) (steerSlot, error) {
@@ -419,16 +417,14 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 	if update.Steer != nil {
 		job.turn.kept++
 	}
-	slot := steerSlot{done: job.turn.done, afterSent: job.turn.steerSent, sent: make(chan struct{}), afterSettled: job.turn.steerSettled, settled: make(chan struct{})}
+	slot := steerSlot{done: job.turn.done, after: job.turn.steerSent, sent: make(chan struct{})}
 	job.turn.steerSent = slot.sent
-	job.turn.steerSettled = slot.settled
 	return slot, nil
 }
 
 func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, slot steerSlot, handoff <-chan struct{}, method steerMethod, prompt acpschema.PromptRequest) {
-	defer close(slot.settled)
 	done := slot.done
-	for _, wait := range []<-chan struct{}{handoff, slot.afterSent} {
+	for _, wait := range []<-chan struct{}{handoff, slot.after} {
 		if wait == nil {
 			continue
 		}
@@ -449,7 +445,7 @@ func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, s
 	case steerPromptQueueing:
 		m.runPromptCall(ctx, job, done, prompt)
 	case steerNative:
-		m.runNativeSteerCall(ctx, job, slot, prompt)
+		m.runNativeSteerCall(ctx, job, done, prompt)
 	case steerGrokInterject:
 		m.runGrokInterject(ctx, job, done, prompt)
 	}
