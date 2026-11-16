@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { normalizePreviewURL, shouldProxyPreview } from './preview'
-import { resolveFileLink } from './fileReader'
+import { findFileReferences, resolveFileLink } from './fileReader'
 
 test('browser input preserves local paths and file URIs', () => {
   for (const path of ['/Users/wins/.jaz/workspaces/default/manufacturing/research/qdd-actuator-2026-09-17/index.html', 'file:///tmp/report%20one.html', 'C:\\reports\\index.html']) {
@@ -43,11 +43,28 @@ test('browser address input distinguishes searches from website addresses', () =
 
 test('document links resolve relative files and preserve line references', () => {
   expect(resolveFileLink('bom.csv', '/work/report/index.md')).toEqual({ path: '/work/report/bom.csv' })
-  expect(resolveFileLink('../index.html', '/work/report/notes.md')).toEqual({ path: '/work/report/../index.html' })
-  expect(resolveFileLink('app.ts:12', '/work/report/notes.md')).toEqual({ path: '/work/report/app.ts', line: 12 })
+  expect(resolveFileLink('../index.html', '/work/report/notes.md')).toEqual({ path: '/work/index.html' })
+  expect(resolveFileLink('app.ts:12', '/work/report/notes.md')).toEqual({ path: '/work/report/app.ts', location: { line: 12 } })
   for (const url of ['https://example.com/report.html', 'javascript:alert(1)', '#heading']) {
     expect(resolveFileLink(url, '/work/notes.md')).toBeNull()
   }
+})
+
+test('file links preserve typed PDF, workbook, text and line locations', () => {
+  for (const [link, expected] of [
+    ['file.pdf#page=34', { path: '/work/file.pdf', location: { page: 34 } }],
+    ['file.pdf#page=34&text=liquidated%20damages', { path: '/work/file.pdf', location: { page: 34, text: 'liquidated damages' } }],
+    ['tender/Commercial/BOQ.xlsx#Line level cost -DG!A21', { path: '/work/tender/Commercial/BOQ.xlsx', location: { sheet: 'Line level cost -DG', range: 'A21' } }],
+    ['file.xlsx#Sheet%20name!B7:D9', { path: '/work/file.xlsx', location: { sheet: 'Sheet name', range: 'B7:D9' } }],
+    ['file.xlsx#b7', { path: '/work/file.xlsx', location: { range: 'B7' } }],
+    ['notes.md#text=some%20words', { path: '/work/notes.md', location: { text: 'some words' } }],
+    ['code.ts:27', { path: '/work/code.ts', location: { line: 27 } }],
+    ['Makefile:27', { path: '/work/Makefile', location: { line: 27 } }],
+    ['./tender/../notes.md#text=again', { path: '/work/notes.md', location: { text: 'again' } }],
+  ]) expect(resolveFileLink(link, '/work/report.md')).toEqual(expected)
+  expect(findFileReferences('See /work/file.pdf#page=34&text=some%20words.')[0].reference).toEqual({
+    path: '/work/file.pdf', location: { page: 34, text: 'some words' },
+  })
 })
 
 describe('shouldProxyPreview', () => {

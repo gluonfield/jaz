@@ -148,3 +148,8 @@ span.document-source > textarea {
   border-radius: 4px;
   vertical-align: middle;
 }
+
+::highlight(file-location) {
+  background-color: var(--color-primary-soft);
+  color: var(--color-ink);
+}

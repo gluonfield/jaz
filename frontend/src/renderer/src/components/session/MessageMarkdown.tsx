@@ -24,7 +24,9 @@ import { remarkMathDelimiters } from '@/lib/markdownMath'
 import { remarkHeadingAnchors, remarkMarkdownDocuments } from '@/lib/markdownDocuments'
 import { MarkdownDocumentCard } from '@/components/session/MarkdownDocumentCard'
 import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
-import { findFileReferences, isMarkdownPath, parseFileReference, type FileReference } from '@shared/fileReader'
+import { findFileReferences, isMarkdownPath, parseFileReference, resolveFileLink } from '@shared/fileReader'
+import { FileReaderLinkProvider, useFileLinks } from '@/lib/fileLinks'
+export { FileReaderLinkProvider } from '@/lib/fileLinks'
 import { CodeBlock } from './CodeBlock'
 import { ConnectCard } from './ConnectCard'
 import { encodeMention } from './mentionCodec'
@@ -32,12 +34,6 @@ import { MentionPill } from '@/components/session/mentions'
 import { botIdFromTarget } from '@/lib/bots'
 
 const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
-const FileReaderLinkContext = createContext<((file: FileReference) => void) | null>(null)
-const MarkdownFileContext = createContext<{
-  sessionId: string
-  documentPath?: string
-} | null>(null)
-
 export function usePreviewLink() {
   return useContext(PreviewLinkContext)
 }
@@ -50,25 +46,6 @@ export function PreviewLinkProvider({
   children: ReactNode
 }) {
   return <PreviewLinkContext.Provider value={onOpen}>{children}</PreviewLinkContext.Provider>
-}
-
-export function FileReaderLinkProvider({
-  onOpen,
-  sessionId,
-  documentPath,
-  children,
-}: {
-  onOpen: (file: FileReference) => void
-  sessionId: string
-  documentPath?: string
-  children: ReactNode
-}) {
-  const fileContext = useMemo(() => ({ sessionId, documentPath }), [sessionId, documentPath])
-  return (
-    <FileReaderLinkContext.Provider value={onOpen}>
-      <MarkdownFileContext value={fileContext}>{children}</MarkdownFileContext>
-    </FileReaderLinkContext.Provider>
-  )
 }
 
 function textFromChildren(children: unknown): string {
@@ -211,11 +188,11 @@ function fileReferenceTextNodes(value: string): MarkdownNode[] | null {
   if (!matches.length) return null
   const nodes: MarkdownNode[] = []
   let lastIndex = 0
-  for (const { raw, index, reference } of matches) {
+  for (const { raw, index } of matches) {
     if (index > lastIndex) nodes.push({ type: 'text', value: value.slice(lastIndex, index) })
     nodes.push({
       type: 'link',
-      url: reference.line ? `${reference.path}:${reference.line}` : reference.path,
+      url: raw,
       title: null,
       children: [{ type: 'text', value: raw }],
     })
@@ -247,7 +224,7 @@ const CHAT_REMARK_PLUGINS = [...REMARK_PLUGINS, remarkConnectCards]
 const USER_REMARK_PLUGINS = [...CHAT_REMARK_PLUGINS, remarkLineBreaks]
 
 const MarkdownFileImage: NonNullable<Components['img']> = ({ src, ...props }) => {
-  const files = useContext(MarkdownFileContext)
+  const files = useFileLinks()
   const imageId = useId()
   return <MarkdownImage {...props} src={markdownImageSource(src ?? '', imageId, files?.sessionId, files?.documentPath)} />
 }
@@ -267,7 +244,7 @@ function BaseMarkdown({
   remarkPlugins?: NonNullable<Options['remarkPlugins']>
   documentCards?: boolean
 }) {
-  const files = useContext(MarkdownFileContext)
+  const files = useFileLinks()
   const plugins = useMemo<NonNullable<Options['remarkPlugins']>>(() => {
     const plugins = [...remarkPlugins]
     if (documentCards && files) plugins.unshift([remarkMarkdownDocuments, { documentPath: files.documentPath }])
@@ -283,7 +260,7 @@ function BaseMarkdown({
         components={components}
         urlTransform={(url, key, node) => key === 'src' && node.tagName === 'img'
           ? url
-          : parseFileReference(url) || botIdFromTarget(url) ? url : defaultUrlTransform(url)}
+          : (files ? resolveFileLink(url, files.documentPath) : parseFileReference(url)) || botIdFromTarget(url) ? url : defaultUrlTransform(url)}
       >
         {text}
       </Markdown>
@@ -292,8 +269,8 @@ function BaseMarkdown({
 }
 
 function MarkdownDocument({ path, label }: { path: string; label: string }) {
-  const files = useContext(MarkdownFileContext)!
-  const openFile = useContext(FileReaderLinkContext)!
+  const files = useFileLinks()!
+  const openFile = files.onOpen
   return <MarkdownDocumentCard sessionId={files.sessionId} file={{ path }} label={label} onOpen={openFile}
     renderContent={(content, documentPath) => (
       <FileReaderLinkProvider sessionId={files.sessionId} documentPath={documentPath} onOpen={openFile}>
@@ -313,8 +290,8 @@ const MessageMarkdownLink: AnchorComponent = ({ children, href, ...props }) => {
 
 const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...props }) => {
   const openPreview = usePreviewLink()
-  const openFile = useContext(FileReaderLinkContext)
-  const files = useContext(MarkdownFileContext)
+  const files = useFileLinks()
+  const openFile = files?.onOpen
   const target = markdownLinkTarget(href, textFromChildren(children), files)
   const linkedChildren = <MarkdownImageLinkContext value={true}>{children}</MarkdownImageLinkContext>
   switch (target?.kind) {
@@ -384,7 +361,7 @@ export const RenderedMarkdown = memo(function RenderedMarkdown({
   className?: string
   artifactPreview?: boolean
 }) {
-  const files = useContext(MarkdownFileContext)
+  const files = useFileLinks()
   const artifacts = useContext(MarkdownArtifactContext)
   const scope = useMemo(() => ({
     mode: files?.documentPath && isMarkdownPath(files.documentPath) ? artifactPreview ? 'preview' as const : 'live' as const : 'source' as const,

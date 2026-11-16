@@ -1,5 +1,7 @@
-import { memo, useMemo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import { ArtifactFrame } from '@/components/artifacts/ArtifactFrame'
+import { useFileLinks } from '@/lib/fileLinks'
+import { resolveFileLink } from '@shared/fileReader'
 import type { ArtifactEvent } from '@/lib/api/types'
 import { artifactErrorForDisplay, artifactInputFromEvent, parseArtifactToolArgs } from '@/lib/artifacts'
 
@@ -22,6 +24,15 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
   onSendPrompt?: (text: string) => void
   onOpenFile?: (href: string) => boolean
 }) {
+  const files = useFileLinks()
+  const openLink = useCallback((href: string) => {
+    if (onOpenFile) return onOpenFile(href)
+    if (!files) return false
+    const file = resolveFileLink(href, files.documentPath)
+    if (!file) return false
+    files.onOpen(file)
+    return true
+  }, [files, onOpenFile])
   const input = useMemo(
     () => (artifact ? artifactInputFromEvent(artifact) : parseArtifactToolArgs(args)),
     [artifact, args],
@@ -29,5 +40,5 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
   if (!input) {
     return <div className="rounded-card border border-border bg-surface px-3 py-2 text-sm text-ink-2">Could not render artifact: invalid visualise_show_widget input.</div>
   }
-  return <ArtifactFrame input={input} data={data} pending={pending} executionError={artifactErrorForDisplay(toolError(result))} onSendPrompt={onSendPrompt} onOpenLink={onOpenFile} />
+  return <ArtifactFrame input={input} data={data} pending={pending} executionError={artifactErrorForDisplay(toolError(result))} onSendPrompt={onSendPrompt} onOpenLink={openLink} />
 })

@@ -1,6 +1,14 @@
+export interface FileLocation {
+  page?: number
+  sheet?: string
+  range?: string
+  line?: number
+  text?: string
+}
+
 export interface FileReference {
   path: string
-  line?: number
+  location?: FileLocation
 }
 
 export interface FileReferenceMatch {
@@ -18,21 +26,59 @@ export function isSpreadsheetPath(path: string): boolean {
 }
 
 export function isMarkdownPath(path: string): boolean {
-  return /\.(md|markdown)$/i.test(path)
+  return /\.(md|markdown)(?:[?#].*)?$/i.test(path)
 }
 
 export function resolveFileLink(value: string, documentPath?: string): FileReference | null {
-  const absolute = parseFileReference(value)
-  if (absolute) {
-    return absolute
-  }
-  const line = FILE_LINE_SUFFIX.exec(value)
-  const path = line ? line[1] : value
-  if (/^[a-z][a-z\d+.-]*:|^#/i.test(path) || !/\.[a-z\d]+$/i.test(path)) {
-    return null
-  }
+  const hash = value.indexOf('#')
+  const fragment = hash < 0 ? '' : value.slice(hash + 1)
+  const target = (hash < 0 ? value : value.slice(0, hash)).trim()
+  const line = FILE_LINE_SUFFIX.exec(target)
+  let path = line ? line[1] : target
+  path = decoded(path)
+  if (!path || !isAbsoluteFilePath(path) && (/^[a-z][a-z\d+.-]*:|^#/i.test(path) || !line && !/\.[a-z\d]+$/i.test(path))) return null
   const directory = documentPath?.slice(0, Math.max(documentPath.lastIndexOf('/'), documentPath.lastIndexOf('\\')) + 1) ?? ''
-  return { path: directory + path, line: line ? Number(line[2]) : undefined }
+  path = normalizeFilePath(isAbsoluteFilePath(path) ? path : directory + path)
+  const location: FileLocation = line ? { line: Number(line[2]) } : {}
+  const params = new URLSearchParams(fragment)
+  const page = Number(params.get('page'))
+  if (Number.isSafeInteger(page) && page > 0) location.page = page
+  const text = params.get('text')
+  if (text) location.text = text
+  if (isSpreadsheetPath(path) && fragment) {
+    const selection = decoded(fragment)
+    const split = selection.lastIndexOf('!')
+    const range = split < 0 ? selection : selection.slice(split + 1)
+    if (/^\$?[a-z]+\$?[1-9]\d*(?::\$?[a-z]+\$?[1-9]\d*)?$/i.test(range)) {
+      location.range = range.toUpperCase()
+      if (split >= 0) location.sheet = selection.slice(0, split).replace(/^'(.*)'$/, '$1').replace(/''/g, "'")
+    }
+  }
+  if (Object.keys(location).length) return { path, location }
+  return { path: isHTMLPath(path) && fragment ? path + '#' + fragment : path }
+}
+
+function decoded(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+function normalizeFilePath(path: string): string {
+  if (/^file:\/\//i.test(path)) {
+    try { return new URL(path).href } catch { return path }
+  }
+  const prefix = /^(?:[a-z]:[\\/]|[\\/]{1,2})/i.exec(path)?.[0] ?? ''
+  const separator = path.includes('\\') ? '\\' : '/'
+  const parts: string[] = []
+  for (const part of path.slice(prefix.length).split(/[\\/]/)) {
+    if (!part || part === '.') continue
+    if (part === '..' && parts.length && parts.at(-1) !== '..') parts.pop()
+    else if (part !== '..' || !prefix) parts.push(part)
+  }
+  return prefix + parts.join(separator)
 }
 
 const FILE_LINE_SUFFIX = /^(.*?):(\d+)(?::\d+)?$/
@@ -49,18 +95,14 @@ const FILE_REFERENCE_PATTERN = new RegExp(
       String.raw`[A-Za-z]:[\\/](?:${PATH_SEGMENT}[\\/])*${FILE_NAME}`,
       String.raw`[/\\]{2}${PATH_SEGMENT}[/\\]${PATH_SEGMENT}(?:[/\\]${PATH_SEGMENT})*[/\\]${FILE_NAME}`,
     ].join('|') +
-    String.raw`)(?::\d+(?::\d+)?)?`,
+    String.raw`)(?::\d+(?::\d+)?)?(?:#[^\s<>(){}]+)?`,
   'g',
 )
 
 export function parseFileReference(value: string): FileReference | null {
-  let path = value.trim().replace(/[),.;]+$/, '')
-  if (!path) return null
-  const lineMatch = FILE_LINE_SUFFIX.exec(path)
-  const line = lineMatch ? Number(lineMatch[2]) : undefined
-  if (lineMatch) path = lineMatch[1]
-  if (!isAbsoluteFilePath(path)) return null
-  return { path, line }
+  const target = value.trim().replace(/[),.;]+$/, '')
+  const reference = resolveFileLink(target)
+  return reference && isAbsoluteFilePath(reference.path) ? reference : null
 }
 
 export function findFileReferences(value: string): FileReferenceMatch[] {

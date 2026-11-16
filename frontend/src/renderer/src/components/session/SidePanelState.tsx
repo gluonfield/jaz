@@ -5,7 +5,7 @@ import { clientRuntime } from '@/lib/clientRuntime'
 import { useBackendChange } from '@/lib/connection'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
-import { isHTMLPath, parseFileReference, type FileReference } from '@shared/fileReader'
+import { isHTMLPath, resolveFileLink, type FileReference } from '@shared/fileReader'
 import { entrypointKey, fileEntrypoint, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { previewDisplayUrl } from '@/lib/api/preview'
 import { openedFile } from '@/lib/mcpAppFiles'
@@ -147,11 +147,11 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     } else if (isHTMLPath(ref.path)) {
       openTab({ id: browsers.openTab(sessionId, ref.path), kind: 'preview' })
     } else {
-      openTab({ id: `file:${ref.path}`, kind: 'file', file: ref })
+      openTab({ id: `file:${ref.path}`, kind: 'file', file: { ...ref, location: ref.location && { ...ref.location } } })
     }
   }, [browsers, entrypoints, openTab, sessionId])
   const openFile = useCallback((file: string | FileReference) => {
-    const ref = typeof file === 'string' ? parseFileReference(file) : file
+    const ref = typeof file === 'string' ? resolveFileLink(file) : file
     if (!ref) return false
     showFile(ref)
     return true
