@@ -180,7 +180,11 @@ func serveSessionFileContent(w http.ResponseWriter, r *http.Request, abs string,
 	if ctype := mime.TypeByExtension(strings.ToLower(filepath.Ext(abs))); ctype != "" {
 		w.Header().Set("Content-Type", ctype)
 	}
-	if disposition := mime.FormatMediaType("inline", map[string]string{"filename": filepath.Base(abs)}); disposition != "" {
+	dispositionType := "inline"
+	if r.URL.Query().Get("download") == "1" {
+		dispositionType = "attachment"
+	}
+	if disposition := mime.FormatMediaType(dispositionType, map[string]string{"filename": filepath.Base(abs)}); disposition != "" {
 		w.Header().Set("Content-Disposition", disposition)
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")

@@ -28,6 +28,7 @@ import type { DictationAPI, DictationEvent } from '../shared/dictation'
 import type { VoiceCommand, VoiceOverlayAPI, VoiceOverlayState } from '@shared/voice'
 import { CONNECTION_SESSION_CHANNEL, LOCAL_SESSION_CHANNEL, type ConnectionSessionAPI, type SessionDocument, type SessionSnapshot } from '@shared/connectionSession'
 import { LOCAL_BACKEND_TRANSPORT_URL, LOCAL_BACKEND_URL } from '@shared/localBackend'
+import { FILE_ACTIONS_CHANNEL, type FileActionsAPI } from '@shared/fileActions'
 
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? LOCAL_BACKEND_URL
 
@@ -72,6 +73,10 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
     connectionSession,
     browserPasswords,
     browserDownloads,
+    fileActions: {
+      canReveal: (backendUrl, sessionId) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'canReveal', backendUrl, sessionId),
+      reveal: (backendUrl, sessionId, path) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'reveal', backendUrl, sessionId, path),
+    } satisfies FileActionsAPI,
     computer: {
       status: () => ipcRenderer.invoke(COMPUTER_CHANNEL + 'status'),
       begin: (id, session) => ipcRenderer.invoke(COMPUTER_CHANNEL + 'begin', id, session),

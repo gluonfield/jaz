@@ -3,7 +3,7 @@ import { createServer, type IncomingHttpHeaders, type ServerResponse } from 'nod
 import { createServer as createSecureServer } from 'node:https'
 import { X509Certificate } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { ClaudeVoiceBridge, installClaudeVoice } from '@main/claudeVoice'
 import { installBrowserControl } from '@main/browserControl'
 import { attachWindowOpenHandler } from '@main/browserPopups'
@@ -18,8 +18,10 @@ import { accessibilityFixture, accessibilityFrame } from './accessibility'
 import { exerciseBrowserPopups } from './popups'
 import { configureAppPermissions } from '@main/permissions'
 import { clipboardFixture, exerciseClipboard } from './clipboard'
+import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
 
 app.setName('Jaz')
+registerLocalBackendTransport()
 let probingNavigation = false
 let navigationRequests: { url: string; webContentsId: number }[] = []
 // The suite runs on the developer's own desktop: no Dock icon, no focus and no
@@ -119,6 +121,12 @@ const server = createServer(async (request, response) => {
   }
   if (request.method === 'POST' && request.url === '/image-fixture') {
     await writeFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'cache-chart.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12"><rect width="24" height="12" fill="blue"/></svg>')
+    response.writeHead(204)
+    response.end()
+    return
+  }
+  if (request.method === 'POST' && request.url === '/generated-image-fixture') {
+    await writeFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'generated.png'), await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'icon-1024.png')))
     response.writeHead(204)
     response.end()
     return
@@ -238,6 +246,7 @@ server.listen(0, '127.0.0.1', async () => {
   })
   installBrowserDownloads()
   process.env.ELECTRON_RENDERER_URL = `http://127.0.0.1:${address.port}`
+  configureLocalBackendTransport(session.defaultSession, process.env.JAZ_BROWSER_SMOKE_BACKEND!)
   configureAppPermissions(session.defaultSession)
   const cert = await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'cert.pem'))
   const fingerprint = new X509Certificate(cert).fingerprint256
@@ -406,6 +415,22 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     const screenshot = await window.webContents.capturePage()
     await writeFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, name + '.png'), screenshot.toPNG())
   })
+  const fileDownload = new Promise<string>((resolve, reject) => {
+    session.defaultSession.once('will-download', (_event, item) => {
+      const name = basename(item.getFilename())
+      const path = join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'download-' + name)
+      item.setSavePath(path)
+      item.once('done', async (_event, state) => {
+        try {
+          if (state !== 'completed' || !(await readFile(path)).equals(await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, name)))) throw new Error('Downloaded file differs from its source')
+          resolve(name)
+        } catch (error) {
+          reject(error)
+        }
+      })
+    })
+  })
+  ipcMain.handle('smoke:file-download', () => fileDownload)
   ipcMain.handle('smoke:reduced-motion', (_event, reduce: boolean) => window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: reduce ? 'reduce' : 'no-preference' }] }))
   ipcMain.handle('smoke:resize', (_event, width: number, height: number) => {
     window.setContentSize(width, height)

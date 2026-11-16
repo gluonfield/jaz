@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('smoke', {
   wheel: (x: number, y: number, deltaY: number, control?: boolean) => ipcRenderer.invoke('smoke:wheel', x, y, deltaY, control),
   paint: (name: string, rect?: { x: number; y: number; width: number; height: number }) => ipcRenderer.invoke('smoke:paint', name, rect),
   capture: (name?: string) => ipcRenderer.invoke('smoke:capture', name),
+  fileDownload: () => ipcRenderer.invoke('smoke:file-download'),
   reducedMotion: (reduce: boolean) => ipcRenderer.invoke('smoke:reduced-motion', reduce),
   resize: (width: number, height: number) => ipcRenderer.invoke('smoke:resize', width, height),
   dropFolder: (x: number, y: number) => ipcRenderer.invoke('smoke:drop-folder', x, y),

@@ -2,7 +2,6 @@ package acp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -359,9 +358,11 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 // steerSlot is a steer's place in its turn. Steers go out in the order they
 // were made: each waits until the one before it is on the wire.
 type steerSlot struct {
-	done  chan struct{}
-	after <-chan struct{}
-	sent  chan struct{}
+	done         chan struct{}
+	afterSent    <-chan struct{}
+	sent         chan struct{}
+	afterSettled <-chan struct{}
+	settled      chan struct{}
 }
 
 func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext, prepared string) (steerSlot, error) {
@@ -418,50 +419,16 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 	if update.Steer != nil {
 		job.turn.kept++
 	}
-	slot := steerSlot{done: job.turn.done, after: job.turn.steerSent, sent: make(chan struct{})}
+	slot := steerSlot{done: job.turn.done, afterSent: job.turn.steerSent, sent: make(chan struct{}), afterSettled: job.turn.steerSettled, settled: make(chan struct{})}
 	job.turn.steerSent = slot.sent
+	job.turn.steerSettled = slot.settled
 	return slot, nil
 }
 
-func (m *Manager) runNativeSteerCall(ctx context.Context, job *jobState, done chan struct{}, prompt acpschema.PromptRequest) {
-	peer := m.peer(job.ID)
-	if peer == nil {
-		m.failPromptCall(done, job, fmt.Errorf("acp peer is not active"))
-		return
-	}
-	m.withACPTranscriptBarrier(job.eventView(), nil)
-	raw, err := peer.Call(ctx, string(steerNative), struct {
-		SessionID         acpschema.SessionID      `json:"sessionId"`
-		Prompt            []acpschema.ContentBlock `json:"prompt"`
-		WaitForCompletion bool                     `json:"waitForCompletion"`
-	}{
-		SessionID:         prompt.SessionID,
-		Prompt:            prompt.Prompt,
-		WaitForCompletion: true,
-	})
-	if err != nil {
-		m.failPromptCall(done, job, err)
-		return
-	}
-	var response struct {
-		Outcome    string             `json:"outcome"`
-		StopReason string             `json:"stopReason"`
-		Meta       sessionFailureMeta `json:"_meta"`
-	}
-	if err := json.Unmarshal(raw, &response); err != nil {
-		m.failPromptCall(done, job, err)
-		return
-	}
-	if (response.Outcome != "injected" && response.Outcome != "startedNewTurn") || response.StopReason == "" {
-		m.failPromptCall(done, job, fmt.Errorf("invalid native ACP steering response"))
-		return
-	}
-	m.completePromptCall(done, job, response.StopReason, response.Meta.terminal())
-}
-
 func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, slot steerSlot, handoff <-chan struct{}, method steerMethod, prompt acpschema.PromptRequest) {
+	defer close(slot.settled)
 	done := slot.done
-	for _, wait := range []<-chan struct{}{handoff, slot.after} {
+	for _, wait := range []<-chan struct{}{handoff, slot.afterSent} {
 		if wait == nil {
 			continue
 		}
@@ -476,12 +443,13 @@ func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, s
 		return
 	default:
 	}
-	ctx = whenSent(ctx, slot.sent)
+	ctx, sent := whenSent(ctx, slot.sent)
+	defer sent()
 	switch method {
 	case steerPromptQueueing:
 		m.runPromptCall(ctx, job, done, prompt)
 	case steerNative:
-		m.runNativeSteerCall(ctx, job, done, prompt)
+		m.runNativeSteerCall(ctx, job, slot, prompt)
 	case steerGrokInterject:
 		m.runGrokInterject(ctx, job, done, prompt)
 	}

@@ -134,6 +134,17 @@ func TestSessionFileRead(t *testing.T) {
 					}
 				}
 			}
+			params := url.Values{"path": {asset.name}, "raw": {"1"}, "download": {"1"}}
+			req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/file?"+params.Encode(), nil)
+			req.Header.Set("Authorization", "Bearer image-key")
+			res := httptest.NewRecorder()
+			rawHandler.ServeHTTP(res, req)
+			if res.Code != http.StatusOK || !bytes.Equal(res.Body.Bytes(), asset.content) {
+				t.Fatalf("download: status = %d, bytes = %d", res.Code, res.Body.Len())
+			}
+			if got := res.Header().Get("Content-Disposition"); !strings.HasPrefix(got, "attachment;") || !strings.Contains(got, asset.name) {
+				t.Fatalf("download Content-Disposition = %q", got)
+			}
 		})
 	}
 
