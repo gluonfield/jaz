@@ -16,12 +16,14 @@ import type { BrowserPasswordAPI } from '@shared/browserPasswords'
 import type { BrowserDownloadAPI } from '@shared/browserDownloads'
 import type { VoiceOverlayAPI } from '@shared/voice'
 import type { ConnectionSessionAPI } from '@shared/connectionSession'
+import type { FileActionsAPI } from '@shared/fileActions'
 
 declare global {
   interface Window {
     jaz?: {
       claudeVoice: ClaudeVoiceAPI
       connectionSession: ConnectionSessionAPI
+      fileActions: FileActionsAPI
       computer: ComputerAPI
       systemPermissions: SystemPermissionsAPI
       permissionGuide: PermissionGuideAPI

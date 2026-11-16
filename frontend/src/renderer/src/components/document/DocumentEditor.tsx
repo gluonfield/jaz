@@ -6,6 +6,7 @@ import { FileText, X } from 'lucide-react'
 import { useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { FileReaderLinkProvider, usePreviewLink } from '@/components/session/MessageMarkdown'
 import { SidePanelCloseGuard } from '@/components/session/SidePanelState'
+import { FileActions } from '@/components/session/FileActions'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { useToast } from '@/components/ui/toast'
@@ -34,7 +35,7 @@ const versionOf = (file: EditableDocument): DocumentVersion => ({ content: file.
 
 export function DocumentHeader({ title, onClose, children }: { title: string; onClose: () => void; children?: ReactNode }) {
   return (
-    <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+    <header className="@container/file flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
       <FileText size={15} className="shrink-0 text-ink-3" aria-hidden />
       <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{title}</p>
       {children}
@@ -132,6 +133,7 @@ export function DocumentEditor({
         <span role="status" className={`shrink-0 text-[12px] ${state === 'saving' ? 'text-ink-3' : 'text-danger'}`}>{SAVE_LABEL[state]}</span>
         {state === 'failed' ? <Button size="sm" variant="ghost" onClick={() => void save()}>Retry</Button> : null}
         {editor ? <DocumentOutline editor={editor} /> : null}
+        <FileActions sessionId={sessionId} path={file.path} beforeDownload={async () => !(await unsaved())} />
       </DocumentHeader>
       {state === 'conflict' ? (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-3 py-2">
