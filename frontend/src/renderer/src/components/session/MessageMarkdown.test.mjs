@@ -276,6 +276,25 @@ test('file references stay plain text where no file reader can open them', async
   expect(html).not.toContain('lucide-file-text')
 })
 
+test('chat and document Markdown retain file locations and reject unsafe schemes', async () => {
+  const { FileReaderLinkProvider, RenderedMarkdown, UserMessageMarkdown, MessageMarkdown } = await import('./MessageMarkdown')
+  const client = new QueryClient()
+  for (const component of [RenderedMarkdown, UserMessageMarkdown, MessageMarkdown]) {
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client },
+      createElement(FileReaderLinkProvider, { sessionId: 'locations', documentPath: '/work/notes.md', onOpen: () => {} },
+        createElement(component, {
+          text: '[BOQ, row 21](<tender/Commercial/BOQ.xlsx#Line level cost -DG!A21>) and [Code](<sample.ts:62>) and [Quote](<notes.md#text=some%20words>) and [Unsafe](javascript:alert%281%29).',
+        }),
+      ),
+    ))
+    expect(html.match(/role="link"/g)).toHaveLength(3)
+    expect(html).toContain('BOQ, row 21</span>')
+    expect(html).toContain('Code</span>')
+    expect(html).toContain('Quote</span>')
+    expect(html).not.toContain('href="javascript:')
+  }
+})
+
 test('standalone Markdown paths and links render document cards with formatted content in chat', async () => {
   const { FileReaderLinkProvider, UserMessageMarkdown, MessageMarkdown } = await import('./MessageMarkdown')
   const { sessionFileQuery } = await import('@/lib/api/sessions')

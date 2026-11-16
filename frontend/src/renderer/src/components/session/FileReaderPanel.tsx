@@ -6,16 +6,15 @@ import { DocumentEditor, DocumentHeader, isEditableDocument } from '@/components
 import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { ApiError } from '@/lib/api/client'
 import { healthQuery, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sessions'
+import { useFileLocation } from '@/lib/hooks/useFileLocation'
 import { useRefetchAfterWork } from '@/lib/hooks/useRefetchAfterWork'
 import type { HealthResponse } from '@/lib/api/types'
 import { markdownDocumentTitle } from '@/lib/markdownDocuments'
 import { FileActions } from '@/components/session/FileActions'
 import { Button } from '@/components/ui/Button'
-import { isMarkdownPath, isSpreadsheetPath, parseFileReference, type FileReference } from '@shared/fileReader'
+import { isMarkdownPath, isSpreadsheetPath, resolveFileLink, type FileLocation, type FileReference } from '@shared/fileReader'
 
 const SpreadsheetFileView = lazy(() => import('@/components/session/SpreadsheetFileView'))
-
-const FILE_LINE_SUFFIX = /^(.*?):(\d+)(?::\d+)?$/
 
 export const FileReaderPanel = memo(function FileReaderPanel({
   sessionId,
@@ -50,7 +49,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   }, [filePath])
 
   const submit = () => {
-    const next = parseFileReference(draft) ?? parseDraftReference(draft)
+    const next = resolveFileLink(draft) ?? (draft.trim() ? { path: draft.trim() } : null)
     if (!next) {
       setInputError('Enter a file path.')
       return
@@ -60,7 +59,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   }
 
   if (markdown && file.data && isEditableDocument(file.data)) {
-    return <DocumentEditor key={`${sessionId}:${filePath}`} sessionId={sessionId} path={filePath} file={file.data} active={visible} onOpenFile={onOpenFile} onClose={onClose} />
+    return <DocumentEditor key={`${sessionId}:${filePath}`} sessionId={sessionId} path={filePath} file={file.data} location={fileRef?.location} active={visible} onOpenFile={onOpenFile} onClose={onClose} />
   }
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -99,7 +98,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           <ImageFileView key={`${sessionId}:${filePath}`} url={sessionFileRawUrl(sessionId, filePath)} name={filePath.split(/[\\/]/).at(-1) ?? 'Image'} />
         ) : spreadsheet ? (
           <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading spreadsheet…</p>}>
-            <SpreadsheetFileView key={filePath} sessionId={sessionId} path={filePath} visible={visible} />
+            <SpreadsheetFileView key={`${filePath}:${fileRef?.location?.sheet ?? ''}:${fileRef?.location?.range ?? ''}`} sessionId={sessionId} path={filePath} visible={visible} initialSheet={fileRef?.location?.sheet} initialSelection={fileRef?.location?.range} />
           </Suspense>
         ) : file.isPending ? (
           <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
@@ -122,7 +121,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
             </p>
           )
         ) : pdf ? (
-          <PDFFileView url={sessionFileRawUrl(sessionId, filePath)} />
+          <PDFFileView url={sessionFileRawUrl(sessionId, filePath)} location={fileRef?.location} />
         ) : file.data.binary ? (
           <p className="px-3 py-4 text-[12px] text-ink-3">Binary file — no text preview.</p>
         ) : (
@@ -130,7 +129,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
             sessionId={sessionId}
             path={file.data.path}
             content={file.data.content ?? ''}
-            highlightLine={fileRef?.line}
+            location={fileRef?.location}
             onOpenFile={onOpenFile}
             active={visible}
           />
@@ -144,25 +143,27 @@ function FilePreview({
   sessionId,
   path,
   content,
-  highlightLine,
+  location,
   onOpenFile,
   active,
 }: {
   sessionId: string
   path: string
   content: string
-  highlightLine?: number
+  location?: FileLocation
   onOpenFile: (file: FileReference) => void
   active: boolean
 }) {
+  const [root, setRoot] = useState<HTMLDivElement | null>(null)
+  useFileLocation(root, location, content, active)
   if (isMarkdownPath(path)) {
     return (
       <FileReaderLinkProvider sessionId={sessionId} documentPath={path} onOpen={onOpenFile}>
-        <RenderedMarkdown text={content} className="file-prose" artifactPreview={!active} />
+        <div ref={setRoot}><RenderedMarkdown text={content} className="file-prose" artifactPreview={!active} /></div>
       </FileReaderLinkProvider>
     )
   }
-  return <FileTextView path={path} content={content} highlightLine={highlightLine} />
+  return <div ref={setRoot}><FileTextView path={path} content={content} /></div>
 }
 
 function unsupportedFileReader(error: unknown, health?: HealthResponse): boolean {
@@ -173,11 +174,9 @@ function unsupportedFileReader(error: unknown, health?: HealthResponse): boolean
 function FileTextView({
   path,
   content,
-  highlightLine,
 }: {
   path: string
   content: string
-  highlightLine?: number
 }) {
   const lines = useMemo(() => content.split('\n'), [content])
   const highlighted = useSyntaxHighlightedLines(path, lines)
@@ -187,9 +186,8 @@ function FileTextView({
         <tbody>
           {lines.map((line, index) => {
             const lineNo = index + 1
-            const active = highlightLine === lineNo
             return (
-              <tr key={index} className={active ? 'bg-primary-soft/70' : undefined}>
+              <tr key={index} data-file-line={lineNo}>
                 <td className="w-12 min-w-12 pr-2 text-right align-top text-[11px] text-ink-3 tabular-nums select-none">
                   {lineNo}
                 </td>
@@ -205,10 +203,12 @@ function FileTextView({
   )
 }
 
-function PDFFileView({ url }: { url: string }) {
+function PDFFileView({ url, location }: { url: string; location?: FileLocation }) {
+  const fragment = new URLSearchParams({ toolbar: '0', navpanes: '0' })
+  if (location?.page) fragment.set('page', String(location.page))
   return (
     <iframe
-      src={url}
+      src={url + (fragment.size ? '#' + fragment : '')}
       title="PDF file preview"
       referrerPolicy="no-referrer"
       className="h-full w-full border-0 bg-bg"
@@ -231,12 +231,4 @@ function ImageFileView({ url, name }: { url: string; name: string }) {
 
 function isPDFPath(path: string): boolean {
   return path.toLowerCase().replace(/[?#].*$/, '').endsWith('.pdf')
-}
-
-function parseDraftReference(value: string): FileReference | null {
-  let path = value.trim().replace(/[),.;]+$/, '')
-  const lineMatch = FILE_LINE_SUFFIX.exec(path)
-  const line = lineMatch ? Number(lineMatch[2]) : undefined
-  if (lineMatch) path = lineMatch[1]
-  return path ? { path, line } : null
 }

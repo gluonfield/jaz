@@ -56,7 +56,7 @@ export function remarkMarkdownDocuments({ documentPath }: { documentPath?: strin
       }
       if (child.type === 'text' && !isAbsoluteFilePath(value) && /\s/.test(value.split(/[\\/]/)[0])) return paragraph
       const file = resolveFileLink(value, documentPath)
-      if (!file || file.line || !isMarkdownPath(file.path)) return paragraph
+      if (!file || file.location || !isMarkdownPath(file.path)) return paragraph
       return { type: 'markdownDocument', data: { hName: 'markdown-document', hProperties: { path: file.path, label } } }
     })
   }

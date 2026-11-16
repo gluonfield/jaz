@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import type { EditorView } from '@tiptap/pm/view'
 import { EditorContent, ReactNodeViewRenderer, useEditor } from '@tiptap/react'
 import { FileText, X } from 'lucide-react'
-import { useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { FileReaderLinkProvider, usePreviewLink } from '@/components/session/MessageMarkdown'
 import { SidePanelCloseGuard } from '@/components/session/SidePanelState'
 import { FileActions } from '@/components/session/FileActions'
@@ -15,7 +15,8 @@ import type { SessionFileRead } from '@/lib/api/types'
 import { SAVE_LABEL, useDocumentSave, type DocumentVersion } from '@/lib/hooks/useDocumentSave'
 import { headingAnchors, markdownDocumentTitle } from '@/lib/markdownDocuments'
 import { isPlainClick, markdownLinkTarget } from '@/lib/markdownLinks'
-import type { FileReference } from '@shared/fileReader'
+import { useFileLocation } from '@/lib/hooks/useFileLocation'
+import type { FileLocation, FileReference } from '@shared/fileReader'
 import { documentKit } from './documentKit'
 import { DocumentOutline } from './DocumentOutline'
 import { DocumentToolbar } from './DocumentToolbar'
@@ -50,6 +51,7 @@ export function DocumentEditor({
   sessionId,
   path,
   file,
+  location,
   active,
   onOpenFile,
   onClose,
@@ -57,6 +59,7 @@ export function DocumentEditor({
   sessionId: string
   path: string
   file: EditableDocument
+  location?: FileLocation
   active: boolean
   onOpenFile: (file: FileReference) => void
   onClose: () => void
@@ -126,6 +129,14 @@ export function DocumentEditor({
   useEffect(() => {
     if (editor) follow(editor, versionOf(file))
   }, [editor, follow, file])
+
+  const target = useMemo(() => {
+    if (!editor || !location?.line || location.text) return location
+    const source = (file.content ?? '').split('\n')[location.line - 1] ?? ''
+    const parsed = editor.markdown?.parse(source)
+    return parsed ? { ...location, text: editor.schema.nodeFromJSON(parsed).textContent } : location
+  }, [editor, location, file.content])
+  useFileLocation(editor?.view.dom ?? null, target, file.content ?? '', active)
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">

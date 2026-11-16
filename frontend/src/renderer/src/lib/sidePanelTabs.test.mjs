@@ -6,11 +6,11 @@ const open = (state, tab) => sidePanelTabs(state, { type: 'open', tab })
 
 test('files replace the empty picker, reuse a path, and preserve separate documents', () => {
   let state = open(empty, { id: 'file', kind: 'file', file: null })
-  state = open(state, { id: 'file:a', kind: 'file', file: { path: '/a.md', line: 1 } })
+  state = open(state, { id: 'file:a', kind: 'file', file: { path: '/a.md', location: { line: 1 } } })
   state = open(state, { id: 'file:b', kind: 'file', file: { path: '/b.md' } })
-  state = open(state, { id: 'file:a', kind: 'file', file: { path: '/a.md', line: 42 } })
+  state = open(state, { id: 'file:a', kind: 'file', file: { path: '/a.md', location: { line: 42 } } })
   expect(state.tabs).toHaveLength(2)
-  expect(state.tabs[0].file.line).toBe(42)
+  expect(state.tabs[0].file.location.line).toBe(42)
   expect(state.tabs[1].file.path).toBe('/b.md')
   expect(state.activeId).toBe('file:a')
 })
@@ -39,7 +39,7 @@ test('closing an inactive tab keeps selection and stale actions cannot select a 
 })
 
 test('reordering retains selection, file locations, and hidden tabs', () => {
-  let state = open(empty, { id: 'file', kind: 'file', file: { path: '/notes.md', line: 12 } })
+  let state = open(empty, { id: 'file', kind: 'file', file: { path: '/notes.md', location: { line: 12 } } })
   state = open(state, { id: 'side-chat', kind: 'side-chat' })
   state = open(state, { id: 'browser', kind: 'preview' })
   const reordered = sidePanelTabs(state, { type: 'reorder', ids: ['browser', 'file'] })
