@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { FileText, LoaderCircle } from 'lucide-react'
+import { FileText, LoaderCircle, X } from 'lucide-react'
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/session/HighlightedCode'
 import { DocumentEditor, DocumentHeader, isEditableDocument } from '@/components/document/DocumentEditor'
@@ -12,6 +12,7 @@ import type { HealthResponse } from '@/lib/api/types'
 import { markdownDocumentTitle } from '@/lib/markdownDocuments'
 import { FileActions } from '@/components/session/FileActions'
 import { Button } from '@/components/ui/Button'
+import { IconButton } from '@/components/ui/IconButton'
 import { isMarkdownPath, isSpreadsheetPath, resolveFileLink, type FileLocation, type FileReference } from '@shared/fileReader'
 
 const SpreadsheetFileView = lazy(() => import('@/components/session/SpreadsheetFileView'))
@@ -74,7 +75,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           event.preventDefault()
           submit()
         }}
-        className="@container/file flex h-11 shrink-0 items-center gap-2 border-b border-border px-3"
+        className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3"
       >
         <FileText size={15} className="shrink-0 text-ink-3" aria-hidden />
         <input
@@ -85,6 +86,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
         />
         {filePath ? <FileActions sessionId={sessionId} path={filePath} /> : null}
+        <IconButton size="sm" aria-label="Close file" onClick={onClose}><X size={16} /></IconButton>
       </form>}
       {inputError ? (
         <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">

@@ -202,11 +202,6 @@ export async function exerciseMarkdownDocuments() {
     await type('notes.md')
     await window.smoke.key('Enter')
     await until(() => stored.content.includes('[Use](notes.md) the available'))
-    await click(reader.querySelector('[aria-label="Outline"]'))
-    await until(() => Boolean(row('Next steps-1')))
-    await click(row('Next steps-1'))
-    const last = [...reader.querySelectorAll('h2')].at(-1)!
-    await until(() => !row('Next steps-1') && Math.abs(last.getBoundingClientRect().top - reader.querySelector('.scrollbar-quiet')!.getBoundingClientRect().top) < 48)
     await typeAfterPresses('')
     await window.smoke.key('Enter')
     await type('``` ')
@@ -246,6 +241,19 @@ export async function exerciseMarkdownDocuments() {
       await until(() => Boolean(host.querySelector('[data-document-reader] h1')))
       const reader = host.querySelector<HTMLElement>('[data-document-reader]')!
       const scroll = reader.querySelector<HTMLElement>('.scrollbar-quiet')!
+      if (reader.querySelector('[aria-label="Outline"]')) throw new Error('The reader still has a table-of-contents control')
+      const actions = reader.querySelector<HTMLButtonElement>('[aria-label="File actions"]')!
+      const close = reader.querySelector('[aria-label="Close document"]')!
+      const gap = close.getBoundingClientRect().left - actions.getBoundingClientRect().right
+      if (gap < 0 || gap > 10) throw new Error('The file menu is not beside Close')
+      await click(actions)
+      await until(() => Boolean(document.querySelector('[role="menu"][aria-label="File actions"]')))
+      const menu = document.querySelector('[role="menu"][aria-label="File actions"]')!
+      if (menu.textContent !== 'Open folderDownload file') throw new Error('The file menu lost its actions')
+      await new Promise((resolve) => setTimeout(resolve, 180))
+      await window.smoke.capture(width === 1200 ? 'compact-document-menu-desktop' : 'compact-document-menu-phone')
+      await window.smoke.key('Escape')
+      await until(() => !document.querySelector('[role="menu"][aria-label="File actions"]'))
       const url = location.href
       const queries = client.getQueryCache().getAll().length
       const opened = opens

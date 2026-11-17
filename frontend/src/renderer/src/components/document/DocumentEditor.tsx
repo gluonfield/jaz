@@ -18,7 +18,6 @@ import { isPlainClick, markdownLinkTarget } from '@/lib/markdownLinks'
 import { useFileLocation } from '@/lib/hooks/useFileLocation'
 import type { FileLocation, FileReference } from '@shared/fileReader'
 import { documentKit } from './documentKit'
-import { DocumentOutline } from './DocumentOutline'
 import { DocumentToolbar } from './DocumentToolbar'
 import { SelectionMenu } from './SelectionMenu'
 import { SlashMenu } from './SlashMenu'
@@ -36,7 +35,7 @@ const versionOf = (file: EditableDocument): DocumentVersion => ({ content: file.
 
 export function DocumentHeader({ title, onClose, children }: { title: string; onClose: () => void; children?: ReactNode }) {
   return (
-    <header className="@container/file flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+    <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
       <FileText size={15} className="shrink-0 text-ink-3" aria-hidden />
       <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{title}</p>
       {children}
@@ -143,7 +142,6 @@ export function DocumentEditor({
       <DocumentHeader title={markdownDocumentTitle(file.content ?? '', path)} onClose={() => void close()}>
         <span role="status" className={`shrink-0 text-[12px] ${state === 'saving' ? 'text-ink-3' : 'text-danger'}`}>{SAVE_LABEL[state]}</span>
         {state === 'failed' ? <Button size="sm" variant="ghost" onClick={() => void save()}>Retry</Button> : null}
-        {editor ? <DocumentOutline editor={editor} /> : null}
         <FileActions sessionId={sessionId} path={file.path} beforeDownload={async () => !(await unsaved())} />
       </DocumentHeader>
       {state === 'conflict' ? (

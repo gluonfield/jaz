@@ -5,7 +5,7 @@ import { FileReaderLinkProvider, MessageMarkdown } from '@/components/session/Me
 import { apiBaseUrl, setApiBaseUrl } from '@/lib/api/client'
 import { FileReaderPanel } from '@/components/session/FileReaderPanel'
 import type { FileReference } from '@shared/fileReader'
-import { LOCAL_BACKEND_TRANSPORT_URL } from '@shared/localBackend'
+import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
 export async function exerciseImages() {
   const remoteURL = new URL('/remote-chart.svg', location.origin)
@@ -16,7 +16,7 @@ export async function exerciseImages() {
   const root = createRoot(host)
   const client = new QueryClient()
   const previousBackend = apiBaseUrl()
-  setApiBaseUrl(await window.smoke.backend())
+  setApiBaseUrl(LOCAL_BACKEND_URL)
   function View({ count, suffix }: { count: number; suffix: string }) {
     const [file, setFile] = useState<FileReference | null>(null)
     return <FileReaderLinkProvider sessionId="tabs" onOpen={setFile}>
@@ -80,16 +80,21 @@ export async function exerciseImages() {
       const reader = host.querySelector<HTMLElement>('[data-image-reader]')!
       const image = reader.querySelector('img')!.getBoundingClientRect()
       if (image.height > reader.clientHeight || image.width > reader.clientWidth || reader.textContent?.includes('Binary file')) throw new Error('Image file did not fit its side tab')
-      const folder = reader.querySelector<HTMLButtonElement>('[aria-label="Open folder"]')!
-      if (!folder.disabled || !folder.title.includes('this machine')) throw new Error('A browser without native file access offers Open folder')
+      reader.querySelector<HTMLButtonElement>('[aria-label="File actions"]')!.click()
+      await until(() => Boolean(document.querySelector('[role="menu"][aria-label="File actions"]')))
+      const menu = document.querySelector('[role="menu"][aria-label="File actions"]')!
+      const folder = [...menu.querySelectorAll<HTMLButtonElement>('button')].find((node) => node.textContent === 'Open folder')!
+      if (!folder.disabled || !folder.parentElement?.title.includes('this machine')) throw new Error('A browser without native file access offers Open folder')
       if (label === 'PNG file') {
+        await new Promise((resolve) => setTimeout(resolve, 180))
         await window.smoke.capture('image-file-tab')
-        const download = reader.querySelector<HTMLAnchorElement>('[aria-label="Download file"]')!
-        const url = new URL(download.href)
-        download.href = LOCAL_BACKEND_TRANSPORT_URL + url.pathname + url.search
+        const download = [...menu.querySelectorAll<HTMLButtonElement>('button')].find((node) => node.textContent === 'Download file')!
         download.click()
         if (await window.smoke.fileDownload() !== 'icon-1024.png') throw new Error('Download did not retain the image filename and contents')
+      } else {
+        reader.querySelector<HTMLButtonElement>('[aria-label="File actions"]')!.click()
       }
+      await until(() => !document.querySelector('[role="menu"][aria-label="File actions"]'))
     }
     const generated = [...host.querySelectorAll<HTMLElement>('[role="link"]')].find((node) => node.textContent === 'Generated image')!
     generated.click()

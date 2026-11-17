@@ -144,7 +144,7 @@ function Fixture() {
         progress('Mermaid rendering, math, streaming, themes and source fallback')
         await exerciseMermaid()
         if (suite === 'markdown-documents') {
-          window.smoke.result({ ok: true, checks: ['document cards and title-only reader; scoped authored contents links, duplicate and Unicode headings, stable thread URL; typing saves the edited line over the version read, agent writes show, a refused save asks, source blocks edit as Markdown, tables edit in cells, the slash menu, toolbar, selection menu and outline act, pictures and pasted Markdown land; X closes reader and preserves chat; desktop and phone'] })
+          window.smoke.result({ ok: true, checks: ['document cards and title-only reader; scoped authored contents links, duplicate and Unicode headings, stable thread URL; typing saves the edited line over the version read, agent writes show, a refused save asks, source blocks edit as Markdown, tables edit in cells, the slash menu, toolbar and selection menu act, pictures and pasted Markdown land; compact file menu sits beside X; X closes reader and preserves chat; desktop and phone'] })
           return
         }
       }

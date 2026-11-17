@@ -5,11 +5,13 @@ import { browserDownloads } from '@preload/browserDownloads'
 import { BROWSER_COMMAND_CHANNEL } from '@shared/browserControl'
 import { BROWSER_CLOSE_SHORTCUT_CHANNEL } from '@shared/browserCloseShortcut'
 import { BROWSER_PROFILE_CHANNELS, type BrowserProfileAPI } from '@shared/browserProfile'
+import { LOCAL_BACKEND_TRANSPORT_URL } from '@shared/localBackend'
 
 contextBridge.exposeInMainWorld('jaz', {
   claudeVoice,
   browserPasswords,
   browserDownloads,
+  localBackendTransport: LOCAL_BACKEND_TRANSPORT_URL,
   browserProfiles: {
     list: () => ipcRenderer.invoke(BROWSER_PROFILE_CHANNELS.list),
     import: (id, selection) => ipcRenderer.invoke(BROWSER_PROFILE_CHANNELS.import, id, selection),
