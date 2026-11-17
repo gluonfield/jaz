@@ -73,11 +73,12 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 		})
 		return err
 	}
+	defer m.inputLocks.Lock("permission:" + req.RequestID)()
 	m.permissionMu.Lock()
 	pending := m.pendingPermission[req.RequestID]
-	if pending == nil {
+	if pending == nil || pending.answer == nil {
 		m.permissionMu.Unlock()
-		return fmt.Errorf("pending permission request not found: %s", req.RequestID)
+		return m.answerSavedQuestion(ctx, req)
 	}
 	job := m.jobByID(pending.sessionID)
 	if job == nil {

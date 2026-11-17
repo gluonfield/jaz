@@ -166,7 +166,7 @@ func TestManagerSteerInternalLeavesAPendingQuestionToTheUser(t *testing.T) {
 	}
 }
 
-func TestManagerSteerCancelsPendingQuestion(t *testing.T) {
+func TestManagerSteerDetachesPendingQuestion(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -200,6 +200,9 @@ func TestManagerSteerCancelsPendingQuestion(t *testing.T) {
 	}
 	if job.State != acp.StateIdle || job.Assistant != "hello from fake agent" {
 		t.Fatalf("steered job state=%s stop=%q assistant=%q error=%q", job.State, job.StopReason, job.Assistant, job.Error)
+	}
+	if !manager.AwaitsAnswer(spawned.SessionID) {
+		t.Fatal("new input dismissed an unanswered question")
 	}
 	messages, err := store.LoadMessages(spawned.SessionID)
 	if err != nil {

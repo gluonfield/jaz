@@ -12,10 +12,11 @@ import (
 // both validateBlocks and this table.
 func TestMarshalBlocksAcceptsEveryKnownBlockType(t *testing.T) {
 	blocks := map[string]storage.Block{
-		storage.BlockTypeText:         {Type: storage.BlockTypeText, Text: "hi"},
-		storage.BlockTypeReasoning:    {Type: storage.BlockTypeReasoning, Text: "thinking"},
-		storage.BlockTypeQuote:        {Type: storage.BlockTypeQuote, Text: "selected"},
-		storage.BlockTypeVoiceContext: {Type: storage.BlockTypeVoiceContext, ID: "call", RequestID: "handoff"},
+		storage.BlockTypeText:           {Type: storage.BlockTypeText, Text: "hi"},
+		storage.BlockTypeReasoning:      {Type: storage.BlockTypeReasoning, Text: "thinking"},
+		storage.BlockTypeQuote:          {Type: storage.BlockTypeQuote, Text: "selected"},
+		storage.BlockTypeVoiceContext:   {Type: storage.BlockTypeVoiceContext, ID: "call", RequestID: "handoff"},
+		storage.BlockTypeQuestionAnswer: {Type: storage.BlockTypeQuestionAnswer, RequestID: "question"},
 		storage.BlockTypeBrowserAnnotation: {
 			Type:      storage.BlockTypeBrowserAnnotation,
 			InputJSON: `{"url":"http://127.0.0.1:3000","target":"headline","comment":"tighten copy"}`,

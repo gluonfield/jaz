@@ -173,14 +173,15 @@ type SpawnRequest struct {
 }
 
 type SendRequest struct {
-	Session       string
-	Message       string
-	Contexts      []storage.MessageContext
-	Attachments   []storage.Attachment
-	Completion    CompletionMode
-	PlanRequested bool
-	GoalRequested bool
-	ParentVisible bool
+	questionAnswer string
+	Session        string
+	Message        string
+	Contexts       []storage.MessageContext
+	Attachments    []storage.Attachment
+	Completion     CompletionMode
+	PlanRequested  bool
+	GoalRequested  bool
+	ParentVisible  bool
 	// FromUser is set only at a human input boundary.
 	FromUser bool
 	// From is the thread whose agent sent Message, when known.

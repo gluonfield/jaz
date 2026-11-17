@@ -51,6 +51,7 @@ const (
 const (
 	BlockTypeText              = "text"
 	BlockTypeVoiceContext      = "voice_context"
+	BlockTypeQuestionAnswer    = "question_answer"
 	BlockTypeReasoning         = "reasoning"
 	BlockTypeTool              = "tool"
 	BlockTypeAttachment        = "attachment"

@@ -239,6 +239,9 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	var messages []storage.Message
 	if opts.transcript == sendTranscriptUserMessage {
 		message := storage.UserMessageRecord(req.Message, contexts, req.Attachments)
+		if req.questionAnswer != "" {
+			message.Blocks = append(message.Blocks, inputReceipt(req))
+		}
 		message.FromUser = req.FromUser
 		messages = append(messages, message)
 	}
@@ -345,7 +348,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	}
 	var handoff <-chan struct{}
 	if req.transcript == sendTranscriptUserMessage {
-		handoff = m.cancelPendingPermissionsForSteer(job, slot.done)
+		handoff = m.cancelPendingPermissionsForSteer(job, slot.done, req.questionAnswer)
 		m.touchJobAttention(job)
 	} else {
 		handoff = job.currentPromptHandoff(slot.done)
@@ -400,6 +403,9 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 	var messages []storage.Message
 	if req.transcript == sendTranscriptUserMessage {
 		message := storage.UserMessageRecord(req.Message, contexts, req.Attachments)
+		if req.questionAnswer != "" {
+			message.Blocks = append(message.Blocks, inputReceipt(req))
+		}
 		message.FromUser = req.FromUser
 		messages = append(messages, message)
 	}
