@@ -46,7 +46,6 @@ func (m *Manager) awaitPermissionAnswer(ctx context.Context, job *jobState, perm
 		sessionID: job.ID, request: permission, prepareAnswers: prepare,
 		answer: make(chan permissionAnswer, 1), published: make(chan struct{}),
 	}
-	answer := pending.answer
 	m.permissionMu.Lock()
 	if ctx.Err() != nil || job.hasQueuedPromptSuccessor() {
 		m.permissionMu.Unlock()
@@ -59,17 +58,18 @@ func (m *Manager) awaitPermissionAnswer(ctx context.Context, job *jobState, perm
 	close(pending.published)
 
 	select {
-	case answer := <-answer:
+	case answer := <-pending.answer:
 		return answer
 	case <-ctx.Done():
 		m.permissionMu.Lock()
 		if m.pendingPermission[permission.ID] == nil {
 			m.permissionMu.Unlock()
-			return <-answer
+			return <-pending.answer
 		}
 		if len(permission.Questions) > 0 {
-			pending.answer = nil
+			delete(m.pendingPermission, permission.ID)
 			m.permissionMu.Unlock()
+			m.removeJobPermission(job, permission.ID)
 			return permissionAnswer{}
 		}
 		delete(m.pendingPermission, permission.ID)
@@ -97,12 +97,12 @@ func (m *Manager) AwaitsAnswer(sessionID string) bool {
 			return true
 		}
 	}
-	events, err := m.store.LoadSessionEvents(sessionID)
+	open, err := m.store.HasOpenQuestion(sessionID)
 	if err != nil {
 		m.log.Error("read pending questions", "session", sessionID, "error", err)
 		return false
 	}
-	return slices.ContainsFunc(sessionevents.Questions(events), sessionevents.QuestionOpen)
+	return open
 }
 
 func (m *Manager) cancelPendingPermissions(sessionID, origin string) {
@@ -130,16 +130,8 @@ func (m *Manager) takePendingPermissionsLocked(sessionID, answering string) []*p
 	pending := make([]*pendingPermission, 0)
 	for id, candidate := range m.pendingPermission {
 		if candidate.sessionID == sessionID && id != answering {
-			if len(candidate.request.Questions) > 0 {
-				if candidate.answer != nil {
-					detached := *candidate
-					pending = append(pending, &detached)
-					candidate.answer = nil
-				}
-			} else {
-				pending = append(pending, candidate)
-				delete(m.pendingPermission, id)
-			}
+			pending = append(pending, candidate)
+			delete(m.pendingPermission, id)
 		}
 	}
 	return pending
@@ -149,6 +141,9 @@ func (m *Manager) cancelPendingPermissionList(pending []*pendingPermission, orig
 	for _, candidate := range pending {
 		<-candidate.published
 		if len(candidate.request.Questions) > 0 {
+			if job := m.jobByID(candidate.sessionID); job != nil {
+				m.removeJobPermission(job, candidate.request.ID)
+			}
 			candidate.answer <- permissionAnswer{}
 			continue
 		}
@@ -163,4 +158,15 @@ func (m *Manager) cancelPendingPermissionList(pending []*pendingPermission, orig
 			candidate.answer <- permissionAnswer{}
 		}
 	}
+}
+
+func (m *Manager) hasLivePermissionWaiter(sessionID string) bool {
+	m.permissionMu.Lock()
+	defer m.permissionMu.Unlock()
+	for _, pending := range m.pendingPermission {
+		if pending.sessionID == sessionID {
+			return true
+		}
+	}
+	return false
 }

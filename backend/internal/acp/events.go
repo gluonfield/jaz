@@ -76,7 +76,7 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 	defer m.inputLocks.Lock("permission:" + req.RequestID)()
 	m.permissionMu.Lock()
 	pending := m.pendingPermission[req.RequestID]
-	if pending == nil || pending.answer == nil {
+	if pending == nil {
 		m.permissionMu.Unlock()
 		return m.answerSavedQuestion(ctx, req)
 	}

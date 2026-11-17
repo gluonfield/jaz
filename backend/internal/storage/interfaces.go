@@ -71,7 +71,13 @@ type SessionEventAppender interface {
 	AppendSessionEvents(id string, events ...sessionevents.Event) error
 }
 
+type SessionQuestionReader interface {
+	HasOpenQuestion(id string) (bool, error)
+	LoadSessionQuestionEvents(id string) ([]sessionevents.Event, error)
+}
+
 type SessionEventStore interface {
+	SessionQuestionReader
 	SessionEventReader
 	SessionEventAppender
 	LoadSessionOverviewEvents(id string) ([]sessionevents.Event, error)

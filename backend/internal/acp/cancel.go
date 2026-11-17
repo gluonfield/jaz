@@ -28,6 +28,11 @@ func (m *Manager) cancel(ctx context.Context, ref, origin string) (Job, error) {
 	if err != nil {
 		return m.cancelStored(ref, origin)
 	}
+	if origin == "user_stop" {
+		if err := m.cancelQuestions(job.ID, origin); err != nil {
+			return Job{}, err
+		}
+	}
 	event := EventFromJob(job.Snapshot())
 	event.Origin = origin
 	m.publishOrderedACPEvents(job.eventView(), sessionevents.Event{
@@ -89,6 +94,11 @@ func (m *Manager) cancelStored(ref, origin string) (Job, error) {
 	session, err := m.store.LoadSession(ref)
 	if err != nil {
 		return Job{}, fmt.Errorf("session not found: %s", ref)
+	}
+	if origin == "user_stop" {
+		if err := m.cancelQuestions(session.ID, origin); err != nil {
+			return Job{}, err
+		}
 	}
 	m.log.Info("cancel for inactive session", "session", session.ID)
 	now := time.Now().UTC()

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/goal"
@@ -223,4 +224,39 @@ func appendSessionEventsJSONL(path string, events []sessionevents.Event) error {
 		}
 	}
 	return nil
+}
+
+func (s *Store) HasOpenQuestion(id string) (bool, error) {
+	events, err := s.LoadSessionQuestionEvents(id)
+	return slices.ContainsFunc(sessionevents.Questions(events), sessionevents.QuestionOpen), err
+}
+
+func (s *Store) LoadSessionQuestionEvents(id string) ([]sessionevents.Event, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	file, err := os.Open(filepath.Join(s.sessionDir(id), "events.jsonl"))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	decoder := stdjson.NewDecoder(file)
+	events := []sessionevents.Event{}
+	for {
+		var event struct {
+			Type       string                       `json:"type"`
+			Seq        int64                        `json:"seq"`
+			Permission *sessionevents.ACPPermission `json:"permission"`
+		}
+		if err := decoder.Decode(&event); err == io.EOF {
+			return events, nil
+		} else if err != nil {
+			return nil, err
+		}
+		if event.Type == "permission_request" || event.Type == "permission_response" {
+			events = append(events, sessionevents.Event{SessionID: id, Type: event.Type, Seq: event.Seq, Permission: event.Permission})
+		}
+	}
 }

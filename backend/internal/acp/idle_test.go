@@ -389,3 +389,43 @@ func waitProcessGone(ctx context.Context, t *testing.T, pid int) {
 		pause(ctx, t)
 	}
 }
+
+func TestDetachedQuestionDoesNotPinIdleProcess(t *testing.T) {
+	starts := filepath.Join(t.TempDir(), "starts")
+	manager := idleManager(t, acp.AgentCodex, map[string]string{"JAZ_FAKE_ACP_START_LOG": starts, "JAZ_FAKE_ACP_RESUME": "1"}, "", "")
+	ctx, id := startIdleThread(t, manager, acp.AgentCodex)
+	pid := startedPIDs(t, starts)[0]
+	events := manager.Events.Subscribe(ctx, id)
+	call, cancel := context.WithCancel(ctx)
+	done := make(chan acp.AskUserOutput, 1)
+	go func() {
+		out, _ := manager.AskUser(call, id, acp.AskUserInput{Questions: []acp.UserQuestion{{ID: "q", Question: "Choose one"}}})
+		done <- out
+	}()
+	select {
+	case <-events:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	stopIdleProcesses(t, manager, acp.IdleTimeouts{Thread: 20 * time.Millisecond})
+	time.Sleep(100 * time.Millisecond)
+	if !processRunning(pid) {
+		t.Fatal("live question waiter lost its process")
+	}
+	cancel()
+	<-done
+	waitProcessGone(ctx, t, pid)
+	if !manager.AwaitsAnswer(id) {
+		t.Fatal("idle retirement cancelled the durable question")
+	}
+	removed := false
+	if err := manager.WithStoppedSessions([]string{id}, func() error { removed = true; return nil }); err != nil || removed {
+		t.Fatalf("question worktree was released: removed=%v, %v", removed, err)
+	}
+	if _, err := manager.Stop(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if manager.AwaitsAnswer(id) {
+		t.Fatal("explicit stop kept the detached question open")
+	}
+}

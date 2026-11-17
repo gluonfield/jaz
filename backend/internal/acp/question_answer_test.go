@@ -3,6 +3,7 @@ package acp_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -116,5 +117,73 @@ func TestQuestionAnswerSurvivesStartupAndAdmissionRetry(t *testing.T) {
 	questions := sessionevents.Questions(saved)
 	if len(questions) != 1 || sessionevents.QuestionOpen(questions[0]) || questions[0].Answers["choice"][0] != "Phased" {
 		t.Fatalf("saved answer = %+v", questions)
+	}
+}
+
+func TestExplicitUserActionsCancelLiveAndRestoredQuestions(t *testing.T) {
+	for _, action := range []string{"user_input", "user_stop"} {
+		for _, restored := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/restored=%v", action, restored), func(t *testing.T) {
+				store, root := newTestStore(t)
+				ctx := testContext(t)
+				jaz := startJaz(t, ctx, store, root, map[string]string{})
+				thread, err := jaz.manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentCodex, Slug: "question-cancel", Directory: root})
+				if err != nil {
+					t.Fatal(err)
+				}
+				jaz.release()
+				if _, err := jaz.manager.Send(ctx, acp.SendRequest{Session: thread.SessionID, Message: "Initial topic", FromUser: true}); err != nil {
+					t.Fatal(err)
+				}
+				jaz.idle(thread.SessionID)
+				events := jaz.events.Subscribe(ctx, thread.SessionID)
+				call, cancel := context.WithCancel(ctx)
+				defer cancel()
+				done := make(chan acp.AskUserOutput, 1)
+				go func() {
+					out, _ := jaz.manager.AskUser(call, thread.SessionID, acp.AskUserInput{Questions: []acp.UserQuestion{{ID: "q", Question: "Choose one"}}})
+					done <- out
+				}()
+				select {
+				case <-events:
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				}
+				if restored {
+					cancel()
+					<-done
+					jaz = jaz.restart(nil)
+				}
+				if action == "user_stop" {
+					_, err = jaz.manager.Stop(ctx, thread.SessionID)
+				} else {
+					_, err = jaz.manager.Input(ctx, acp.SendRequest{Session: thread.SessionID, Message: "Use another approach", FromUser: true})
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !restored {
+					select {
+					case out := <-done:
+						if !out.Cancelled {
+							t.Fatalf("live tool=%+v", out)
+						}
+					case <-ctx.Done():
+						t.Fatal(ctx.Err())
+					}
+				}
+				if jaz.manager.AwaitsAnswer(thread.SessionID) {
+					t.Fatal("superseded question remained open")
+				}
+				saved, err := store.LoadSessionQuestionEvents(thread.SessionID)
+				questions := sessionevents.Questions(saved)
+				if err != nil || len(questions) != 1 || questions[0].Status != "cancelled" || questions[0].Origin != action {
+					t.Fatalf("resolution=%+v, %v", questions, err)
+				}
+				if err := jaz.manager.AnswerInteractive(ctx, acp.InteractiveAnswer{Session: thread.SessionID, RequestID: questions[0].ID, Answers: map[string]acp.InteractiveAnswerValue{"q": {Answers: []string{"Old choice"}}}}); err == nil {
+					t.Fatal("accepted the superseded card answer")
+				}
+			})
+		}
 	}
 }

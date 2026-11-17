@@ -41,7 +41,7 @@ func TestVoiceCancellationOriginSurvivesStorageAndClient(t *testing.T) {
 					t.Error(err)
 				}
 				jaz.eventually("the question retaining the cancellation origin", func() bool {
-					return jaz.manager.AwaitsAnswer(bot.ID)
+					return jaz.manager.AwaitsAnswer(bot.ID) == (origin != "user_stop")
 				})
 				events, _ := store.LoadSessionEvents(bot.ID)
 				var seq int64

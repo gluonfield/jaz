@@ -54,7 +54,7 @@ func (m *Manager) stopIdle(now time.Time, timeouts IdleTimeouts, pressure bool) 
 	for _, candidate := range m.quietJobs(quiet) {
 		job, process := candidate.job, candidate.process
 		// Recheck after the slower checks: incoming traffic can change eligibility.
-		if !m.subagentsRunning(job) && !m.AwaitsAnswer(job.ID) && quiet(job, process) && job.retire() {
+		if !m.subagentsRunning(job) && !m.hasLivePermissionWaiter(job.ID) && quiet(job, process) && job.retire() {
 			m.stopRetired(job)
 			// Reclaim one early process per sweep, allowing the OS to recover.
 			pressure = false

@@ -235,6 +235,10 @@ func TestAskUserWaiterEndKeepsQuestionOpen(t *testing.T) {
 			request := <-events
 			if origin == "context" {
 				cancel()
+			} else if origin == "user_input" || origin == "user_stop" {
+				if err := manager.cancelQuestions(session.ID, origin); err != nil {
+					t.Fatal(err)
+				}
 			} else {
 				manager.cancelPendingPermissions(session.ID, origin)
 			}
@@ -251,14 +255,15 @@ func TestAskUserWaiterEndKeepsQuestionOpen(t *testing.T) {
 				t.Fatal(err)
 			}
 			questions := sessionevents.Questions(saved)
-			if len(questions) != 1 || !sessionevents.QuestionOpen(questions[0]) || !manager.AwaitsAnswer(session.ID) {
+			open := origin == "context" || origin == "turn_cleanup"
+			if len(questions) != 1 || sessionevents.QuestionOpen(questions[0]) != open || manager.AwaitsAnswer(session.ID) != open {
 				t.Fatalf("saved questions = %+v", questions)
 			}
 			restarted := NewManager(store, Config{}, nil)
-			if !restarted.AwaitsAnswer(session.ID) {
+			if restarted.AwaitsAnswer(session.ID) != open {
 				t.Fatal("restart changed question state")
 			}
-			if len(saved) != 1 || saved[0].Permission.ID != request.Permission.ID {
+			if saved[0].Permission.ID != request.Permission.ID || (!open && questions[0].Origin != origin) {
 				t.Fatalf("ended waiter resolved the question: %+v", saved)
 			}
 		})
@@ -435,7 +440,7 @@ func TestAskUserPublishesRequestBeforeCancellation(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 	<-cancelled
-	if len(manager.jobByID(session.ID).Permissions) != 1 || !manager.AwaitsAnswer(session.ID) {
+	if len(manager.jobByID(session.ID).Permissions) != 0 || !manager.AwaitsAnswer(session.ID) {
 		t.Fatal("unanswered question disappeared")
 	}
 }

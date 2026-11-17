@@ -91,7 +91,7 @@ func (m *Manager) answerSavedQuestion(ctx context.Context, req InteractiveAnswer
 }
 
 func (m *Manager) savedQuestion(session, id string) (sessionevents.ACPPermission, error) {
-	events, err := m.store.LoadSessionEvents(session)
+	events, err := m.store.LoadSessionQuestionEvents(session)
 	if err != nil {
 		return sessionevents.ACPPermission{}, err
 	}
@@ -101,4 +101,77 @@ func (m *Manager) savedQuestion(session, id string) (sessionevents.ACPPermission
 		}
 	}
 	return sessionevents.ACPPermission{}, fmt.Errorf("question not found in this thread: %s", id)
+}
+
+func (m *Manager) cancelQuestions(session, origin string) error {
+	m.permissionMu.Lock()
+	var publishing []<-chan struct{}
+	for _, pending := range m.pendingPermission {
+		if pending.sessionID == session {
+			publishing = append(publishing, pending.published)
+		}
+	}
+	m.permissionMu.Unlock()
+	for _, ready := range publishing {
+		<-ready
+	}
+	events, err := m.store.LoadSessionQuestionEvents(session)
+	if err != nil {
+		return err
+	}
+	for _, question := range sessionevents.Questions(events) {
+		if !sessionevents.QuestionOpen(question) {
+			continue
+		}
+		if err := m.cancelQuestion(session, question.ID, origin); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Manager) cancelQuestion(session, id, origin string) error {
+	defer m.inputLocks.Lock("permission:" + id)()
+	question, err := m.savedQuestion(session, id)
+	if err == nil && question.SessionID != "" && question.SessionID != session {
+		question, err = m.savedQuestion(question.SessionID, id)
+	}
+	if err != nil || !sessionevents.QuestionOpen(question) {
+		return err
+	}
+	owner := question.SessionID
+	if owner == "" {
+		owner = session
+	}
+	question.Status = "cancelled"
+	question.Origin = origin
+	ids := []string{owner}
+	job := m.jobByID(owner)
+	if job != nil {
+		ids = surfaceSessionIDs(job.eventView())
+	} else if owner != session {
+		ids = append(ids, session)
+	}
+	resolved := make([]sessionevents.Event, 0, len(ids))
+	for _, id := range ids {
+		resolved = append(resolved, sessionevents.Event{SessionID: id, Type: "permission_response", Permission: &question})
+	}
+	if err := m.recordAndPublishEventListDirect(resolved); err != nil {
+		return err
+	}
+	m.permissionMu.Lock()
+	pending := m.pendingPermission[id]
+	delete(m.pendingPermission, id)
+	var answer chan permissionAnswer
+	if pending != nil {
+		answer = pending.answer
+	}
+	m.permissionMu.Unlock()
+	if job != nil {
+		m.removeJobPermission(job, id)
+	}
+	if answer != nil {
+		answer <- permissionAnswer{}
+	}
+	return nil
 }

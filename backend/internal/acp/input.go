@@ -22,7 +22,10 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 			return Job{}, err
 		}
 		req.Session = session.ID
-		defer m.inputLocks.Lock(session.ID)()
+		// Card answers already hold the request lock through admission.
+		if req.questionAnswer == "" {
+			defer m.inputLocks.Lock(session.ID)()
+		}
 		reader, ok := m.store.(storage.MessageRecordReader)
 		if !ok {
 			return Job{}, fmt.Errorf("identified input requires durable message records")
