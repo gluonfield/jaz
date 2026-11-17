@@ -16,6 +16,7 @@ type OverviewHandler struct {
 }
 
 type overviewResponse struct {
+	PluginViews []sessionevents.PluginView `json:"plugin_views"`
 	AgentEvents []sessionevents.Event      `json:"agent_events,omitempty"`
 	Threads     []overviewThreadResponse   `json:"threads"`
 	Subagents   []overviewSubagentResponse `json:"subagents"`
@@ -65,9 +66,9 @@ func (h *OverviewHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response := overviewResponse{
-		AgentEvents: view.AgentEvents,
-		Threads:     make([]overviewThreadResponse, 0, len(view.Threads)),
-		Subagents:   make([]overviewSubagentResponse, 0, len(view.Subagents)),
+		AgentEvents: view.AgentEvents, PluginViews: view.PluginViews,
+		Threads:   make([]overviewThreadResponse, 0, len(view.Threads)),
+		Subagents: make([]overviewSubagentResponse, 0, len(view.Subagents)),
 	}
 	for _, thread := range view.Threads {
 		response.Threads = append(response.Threads, overviewThreadResponse{

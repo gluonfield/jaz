@@ -34,6 +34,10 @@ func TestLoadSessionOverviewIgnoresTranscriptWindowAndIncludesArchivedChildren(t
 		providerSubagentEvent("/root/newton", "Newton"),
 		providerSubagentEvent("/root/noether", "Noether"),
 		{Type: sessionevents.TypeAgentSession, AgentSession: &sessionevents.AgentSession{Auth: &sessionevents.AgentAuthIdentity{Kind: "account", Label: "ChatGPT Pro"}}},
+		{Type: "artifact", Artifact: &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Reference: "example/status", Title: "Old", WidgetCode: "<p>old</p>", File: "status.json"}}},
+		{Type: "artifact", Artifact: &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Reference: "example/status", Title: "Current", WidgetCode: "<p>current</p>", File: "status.json"}}},
+		{Type: "artifact", Artifact: &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Reference: "example/summary", Title: "Summary", WidgetCode: "<p>summary</p>", File: "summary.json"}}},
+		{Type: "artifact", Artifact: &sessionevents.PresentationEvent{Kind: sessionevents.PresentationCanvas}},
 		{Type: sessionevents.TypeAgentTask, AgentTask: &sessionevents.AgentTask{ID: "background", State: "running", CanStop: true}},
 	}
 	for i := range 300 {
@@ -46,6 +50,10 @@ func TestLoadSessionOverviewIgnoresTranscriptWindowAndIncludesArchivedChildren(t
 	view, err := store.LoadSessionOverview(t.Context(), parent.Slug)
 	if err != nil {
 		t.Fatal(err)
+	}
+	views := sessionevents.LatestPluginViews(view.PresentationEvents)
+	if len(view.PresentationEvents) != 3 || len(views) != 2 || views[0].Reference != "example/summary" || views[1].Title != "Current" {
+		t.Fatalf("saved plugin views outside transcript window = %+v", views)
 	}
 	if len(view.Threads) != 1 || view.Threads[0].ID != child.ID || !view.Threads[0].Archived {
 		t.Fatalf("threads = %#v", view.Threads)

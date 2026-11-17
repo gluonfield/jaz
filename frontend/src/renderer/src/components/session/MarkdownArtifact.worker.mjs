@@ -14,9 +14,12 @@ mock.module('@/lib/theme', () => ({ useTheme: () => ({ resolved: 'light' }) }))
 mock.module('@/lib/appearance', () => ({ useEffectsEnabled: () => false, useInlineDiffs: () => false, useInlineShellCommands: () => false }))
 mock.module('@/lib/hooks/useArtifactThemeCSS', () => ({ useArtifactThemeCSS: () => ':root{--color-ink:#222}' }))
 globalThis.localStorage = { getItem: () => null }
+const reactDOM = await import('react-dom')
+mock.module('react-dom', () => ({ ...reactDOM, createPortal: (children) => children }))
 const { FileReaderLinkProvider, RenderedMarkdown, MessageMarkdown } = await import('./MessageMarkdown')
 const { FileReaderPanel } = await import('./FileReaderPanel')
 const { sessionFileQuery } = await import('@/lib/api/sessions')
+globalThis.document = { body: null }
 const client = new QueryClient()
 const code = String.raw`<script>
 const pattern = /\(x\)/;

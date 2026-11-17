@@ -732,6 +732,7 @@ export interface ArtifactEvent {
 }
 
 export interface PluginView {
+  reference?: string
   title: string
   widget_code: string
   file: string
@@ -924,6 +925,7 @@ export interface SessionOverviewThread {
 }
 
 export interface SessionOverview {
+  plugin_views?: PluginView[]
   agent_events?: SessionEvent[]
   threads: SessionOverviewThread[]
   subagents: SessionOverviewSubagent[]

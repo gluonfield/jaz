@@ -21,6 +21,7 @@ type Service struct {
 
 type View struct {
 	AgentEvents []sessionevents.Event
+	PluginViews []sessionevents.PluginView
 	Threads     []Thread
 	Subagents   []Subagent
 }
@@ -66,6 +67,7 @@ func (s *Service) Load(ctx context.Context, ref string) (View, error) {
 	}
 	view.Subagents = subagentViews(records.SubagentEvents)
 	view.AgentEvents = sessionevents.CompactTranscript(records.AgentEvents)
+	view.PluginViews = sessionevents.LatestPluginViews(records.PresentationEvents)
 	if active[records.SessionID].ID == "" {
 		for i := range view.AgentEvents {
 			if task := view.AgentEvents[i].AgentTask; task != nil && (task.State == "running" || task.State == "paused") {

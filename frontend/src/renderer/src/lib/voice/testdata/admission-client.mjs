@@ -188,7 +188,7 @@ try {
   assert.equal(inputs[0].contexts[0].request_id, 'reply-turn')
   assert.match(inputs[0].contexts[0].text, /Do you mean Hadrian/)
   assert.match(inputs[0].contexts[0].text, /turn_started_at/)
-  if (scenario !== 'pending') assert.match(inputs[0].contexts[0].text, scenario === 'unknown' ? /unknown/ : /turn_cleanup/)
+  assert.match(inputs[0].contexts[0].text, /"status":"pending"/)
   assert.ok(wire.every((event) => !event.delegation_item_id), 'Transcript admission must have no fabricated delegation route')
   for (const id of ['real-item-1', 'real-item-2']) {
     emit({ type: 'delegation.created', item: { id, target: 'client', user_bidi_turn_id: 'reply-turn', content: [{ type: 'input_text', text }] } })

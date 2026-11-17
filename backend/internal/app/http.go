@@ -17,6 +17,7 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/transcript"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
+	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/voice/live"
 	"go.uber.org/fx"
 )
@@ -47,6 +48,8 @@ func HTTPModule() fx.Option {
 		fx.Annotate(sessionsapi.NewGoalHandler, fx.From(new(*acp.Manager))),
 		canvas.NewService,
 		plugins.New,
+		fx.Annotate(plugins.NewViewService, fx.From(new(*sqlitestore.Store), new(*visualize.Service))),
+		pluginsapi.NewViewHandler,
 		fx.Annotate(pluginsapi.NewHandler, fx.From(new(*sqlitestore.Store), new(*mcpruntime.Manager))),
 		fx.Annotate(canvasapi.NewHandler, fx.From(new(*sqlitestore.Store))),
 		NewRoutes,

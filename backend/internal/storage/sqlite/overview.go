@@ -61,6 +61,17 @@ func (s *Store) LoadSessionOverview(ctx context.Context, ref string) (storage.Se
 			view.AgentEvents = append(view.AgentEvents, event)
 		}
 	}
+	views, err := eventdb.New(tx).ListThreadPluginViews(ctx, parent.ID)
+	if err != nil {
+		return storage.SessionOverview{}, err
+	}
+	for _, row := range views {
+		event := sessionevents.Event{Type: sessionevents.TypeArtifact, Seq: row.Seq, Content: row.Content}
+		event.NormalizePayload()
+		if event.Artifact != nil {
+			view.PresentationEvents = append(view.PresentationEvents, event)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return storage.SessionOverview{}, err
 	}

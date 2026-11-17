@@ -8,10 +8,11 @@ import (
 )
 
 type SessionOverview struct {
-	SessionID      string
-	AgentEvents    []sessionevents.Event
-	Threads        []OverviewThread
-	SubagentEvents []sessionevents.Event
+	SessionID          string
+	PresentationEvents []sessionevents.Event
+	AgentEvents        []sessionevents.Event
+	Threads            []OverviewThread
+	SubagentEvents     []sessionevents.Event
 }
 
 type OverviewThread struct {

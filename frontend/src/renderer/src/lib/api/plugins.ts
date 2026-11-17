@@ -1,6 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch, del, get, post } from '@/lib/api/client'
 import { readAPIResponse } from '@/lib/api/response'
+import type { PluginView } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
 // A plugin is a folder of skills and the views they show, installed on the Jaz server.
@@ -56,4 +57,8 @@ export function installRepository(input: { repository: string; ref?: string }): 
 
 export function updatePlugin(name: string): Promise<Installed> {
   return post<Installed>(`/v1/plugins/${encodeURIComponent(name)}/update`)
+}
+
+export function openPluginView(session: string, input: { reference: string; file: string; name: string; title: string }): Promise<PluginView> {
+  return post<PluginView>(`/v1/sessions/${encodeURIComponent(session)}/plugin-views`, input)
 }

@@ -11,8 +11,9 @@ import { previewDisplayUrl } from '@/lib/api/preview'
 import { openedFile } from '@/lib/mcpAppFiles'
 import { useBrowserSessions, useSessionPreview } from '@/lib/browserSessions'
 import { SidebarVisibility } from '@/lib/sidebar'
+import type { PluginView } from '@/lib/api/types'
 import type { MCPAppThread } from '@/lib/mcpAppThread'
-import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, type NewSidePanelTab, type PanelPresentation, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
+import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, pluginViewTab, type NewSidePanelTab, type PanelPresentation, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
 
 const PANEL_MAX_WIDTH = 1180
 const PANEL_MIN_THREAD_WIDTH = 360
@@ -30,17 +31,20 @@ export function SidePanelStateProvider({ children }: { children: ReactNode }) {
 // A thread's panel starts closed unless its owner opens it with `startOpen`,
 // then keeps its own state while the app runs. The agent's browser activity
 // opens it only while `followBrowser` is set.
-export function useSidePanelState(sessionId: string, { sideChatAvailable = false, canvasAvailable = true, startOpen = false, followBrowser = true }: {
+export function useSidePanelState(sessionId: string, { sideChatAvailable = false, canvasAvailable = true, startOpen = false, followBrowser = true, pluginViews }: {
   sideChatAvailable?: boolean
   canvasAvailable?: boolean
   startOpen?: boolean
   followBrowser?: boolean
+  pluginViews?: PluginView[]
 } = {}) {
   const panels = useContext(PanelStates)
   if (!panels) {
     throw new Error('Side panel state requires SidePanelStateProvider')
   }
   const saved = panels.get(sessionId)
+  const initialPanel = useRef(saved)
+  const restoredViews = useRef(false)
   const setSidebarOpen = useContext(SidebarVisibility)
   const browsers = useBrowserSessions()
   const entrypoints = useQuery(mcpEntrypointsQuery).data
@@ -91,6 +95,13 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     setMode('tabs')
     setOpen(true)
   }, [setSidebarOpen])
+  useEffect(() => {
+    if (!pluginViews || restoredViews.current) return
+    restoredViews.current = true
+    if (!pluginViews.length) return
+    dispatch({ type: 'restore', tabs: pluginViews.map(pluginViewTab) })
+    if (!initialPanel.current) showTabs()
+  }, [pluginViews, showTabs])
   const toggleMode = useCallback((next: SidePanelMode) => {
     if (open && mode === next) {
       setOpen(false)
@@ -170,7 +181,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     if (presentation.kind === 'canvas') {
       if (canvasAvailable) openTab({ id: 'canvas', kind: 'canvas' })
     } else {
-      openTab({ id: `view:${presentation.view.file}`, kind: 'view', view: presentation.view })
+      openTab(pluginViewTab(presentation.view))
     }
   }, [openTab, canvasAvailable])
   const openPreview = useCallback((url: string) => {

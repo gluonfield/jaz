@@ -66,6 +66,12 @@ func (m *Manager) awaitPermissionAnswer(ctx context.Context, job *jobState, perm
 			m.permissionMu.Unlock()
 			return <-pending.answer
 		}
+		if len(permission.Questions) > 0 {
+			delete(m.pendingPermission, permission.ID)
+			m.permissionMu.Unlock()
+			m.removeJobPermission(job, permission.ID)
+			return permissionAnswer{}
+		}
 		delete(m.pendingPermission, permission.ID)
 		m.permissionMu.Unlock()
 		m.removeJobPermission(job, permission.ID)
@@ -78,8 +84,7 @@ func (m *Manager) awaitPermissionAnswer(ctx context.Context, job *jobState, perm
 
 // AwaitsAnswer reports whether a question or plan decision held open right
 // now shows in sessionID's thread, its own or one a child thread surfaces
-// there. Only these wait on the person: ordinary tool permissions are granted
-// as they arrive, and a restart drops what was pending.
+// there. Questions remain open when their original tool or turn ends.
 func (m *Manager) AwaitsAnswer(sessionID string) bool {
 	m.permissionMu.Lock()
 	asking := make([]string, 0, len(m.pendingPermission))
@@ -92,19 +97,24 @@ func (m *Manager) AwaitsAnswer(sessionID string) bool {
 			return true
 		}
 	}
-	return false
+	open, err := m.store.HasOpenQuestion(sessionID)
+	if err != nil {
+		m.log.Error("read pending questions", "session", sessionID, "error", err)
+		return false
+	}
+	return open
 }
 
 func (m *Manager) cancelPendingPermissions(sessionID, origin string) {
 	m.permissionMu.Lock()
-	pending := m.takePendingPermissionsLocked(sessionID)
+	pending := m.takePendingPermissionsLocked(sessionID, "")
 	m.permissionMu.Unlock()
 	m.cancelPendingPermissionList(pending, origin)
 }
 
-func (m *Manager) cancelPendingPermissionsForSteer(job *jobState, done chan struct{}) <-chan struct{} {
+func (m *Manager) cancelPendingPermissionsForSteer(job *jobState, done chan struct{}, answering string) <-chan struct{} {
 	m.permissionMu.Lock()
-	pending := m.takePendingPermissionsLocked(job.ID)
+	pending := m.takePendingPermissionsLocked(job.ID, answering)
 	var handoff <-chan struct{}
 	if len(pending) > 0 {
 		handoff = job.requirePromptHandoff(done)
@@ -116,10 +126,10 @@ func (m *Manager) cancelPendingPermissionsForSteer(job *jobState, done chan stru
 	return handoff
 }
 
-func (m *Manager) takePendingPermissionsLocked(sessionID string) []*pendingPermission {
+func (m *Manager) takePendingPermissionsLocked(sessionID, answering string) []*pendingPermission {
 	pending := make([]*pendingPermission, 0)
 	for id, candidate := range m.pendingPermission {
-		if candidate.sessionID == sessionID {
+		if candidate.sessionID == sessionID && id != answering {
 			pending = append(pending, candidate)
 			delete(m.pendingPermission, id)
 		}
@@ -130,6 +140,13 @@ func (m *Manager) takePendingPermissionsLocked(sessionID string) []*pendingPermi
 func (m *Manager) cancelPendingPermissionList(pending []*pendingPermission, origin string) {
 	for _, candidate := range pending {
 		<-candidate.published
+		if len(candidate.request.Questions) > 0 {
+			if job := m.jobByID(candidate.sessionID); job != nil {
+				m.removeJobPermission(job, candidate.request.ID)
+			}
+			candidate.answer <- permissionAnswer{}
+			continue
+		}
 		cancelled := candidate.request
 		cancelled.Status = "cancelled"
 		cancelled.Origin = origin
@@ -137,6 +154,19 @@ func (m *Manager) cancelPendingPermissionList(pending []*pendingPermission, orig
 			m.removeJobPermission(job, candidate.request.ID)
 			m.publishPermission(job, cancelled, "permission_response")
 		}
-		candidate.answer <- permissionAnswer{}
+		if candidate.answer != nil {
+			candidate.answer <- permissionAnswer{}
+		}
 	}
+}
+
+func (m *Manager) hasLivePermissionWaiter(sessionID string) bool {
+	m.permissionMu.Lock()
+	defer m.permissionMu.Unlock()
+	for _, pending := range m.pendingPermission {
+		if pending.sessionID == sessionID {
+			return true
+		}
+	}
+	return false
 }

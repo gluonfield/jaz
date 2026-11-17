@@ -57,7 +57,7 @@ export function useSessionEvents(
     }
     const stop = openSessionEvents(sessionId, afterSeq, (event: SessionEvent) => {
       onEvent?.(event)
-      overviewChanged ||= ['agent_session', 'agent_task', 'provider_subagent'].includes(event.type)
+      overviewChanged ||= ['agent_session', 'agent_task', 'provider_subagent'].includes(event.type) || event.artifact?.kind === 'plugin-view'
       // 'assistant' events are refresh signals, not transcript items.
       if (event.type === 'assistant') {
         refetchMessages()

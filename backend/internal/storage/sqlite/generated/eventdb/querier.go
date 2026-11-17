@@ -20,6 +20,7 @@ type Querier interface {
 	DeleteSessionEvents(ctx context.Context, arg DeleteSessionEventsParams) error
 	GetSessionEventByCoalesceKey(ctx context.Context, arg GetSessionEventByCoalesceKeyParams) (GetSessionEventByCoalesceKeyRow, error)
 	GetSessionEventCompactionState(ctx context.Context, threadID string) (GetSessionEventCompactionStateRow, error)
+	HasOpenQuestion(ctx context.Context, threadID string) (bool, error)
 	HasPendingSessionEventCompaction(ctx context.Context, runningStatus string) (bool, error)
 	LatestBotRoomMessage(ctx context.Context, arg LatestBotRoomMessageParams) (LatestBotRoomMessageRow, error)
 	LatestSessionEventOfType(ctx context.Context, arg LatestSessionEventOfTypeParams) (LatestSessionEventOfTypeRow, error)
@@ -34,6 +35,8 @@ type Querier interface {
 	ListSessionEventsAfter(ctx context.Context, arg ListSessionEventsAfterParams) ([]ListSessionEventsAfterRow, error)
 	ListSessionEventsAfterTime(ctx context.Context, arg ListSessionEventsAfterTimeParams) ([]ListSessionEventsAfterTimeRow, error)
 	ListSessionPluginViews(ctx context.Context) ([]ListSessionPluginViewsRow, error)
+	ListSessionQuestionEvents(ctx context.Context, threadID string) ([]ListSessionQuestionEventsRow, error)
+	ListThreadPluginViews(ctx context.Context, threadID string) ([]ListThreadPluginViewsRow, error)
 	NextSessionEventCompaction(ctx context.Context, runningStatus string) (string, error)
 	NextSessionEventSeq(ctx context.Context, threadID string) (int64, error)
 	SetSessionEventCoalesceKey(ctx context.Context, arg SetSessionEventCoalesceKeyParams) error

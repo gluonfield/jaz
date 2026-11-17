@@ -29,6 +29,7 @@ export async function exerciseBotStarterHistory(): Promise<void> {
   const earlier = Promise.withResolvers<void>()
   let initialRequested = false
   let earlierRequested = false
+  const answers: { session: string; body: { request_id: string } }[] = []
   const originalFetch = window.fetch
   window.fetch = async (input, init) => {
     const url = new URL(String(input), location.href)
@@ -44,6 +45,10 @@ export async function exerciseBotStarterHistory(): Promise<void> {
     }
     if (url.pathname === `/v1/sessions/${bot.id}/events`) {
       return new Response('', { headers: { 'Content-Type': 'text/event-stream' } })
+    }
+    if (url.pathname.endsWith('/interactive-response')) {
+      answers.push({ session: url.pathname.split('/')[3], body: JSON.parse(String(init?.body)) })
+      return Response.json({ ok: true })
     }
     if (url.pathname.endsWith('/seen')) {
       return Response.json({ ok: true })
@@ -115,6 +120,10 @@ export async function exerciseBotStarterHistory(): Promise<void> {
     await update({ ...fresh, session: { ...fresh.session, status: 'running' }, events: [question], latest_event_seq: 26, acp_permissions: [question.permission!] })
     await until(() => element.textContent?.includes('Which account should I use?') === true)
     noStarters()
+    await update({ ...fresh, events: [question], latest_event_seq: 26, acp_permissions: [], acp_state: 'idle' })
+    flushSync(() => root.render(null))
+    mount()
+    await until(() => element.textContent?.includes('Which account should I use?') === true)
     const answer = element.querySelector<HTMLInputElement>('input[aria-label="Which account should I use?"]')
     const submit = [...element.querySelectorAll('button')].find((button) => button.textContent === 'Submit')
     if (!answer || answer.matches(':disabled') || !submit || submit.disabled) {
@@ -123,6 +132,11 @@ export async function exerciseBotStarterHistory(): Promise<void> {
     await window.smoke.resize(390, 844)
     await new Promise(requestAnimationFrame)
     await window.smoke.capture('bot-starters-real-question-mobile')
+    submit.click()
+    await until(() => element.textContent?.includes('Skipped') === true)
+    if (answers.length !== 1 || answers[0].session !== bot.id || answers[0].body.request_id !== 'scope') {
+      throw new Error('Detached question did not submit once to its owning thread')
+    }
 
     await update(fresh)
     await until(starters)

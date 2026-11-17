@@ -59,3 +59,40 @@ func (q *Queries) ListSessionPluginViews(ctx context.Context) ([]ListSessionPlug
 	}
 	return items, nil
 }
+
+const listThreadPluginViews = `-- name: ListThreadPluginViews :many
+SELECT seq, content
+FROM session_events
+WHERE thread_id = ?1
+  AND type = 'artifact'
+  AND (json_extract(content, '$.kind') = 'plugin-view' OR json_extract(content, '$.file') IS NOT NULL)
+ORDER BY seq
+`
+
+type ListThreadPluginViewsRow struct {
+	Seq     int64  `json:"seq"`
+	Content string `json:"content"`
+}
+
+func (q *Queries) ListThreadPluginViews(ctx context.Context, threadID string) ([]ListThreadPluginViewsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listThreadPluginViews, threadID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListThreadPluginViewsRow{}
+	for rows.Next() {
+		var i ListThreadPluginViewsRow
+		if err := rows.Scan(&i.Seq, &i.Content); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

@@ -62,22 +62,7 @@ func (m *Manager) AskUser(ctx context.Context, sessionID string, input AskUserIn
 		})
 	}
 	prepare := func(answers map[string]InteractiveAnswerValue) (map[string]InteractiveAnswerValue, error) {
-		normalized := make(map[string]InteractiveAnswerValue, len(answers))
-		for id, answer := range answers {
-			values := trimmedAnswers(answer.Answers)
-			multiSelect, known := multiSelectByID[id]
-			if !known {
-				return nil, fmt.Errorf("unknown question: %s", id)
-			}
-			if len(values) == 0 {
-				continue
-			}
-			if !multiSelect && len(values) != 1 {
-				return nil, fmt.Errorf("question %s requires one answer", id)
-			}
-			normalized[id] = InteractiveAnswerValue{Answers: values}
-		}
-		return normalized, nil
+		return questionAnswers(questions, answers)
 	}
 	answer := m.awaitPermissionAnswer(ctx, job, sessionevents.ACPPermission{
 		ID: newPermissionID(), Title: "Questions", Questions: questions, Status: "pending",

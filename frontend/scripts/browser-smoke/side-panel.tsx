@@ -1,3 +1,4 @@
+import { exercisePluginViews } from './plugin-views'
 import { exerciseFrameNavigation } from './links'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet } from '@tanstack/react-router'
@@ -24,6 +25,7 @@ import { setThemePref } from '@/lib/theme'
 import { TitlebarActionsOutlet, TitlebarProvider, TitlebarSlotOutlet } from '@/lib/titlebar'
 
 export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<void> {
+  await exercisePluginViews()
   const fixture = await fetch('/file-fixture').then((response) => response.json()) as { path: string }
   const element = document.createElement('div')
   element.style.cssText = 'position:fixed;inset:0;background:var(--color-bg);z-index:1'

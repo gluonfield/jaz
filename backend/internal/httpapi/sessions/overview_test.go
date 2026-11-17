@@ -29,6 +29,7 @@ func (overviewHandlerLive) HydrationJobs([]string) map[string]acp.HydrationView 
 func TestOverviewHandlerReturnsFlattenedMetadata(t *testing.T) {
 	now := time.Date(2026, 7, 20, 10, 0, 0, 0, time.UTC)
 	store := overviewHandlerStore{view: storage.SessionOverview{
+		PresentationEvents: []sessionevents.Event{{Type: "artifact", Artifact: &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Reference: "example/status", Title: "Progress", File: "status.json", WidgetCode: "<p>Progress</p>"}}}},
 		Threads: []storage.OverviewThread{{
 			ID: "child", Slug: "child", ACPAgent: "codex", Status: storage.StatusIdle,
 			Archived: true, UpdatedAt: now,
@@ -54,6 +55,9 @@ func TestOverviewHandlerReturnsFlattenedMetadata(t *testing.T) {
 	var body overviewResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
+	}
+	if len(body.PluginViews) != 1 || body.PluginViews[0].Reference != "example/status" || body.PluginViews[0].File != "status.json" {
+		t.Fatalf("plugin views = %+v", body.PluginViews)
 	}
 	if len(body.Threads) != 1 || !body.Threads[0].Archived {
 		t.Fatalf("threads = %#v", body.Threads)

@@ -60,6 +60,7 @@ type routeDeps struct {
 	ConnectionQR     *connections.QRService            `optional:"true"`
 	MCP              *mcpruntime.Manager               `optional:"true"`
 	Plugins          *pluginsapi.Handler
+	PluginViews      *pluginsapi.ViewHandler
 	Preview          *previewapi.Handler
 	SessionMessages  *sessionsapi.MessagesHandler
 	SessionOverview  *sessionsapi.OverviewHandler
@@ -81,6 +82,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		{Pattern: "POST /v1/sessions/{session}/agent/input", Handler: http.HandlerFunc(deps.AgentSession.Input)},
 		{Pattern: "GET /v1/sessions/{session}/messages", Handler: deps.SessionMessages},
 		{Pattern: "GET /v1/sessions/{session}/overview", Handler: deps.SessionOverview},
+		{Pattern: "POST /v1/sessions/{session}/plugin-views", Handler: deps.PluginViews},
 		{Pattern: "DELETE /v1/sessions/{session}/goal", Handler: deps.SessionGoal},
 		{Pattern: "GET /v1/sessions/{session}/canvas", Handler: http.HandlerFunc(deps.Canvas.Get)},
 		{Pattern: "PATCH /v1/sessions/{session}/canvas", Handler: http.HandlerFunc(deps.Canvas.Patch)},

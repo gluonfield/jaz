@@ -15,19 +15,20 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 			return Job{}, err
 		}
 	}
-	for _, voice := range storage.NormalizeMessageContexts(req.Contexts) {
-		if voice.Type != storage.ContextTypeVoice || voice.ID == "" || voice.RequestID == "" {
-			continue
-		}
+	receipt := inputReceipt(req)
+	if receipt.Type != "" {
 		session, err := m.store.LoadSession(req.Session)
 		if err != nil {
 			return Job{}, err
 		}
 		req.Session = session.ID
-		defer m.inputLocks.Lock(session.ID)()
+		// Card answers already hold the request lock through admission.
+		if req.questionAnswer == "" {
+			defer m.inputLocks.Lock(session.ID)()
+		}
 		reader, ok := m.store.(storage.MessageRecordReader)
 		if !ok {
-			return Job{}, fmt.Errorf("voice input requires durable message records")
+			return Job{}, fmt.Errorf("identified input requires durable message records")
 		}
 		records, err := reader.LoadMessageRecords(session.ID)
 		if err != nil {
@@ -35,14 +36,13 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 		}
 		for _, record := range records {
 			for _, block := range record.Blocks {
-				if record.Role == "user" && block.Type == storage.BlockTypeVoiceContext && block.ID == voice.ID && block.RequestID == voice.RequestID {
+				if record.Role == "user" && block.Type == receipt.Type && block.ID == receipt.ID && block.RequestID == receipt.RequestID {
 					// Persistence acknowledges admission, even when a crash left
 					// provider dispatch uncertain. A retry must not dispatch again.
 					return m.Status(session.ID)
 				}
 			}
 		}
-		break
 	}
 	if m.ThreadStarted != nil {
 		session, err := m.store.LoadSession(req.Session)
@@ -75,6 +75,18 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 			return job, err
 		}
 	}
+}
+
+func inputReceipt(req SendRequest) storage.Block {
+	if req.questionAnswer != "" {
+		return storage.Block{Type: storage.BlockTypeQuestionAnswer, RequestID: req.questionAnswer}
+	}
+	for _, context := range storage.NormalizeMessageContexts(req.Contexts) {
+		if context.Type == storage.ContextTypeVoice && context.ID != "" && context.RequestID != "" {
+			return storage.Block{Type: storage.BlockTypeVoiceContext, ID: context.ID, RequestID: context.RequestID}
+		}
+	}
+	return storage.Block{}
 }
 
 func (m *Manager) waitPromptSent(ctx context.Context, session string) error {

@@ -88,6 +88,7 @@ export function resolveInactivePermissions(events: SessionEvent[], active: Set<s
     const permission = event.permission
     if (
       event.type !== 'permission_request' ||
+      permission?.questions?.length ||
       !permission?.id ||
       active.has(permission.id) ||
       resolved.has(permission.id) ||

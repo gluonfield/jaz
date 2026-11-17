@@ -32,6 +32,16 @@ const data = (events = [], userAt = 1) => ({
   events,
 })
 
+test('saved questions remain open without a live waiter while ended approvals retire', () => {
+  const question = event(2, 'permission_request', { permission: { id: 'question', status: 'pending', questions: [{ id: 'choice', question: 'Which option?' }] } })
+  const approval = event(3, 'permission_request', { permission: { id: 'approval', status: 'pending', options: [{ id: 'allow', kind: 'allow_once' }] } })
+  const ended = event(4, 'acp', { acp: { id: 'thread', state: 'idle', stop_reason: 'end_turn' } })
+  const view = deriveSessionView({ ...data([question, approval, ended]), acp_state: 'idle' }, [])
+  expect(view.transcriptEvents.filter((event) => event.type === 'permission_response').map((event) => event.permission.id)).toEqual(['approval'])
+  const cancelled = event(5, 'permission_response', { permission: { ...question.permission, status: 'cancelled', origin: 'user_stop' } })
+  expect(deriveSessionView(data([question, cancelled]), []).transcriptEvents.findLast((event) => event.type === 'permission_response').permission.status).toBe('cancelled')
+})
+
 test('voice diagnostics stay out of chat across cached history and live updates', () => {
   const diagnostic = event(2, 'voice_diagnostic', {
     acp: undefined,

@@ -17,8 +17,11 @@ import (
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
+	"github.com/wins/jaz/backend/internal/visualize"
 )
 
 func TestPluginsAreInstalledListedAndRemovedOverHTTP(t *testing.T) {
@@ -129,4 +132,89 @@ type sessionStore []storage.SessionPluginView
 
 func (s sessionStore) ListSessionPluginViews() ([]storage.SessionPluginView, error) {
 	return s, nil
+}
+
+func TestOpenViewKeepsTheSavedCallerPluginFileAndThread(t *testing.T) {
+	root := t.TempDir()
+	layout := runtimefiles.New(root)
+	packages := plugins.New(layout)
+	for _, plugin := range []string{"example", "other"} {
+		dir := filepath.Join(layout.Plugins, plugin, "views")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "quiz.html"), []byte("<p>"+plugin+" quiz</p>"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sessions, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sessions.Close()
+	thread, err := sessions.CreateSession(storage.CreateSession{Slug: "view-owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := sessions.CreateSession(storage.CreateSession{Slug: "other-thread"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bus := sessionevents.New()
+	presenter := &visualize.Service{Store: sessions, Sessions: sessions, Events: bus}
+	caller := sessionevents.PluginView{Reference: "example/status", File: "status.json", Title: "Status", WidgetCode: "<p>Status</p>"}
+	if _, err := presenter.Present(thread.ID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &caller}); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewViewHandler(plugins.NewViewService(sessions, presenter, packages))
+	mux := http.NewServeMux()
+	mux.Handle("POST /v1/sessions/{session}/plugin-views", handler)
+	call := func(session, reference, file, name string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]string{"reference": reference, "file": file, "name": name, "title": "Quiz"})
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session+"/plugin-views", bytes.NewReader(body)))
+		return response
+	}
+	for _, name := range []string{"other/quiz", "../quiz", `other\quiz`, "quiz.html", "/quiz"} {
+		if response := call(thread.ID, caller.Reference, caller.File, name); response.Code != http.StatusBadRequest {
+			t.Fatalf("unsafe view %q = %d: %s", name, response.Code, response.Body)
+		}
+	}
+	for _, response := range []*httptest.ResponseRecorder{
+		call(other.ID, caller.Reference, caller.File, "quiz"),
+		call("missing-thread", caller.Reference, caller.File, "quiz"),
+		call(thread.ID, "other/status", caller.File, "quiz"),
+		call(thread.ID, caller.Reference, "other.json", "quiz"),
+	} {
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("changed caller = %d: %s", response.Code, response.Body)
+		}
+	}
+	events := bus.Subscribe(t.Context(), thread.ID)
+	response := call(thread.ID, caller.Reference, caller.File, "quiz")
+	var target sessionevents.PluginView
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &target) != nil || target.Reference != "example/quiz" || target.File != caller.File || target.WidgetCode != "<p>example quiz</p>" {
+		t.Fatalf("opened view = %d: %s", response.Code, response.Body)
+	}
+	select {
+	case event := <-events:
+		if event.SessionID != thread.ID || event.Artifact.View.Reference != target.Reference {
+			t.Fatalf("presentation = %+v", event)
+		}
+	default:
+		t.Fatal("opened view was not published")
+	}
+	saved, err := sessions.LoadSessionOverview(t.Context(), thread.ID)
+	if err != nil || len(sessionevents.LatestPluginViews(saved.PresentationEvents)) != 2 {
+		t.Fatalf("opened view not discoverable after return: %+v, %v", saved, err)
+	}
+	legacy := caller
+	legacy.Reference = ""
+	legacy.File = "legacy.json"
+	if _, err := presenter.Present(thread.ID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &legacy}); err != nil {
+		t.Fatal(err)
+	}
+	if response := call(thread.ID, "", legacy.File, "quiz"); response.Code != http.StatusBadRequest {
+		t.Fatalf("ownerless view = %d: %s", response.Code, response.Body)
+	}
 }

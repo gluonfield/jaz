@@ -70,3 +70,21 @@ func (p *PresentationEvent) UnmarshalJSON(data []byte) error {
 	}
 	return errors.New("invalid presentation payload")
 }
+
+func LatestPluginViews(events []Event) []PluginView {
+	views := []PluginView{}
+	seen := map[string]bool{}
+	for i := len(events) - 1; i >= 0; i-- {
+		presentation := events[i].Artifact
+		if presentation == nil || presentation.Kind != PresentationPluginView || presentation.View == nil {
+			continue
+		}
+		view := *presentation.View
+		key := view.Reference + "\x00" + view.File
+		if view.File != "" && !seen[key] {
+			views = append(views, view)
+			seen[key] = true
+		}
+	}
+	return views
+}

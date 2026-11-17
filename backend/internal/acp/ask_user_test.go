@@ -220,38 +220,51 @@ func testAskUserMCPRoundTrip(t *testing.T, steered bool, mode string) {
 	}
 }
 
-func TestAskUserCancellationClearsQuestion(t *testing.T) {
-	for _, mode := range []string{"context", "steer"} {
-		t.Run(mode, func(t *testing.T) {
-			manager, _, session, ctx := askUserFixture(t)
-			ctx, cancel := context.WithCancel(ctx)
+func TestAskUserWaiterEndKeepsQuestionOpen(t *testing.T) {
+	for _, origin := range []string{"context", "turn_cleanup", "user_stop", "user_input"} {
+		t.Run(origin, func(t *testing.T) {
+			manager, store, session, ctx := askUserFixture(t)
+			callCtx, cancel := context.WithCancel(ctx)
 			defer cancel()
 			events := manager.Events.Subscribe(ctx, session.ID)
 			done := make(chan AskUserOutput, 1)
 			go func() {
-				out, _ := manager.AskUser(ctx, session.ID, AskUserInput{Questions: []UserQuestion{{ID: "q", Question: "Which approach?"}}})
+				out, _ := manager.AskUser(callCtx, session.ID, AskUserInput{Questions: []UserQuestion{{ID: "q", Question: "Which approach?"}}})
 				done <- out
 			}()
-			select {
-			case <-events:
-			case <-ctx.Done():
-				t.Fatal(ctx.Err())
-			}
-			if mode == "context" {
+			request := <-events
+			if origin == "context" {
 				cancel()
+			} else if origin == "user_input" || origin == "user_stop" {
+				if err := manager.cancelQuestions(session.ID, origin); err != nil {
+					t.Fatal(err)
+				}
 			} else {
-				manager.cancelPendingPermissions(session.ID, "unknown")
+				manager.cancelPendingPermissions(session.ID, origin)
 			}
 			select {
 			case out := <-done:
-				if !out.Cancelled || len(out.Answers) != 0 {
-					t.Fatalf("cancellation = %#v", out)
+				if !out.Cancelled {
+					t.Fatalf("ended waiter = %+v", out)
 				}
-			case <-time.After(time.Second):
-				t.Fatal("cancellation did not release tool")
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
 			}
-			if len(manager.jobByID(session.ID).Permissions) != 0 || len(manager.pendingPermission) != 0 {
-				t.Fatal("cancelled questions remained pending")
+			saved, err := store.LoadSessionEvents(session.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			questions := sessionevents.Questions(saved)
+			open := origin == "context" || origin == "turn_cleanup"
+			if len(questions) != 1 || sessionevents.QuestionOpen(questions[0]) != open || manager.AwaitsAnswer(session.ID) != open {
+				t.Fatalf("saved questions = %+v", questions)
+			}
+			restarted := NewManager(store, Config{}, nil)
+			if restarted.AwaitsAnswer(session.ID) != open {
+				t.Fatal("restart changed question state")
+			}
+			if saved[0].Permission.ID != request.Permission.ID || (!open && questions[0].Origin != origin) {
+				t.Fatalf("ended waiter resolved the question: %+v", saved)
 			}
 		})
 	}
@@ -408,7 +421,7 @@ func TestAskUserPublishesRequestBeforeCancellation(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 	release()
-	for _, want := range []string{"permission_request", "permission_response"} {
+	for _, want := range []string{"permission_request"} {
 		select {
 		case event := <-events:
 			if event.Type != want {
@@ -427,7 +440,7 @@ func TestAskUserPublishesRequestBeforeCancellation(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 	<-cancelled
-	if len(manager.jobByID(session.ID).Permissions) != 0 {
-		t.Fatal("cancelled question remained live")
+	if len(manager.jobByID(session.ID).Permissions) != 0 || !manager.AwaitsAnswer(session.ID) {
+		t.Fatal("unanswered question disappeared")
 	}
 }

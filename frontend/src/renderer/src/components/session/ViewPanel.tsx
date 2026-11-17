@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { use, useCallback, useMemo } from 'react'
+import { use, useCallback, useMemo, useState } from 'react'
 import { ArtifactBlock } from '@/components/session/ArtifactBlock'
+import { openPluginView } from '@/lib/api/plugins'
 import { sessionFileQuery } from '@/lib/api/sessions'
 import { useRefetchAfterWork } from '@/lib/hooks/useRefetchAfterWork'
 import { MCPAppThreadContext } from '@/lib/mcpAppThread'
-import type { PanelView } from '@/lib/sidePanelTabs'
+import type { PanelView, PanelPresentation } from '@/lib/sidePanelTabs'
 import { resolveFileLink, type FileReference } from '@shared/fileReader'
 
 function parse(content?: string): unknown {
@@ -17,15 +18,17 @@ function parse(content?: string): unknown {
 
 // A plugin's view in the side panel draws a JSON file in the thread's folder
 // and follows it while the agent works, as a document does.
-export function ViewPanel({ sessionId, view, visible, working, onOpenFile }: {
+export function ViewPanel({ sessionId, view, visible, working, onOpenFile, onOpenView }: {
   sessionId: string
   view: PanelView
   visible: boolean
   working: boolean
   onOpenFile: (file: FileReference) => boolean
+  onOpenView: (view: PanelPresentation) => void
 }) {
   const thread = use(MCPAppThreadContext)
-  const file = useQuery({ ...sessionFileQuery(sessionId, view.file), enabled: visible, refetchInterval: working ? 2000 : false })
+  const [error, setError] = useState('')
+  const file = useQuery({ ...sessionFileQuery(sessionId, view.file), enabled: visible, staleTime: 0, refetchInterval: working ? 2000 : false })
   useRefetchAfterWork(working, file.refetch)
   const content = file.data?.content
   const data = useMemo(() => parse(content), [content])
@@ -34,12 +37,23 @@ export function ViewPanel({ sessionId, view, visible, working, onOpenFile }: {
     const linked = resolveFileLink(href, path)
     return linked ? onOpenFile(linked) : false
   }, [path, onOpenFile])
+  const openSibling = useCallback(async (name: string, title: string) => {
+    if (!view.reference) return
+    try {
+      const target = await openPluginView(sessionId, { reference: view.reference, file: view.file, name, title })
+      onOpenView({ kind: 'plugin-view', view: target })
+      setError('')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not open view.')
+    }
+  }, [sessionId, view.reference, view.file, onOpenView])
   if (data === undefined) {
     return <p className="px-5 py-6 text-sm text-ink-3">{file.isPending ? 'Loading…' : `Nothing to show yet: ${view.file} is missing or is not JSON.`}</p>
   }
   return (
     <div className="h-full overflow-y-auto">
-      <ArtifactBlock artifact={view} data={data} onSendPrompt={thread?.send} onOpenFile={openFile} />
+      {error ? <p role="alert" className="px-3 py-2 text-sm text-danger">{error}</p> : null}
+      <ArtifactBlock artifact={view} data={data} onSendPrompt={thread?.send} onOpenFile={openFile} onOpenView={view.reference ? openSibling : undefined} />
     </div>
   )
 }
