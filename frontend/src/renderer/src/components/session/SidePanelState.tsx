@@ -11,6 +11,7 @@ import { previewDisplayUrl } from '@/lib/api/preview'
 import { openedFile } from '@/lib/mcpAppFiles'
 import { useBrowserSessions, useSessionPreview } from '@/lib/browserSessions'
 import { SidebarVisibility } from '@/lib/sidebar'
+import type { PluginView } from '@/lib/api/types'
 import type { MCPAppThread } from '@/lib/mcpAppThread'
 import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, type NewSidePanelTab, type PanelPresentation, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
 
@@ -30,17 +31,20 @@ export function SidePanelStateProvider({ children }: { children: ReactNode }) {
 // A thread's panel starts closed unless its owner opens it with `startOpen`,
 // then keeps its own state while the app runs. The agent's browser activity
 // opens it only while `followBrowser` is set.
-export function useSidePanelState(sessionId: string, { sideChatAvailable = false, canvasAvailable = true, startOpen = false, followBrowser = true }: {
+export function useSidePanelState(sessionId: string, { sideChatAvailable = false, canvasAvailable = true, startOpen = false, followBrowser = true, pluginViews }: {
   sideChatAvailable?: boolean
   canvasAvailable?: boolean
   startOpen?: boolean
   followBrowser?: boolean
+  pluginViews?: PluginView[]
 } = {}) {
   const panels = useContext(PanelStates)
   if (!panels) {
     throw new Error('Side panel state requires SidePanelStateProvider')
   }
   const saved = panels.get(sessionId)
+  const initialPanel = useRef(saved)
+  const restoredViews = useRef(false)
   const setSidebarOpen = useContext(SidebarVisibility)
   const browsers = useBrowserSessions()
   const entrypoints = useQuery(mcpEntrypointsQuery).data
@@ -91,6 +95,13 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     setMode('tabs')
     setOpen(true)
   }, [setSidebarOpen])
+  useEffect(() => {
+    if (!pluginViews || restoredViews.current) return
+    restoredViews.current = true
+    if (!pluginViews.length) return
+    dispatch({ type: 'restore', tabs: pluginViews.map((view) => ({ id: `view:${view.file}`, kind: 'view', view })) })
+    if (!initialPanel.current) showTabs()
+  }, [pluginViews, showTabs])
   const toggleMode = useCallback((next: SidePanelMode) => {
     if (open && mode === next) {
       setOpen(false)

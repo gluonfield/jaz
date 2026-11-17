@@ -22,9 +22,17 @@ export type SidePanelTabs = { tabs: SidePanelTab[]; activeId: string | null }
 export type SidePanelTabAction =
   | { type: 'open'; tab: SidePanelTab; after?: string }
   | { type: 'select' | 'close'; id: string }
+  | { type: 'restore'; tabs: SidePanelTab[] }
   | { type: 'reorder'; ids: string[] }
 
 export function sidePanelTabs(state: SidePanelTabs, action: SidePanelTabAction): SidePanelTabs {
+  if (action.type === 'restore') {
+    const replacements = new Map(action.tabs.map((tab) => [tab.id, tab]))
+    return {
+      tabs: [...state.tabs.map((tab) => replacements.get(tab.id) ?? tab), ...action.tabs.filter((tab) => !state.tabs.some((current) => current.id === tab.id))],
+      activeId: state.activeId ?? action.tabs[0]?.id ?? null,
+    }
+  }
   if (action.type === 'reorder') {
     const order = new Map(action.ids.map((id, index) => [id, index]))
     return {

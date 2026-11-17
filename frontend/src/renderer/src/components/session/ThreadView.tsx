@@ -203,14 +203,12 @@ export function ThreadView({
   const canvas = detailSession?.runtime_ref?.artifact_surface === 'canvas'
   // A canvas shows the agent's work on the board, so its browser stays out of
   // sight until the user opens it. Other threads follow it once they are known.
-  const sidePanel = useSidePanelState(sessionId, { sideChatAvailable, canvasAvailable: !canvas, startOpen: openDetails, followBrowser: Boolean(detailSession) && !canvas })
+  const sidePanel = useSidePanelState(sessionId, { sideChatAvailable, canvasAvailable: !canvas, startOpen: openDetails, pluginViews: overview.data?.plugin_views, followBrowser: Boolean(detailSession) && !canvas })
   const { open: panelOpen, mode: panelMode, toggleMode: togglePanel, openView } = sidePanel
   const handleSessionEvent = useCallback((event: SessionEvent) => {
     const at = event.at || new Date().toISOString()
     setLastSessionEventAt((current) => latestEventTimeISO(current, at))
     notifySessionEventError(event)
-    // A side-panel view opens as the agent shows it; one from the thread's
-    // history waits for its row to be clicked.
     if (isPanelPresentation(event.artifact)) openView(event.artifact)
   }, [notifySessionEventError, openView])
   useEffect(() => setLastSessionEventAt(undefined), [sessionId])
@@ -548,6 +546,7 @@ export function ThreadView({
             isMobile={isMobile}
             panel={sidePanel}
             sideChatAvailable={sideChatAvailable}
+            pluginViews={overview.data?.plugin_views}
             header={header}
             overviewLabel={overviewLabel}
           />
