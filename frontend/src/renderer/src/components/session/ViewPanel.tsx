@@ -28,7 +28,7 @@ export function ViewPanel({ sessionId, view, visible, working, onOpenFile, onOpe
 }) {
   const thread = use(MCPAppThreadContext)
   const [error, setError] = useState('')
-  const file = useQuery({ ...sessionFileQuery(sessionId, view.file), enabled: visible, refetchInterval: working ? 2000 : 5000 })
+  const file = useQuery({ ...sessionFileQuery(sessionId, view.file), enabled: visible, staleTime: 0, refetchInterval: working ? 2000 : false })
   useRefetchAfterWork(working, file.refetch)
   const content = file.data?.content
   const data = useMemo(() => parse(content), [content])

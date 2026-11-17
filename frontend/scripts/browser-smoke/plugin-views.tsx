@@ -41,6 +41,10 @@ window.onData(draw);
   const originalFetch = window.fetch
   let replayed = false
   let opened = 0
+  let savedSibling: PluginView | undefined
+  let savedPresentations = 0
+  let fileContent = '{"title":"Saved state"}'
+  let fileReads = 0
   const drawn = new Map<string, string>()
   const observe = (event: MessageEvent) => {
     if ([...element.querySelectorAll('iframe')].some((frame) => frame.contentWindow === event.source) && event.data?.type === 'fixture-render') drawn.set(event.data.title, event.data.value)
@@ -52,13 +56,20 @@ window.onData(draw);
       replayed = url.searchParams.get('after_seq') !== '999'
       return new Response('', { headers: { 'Content-Type': 'text/event-stream' } })
     }
+    if (url.pathname === `/v1/sessions/${id}/file`) {
+      fileReads++
+      return Response.json({ path: '/work/status.json', content: fileContent, size: fileContent.length })
+    }
     if (url.pathname.endsWith('/plugin-views')) {
       const input = JSON.parse(String(init?.body))
       if (url.pathname !== `/v1/sessions/${id}/plugin-views` || !['example/status', 'example/quiz'].includes(input.reference) || input.file !== view.file || input.name !== 'quiz') throw new Error('Bridge changed the caller scope')
       opened++
-      const target = { ...view, reference: 'example/quiz', title: input.title, widget_code: code('Quiz') }
-      client.setQueryData(keys.sessionOverview(id), { threads: [], subagents: [], plugin_views: [target, view] })
-      return Response.json(target)
+      if (!savedSibling) {
+        savedSibling = { ...view, reference: 'example/quiz', title: input.title, widget_code: code('Quiz') }
+        savedPresentations++
+        client.setQueryData(keys.sessionOverview(id), { threads: [], subagents: [], plugin_views: [savedSibling, view] })
+      }
+      return Response.json(savedSibling)
     }
     if (url.pathname.endsWith('/seen')) return Response.json({ ok: true })
     return new Response(null, { status: 503 })
@@ -100,18 +111,40 @@ window.onData(draw);
     await until(() => element.textContent?.includes('Another thread') === true)
     switchThread.click()
     await until(() => element.querySelectorAll('iframe[title="Progress"]').length === 1)
+    drawn.clear()
     flushSync(() => root.render(null))
     mount()
-    await until(() => element.querySelectorAll('iframe[title="Progress"]').length === 1)
+    await until(() => drawn.get('Progress') === 'Saved state' && !client.isFetching({ queryKey: sessionFileQuery(id, view.file).queryKey }))
     await window.smoke.capture('plugin-views-reopened')
-    const update = (value: object) => client.setQueryData(sessionFileQuery(id, view.file).queryKey, { path: '/work/status.json', content: JSON.stringify(value), size: 40 })
+    const update = (value: object) => {
+      fileContent = JSON.stringify(value)
+      client.setQueryData(sessionFileQuery(id, view.file).queryKey, { path: '/work/status.json', content: fileContent, size: fileContent.length })
+    }
+    const select = (title: string) => [...element.querySelectorAll<HTMLElement>('[role="tab"]')].find((tab) => tab.textContent === title)!.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }))
+    const work = async (state: 'running' | 'idle') => {
+      client.setQueryData<SessionMessages>(keys.sessionMessages(id), (current) => current && { ...current, session: { ...current.session, status: state }, acp_state: state })
+      await new Promise(requestAnimationFrame)
+      await new Promise(requestAnimationFrame)
+    }
     update({ title: 'New data', open: 'Progress', action: 1 })
     await until(() => opened === 1 && element.querySelectorAll('[role="tab"]').length === 2)
-    update({ title: 'New data', open: 'Quiz', action: 2 })
+    select('Progress')
+    await until(() => element.querySelector('[role="tab"][aria-selected="true"]')?.textContent === 'Progress' && !client.isFetching({ queryKey: sessionFileQuery(id, view.file).queryKey }))
+    update({ title: 'New data', open: 'Progress', action: 2 })
     await until(() => opened === 2)
-    if (element.querySelectorAll('[role="tab"]').length !== 2) throw new Error('Reopening a sibling duplicated its tab')
-    update({ title: 'Updated together' })
-    await until(() => drawn.get('Progress') === 'Updated together' && drawn.get('Quiz') === 'Updated together')
+    await until(() => element.querySelector('[role="tab"][aria-selected="true"]')?.textContent === 'Quiz')
+    if (savedPresentations !== 1 || element.querySelectorAll('[role="tab"]').length !== 2) throw new Error('Reopening a sibling added a presentation or duplicated its tab')
+    await work('running')
+    fileContent = '{"title":"Updated at work end"}'
+    await work('idle')
+    await until(() => drawn.get('Progress') === 'Updated at work end' && drawn.get('Quiz') === 'Updated at work end')
+    const readsBeforeVisibility = fileReads
+    fileContent = '{"title":"Updated while hidden"}'
+    select('Progress')
+    await until(() => fileReads > readsBeforeVisibility && drawn.get('Progress') === 'Updated while hidden')
+    const idleReads = fileReads
+    await new Promise((resolve) => setTimeout(resolve, 5250))
+    if (fileReads !== idleReads) throw new Error('Idle view keeps polling its file')
     flushSync(() => root.render(null))
     mount()
     await until(() => element.querySelectorAll('[role="tab"]').length === 2)

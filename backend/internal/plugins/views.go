@@ -40,7 +40,8 @@ func (s *ViewService) Open(ctx context.Context, session string, request ViewRequ
 	if err != nil {
 		return sessionevents.PluginView{}, err
 	}
-	for _, caller := range sessionevents.LatestPluginViews(view.PresentationEvents) {
+	latest := sessionevents.LatestPluginViews(view.PresentationEvents)
+	for _, caller := range latest {
 		if caller.Reference != request.Reference || caller.File != request.File {
 			continue
 		}
@@ -52,6 +53,11 @@ func (s *ViewService) Open(ctx context.Context, session string, request ViewRequ
 		html, err := s.plugins.View(reference)
 		if err != nil {
 			return sessionevents.PluginView{}, err
+		}
+		for _, shown := range latest {
+			if shown.Reference == reference && shown.File == caller.File && shown.WidgetCode == html {
+				return shown, nil
+			}
 		}
 		target := sessionevents.PluginView{Reference: reference, Title: request.Title, WidgetCode: html, File: caller.File}
 		_, err = s.presenter.Present(view.SessionID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &target})
