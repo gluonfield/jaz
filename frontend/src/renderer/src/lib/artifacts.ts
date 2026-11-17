@@ -56,6 +56,7 @@ const bridgeScript = `
   const measure = () => post({ type: 'jaz:artifact-height', height: Math.max(document.body?.scrollHeight || 0, document.documentElement.scrollHeight) });
   window.sendPrompt = (text) => post({ type: 'jaz:artifact-send-prompt', text: String(text || '') });
   window.openLink = (href) => post({ type: 'jaz:artifact-link', href: String(href || '') });
+  window.openView = (name, title) => post({ type: 'jaz:artifact-open-view', name: String(name || ''), title: String(title || '') });
   window.addEventListener('error', (event) => post({ type: 'jaz:artifact-error', message: String(event.message || 'Artifact script error') }));
   window.addEventListener('unhandledrejection', (event) => post({ type: 'jaz:artifact-error', message: String(event.reason?.message || event.reason || 'Artifact promise rejection') }));
   document.addEventListener('click', (event) => {

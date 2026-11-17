@@ -13,7 +13,7 @@ import { useBrowserSessions, useSessionPreview } from '@/lib/browserSessions'
 import { SidebarVisibility } from '@/lib/sidebar'
 import type { PluginView } from '@/lib/api/types'
 import type { MCPAppThread } from '@/lib/mcpAppThread'
-import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, type NewSidePanelTab, type PanelPresentation, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
+import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, pluginViewTab, type NewSidePanelTab, type PanelPresentation, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
 
 const PANEL_MAX_WIDTH = 1180
 const PANEL_MIN_THREAD_WIDTH = 360
@@ -99,7 +99,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     if (!pluginViews || restoredViews.current) return
     restoredViews.current = true
     if (!pluginViews.length) return
-    dispatch({ type: 'restore', tabs: pluginViews.map((view) => ({ id: `view:${view.file}`, kind: 'view', view })) })
+    dispatch({ type: 'restore', tabs: pluginViews.map(pluginViewTab) })
     if (!initialPanel.current) showTabs()
   }, [pluginViews, showTabs])
   const toggleMode = useCallback((next: SidePanelMode) => {
@@ -181,7 +181,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     if (presentation.kind === 'canvas') {
       if (canvasAvailable) openTab({ id: 'canvas', kind: 'canvas' })
     } else {
-      openTab({ id: `view:${presentation.view.file}`, kind: 'view', view: presentation.view })
+      openTab(pluginViewTab(presentation.view))
     }
   }, [openTab, canvasAvailable])
   const openPreview = useCallback((url: string) => {

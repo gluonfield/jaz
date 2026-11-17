@@ -9,6 +9,8 @@ interface ArtifactMessage {
   message?: string
   text?: string
   href?: string
+  name?: string
+  title?: string
 }
 
 const MIN_HEIGHT = 180
@@ -18,13 +20,14 @@ function clampHeight(height: number): number {
   return Math.max(MIN_HEIGHT, Math.ceil(height))
 }
 
-export function ArtifactFrame({ input, data, pending = false, executionError = '', onSendPrompt, onOpenLink }: {
+export function ArtifactFrame({ input, data, pending = false, executionError = '', onSendPrompt, onOpenLink, onOpenView }: {
   input: ArtifactInput
   data?: unknown
   pending?: boolean
   executionError?: string
   onSendPrompt?: (text: string) => void
   onOpenLink?: (href: string) => boolean
+  onOpenView?: (name: string, title: string) => void
 }) {
   const theme = useArtifactThemeCSS()
   const frameRef = useRef<HTMLIFrameElement>(null)
@@ -55,11 +58,12 @@ export function ArtifactFrame({ input, data, pending = false, executionError = '
         if (error) setError(error)
       }
       if (message?.type === 'jaz:artifact-link' && message.href && !onOpenLink?.(message.href)) window.open(message.href, '_blank', 'noopener,noreferrer')
+      if (message?.type === 'jaz:artifact-open-view' && typeof message.name === 'string' && typeof message.title === 'string') onOpenView?.(message.name, message.title)
       if (message?.type === 'jaz:artifact-send-prompt' && message.text?.trim()) onSendPrompt?.(message.text.trim())
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [onOpenLink, onSendPrompt])
+  }, [onOpenLink, onSendPrompt, onOpenView])
 
   const displayError = executionError || error
 

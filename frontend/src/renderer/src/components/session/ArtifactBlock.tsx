@@ -15,7 +15,7 @@ function toolError(result?: string): string {
   }
 }
 
-export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, result, pending = false, data = artifact?.data, onSendPrompt, onOpenFile }: {
+export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, result, pending = false, data = artifact?.data, onSendPrompt, onOpenFile, onOpenView }: {
   artifact?: ArtifactEvent
   args?: string
   result?: string
@@ -23,6 +23,7 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
   data?: unknown
   onSendPrompt?: (text: string) => void
   onOpenFile?: (href: string) => boolean
+  onOpenView?: (name: string, title: string) => void
 }) {
   const files = useFileLinks()
   const openLink = useCallback((href: string) => {
@@ -40,5 +41,5 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
   if (!input) {
     return <div className="rounded-card border border-border bg-surface px-3 py-2 text-sm text-ink-2">Could not render artifact: invalid visualise_show_widget input.</div>
   }
-  return <ArtifactFrame input={input} data={data} pending={pending} executionError={artifactErrorForDisplay(toolError(result))} onSendPrompt={onSendPrompt} onOpenLink={openLink} />
+  return <ArtifactFrame input={input} data={data} pending={pending} executionError={artifactErrorForDisplay(toolError(result))} onSendPrompt={onSendPrompt} onOpenLink={openLink} onOpenView={onOpenView} />
 })

@@ -9,6 +9,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/plugins"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 const maxArchiveBytes = 64 << 20
@@ -101,7 +102,7 @@ func (h *Handler) Remove(w http.ResponseWriter, r *http.Request) {
 
 func statusFor(err error) int {
 	switch {
-	case errors.Is(err, plugins.ErrNotFound):
+	case errors.Is(err, plugins.ErrNotFound), errors.Is(err, storage.ErrSessionNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, plugins.ErrInvalid):
 		return http.StatusBadRequest

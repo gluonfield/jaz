@@ -59,6 +59,7 @@ for (const entry of ['scripts/browser-smoke/main.ts', 'scripts/browser-smoke/pre
 }
 await build({
   configFile: false,
+  cacheDir: join(output, 'vite-cache'),
   mode: 'development',
   plugins: [tailwindcss()],
   resolve: { alias: { '@': resolve('src/renderer/src'), '@shared': resolve('src/shared') } },

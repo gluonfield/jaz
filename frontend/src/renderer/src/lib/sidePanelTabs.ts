@@ -64,3 +64,7 @@ export function sidePanelTabs(state: SidePanelTabs, action: SidePanelTabAction):
     activeId: state.activeId === action.id ? tabs[Math.min(index, tabs.length - 1)]?.id ?? null : state.activeId,
   }
 }
+
+export function pluginViewTab(view: PluginView): Extract<SidePanelTab, { kind: 'view' }> {
+  return { id: `view:${JSON.stringify([view.reference ?? '', view.file])}`, kind: 'view', view }
+}

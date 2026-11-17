@@ -24,6 +24,7 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
+	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 	"go.uber.org/fx"
@@ -73,7 +74,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil), Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager, acp.AgentCatalog{}, runtimefiles.New(store.RootDir())),
-		fx.Provide(NewProviderSource, sessionevents.New),
+		fx.Provide(NewProviderSource, sessionevents.New, fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus)))),
 		fx.Provide(func() storage.Store { return store }),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
 		fx.Provide(func() storage.FeedStore { return fakeFeedStore{} }),
@@ -91,6 +92,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "GET /v1/notifications/stream")
 	requireRoute(t, routes, "GET /v1/sessions/{session}/messages")
 	requireRoute(t, routes, "GET /v1/sessions/{session}/overview")
+	requireRoute(t, routes, "POST /v1/sessions/{session}/plugin-views")
 	requireRoute(t, routes, "DELETE /v1/sessions/{session}/goal")
 	requireRoute(t, routes, "POST /v1/sessions/{session}/agent/input")
 	requireRoute(t, routes, "GET /v1/settings/voice")
@@ -305,7 +307,7 @@ func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}, Config{}, serverconfig.Config{}),
-		fx.Provide(NewStore, NewRuntimeAuthKey, NewProviderSource, sessionevents.New),
+		fx.Provide(NewStore, NewRuntimeAuthKey, NewProviderSource, sessionevents.New, fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus)))),
 		fx.Provide(func(store *sqlitestore.Store) *mcpruntime.Manager {
 			return mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil)
 		}),

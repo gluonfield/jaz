@@ -105,3 +105,8 @@ The navigation page includes only threads that have called `show_view` with a vi
 On a page, `sendPrompt(text)` opens the new-thread composer with the text ready to edit, attach files, and send. `openLink('/sessions/<id>')` opens that thread in Jaz. External links open in the browser.
 
 An agent can also show a view inside a thread using `show_view` with `view: "<plugin>/<view>"`, a `title`, and either `data` for a conversation card or `file` for a side-panel tab. Inside a thread, `sendPrompt` sends to that thread and `openLink` can open its files.
+
+
+File-following plugin views are restored when a thread is reopened. The titlebar's **Plugin views** button reopens any shown view without finding its transcript row.
+
+Inside a file-following thread view, `openView('quiz', 'Tender quiz')` opens another HTML view of the same plugin using the caller's same data file. The name is a plain view filename without `.html`, never a plugin reference or path. Each plugin/view/file combination has one tab; reopening it focuses that tab, and retained views follow file updates through `onData`. The new presentation is saved in the thread. Legacy views without an owner reference still render but cannot call `openView`. This bridge is not available on navigation pages or ordinary artifacts.
