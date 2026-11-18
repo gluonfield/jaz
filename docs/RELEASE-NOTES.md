@@ -1,3 +1,2 @@
-- Restores MCP tools after temporary connection failures while preserving healthy connections.
-- Checks stored OAuth credentials before initialization to avoid a second refresh during failure cleanup.
-- Shows “Sign in required” when a refresh grant is rejected.
+- Stops MCP session recovery and cleanup from retrying a failed OAuth refresh.
+- Preserves explicit sign-in for providers that reuse or omit refresh tokens.
