@@ -12,6 +12,7 @@ import {
   connectRemote,
   type ConnectionStatus,
   forgetBackend,
+  reauthorizeBackend,
   startLocal,
   useConnection,
 } from '@/lib/connection'
@@ -79,7 +80,7 @@ type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; o
 // machines through the exact same flow they onboarded with; on success it
 // dismisses itself via `onClose`.
 export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}) {
-  const { status: liveStatus, error, pairing, url: currentUrl } = useConnection()
+  const { status: liveStatus, error, pairing, url: currentUrl, reauthorizeUrl } = useConnection()
   const status = previewStatus ?? liveStatus
   const [mode, setMode] = useState<'options' | 'remote'>('options')
   // The target currently connecting: 'local', or a backend URL. Disables the
@@ -187,7 +188,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                 Waiting for approval
               </motion.h1>
               <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
-                Approve this device from Settings on a connected Jaz app.
+                Ask the backend owner to approve this device in Settings → Devices on the host computer.
               </motion.p>
               <motion.div
                 variants={rise}
@@ -229,6 +230,19 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                   <span className="mt-1 block text-ink-3">{reconnectHint}</span>
                 </motion.p>
               ) : null}
+
+              {reauthorizeUrl && (
+                <motion.div variants={rise} className="mt-4">
+                  <Button
+                    variant="secondary"
+                    title={reauthorizeUrl}
+                    disabled={busy !== null}
+                    onClick={() => run(reauthorizeUrl, () => reauthorizeBackend(reauthorizeUrl))}
+                  >
+                    Sign out and request approval again
+                  </Button>
+                </motion.div>
+              )}
 
               <motion.div variants={rise} className="mt-6 w-full">
                 <AnimatePresence mode="wait" initial={false}>
