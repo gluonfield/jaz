@@ -25,7 +25,7 @@ func TestOAuthRejectsUnadvertisedS256(t *testing.T) {
 	for _, methods := range [][]string{nil, {}, {"plain"}, {"unknown"}} {
 		t.Run(fmt.Sprint(methods), func(t *testing.T) {
 			srv := mockAuthServer(t, map[string]any{"code_challenge_methods_supported": methods})
-			handler := newOAuthHandler(mcpconfig.Server{ID: "pkce", URL: srv.URL + "/mcp"}, newMemTokenStore(), http.DefaultClient)
+			handler := newOAuthHandler(mcpconfig.Server{ID: "pkce", URL: srv.URL + "/mcp"}, newMemTokenStore(), http.DefaultClient, nil)
 			handler.mode = oauthModeInteractive
 			handler.fetch = func(context.Context, string) (mcpconfig.AuthorizationResponse, error) {
 				t.Error("opened authorization without S256 support")
@@ -50,7 +50,7 @@ func TestOAuthMissingMetadataDoesNotGuessEndpoints(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	defer srv.Close()
-	handler := newOAuthHandler(mcpconfig.Server{ID: "missing", URL: srv.URL + "/mcp", OAuth: mcpconfig.OAuthConfig{Issuer: srv.URL}}, newMemTokenStore(), srv.Client())
+	handler := newOAuthHandler(mcpconfig.Server{ID: "missing", URL: srv.URL + "/mcp", OAuth: mcpconfig.OAuthConfig{Issuer: srv.URL}}, newMemTokenStore(), srv.Client(), nil)
 	handler.mode = oauthModeInteractive
 	if err := handler.AuthorizeFromMetadata(t.Context()); err == nil || !strings.Contains(err.Error(), "S256") || posts != 0 {
 		t.Fatalf("missing metadata: err=%v posts=%d", err, posts)
@@ -62,7 +62,7 @@ func TestOAuthRegistrationFailureExplainsSetup(t *testing.T) {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			srv := mockAuthServer(t, nil)
 			srv.registrationStatus = status
-			handler := newOAuthHandler(mcpconfig.Server{ID: "protected", URL: srv.URL + "/mcp"}, newMemTokenStore(), srv.Client())
+			handler := newOAuthHandler(mcpconfig.Server{ID: "protected", URL: srv.URL + "/mcp"}, newMemTokenStore(), srv.Client(), nil)
 			handler.mode = oauthModeInteractive
 			handler.redirectURL = "https://local.example/v1/mcp/oauth/callback"
 			handler.broker = oauthbroker.Broker{URL: "https://broker.example/oauth/callback"}
@@ -315,7 +315,7 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			}
 			token.Expiry = time.Now().Add(-time.Hour)
 			store.SaveToken(ctx, server.TokenID(), token)
-			source, err := newOAuthHandler(server, store, provider.Client()).TokenSource(ctx)
+			source, err := newOAuthHandler(server, store, provider.Client(), nil).TokenSource(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -355,7 +355,7 @@ func TestOAuthResponseIssuerValidation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			srv := mockAuthServer(t, map[string]any{"authorization_response_iss_parameter_supported": test.advertised})
 			store := newMemTokenStore()
-			handler := newOAuthHandler(mcpconfig.Server{ID: "issuer", URL: srv.URL + "/mcp"}, store, srv.Client())
+			handler := newOAuthHandler(mcpconfig.Server{ID: "issuer", URL: srv.URL + "/mcp"}, store, srv.Client(), nil)
 			handler.mode = oauthModeInteractive
 			handler.redirectURL = "https://jaz.example/v1/mcp/oauth/callback"
 			handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
@@ -391,7 +391,7 @@ func TestOAuthBindsPreregisteredClientToIssuer(t *testing.T) {
 			} else {
 				store.SaveToken(t.Context(), server.TokenID(), integrationoauth.Token{ClientID: "registered", Issuer: "https://original.example"})
 			}
-			handler := newOAuthHandler(server, store, srv.Client())
+			handler := newOAuthHandler(server, store, srv.Client(), nil)
 			handler.mode = oauthModeInteractive
 			err := handler.AuthorizeFromMetadata(t.Context())
 			if err == nil || !strings.Contains(err.Error(), "authorization server") || srv.registrations != 0 || srv.tokenForm != nil {
@@ -410,7 +410,7 @@ func TestDCRSelectsApplicationTypeFromCallback(t *testing.T) {
 	} {
 		t.Run(test.callback, func(t *testing.T) {
 			srv := mockAuthServer(t, nil)
-			handler := newOAuthHandler(mcpconfig.Server{ID: "application", URL: srv.URL + "/mcp"}, newMemTokenStore(), srv.Client())
+			handler := newOAuthHandler(mcpconfig.Server{ID: "application", URL: srv.URL + "/mcp"}, newMemTokenStore(), srv.Client(), nil)
 			handler.mode = oauthModeInteractive
 			handler.redirectURL = test.callback
 			handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {

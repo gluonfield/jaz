@@ -81,7 +81,7 @@ func (m *Manager) authorize(ctx context.Context, server mcpconfig.Server, opts m
 }
 
 func (m *Manager) runAuthorize(ctx context.Context, server mcpconfig.Server, redirectURL string, fetch codeFetcher, onAuthorized AuthorizationHook) mcpconfig.ServerStatus {
-	handler := newOAuthHandler(server, m.tokens, http.DefaultClient)
+	handler := newOAuthHandler(server, m.tokens, http.DefaultClient, &m.oauthGuard)
 	handler.mode = oauthModeInteractive
 	handler.redirectURL = redirectURL
 	handler.broker = m.broker

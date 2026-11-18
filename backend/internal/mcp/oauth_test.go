@@ -55,6 +55,7 @@ type mockAuthorizationServer struct {
 	registrationStatus int
 	registration       oauthex.ClientRegistrationMetadata
 	tokenForm          url.Values
+	refreshToken       string
 }
 
 // mockAuthServer serves the OAuth discovery, registration, and token endpoints an
@@ -63,7 +64,7 @@ type mockAuthorizationServer struct {
 func mockAuthServer(t *testing.T, extra map[string]any) *mockAuthorizationServer {
 	t.Helper()
 	mux := http.NewServeMux()
-	srv := &mockAuthorizationServer{Server: httptest.NewServer(mux)}
+	srv := &mockAuthorizationServer{Server: httptest.NewServer(mux), refreshToken: "refresh-token-456"}
 	t.Cleanup(srv.Close)
 	base := srv.URL
 
@@ -111,12 +112,11 @@ func mockAuthServer(t *testing.T, extra map[string]any) *mockAuthorizationServer
 			http.Error(w, "missing PKCE verifier", http.StatusBadRequest)
 			return
 		}
-		writeJSONResp(w, map[string]any{
-			"access_token":  "access-token-123",
-			"token_type":    "Bearer",
-			"refresh_token": "refresh-token-456",
-			"expires_in":    3600,
-		})
+		response := map[string]any{"access_token": "access-token-123", "token_type": "Bearer", "expires_in": 3600}
+		if srv.refreshToken != "" {
+			response["refresh_token"] = srv.refreshToken
+		}
+		writeJSONResp(w, response)
 	})
 	return srv
 }
@@ -184,7 +184,7 @@ func TestRunAuthorizationCompletesFlow(t *testing.T) {
 	store := newMemTokenStore()
 
 	server := mcpconfig.Server{ID: "srv-oauth", URL: srv.URL + "/mcp"}
-	handler := newOAuthHandler(server, store, http.DefaultClient)
+	handler := newOAuthHandler(server, store, http.DefaultClient, nil)
 	handler.mode = oauthModeInteractive
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	// Fake browser: read the state from the authorization URL and return an
@@ -242,7 +242,7 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 			ClientSecretEnvVar: "STATIC_OAUTH_SECRET",
 		},
 	}
-	handler := newOAuthHandler(server, store, http.DefaultClient)
+	handler := newOAuthHandler(server, store, http.DefaultClient, nil)
 	handler.mode = oauthModeInteractive
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
@@ -281,7 +281,7 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 func TestAuthorizeFromMetadataRequiresStaticClientWhenNoDCR(t *testing.T) {
 	srv := mockStaticAuthServer(t)
 	server := mcpconfig.Server{ID: "srv-static", URL: srv.URL + "/mcp"}
-	handler := newOAuthHandler(server, newMemTokenStore(), http.DefaultClient)
+	handler := newOAuthHandler(server, newMemTokenStore(), http.DefaultClient, nil)
 	handler.mode = oauthModeInteractive
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	handler.fetch = func(context.Context, string) (mcpconfig.AuthorizationResponse, error) {
@@ -311,7 +311,7 @@ func TestAuthorizeFromMetadataPrefersClientMetadataDocument(t *testing.T) {
 	srv := mockAuthServer(t, map[string]any{"client_id_metadata_document_supported": true})
 
 	store := newMemTokenStore()
-	handler := newOAuthHandler(mcpconfig.Server{ID: "srv-cimd", URL: srv.URL + "/mcp"}, store, http.DefaultClient)
+	handler := newOAuthHandler(mcpconfig.Server{ID: "srv-cimd", URL: srv.URL + "/mcp"}, store, http.DefaultClient, nil)
 	handler.mode = oauthModeInteractive
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	handler.broker = oauthbroker.Broker{URL: brokerURL}
@@ -342,7 +342,7 @@ func TestAuthorizeFromMetadataPrefersClientMetadataDocument(t *testing.T) {
 func TestNonInteractiveAuthorizeReportsNeedsAuth(t *testing.T) {
 	store := newMemTokenStore()
 	server := mcpconfig.Server{ID: "srv-x", URL: "https://example.com/mcp"}
-	handler := newOAuthHandler(server, store, http.DefaultClient)
+	handler := newOAuthHandler(server, store, http.DefaultClient, nil)
 
 	resp := &http.Response{StatusCode: http.StatusUnauthorized, Body: io.NopCloser(strings.NewReader(""))}
 	err := handler.Authorize(context.Background(), &http.Request{}, resp)

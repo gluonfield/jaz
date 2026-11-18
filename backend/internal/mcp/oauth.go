@@ -36,6 +36,7 @@ type oauthHandler struct {
 	oauth      mcpconfig.OAuthConfig
 	store      integrationoauth.Store
 	httpClient *http.Client
+	guard      *integrationoauth.RefreshGuard
 
 	redirectURL string
 	broker      oauthbroker.Broker
@@ -80,13 +81,14 @@ const (
 	authorizationComplete
 )
 
-func newOAuthHandler(server mcpconfig.Server, store integrationoauth.Store, httpClient *http.Client) *oauthHandler {
+func newOAuthHandler(server mcpconfig.Server, store integrationoauth.Store, httpClient *http.Client, guard *integrationoauth.RefreshGuard) *oauthHandler {
 	return &oauthHandler{
 		tokenID:    server.TokenID(),
 		serverURL:  server.URL,
 		oauth:      server.OAuth,
 		store:      store,
 		httpClient: httpClient,
+		guard:      guard,
 		mode:       oauthModeBackground,
 		state:      authorizationIdle,
 	}
@@ -102,6 +104,7 @@ func (h *oauthHandler) TokenSource(ctx context.Context) (oauth2.TokenSource, err
 		Store:        h.store,
 		HTTPClient:   h.httpClient,
 		ClientConfig: h.refreshClientConfig,
+		Guard:        h.guard,
 	}).TokenSource(ctx, h.tokenID)
 	if errors.Is(err, integrationoauth.ErrTokenNotFound) {
 		return nil, nil
@@ -142,6 +145,9 @@ func (h *oauthHandler) saveToken(ctx context.Context, tok integrationoauth.Token
 	defer unlock()
 	if err := h.store.SaveToken(ctx, h.tokenID, tok); err != nil {
 		return fmt.Errorf("persist token: %w", err)
+	}
+	if h.guard != nil {
+		h.guard.Reset(h.tokenID)
 	}
 	h.mu.Lock()
 	h.state = authorizationComplete

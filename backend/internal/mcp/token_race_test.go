@@ -40,7 +40,7 @@ func TestInteractiveGrantReplacementWinsOverInflightRefresh(t *testing.T) {
 	newGrant := integrationoauth.Token{AccessToken: "approved", RefreshToken: "approved-refresh", ClientID: "approved-client"}
 	saved := make(chan error, 1)
 	go func() {
-		saved <- newOAuthHandler(server, store, http.DefaultClient).saveToken(t.Context(), newGrant)
+		saved <- newOAuthHandler(server, store, http.DefaultClient, nil).saveToken(t.Context(), newGrant)
 	}()
 	early := false
 	select {

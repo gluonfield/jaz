@@ -63,6 +63,24 @@ type Refresher struct {
 	Store        Store
 	HTTPClient   *http.Client
 	ClientConfig ClientConfigResolver
+	Guard        *RefreshGuard
+}
+
+// RefreshGuard blocks repeated exchanges after a refresh failure until the
+// stored refresh credential changes. Share it across sources for rotating grants.
+type RefreshGuard struct {
+	failures sync.Map
+}
+
+type failedRefresh struct {
+	refreshToken string
+	err          *RefreshError
+}
+
+// Reset accepts an explicit authorization even if the refresh token is reused.
+// Call after saving the grant while holding LockToken.
+func (g *RefreshGuard) Reset(connectionID string) {
+	g.failures.Delete(connectionID)
 }
 
 func (r Refresher) TokenSource(ctx context.Context, connectionID string) (oauth2.TokenSource, error) {
@@ -161,12 +179,24 @@ func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 	defer unlock()
 	ctx, cancel := context.WithTimeout(p.ctx, refreshTimeout)
 	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	stored, ok, err := p.refresher.Store.LoadToken(ctx, p.connectionID)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		return nil, ErrTokenNotFound
+	}
+	if guard := p.refresher.Guard; guard != nil {
+		if value, ok := guard.failures.Load(p.connectionID); ok {
+			failure := value.(*failedRefresh)
+			if stored.RefreshToken == failure.refreshToken {
+				return nil, failure.err
+			}
+			guard.failures.Delete(p.connectionID)
+		}
 	}
 	if tok := stored.oauth2Token(); tok.Valid() {
 		return tok, nil
@@ -185,14 +215,17 @@ func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 		ctx = context.WithValue(ctx, oauth2.HTTPClient, &client)
 	}
 	tok, err := config.config().TokenSource(ctx, stored.oauth2Token()).Token()
-	if err != nil {
-		return nil, &RefreshError{Err: err}
+	if err == nil && !sameToken(stored, tok) {
+		err = p.refresher.Store.SaveToken(context.Background(), p.connectionID, mergeToken(stored, tok))
 	}
-	if !sameToken(stored, tok) {
-		stored = mergeToken(stored, tok)
-		if err := p.refresher.Store.SaveToken(context.Background(), p.connectionID, stored); err != nil {
-			return nil, &RefreshError{Err: err}
+	if err != nil {
+		failure := &RefreshError{Err: err}
+		if guard := p.refresher.Guard; guard != nil && stored.RefreshToken != "" {
+			guard.failures.Store(p.connectionID, &failedRefresh{
+				refreshToken: stored.RefreshToken, err: failure,
+			})
 		}
+		return nil, failure
 	}
 	return tok, nil
 }

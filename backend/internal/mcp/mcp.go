@@ -81,6 +81,7 @@ type Manager struct {
 	authStates map[string]*authorizationPending
 	authFlows  map[string]context.CancelFunc
 	broker     oauthbroker.Broker
+	oauthGuard integrationoauth.RefreshGuard
 
 	// Optional: agents' calls to tools linked to an MCP App show it in their
 	// thread (WithSessionEvents).
@@ -200,7 +201,7 @@ func (m *Manager) backgroundHandler(server mcpconfig.Server) *oauthHandler {
 	if m.tokens == nil || server.UsesBearer() || server.Transport == mcpconfig.TransportStdio || server.Transport == mcpconfig.TransportSSE {
 		return nil
 	}
-	return newOAuthHandler(server, m.tokens, http.DefaultClient)
+	return newOAuthHandler(server, m.tokens, http.DefaultClient, &m.oauthGuard)
 }
 
 func (m *Manager) ListMCPServers() ([]mcpconfig.Server, error) {
@@ -582,19 +583,6 @@ func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler 
 	}
 	httpClient := &http.Client{Transport: transport}
 	dial := func(ctx context.Context) (*mcpsdk.ClientSession, error) {
-		// SDK cleanup asks for credentials again after a failed Connect. Resolve
-		// refresh failures first so cleanup cannot reuse a consumed refresh token.
-		if handler != nil {
-			source, err := handler.TokenSource(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if source != nil {
-				if _, err := source.Token(); err != nil {
-					return nil, err
-				}
-			}
-		}
 		if server.Transport == mcpconfig.TransportSSE {
 			return client.Connect(ctx, sseTransport{mcpsdk.SSEClientTransport{Endpoint: server.URL, HTTPClient: httpClient}}, nil)
 		}

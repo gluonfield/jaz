@@ -20,18 +20,26 @@ import (
 
 func TestSignInStartsFreshAndKeepsCredentialsUntilApproval(t *testing.T) {
 	for _, test := range []struct {
-		name   string
-		expiry time.Duration
-		cancel bool
+		name         string
+		expiry       time.Duration
+		cancel       bool
+		blocked      bool
+		saveFails    bool
+		refreshToken string
 	}{
-		{name: "valid token", expiry: time.Hour},
-		{name: "revoked refresh token", expiry: -time.Hour},
+		{name: "valid token", expiry: time.Hour, refreshToken: "refresh-token-456"},
+		{name: "revoked refresh token", expiry: -time.Hour, refreshToken: "refresh-token-456"},
 		{name: "cancelled sign-in", expiry: -time.Hour, cancel: true},
+		{name: "reauthorized same refresh token", expiry: -time.Hour, blocked: true, refreshToken: "old-refresh"},
+		{name: "reauthorized without refresh token", expiry: -time.Hour, blocked: true},
+		{name: "blocked cancelled sign-in", expiry: -time.Hour, blocked: true, cancel: true},
+		{name: "blocked failed authorization save", expiry: -time.Hour, blocked: true, saveFails: true, refreshToken: "old-refresh"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			srv := mockAuthServer(t, nil)
+			srv.refreshToken = test.refreshToken
 			mux := srv.Config.Handler.(*http.ServeMux)
 			var refreshes, staleRequests atomic.Int32
 			mux.HandleFunc("/expired-token", func(w http.ResponseWriter, _ *http.Request) {
@@ -62,8 +70,20 @@ func TestSignInStartsFreshAndKeepsCredentialsUntilApproval(t *testing.T) {
 			if err := store.SaveToken(ctx, server.TokenID(), old); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(&testStore{servers: []mcpconfig.Server{server}}, store, tools.NewRegistry(), log.New(io.Discard))
+			var tokens tokenStore = store
+			if test.saveFails {
+				tokens = refreshSaveFailure{store}
+			}
+			manager := NewManager(&testStore{servers: []mcpconfig.Server{server}}, tokens, tools.NewRegistry(), log.New(io.Discard))
 			defer manager.Close()
+			var initialRefreshes int32
+			if test.blocked {
+				manager.Refresh(ctx)
+				initialRefreshes = refreshes.Load()
+				if status := manager.Status(server.ID); status.Status != "needs_auth" || initialRefreshes != 1 {
+					t.Fatalf("initial blocked grant: status=%+v refreshes=%d", status, initialRefreshes)
+				}
+			}
 			status := manager.runAuthorize(ctx, server, "http://127.0.0.1:5599/callback", func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
 				stored, ok, err := store.LoadToken(ctx, server.TokenID())
 				if err != nil || !ok || stored.RefreshToken != old.RefreshToken {
@@ -78,20 +98,30 @@ func TestSignInStartsFreshAndKeepsCredentialsUntilApproval(t *testing.T) {
 				}
 				return mcpconfig.AuthorizationResponse{Code: "approved-code", State: u.Query().Get("state")}, nil
 			}, nil)
-			if refreshes.Load() != 0 || staleRequests.Load() != 0 {
+			if refreshes.Load() != initialRefreshes || staleRequests.Load() != 0 {
 				t.Fatalf("sign-in reused saved credentials: refreshes=%d, requests=%d", refreshes.Load(), staleRequests.Load())
 			}
 			stored, _, err := store.LoadToken(ctx, server.TokenID())
 			if err != nil {
 				t.Fatal(err)
 			}
-			if test.cancel {
-				if status.Status != "error" || !strings.Contains(status.Error, "consent cancelled") || stored.RefreshToken != old.RefreshToken {
-					t.Fatalf("cancelled sign-in: status=%+v token=%+v", status, stored)
+			if test.cancel || test.saveFails {
+				cause := "consent cancelled"
+				if test.saveFails {
+					cause = "persist token"
+				}
+				if status.Status != "error" || !strings.Contains(status.Error, cause) || stored.RefreshToken != old.RefreshToken {
+					t.Fatalf("failed sign-in: status=%+v token=%+v", status, stored)
+				}
+				if test.blocked {
+					manager.Refresh(ctx)
+					if refreshes.Load() != initialRefreshes {
+						t.Fatal("failed authorization released the failed grant")
+					}
 				}
 				return
 			}
-			if status.Status != "connected" || status.ToolCount != 1 || stored.RefreshToken != "refresh-token-456" {
+			if status.Status != "connected" || status.ToolCount != 1 || stored.RefreshToken != test.refreshToken {
 				t.Fatalf("sign-in did not replace credentials and install tools: status=%+v token=%+v", status, stored)
 			}
 		})
