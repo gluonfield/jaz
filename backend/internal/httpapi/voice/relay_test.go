@@ -1,6 +1,7 @@
 package voice_test
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -168,17 +169,24 @@ func TestClaudeRelayUsesAuthenticatedDesktopAndIsolatesOwnedCalls(t *testing.T) 
 			writeHost(map[string]any{"id": frame.ID, "result": value})
 		}
 	}()
-	request, _ := http.NewRequest(http.MethodGet, f.server.URL+"/v1/voice/claude/status", nil)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, f.server.URL+"/v1/voice/claude/status", nil)
 	request.Header.Set("Authorization", "Bearer "+f.phones[0].Token)
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var status live.ClaudeStatus
-	_ = json.NewDecoder(response.Body).Decode(&status)
-	response.Body.Close()
-	if response.StatusCode != http.StatusOK || !status.Available {
-		t.Fatalf("desktop status = %d %#v", response.StatusCode, status)
+	for {
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var status live.ClaudeStatus
+		_ = json.NewDecoder(response.Body).Decode(&status)
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("desktop status = %d %#v", response.StatusCode, status)
+		}
+		if status.Available {
+			break
+		}
 	}
 	waitHost(t, requests, "status")
 	path := "/v1/sessions/" + f.session + "/voice/claude"

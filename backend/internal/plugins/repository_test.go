@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/runtimefiles"
+	"github.com/wins/jaz/backend/internal/testgit"
 )
 
 func fixtureGit(t *testing.T, dir string, args ...string) string {
@@ -50,7 +51,7 @@ func TestRepositoryMarketplaceUpdateAndFailedReplacement(t *testing.T) {
 		"plugins/excluded/plugin.json":            portable(t, "excluded", nil),
 	})
 	fixtureGit(t, repo, "add", "--all")
-	fixtureGit(t, repo, "commit", "--quiet", "-m", "Initial plugin fixture")
+	testgit.Snapshot(t, repo)
 	first := fixtureGit(t, repo, "rev-parse", "HEAD")
 	ref := fixtureGit(t, repo, "branch", "--show-current")
 	layout := runtimefiles.New(t.TempDir())
@@ -66,7 +67,7 @@ func TestRepositoryMarketplaceUpdateAndFailedReplacement(t *testing.T) {
 	}
 	fixtureFiles(t, repo, map[string]string{"plugins/alpha/views/status.html": "second"})
 	fixtureGit(t, repo, "add", "--all")
-	fixtureGit(t, repo, "commit", "--quiet", "-m", "Update plugin fixture")
+	testgit.Snapshot(t, repo)
 	second := fixtureGit(t, repo, "rev-parse", "HEAD")
 	updated, err := store.Update(t.Context(), "alpha")
 	if err != nil || len(updated.Plugins) != 1 || updated.Plugins[0].Source.Commit != second {
@@ -81,7 +82,7 @@ func TestRepositoryMarketplaceUpdateAndFailedReplacement(t *testing.T) {
 	}
 	fixtureFiles(t, repo, map[string]string{"plugins/alpha/views/status.html": "unpublished"})
 	fixtureGit(t, repo, "add", "--all")
-	fixtureGit(t, repo, "commit", "--quiet", "-m", "Unpublished plugin fixture")
+	testgit.Snapshot(t, repo)
 	candidate, err := read(filepath.Join(repo, "plugins", "alpha"), store.dataDir)
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +134,7 @@ func TestRepositoryFallbackDiscoveryAndSafeFailures(t *testing.T) {
 		"bundle/two/plugin.json":               portable(t, "two", nil),
 	})
 	fixtureGit(t, repo, "add", "--all")
-	fixtureGit(t, repo, "commit", "--quiet", "-m", "Plugin discovery fixture")
+	testgit.Snapshot(t, repo)
 	store := New(runtimefiles.New(t.TempDir()))
 	result, err := store.InstallRepository(context.Background(), RepositoryInput{Repository: repo})
 	if err != nil || len(result.Plugins) != 2 {

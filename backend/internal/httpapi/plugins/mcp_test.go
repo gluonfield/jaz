@@ -22,6 +22,7 @@ import (
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
+	"github.com/wins/jaz/backend/internal/testgit"
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
@@ -251,7 +252,7 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 			}
 		}
 		git("add", "--all")
-		git("commit", "--quiet", "-m", "Change plugin fixture")
+		testgit.Snapshot(t, repo)
 	}
 	config("repo-first")
 	input, _ := json.Marshal(plugins.RepositoryInput{Repository: repo})
