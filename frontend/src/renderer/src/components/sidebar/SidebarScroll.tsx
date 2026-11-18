@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { MessageSquare } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { useRailSections } from './NavRail'
@@ -97,6 +98,12 @@ export function SidebarScroll({ mobile, tight = false, children }: { mobile: boo
         {/* Phones have no rail, so its tabs ride at the top of the drawer. */}
         {mobile && (
           <div className="flex flex-col gap-px">
+            <Link to="/new" className={NAV_LINK_CLASS} activeProps={{ className: 'bg-list-active!' }}>
+              <span className="grid size-[18px] shrink-0 place-items-center text-ink-2">
+                <MessageSquare size={18} aria-hidden />
+              </span>
+              <span className="flex-1">Chat</span>
+            </Link>
             {sections.map((section) => (
               <Link
                 key={section.path}

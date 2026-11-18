@@ -97,6 +97,7 @@ async function click(contents: WebContents, frame: WebFrameMain, action: string,
       const rect = button.getBoundingClientRect()
       return {x:rect.x + rect.width / 2,y:rect.y + rect.height / 2}
     })()`)
+    await frame.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
     for (const type of ['mousePressed', 'mouseReleased']) {
       await contents.debugger.sendCommand('Input.dispatchMouseEvent', { type, x: point.x + x, y: point.y, button: 'left', clickCount: 1 })
     }
@@ -125,7 +126,7 @@ async function focus(contents: WebContents) {
 
 export async function exerciseClipboard(origin: string): Promise<void> {
   console.log(JSON.stringify({ stage: 'clipboard permissions', pid: process.pid }))
-  const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false, webviewTag: true } })
+  const window = new BrowserWindow({ show: process.env.JAZ_BROWSER_SMOKE_SHOW === '1', webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false, webviewTag: true } })
   try {
     await window.loadURL(origin + '/clipboard')
     await focus(window.webContents)
