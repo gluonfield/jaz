@@ -4,6 +4,9 @@ import (
 	"net/http"
 
 	"github.com/wins/jaz/backend/internal/api"
+	providerapi "github.com/wins/jaz/backend/internal/httpapi/providers"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
+	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 )
 
@@ -55,6 +58,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/providers", s.handleCreateProvider)
 	mux.HandleFunc("GET /v1/providers/{id}/status", s.handleProviderStatus)
 	mux.HandleFunc("PUT /v1/providers/", s.handleProviderAction)
+	providerStore, _ := s.settingsStore()
+	mux.Handle("POST /v1/providers/fetch-models", providerapi.NewCatalogHandler(modelcatalog.Discovery{
+		Store: providerStore, Reload: s.reloadProviders,
+		LookupKey: func(name string) string { value, _ := runtimeenv.Lookup(s.runtimeKeyEnvPath(), name); return value },
+	}))
 	mux.HandleFunc("DELETE /v1/providers/", s.handleProviderAction)
 	mux.HandleFunc("GET /v1/agent/files", s.handleListAgentFiles)
 	mux.HandleFunc("PUT /v1/agent/files/{name}", s.handleWriteAgentFile)

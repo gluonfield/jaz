@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -53,6 +54,9 @@ func (m *Manager) applySessionControls(job *jobState, raw json.RawMessage) bool 
 			switch option.Category {
 			case "model":
 				job.Model = option.CurrentValue
+				if CanonicalAgentName(job.ACPAgent) == AgentOpenCode && job.ModelProvider != "" && job.ModelProvider != AgentOpenCode {
+					job.Model = strings.TrimPrefix(job.Model, job.ModelProvider+"/")
+				}
 			case "thought_level":
 				job.ReasoningEffort = option.CurrentValue
 			case "mode":

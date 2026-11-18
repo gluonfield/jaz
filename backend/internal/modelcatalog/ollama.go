@@ -2,6 +2,9 @@ package modelcatalog
 
 import (
 	"context"
+
+	"github.com/wins/jaz/backend/internal/provider"
+
 	"net/http"
 	"net/url"
 	"strings"
@@ -21,7 +24,11 @@ type ollamaShowRequest struct {
 func fetchOllamaModels(ctx context.Context, baseURL string) ([]Model, error) {
 	ctx, cancel := context.WithTimeout(ctx, modelCatalogRequestTimeout)
 	defer cancel()
-	models, err := fetchOpenAICompatibleModels(ctx, baseURL, "")
+	catalogEndpoint, urlErr := provider.ModelsURL(baseURL)
+	if urlErr != nil {
+		return nil, urlErr
+	}
+	models, err := fetchOpenAICompatibleModels(ctx, catalogEndpoint, "", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +43,7 @@ func fetchOllamaModels(ctx context.Context, baseURL string) ([]Model, error) {
 			limit <- struct{}{}
 			defer func() { <-limit }()
 			var show ollamaShowResponse
-			if err := fetchJSON(ctx, http.MethodPost, endpoint, "", ollamaShowRequest{Model: models[i].Value}, &show); err != nil {
+			if err := fetchJSON(ctx, http.MethodPost, endpoint, "", nil, ollamaShowRequest{Model: models[i].Value}, &show); err != nil {
 				return
 			}
 			for _, capability := range show.Capabilities {

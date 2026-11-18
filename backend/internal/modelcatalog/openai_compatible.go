@@ -16,13 +16,16 @@ type openAICompatibleModelsResponse struct {
 	} `json:"data"`
 }
 
-func fetchOpenAICompatibleModels(ctx context.Context, baseURL, apiKey string) ([]Model, error) {
-	endpoint, err := provider.ModelsURL(baseURL)
-	if err != nil {
-		return nil, err
-	}
+// FetchModels loads an OpenAI-style /models list from endpoint, with optional
+// auth and extra headers.
+func FetchModels(ctx context.Context, endpoint, apiKey string, headers map[string]string) ([]Model, error) {
+	return fetchOpenAICompatibleModels(ctx, endpoint, apiKey, headers)
+}
+
+// fetchOpenAICompatibleModels loads {endpoint}, an OpenAI-style /models list.
+func fetchOpenAICompatibleModels(ctx context.Context, endpoint, apiKey string, headers map[string]string) ([]Model, error) {
 	var body openAICompatibleModelsResponse
-	if err := fetchJSON(ctx, http.MethodGet, endpoint, apiKey, nil, &body); err != nil {
+	if err := fetchJSON(ctx, http.MethodGet, endpoint, apiKey, headers, nil, &body); err != nil {
 		return nil, err
 	}
 	out := make([]Model, 0, len(body.Data))
@@ -40,4 +43,27 @@ func fetchOpenAICompatibleModels(ctx context.Context, baseURL, apiKey string) ([
 		out = append(out, completeModelMetadata(model))
 	}
 	return out, nil
+}
+
+// catalogEndpoint resolves where a provider's model list lives: an explicit
+// models URL when the provider overrides it, else base URL + "/models".
+func catalogEndpoint(metaBaseURL, modelsURL, cfgBaseURL string) string {
+	if u := strings.TrimSpace(modelsURL); u != "" {
+		return u
+	}
+	base := firstNonEmpty(cfgBaseURL, metaBaseURL)
+	endpoint, err := provider.ModelsURL(base)
+	if err != nil {
+		return ""
+	}
+	return endpoint
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
