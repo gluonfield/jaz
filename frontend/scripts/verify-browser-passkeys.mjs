@@ -7,7 +7,7 @@ app.setActivationPolicy('prohibited')
 app.setPath('userData', process.env.JAZ_BROWSER_PASSKEYS_CHECK_DIR)
 app.whenReady().then(() => {
   try {
-    assert.equal(process.versions.electron, '45.2.1', 'Expected the patched Electron 45.2.1 runtime')
+    assert.equal(process.versions.electron, '45.3.4', 'Expected the patched Electron 45.3.4 runtime')
     assert.equal(typeof app.enableWebAuthnBrowserAuthenticator, 'function', 'Runtime lacks the native browser passkey patch')
     assert.equal(typeof app.enableWebAuthnBrowserAuthenticator(), 'boolean')
     app.configureWebAuthn({ platformPasskeys: false })

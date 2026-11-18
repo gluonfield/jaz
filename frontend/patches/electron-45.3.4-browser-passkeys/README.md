@@ -1,17 +1,17 @@
 # Native browser passkeys
 
-This opt-in Electron 45.2.1 patch uses Chromium 156.0.8078.75's existing macOS browser authenticator. Chromium owns request validation, origins, credential discovery, extensions and native authentication. Electron's existing app-specific `platformPasskeys` mode remains separate.
+This opt-in Electron 45.3.4 patch uses Chromium 156.0.8078.100's existing macOS browser authenticator. Chromium owns request validation, origins, credential discovery, extensions and native authentication. Electron's existing app-specific `platformPasskeys` mode remains separate.
 
 `app.enableWebAuthnBrowserAuthenticator()` opts in through Chromium's OS and signed-entitlement check, returning false without changing configuration when unsupported. App and browser passkeys share one native mode; explicit `configureWebAuthn({ platformPasskeys: true })` selects app mode and `false` disables either mode. Stock and unapproved builds retain their existing behavior.
 
 ## Build
 
-Apply to an unmodified [Electron v45.2.1 source checkout](https://github.com/electron/electron/tree/v45.2.1). `base.sha256` pins every changed upstream file. From the Electron checkout, with `JAZ_SOURCE` pointing to this repository:
+Apply to an unmodified [Electron v45.3.4 source checkout](https://github.com/electron/electron/tree/v45.3.4). `base.sha256` pins every changed upstream file. From the Electron checkout, with `JAZ_SOURCE` pointing to this repository:
 
 ```sh
-shasum -a 256 -c "$JAZ_SOURCE/frontend/patches/electron-45.2.1-browser-passkeys/base.sha256"
-git apply --check "$JAZ_SOURCE/frontend/patches/electron-45.2.1-browser-passkeys/browser-passkeys.patch"
-git apply "$JAZ_SOURCE/frontend/patches/electron-45.2.1-browser-passkeys/browser-passkeys.patch"
+shasum -a 256 -c "$JAZ_SOURCE/frontend/patches/electron-45.3.4-browser-passkeys/base.sha256"
+git apply --check "$JAZ_SOURCE/frontend/patches/electron-45.3.4-browser-passkeys/browser-passkeys.patch"
+git apply "$JAZ_SOURCE/frontend/patches/electron-45.3.4-browser-passkeys/browser-passkeys.patch"
 ```
 
 Build using Electron's [macOS instructions](https://www.electronjs.org/docs/latest/development/build-instructions-macos), producing an unpacked distribution containing `Electron.app`. The native patch must be compiled; changing Jaz's JavaScript cannot substitute for it.
@@ -32,4 +32,4 @@ The opt-in configuration checks the runtime's native API before packaging and re
 
 The local checks cover profile selection, helper isolation, stock-runtime rejection, TypeScript and patch application. They do not establish native compilation or successful Google authentication. No account or credential changes are needed for those local checks.
 
-Chromium's [existing implementation](https://github.com/chromium/chromium/blob/156.0.8078.75/device/fido/mac/icloud_keychain_sys.mm) includes Apple SPI used by Chromium; this patch reuses it rather than introducing a Jaz authentication bridge.
+Chromium's [existing implementation](https://github.com/chromium/chromium/blob/156.0.8078.100/device/fido/mac/icloud_keychain_sys.mm) includes Apple SPI used by Chromium; this patch reuses it rather than introducing a Jaz authentication bridge.

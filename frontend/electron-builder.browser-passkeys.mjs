@@ -22,7 +22,7 @@ export function browserPasskeyBuild(environment = process.env) {
   })
   return {
     extends: join(frontend, 'electron-builder.yml'),
-    electronVersion: '45.2.1',
+    electronVersion: '45.3.4',
     electronDist: resolve(runtime),
     mac: { provisioningProfile: resolve(profile), sign: './scripts/sign-browser-passkeys.mjs' },
   }
