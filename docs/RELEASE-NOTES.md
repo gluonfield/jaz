@@ -1,1 +1,3 @@
-Installs Electron automatically during dependency installation, so fresh checkouts and source updates can start Jaz and run its desktop tests. Keeps web-only builds free of the desktop binary.
+- Restores MCP tools after temporary connection failures while preserving healthy connections.
+- Checks stored OAuth credentials before initialization to avoid a second refresh during failure cleanup.
+- Shows “Sign in required” when a refresh grant is rejected.
