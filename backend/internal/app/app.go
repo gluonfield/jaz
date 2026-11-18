@@ -402,23 +402,17 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 
 func StartMCPManager(lc fx.Lifecycle, manager *mcpruntime.Manager, agents *acp.Manager, logger *log.Logger) {
 	agents.SetMCPRevisionSource(manager)
-	var cancel context.CancelFunc
 	lc.Append(fx.Hook{
 		// Connecting to MCP servers must never block or fail startup: a slow or
 		// unreachable server would otherwise blow the lifecycle start deadline and
 		// take the whole backend down. Refresh in the background on its own context
 		// so the server comes up immediately regardless of MCP connectivity.
-		OnStart: func(context.Context) error {
-			ctx, stop := context.WithCancel(context.Background())
-			cancel = stop
+		OnStart: func(ctx context.Context) error {
 			manager.RefreshLocal(ctx)
-			go manager.Refresh(ctx)
+			go manager.Run()
 			return nil
 		},
 		OnStop: func(context.Context) error {
-			if cancel != nil {
-				cancel()
-			}
 			manager.Close()
 			return nil
 		},

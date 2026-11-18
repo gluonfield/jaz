@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -22,6 +23,7 @@ import (
 	"github.com/wins/jaz/backend/internal/oauthbroker"
 	"github.com/wins/jaz/backend/internal/tools"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -531,10 +533,12 @@ func serverToolViews(items []remoteTool) []mcpconfig.ServerTool {
 }
 
 func connectErrorStatus(handler *oauthHandler, err error) mcpconfig.ServerStatus {
-	if handler != nil && handler.needsAuthorization() {
+	var rejected *oauth2.RetrieveError
+	if (handler != nil && handler.needsAuthorization()) || (errors.As(err, &rejected) && rejected.ErrorCode == "invalid_grant") {
 		return mcpconfig.ServerStatus{Status: "needs_auth", Error: "Sign in required", CheckedAt: time.Now().UTC()}
 	}
-	return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
+	var refresh *integrationoauth.RefreshError
+	return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC(), Retryable: !errors.As(err, &refresh)}
 }
 
 func oauthGateStatus(ctx context.Context, server mcpconfig.Server, handler *oauthHandler, items []remoteTool) (mcpconfig.ServerStatus, bool) {
@@ -578,6 +582,19 @@ func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler 
 	}
 	httpClient := &http.Client{Transport: transport}
 	dial := func(ctx context.Context) (*mcpsdk.ClientSession, error) {
+		// SDK cleanup asks for credentials again after a failed Connect. Resolve
+		// refresh failures first so cleanup cannot reuse a consumed refresh token.
+		if handler != nil {
+			source, err := handler.TokenSource(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if source != nil {
+				if _, err := source.Token(); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if server.Transport == mcpconfig.TransportSSE {
 			return client.Connect(ctx, sseTransport{mcpsdk.SSEClientTransport{Endpoint: server.URL, HTTPClient: httpClient}}, nil)
 		}

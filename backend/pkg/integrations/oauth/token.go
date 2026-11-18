@@ -12,6 +12,20 @@ import (
 
 var ErrTokenNotFound = errors.New("oauth token not found")
 
+// RefreshError may follow a consumed refresh token. Retrying the exchange can
+// revoke a rotated grant when its response or persistence was lost.
+type RefreshError struct {
+	Err error
+}
+
+func (e *RefreshError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *RefreshError) Unwrap() error {
+	return e.Err
+}
+
 type Token struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token,omitempty"`
@@ -172,12 +186,12 @@ func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 	}
 	tok, err := config.config().TokenSource(ctx, stored.oauth2Token()).Token()
 	if err != nil {
-		return nil, err
+		return nil, &RefreshError{Err: err}
 	}
 	if !sameToken(stored, tok) {
 		stored = mergeToken(stored, tok)
 		if err := p.refresher.Store.SaveToken(context.Background(), p.connectionID, stored); err != nil {
-			return nil, err
+			return nil, &RefreshError{Err: err}
 		}
 	}
 	return tok, nil

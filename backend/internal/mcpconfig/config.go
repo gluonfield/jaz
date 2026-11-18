@@ -116,6 +116,7 @@ type ServerStatus struct {
 	Error     string       `json:"error,omitempty"`
 	AuthURL   string       `json:"auth_url,omitempty"`
 	CheckedAt time.Time    `json:"checked_at,omitempty"`
+	Retryable bool         `json:"-"`
 }
 
 // Declare applies the servers a deployment declares as a JSON array of server

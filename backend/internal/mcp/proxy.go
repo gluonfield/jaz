@@ -36,7 +36,9 @@ func (m *Manager) ensureProxyReady(ctx context.Context) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, remoteStatusTimeout)
 	defer cancel()
-	m.Refresh(ctx)
+	_ = m.refresh(ctx, func(server mcpconfig.Server) bool {
+		return m.Status(server.ID).Status == ""
+	})
 }
 
 func (m *Manager) proxyRefreshNeeded() bool {
