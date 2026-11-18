@@ -7,6 +7,7 @@
   "author": "Augustinas Malinauskas",
   "main": "out/main/index.js",
   "scripts": {
+    "postinstall": "bun node_modules/electron/install.js",
     "dev": "bun run build:native && electron-vite dev --watch",
     "build": "bun run build:app",
     "build:bundle": "bun run build:native && electron-vite build",

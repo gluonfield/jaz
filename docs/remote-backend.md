@@ -261,7 +261,7 @@ sudo apt-get install -y git unzip
 curl -fsSL https://bun.sh/install | bash && export PATH="$HOME/.bun/bin:$PATH"
 sudo git clone --depth 1 https://github.com/gluonfield/jaz.git /opt/jaz
 sudo chown -R "$USER" /opt/jaz
-cd /opt/jaz/frontend && bun install
+cd /opt/jaz/frontend && bun install --frozen-lockfile --ignore-scripts
 POSTHOG_PROJECT_TOKEN=<ph_project_token> \
   VITE_JAZ_API_URL=origin \
   bun run build:web                                         # builds /opt/jaz/frontend/dist-web
