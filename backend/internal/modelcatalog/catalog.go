@@ -62,8 +62,10 @@ var (
 		},
 	}
 	openAIModels = []Model{
-		openRouterBackedModel(provider.OpenAIModelGPT6Astra, "GPT-6 Astra", "Frontier intelligence for the most demanding work", "openai/gpt-6-astra"),
-		openRouterBackedModel(provider.OpenAIModelGPT61Sol, "GPT-6.1 Sol", "Latest workhorse for coding and everyday work", "openai/gpt-6.1-sol"),
+		openRouterBackedModel(provider.OpenAIModelGPT6Astra, "GPT-6 Astra", "Previous generation model for complex coding and professional work", "openai/gpt-6-astra"),
+		openRouterBackedModel(provider.OpenAIModelGPT62Sol, "GPT-6.2 Sol", "Fast, go-to model for coding and everyday work", "openai/gpt-6.2-sol"),
+		openRouterBackedModel(provider.OpenAIModelGPT62Astra, "GPT-6.2 Astra", "Most capable model for complex coding and professional work", "openai/gpt-6.2-astra"),
+		openRouterBackedModel(provider.OpenAIModelGPT61Sol, "GPT-6.1 Sol", "Previous generation model for coding and everyday work", "openai/gpt-6.1-sol"),
 		openRouterBackedModel(provider.OpenAIModelGPT61Terra, "GPT-6.1 Terra", "Fast and efficient for writing, visual reasoning and computer use", "openai/gpt-6.1-terra"),
 		openRouterBackedModel(provider.OpenAIModelGPT6Sol, "GPT-6 Sol", "Previous generation workhorse", "openai/gpt-6-sol"),
 		openRouterBackedModel(provider.DefaultOpenAIModel, "GPT-6 Luna", "Fast and affordable for easier tasks", "openai/gpt-6-luna"),
@@ -75,7 +77,7 @@ var (
 			openRouterBackedModel("fable[1m]", "Fable 5.2", "Most capable for the hardest tasks", "anthropic/claude-fable-5.2"),
 			openRouterBackedModel("claude-fable-5[1m]", "Fable 5", "Previous Fable model", "anthropic/claude-fable-5"),
 			openRouterBackedModel("sonnet", "Sonnet 5.5", "Efficient for routine tasks", "anthropic/claude-sonnet-5.5"),
-			openRouterBackedModel("haiku", "Haiku 4.5", "Fastest for quick answers", "anthropic/claude-haiku-4.5"),
+			openRouterBackedModel("haiku", "Haiku 5.5", "Fastest for quick answers", "anthropic/claude-haiku-5.5"),
 		},
 		"grok": {
 			modelWithoutProviderReasoning("grok-4.7", "Grok 4.7", "Latest frontier model"),
@@ -85,8 +87,10 @@ var (
 		},
 		"opencode": {
 			openRouterNativeModel(provider.DefaultOpenRouterModel, "GLM 5.2", "Default OpenRouter coding model"),
-			openRouterNativeModel("openai/"+provider.OpenAIModelGPT6Astra, "GPT-6 Astra", "Frontier intelligence for the most demanding work"),
-			openRouterNativeModel("openai/"+provider.OpenAIModelGPT61Sol, "GPT-6.1 Sol", "Latest workhorse for coding and everyday work"),
+			openRouterNativeModel("openai/"+provider.OpenAIModelGPT62Sol, "GPT-6.2 Sol", "Fast, go-to model for coding and everyday work"),
+			openRouterNativeModel("openai/"+provider.OpenAIModelGPT62Astra, "GPT-6.2 Astra", "Most capable model for complex coding and professional work"),
+			openRouterNativeModel("openai/"+provider.OpenAIModelGPT6Astra, "GPT-6 Astra", "Previous generation model for complex coding and professional work"),
+			openRouterNativeModel("openai/"+provider.OpenAIModelGPT61Sol, "GPT-6.1 Sol", "Previous generation model for coding and everyday work"),
 			openRouterNativeModel("openai/"+provider.OpenAIModelGPT61Terra, "GPT-6.1 Terra", "Fast and efficient for writing, visual reasoning and computer use"),
 			openRouterNativeModel("openai/"+provider.OpenAIModelGPT6Sol, "GPT-6 Sol", "Previous generation workhorse"),
 			openRouterNativeModel("openai/"+provider.DefaultOpenAIModel, "GPT-6 Luna", "Fast and affordable for easier tasks"),

@@ -283,7 +283,7 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 	for _, model := range models {
 		values[model.Value] = model
 	}
-	for _, value := range []string{provider.OpenAIModelGPT6Astra, provider.OpenAIModelGPT61Sol, provider.OpenAIModelGPT6Sol, provider.DefaultOpenAIModel} {
+	for _, value := range []string{provider.OpenAIModelGPT6Astra, provider.OpenAIModelGPT62Sol, provider.OpenAIModelGPT62Astra, provider.OpenAIModelGPT61Sol, provider.OpenAIModelGPT61Terra, provider.OpenAIModelGPT6Sol, provider.DefaultOpenAIModel} {
 		if _, ok := values[value]; !ok {
 			t.Fatalf("OpenAI catalog missing %s: %#v", value, models)
 		}
@@ -342,7 +342,7 @@ func TestServiceAgentModelsUseRawOpenRouterReasoning(t *testing.T) {
 		{"id":"anthropic/claude-fable-5.2","name":"Anthropic: Claude Fable 5.2","context_length":1000000,"reasoning":{"mandatory":true,"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"high"}},
 		{"id":"anthropic/claude-sonnet-5.5","name":"Anthropic: Claude Sonnet 5.5","reasoning":{"supported_efforts":["max","high","medium","low"],"default_effort":"medium"}},
 		{"id":"anthropic/claude-opus-5","name":"Anthropic: Claude Opus 5","reasoning":{"mandatory":true,"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
-		{"id":"anthropic/claude-haiku-4.5","name":"Anthropic: Claude Haiku 4.5","reasoning":{"mandatory":false}}
+		{"id":"anthropic/claude-haiku-5.5","name":"Anthropic: Claude Haiku 5.5","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}}
 	]}`)
 
 	models := service.AgentModels("claude")
@@ -365,8 +365,10 @@ func TestServiceAgentModelsUseRawOpenRouterReasoning(t *testing.T) {
 		efforts["opus[1m]"].Reasoning.Status != ReasoningUnavailable {
 		t.Fatalf("opus model = %#v", efforts["opus[1m]"])
 	}
-	if efforts["haiku"].Reasoning.Efforts == nil || len(efforts["haiku"].Reasoning.Efforts) != 0 {
-		t.Fatalf("haiku efforts = %#v", efforts["haiku"].Reasoning.Efforts)
+	haiku := efforts["haiku"]
+	if haiku.Label != "Haiku 5.5" || haiku.OpenRouterID != "anthropic/claude-haiku-5.5" ||
+		strings.Join(haiku.Reasoning.Efforts, ",") != "none,low,medium,high,xhigh,max" || haiku.Reasoning.DefaultEffort != "medium" {
+		t.Fatalf("haiku model = %#v", haiku)
 	}
 }
 

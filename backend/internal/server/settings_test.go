@@ -30,6 +30,8 @@ func warmedModelCatalog(t *testing.T) *modelcatalog.Service {
 	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[
+			{"id":"openai/gpt-6.2-sol","name":"OpenAI: GPT-6.2 Sol","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
+			{"id":"openai/gpt-6.2-astra","name":"OpenAI: GPT-6.2 Astra","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
 			{"id":"openai/gpt-6-astra","name":"OpenAI: GPT-6 Astra","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-6.1-sol","name":"OpenAI: GPT-6.1 Sol","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
 			{"id":"openai/gpt-6.1-terra","name":"OpenAI: GPT-6.1 Terra","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
@@ -41,7 +43,7 @@ func warmedModelCatalog(t *testing.T) *modelcatalog.Service {
 			{"id":"openai/gpt-5.5","name":"OpenAI: GPT-5.5","reasoning":{"supported_efforts":["high","medium","low"]}},
 			{"id":"anthropic/claude-opus-5","name":"Anthropic: Claude Opus 5","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"]}},
 			{"id":"anthropic/claude-sonnet-5.5","name":"Anthropic: Claude Sonnet 5.5","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
-			{"id":"anthropic/claude-haiku-4.5","name":"Anthropic: Claude Haiku 4.5","reasoning":{"mandatory":false}}
+			{"id":"anthropic/claude-haiku-5.5","name":"Anthropic: Claude Haiku 5.5","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}}
 		]}`))
 	}))
 	t.Cleanup(upstream.Close)
@@ -251,11 +253,13 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
 	}
 	if !hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT6Astra, "none,low,medium,high,xhigh,max,ultra") ||
+		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT62Sol, "low,medium,high,xhigh,max,ultra") ||
+		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT62Astra, "low,medium,high,xhigh,max,ultra") ||
 		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT61Sol, "low,medium,high,xhigh,max,ultra") ||
 		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT61Terra, "none,low,medium,high,xhigh,max,ultra") ||
 		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT6Sol, "none,low,medium,high,xhigh,max,ultra") ||
 		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, "gpt-6-luna", "none,low,medium,high,xhigh,max") ||
-		len(got.ACPOptions["codex"].Models) != 5 {
+		len(got.ACPOptions["codex"].Models) != 7 {
 		t.Fatalf("codex model options missing current OpenAI models %#v", got.ACPOptions["codex"].Models)
 	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
@@ -291,8 +295,14 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
 		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
 	}
-	if !hasModelReasoningEfforts(got.ACPOptions["claude"].Models, "sonnet", "low,medium,high,xhigh,max,ultracode") {
-		t.Fatalf("claude model options missing sonnet reasoning matrix %#v", got.ACPOptions["claude"].Models)
+	if !hasModelReasoningEfforts(got.ACPOptions["claude"].Models, "sonnet", "low,medium,high,xhigh,max,ultracode") ||
+		!hasModelReasoningEfforts(got.ACPOptions["claude"].Models, "haiku", "none,low,medium,high,xhigh,max,ultracode") {
+		t.Fatalf("claude model options missing current reasoning matrix %#v", got.ACPOptions["claude"].Models)
+	}
+	for _, model := range []string{provider.OpenAIModelGPT62Sol, provider.OpenAIModelGPT62Astra} {
+		if !hasModelReasoningEfforts(got.ACPOptions["opencode"].Models, "openai/"+model, "low,medium,high,xhigh,max") {
+			t.Fatalf("opencode model options missing %s: %#v", model, got.ACPOptions["opencode"].Models)
+		}
 	}
 	// The desktop client treats a missing capability flag as "requires a command",
 	// so a false flag must be emitted explicitly, never dropped by omitempty. A

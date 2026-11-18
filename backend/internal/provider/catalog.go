@@ -18,6 +18,8 @@ const (
 	DefaultOpenAIModel     = "gpt-6-luna"
 
 	OpenAIModelGPT6Astra  = "gpt-6-astra"
+	OpenAIModelGPT62Sol   = "gpt-6.2-sol"
+	OpenAIModelGPT62Astra = "gpt-6.2-astra"
 	OpenAIModelGPT61Sol   = "gpt-6.1-sol"
 	OpenAIModelGPT61Terra = "gpt-6.1-terra"
 	OpenAIModelGPT6Sol    = "gpt-6-sol"

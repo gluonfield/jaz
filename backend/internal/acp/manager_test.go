@@ -1201,6 +1201,8 @@ func TestManagerStartsCodexThreadsOnTheirModel(t *testing.T) {
 	for _, pick := range []struct{ model, effort string }{
 		{model: "gpt-6-luna", effort: "xhigh"},
 		{model: "gpt-6-luna/high"},
+		{model: "gpt-6.2-sol", effort: "ultra"},
+		{model: "gpt-6.2-astra", effort: "ultra"},
 	} {
 		t.Run(pick.model, func(t *testing.T) {
 			store, err := jsonstore.New(t.TempDir())
@@ -1221,7 +1223,7 @@ func TestManagerStartsCodexThreadsOnTheirModel(t *testing.T) {
 						ReasoningEffort: pick.effort,
 						Env: map[string]string{
 							"JAZ_FAKE_ACP_AGENT":                    "1",
-							"JAZ_FAKE_ACP_MODELS":                   "gpt-6-sol/medium,gpt-6-luna/high,gpt-6-luna/xhigh",
+							"JAZ_FAKE_ACP_MODELS":                   "gpt-6-sol/medium,gpt-6-luna/high,gpt-6-luna/xhigh,gpt-6.2-sol[ultra],gpt-6.2-astra[ultra]",
 							"JAZ_FAKE_ACP_EXPECT_NO_CODEX_METADATA": "1",
 							"JAZ_FAKE_ACP_SET_CONFIG":               "1",
 							"JAZ_FAKE_ACP_TURN_LOG":                 turnLog,
@@ -1239,7 +1241,8 @@ func TestManagerStartsCodexThreadsOnTheirModel(t *testing.T) {
 			}
 			sendAndWait(t, ctx, manager, spawned.SessionID, "hello")
 			sendAndWait(t, ctx, manager, spawned.SessionID, "hello again")
-			want := fakeTurn{Model: "gpt-6-luna", Effort: cmp.Or(pick.effort, "high")}
+			model, _, _ := strings.Cut(pick.model, "/")
+			want := fakeTurn{Model: model, Effort: cmp.Or(pick.effort, "high")}
 			if turns := readFakeTurns(t, turnLog); !slices.Equal(turns, []fakeTurn{want, want}) {
 				t.Fatalf("turns = %v, want two on %v", turns, want)
 			}

@@ -226,12 +226,10 @@ func isCodexUltraModel(model modelcatalog.Model) bool {
 	if id == "" {
 		id = model.Value
 	}
-	switch id {
-	case provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT6Astra,
-		provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT61Sol,
-		provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT61Terra,
-		provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT6Sol,
-		provider.OpenAIModelGPT6Astra,
+	switch strings.TrimPrefix(id, provider.ProviderOpenAI+"/") {
+	case provider.OpenAIModelGPT6Astra,
+		provider.OpenAIModelGPT62Sol,
+		provider.OpenAIModelGPT62Astra,
 		provider.OpenAIModelGPT61Sol,
 		provider.OpenAIModelGPT61Terra,
 		provider.OpenAIModelGPT6Sol:
