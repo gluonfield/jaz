@@ -149,6 +149,7 @@ remote server you connect to over HTTP.
   locally by default, or connects to a remote one over HTTP with a per-device token.
 
 Running the backend on a server: see [`docs/remote-backend.md`](docs/remote-backend.md).
+Automating project and bot setup: see the [REST API guide](docs/api.md).
 
 ## Development
 
