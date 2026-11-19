@@ -26,6 +26,8 @@ export interface AppearanceSettings {
   wideLayout: boolean
   /** show ACP agent/model marks in the left sidebar */
   showModelIcons: boolean
+  /** hex colours of the composer focus comet; empty keeps the rainbow */
+  composerRingColors: string[]
   /** custom name or image URL on the new-thread screen; '' keeps "jaz" */
   homeWordmark: string
   invertHomeLogoInLightMode: boolean
@@ -46,6 +48,7 @@ export const DEFAULTS: AppearanceSettings = {
   inlineShellCommands: false,
   wideLayout: false,
   showModelIcons: false,
+  composerRingColors: [],
   homeWordmark: '',
   invertHomeLogoInLightMode: false,
   invertHomeLogoInDarkMode: false,
@@ -61,6 +64,15 @@ const listeners = new Set<() => void>()
 export function normalizeFontScale(value: unknown): AppearanceSettings['fontScale'] {
   const scale = typeof value === 'number' ? value : Number(value)
   return FONT_SCALES.find((candidate) => Math.abs(candidate - scale) < 0.001) ?? DEFAULTS.fontScale
+}
+
+export const MAX_RING_COLORS = 5
+
+function ringColors(value: unknown): string[] {
+  const colors = typeof value === 'string' ? value.split(',') : Array.isArray(value) ? value : []
+  return colors
+    .filter((color): color is string => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color))
+    .slice(0, MAX_RING_COLORS)
 }
 
 function fontName(value: string | null): string {
@@ -133,6 +145,13 @@ const FIELDS: { [K in keyof AppearanceSettings]: Field<AppearanceSettings[K]> } 
   inlineShellCommands: boolField('jaz.appearance.inlineShellCommands', (c) => c.inlineShellCommands),
   wideLayout: boolField('jaz.appearance.wideLayout', (c) => c.wideLayout),
   showModelIcons: boolField('jaz.appearance.showModelIcons', (c) => c.showModelIcons),
+  composerRingColors: {
+    storageKey: 'jaz.appearance.composerRingColors',
+    fromConfig: (c) => (c.composerRingColors ? ringColors(c.composerRingColors) : undefined),
+    decode: ringColors,
+    encode: String,
+    normalize: ringColors,
+  },
   homeWordmark: stringField(
     'jaz.appearance.homeWordmark',
     (c) => c.homeWordmark,
@@ -268,6 +287,10 @@ export function useInlineDiffs(): boolean {
 
 export function useInlineShellCommands(): boolean {
   return useSyncExternalStore(subscribe, () => current.inlineShellCommands)
+}
+
+export function useComposerRingColors(): string[] {
+  return useSyncExternalStore(subscribe, () => current.composerRingColors)
 }
 
 export function useShowModelIcons(): boolean {
