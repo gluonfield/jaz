@@ -308,8 +308,6 @@ export function hasToolCallDetail(call: ACPToolCall): boolean {
 }
 
 export function toolRunLabel(calls: ACPToolCall[]): string {
-  const agentLabel = calls.length === 1 ? agentToolLabel(calls[0]) : undefined
-  if (agentLabel) return agentLabel
   const counts = new Map<ToolCategory, number>()
   let failed = 0
   for (const call of calls) {

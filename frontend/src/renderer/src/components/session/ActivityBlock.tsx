@@ -1,5 +1,4 @@
 import {
-  Bot,
   CircleEllipsis,
   FilePenLine,
   FolderOpen,
@@ -31,7 +30,6 @@ import type { ActivityEntry, ActivityHeader } from './timeline'
 type ToolEntry = Extract<ActivityEntry, { kind: 'tool' }>
 
 function toolRunIcon(categories: ToolCategory[]): LucideIcon {
-  if (categories.includes('agent')) return Bot
   if (categories.includes('edit')) return FilePenLine
   if (categories.includes('read')) return FolderOpen
   if (categories.includes('command')) return SquareTerminal
@@ -99,8 +97,7 @@ export const ActivityBlock = memo(function ActivityBlock({
   const rows: (
     | { kind: 'thought'; entry: Extract<ActivityEntry, { kind: 'thought' }> }
     | { kind: 'tools'; entries: ToolEntry[]; key: string }
-    | { kind: 'diff'; entry: ToolEntry }
-    | { kind: 'shell'; entry: ToolEntry }
+    | { kind: 'tool' | 'diff' | 'shell'; entry: ToolEntry }
   )[] = []
   let tools: ToolEntry[] = []
   const flushTools = () => {
@@ -116,7 +113,7 @@ export const ActivityBlock = memo(function ActivityBlock({
     }
     if (toolCallCategory(entry.call) === 'agent') {
       flushTools()
-      rows.push({ kind: 'tools', entries: [entry], key: `tools-${entry.key}` })
+      rows.push({ kind: 'tool', entry })
       continue
     }
     if (inlineDiffs && hasInlineDiff(entry.call)) {
@@ -141,6 +138,8 @@ export const ActivityBlock = memo(function ActivityBlock({
         switch (row.kind) {
           case 'thought':
             return <ThinkingBlock key={row.entry.key} text={row.entry.text} pending={rowActive} findActive={findActive} />
+          case 'tool':
+            return <ToolCallDetail key={row.entry.key} call={row.entry.call} active={rowActive} />
           case 'tools':
             return (
               <ActivityToolDisclosure

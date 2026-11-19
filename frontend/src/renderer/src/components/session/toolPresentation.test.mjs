@@ -13,7 +13,6 @@ test('both Codex agent event formats get a readable label without a tool_name', 
   for (const call of codexAgentCalls) {
     expect(toolCallCategory(call)).toBe('agent')
     expect(toolCallPresentation(call).label).toBe('Created an agent')
-    expect(toolRunLabel([call])).toBe('Created an agent')
   }
 })
 
@@ -26,7 +25,7 @@ test('agent identity survives omitted raw details', () => {
   ]) {
     const call = { id: 'large-input', tool_name: `codex.${name}`, status: 'completed' }
     expect(toolCallCategory(call)).toBe('agent')
-    expect(toolRunLabel([call])).toBe(label)
+    expect(toolCallPresentation(call).label).toBe(label)
   }
 })
 
@@ -39,9 +38,9 @@ test('agent lifecycle rows distinguish the action and its outcome', () => {
     ['wait', 'Waited for an agent', 'Waiting for an agent', 'Failed to wait for an agent'],
     ['closeAgent', 'Closed an agent', 'Closing an agent', 'Failed to close an agent'],
   ]) {
-    expect(toolRunLabel([{ ...call, title }])).toBe(completed)
-    expect(toolRunLabel([{ ...call, title, status: 'in_progress' }])).toBe(running)
-    expect(toolRunLabel([{ ...call, title, status: 'failed' }])).toBe(failed)
+    expect(toolCallPresentation({ ...call, title }).label).toBe(completed)
+    expect(toolCallPresentation({ ...call, title, status: 'in_progress' }).label).toBe(running)
+    expect(toolCallPresentation({ ...call, title, status: 'failed' }).label).toBe(failed)
   }
 })
 
@@ -52,16 +51,16 @@ test('new agent activity preserves the provider action and ignores unrelated wai
     ['interrupted', 'Interrupted an agent'],
     ['completed', 'Agent finished'],
   ]) {
-    expect(toolRunLabel([{
+    expect(toolCallPresentation({
       ...activity,
       raw_input: { ...activity.raw_input, activityKind },
-    }])).toBe(label)
+    }).label).toBe(label)
   }
-  expect(toolRunLabel([{
+  expect(toolCallPresentation({
     ...collaboration,
     title: 'wait',
     raw_input: { ...collaboration.raw_input, receiverThreadIds: ['first', 'second'] },
-  }])).toBe('Waited for 2 agents')
+  }).label).toBe('Waited for 2 agents')
   expect(toolCallCategory({ id: 'wait', title: 'wait', raw_input: { cell_id: '42' } })).toBe('tool')
   expect(toolCallCategory({ id: 'command', kind: 'execute', raw_input: { activityKind: 'started' } })).toBe('command')
   expect(toolCallCategory({ ...activity, raw_input: { ...activity.raw_input, activityKind: 'unknown' } })).toBe('tool')

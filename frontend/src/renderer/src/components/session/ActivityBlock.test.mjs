@@ -136,6 +136,26 @@ test('the production transcript gives each agent action its own row between regu
   expect(html).not.toContain('Used tools')
 })
 
+test('expanding transcript activity never nests another agent completion row', () => {
+  const [, activity] = codexAgentCalls
+  const html = renderToStaticMarkup(createElement(ActivityBlock, {
+    entries: [
+      tool({ ...activity, raw_input: { ...activity.raw_input, activityKind: 'completed' } }),
+      tool({ id: 'empty-completion', tool_name: 'codex.completed', status: 'completed' }),
+      tool({ id: 'read', tool_name: 'read', title: 'Read hidden detail' }),
+    ],
+    findActive: true,
+  }))
+
+  const completions = html.match(/<button\b[^>]*>.*?<\/button>/g)
+    .filter((button) => button.includes('Agent finished'))
+  expect(completions).toHaveLength(2)
+  expect(completions[0]).toContain('aria-expanded="false"')
+  expect(completions[1]).toContain('disabled=""')
+  expect(completions[1]).not.toContain('aria-expanded')
+  expect(html).toContain('Read hidden detail')
+})
+
 test('the live production transcript separates collapsed thoughts from visible commentary and tools', () => {
   const at = (seconds) => new Date(seconds * 1000).toISOString()
   const acp = (id, fields) => ({
