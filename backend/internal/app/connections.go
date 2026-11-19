@@ -50,8 +50,8 @@ func NewConnectionRemoteMCPConnector(store *sqlitestore.Store) *connections.Remo
 	return connections.NewRemoteMCPConnector(store)
 }
 
-func NewConnectionMCPConnector(store *sqlitestore.Store, manager *mcpruntime.Manager) *connections.MCPConnectionConnector {
-	return connections.NewMCPConnectionConnector(store, manager)
+func NewConnectionMCPConnector(store *sqlitestore.Store, manager *mcpruntime.Manager, cfg Config) *connections.MCPConnectionConnector {
+	return connections.NewMCPConnectionConnector(store, manager, cfg.Connections.MCP)
 }
 
 func NewConnectionConnectService(catalog *connections.Catalog, oauth *connections.OAuthService, qr *connections.QRService, remoteMCP *connections.RemoteMCPConnector, mcpConnection *connections.MCPConnectionConnector) *connections.ConnectService {

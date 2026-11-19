@@ -92,7 +92,7 @@ func TestConnectServiceAddsRemoteMCPServer(t *testing.T) {
 func TestConnectServiceStartsDeployinkAsConnectionBackedMCP(t *testing.T) {
 	store := &mcpConnectionStore{}
 	authorizer := &fakeMCPConnectionAuthorizer{authURL: "https://deployink.com/oauth"}
-	service := NewConnectService(NewCatalog(), nil, nil, nil, NewMCPConnectionConnector(store, authorizer))
+	service := NewConnectService(NewCatalog(), nil, nil, nil, NewMCPConnectionConnector(store, authorizer, nil))
 
 	result, err := service.Start(context.Background(), deployink.ProviderID, StartOptions{
 		MCPRedirectURL: "https://jaz.example.com/v1/mcp/oauth/callback",
@@ -166,4 +166,32 @@ func (a *fakeMCPConnectionAuthorizer) AuthorizeWithHook(_ context.Context, serve
 	a.options = options
 	a.onAuthorized = onAuthorized
 	return mcpconfig.ServerStatus{Status: "needs_auth", AuthURL: a.authURL}
+}
+
+func TestZoomConnectionRequiresDeploymentClient(t *testing.T) {
+	authorizer := &fakeMCPConnectionAuthorizer{authURL: "https://zoom.us/oauth/authorize"}
+	store := &mcpConnectionStore{}
+	connector := NewMCPConnectionConnector(store, authorizer, nil)
+	service := NewConnectService(NewCatalog(), nil, nil, nil, connector)
+	if _, err := service.Start(context.Background(), "zoom", StartOptions{}); err == nil {
+		t.Fatal("missing Zoom deployment credentials were accepted")
+	}
+	if authorizer.server.ID != "" || len(store.connections) != 0 {
+		t.Fatal("unconfigured connection attempted authorization or persisted an account")
+	}
+	client := mcpconfig.OAuthConfig{ClientID: "registered-client", ClientSecretEnvVar: "ZOOM_TEST_SECRET", UseAppScopes: true}
+	connector.clients = map[string]mcpconfig.OAuthConfig{"zoom": client}
+	result, err := service.Start(context.Background(), "zoom", StartOptions{MCPRedirectURL: "https://jaz.example/callback"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Start.AuthURL != authorizer.authURL || authorizer.server.OAuth != client || authorizer.server.URL != "https://mcp.zoom.us/mcp/zoom/streamable" {
+		t.Fatalf("unexpected Zoom authorization: %#v", authorizer.server)
+	}
+	if err := authorizer.onAuthorized(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.connections) != 1 || store.connections[0].Provider != "zoom" {
+		t.Fatalf("connections = %#v", store.connections)
+	}
 }

@@ -36,6 +36,7 @@ type Header struct {
 }
 
 type OAuthConfig struct {
+	UseAppScopes       bool   `json:"use_app_scopes,omitempty"`
 	ClientID           string `json:"client_id,omitempty"`
 	ClientSecretEnvVar string `json:"client_secret_env_var,omitempty"`
 	Issuer             string `json:"issuer,omitempty"`
@@ -197,7 +198,7 @@ func ValidateInput(input ServerInput) (ServerInput, error) {
 	}
 	input.BearerTokenEnvVar = strings.TrimSpace(input.BearerTokenEnvVar)
 	input.BearerToken = strings.TrimSpace(input.BearerToken)
-	input.OAuth = normalizeOAuth(input.OAuth)
+	input.OAuth = NormalizeOAuth(input.OAuth)
 	if input.Name == "" {
 		return input, errors.New("name is required")
 	}
@@ -282,7 +283,7 @@ func validateStdio(input ServerInput) (ServerInput, error) {
 	return input, nil
 }
 
-func normalizeOAuth(oauth OAuthConfig) OAuthConfig {
+func NormalizeOAuth(oauth OAuthConfig) OAuthConfig {
 	oauth.ClientID = strings.TrimSpace(oauth.ClientID)
 	oauth.ClientSecretEnvVar = strings.TrimSpace(oauth.ClientSecretEnvVar)
 	oauth.Issuer = strings.TrimSpace(oauth.Issuer)
