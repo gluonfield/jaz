@@ -13,7 +13,7 @@ import { SECONDARY_WINDOW_KINDS } from '@shared/windowKind'
 import { browserPasswords } from '@preload/browserPasswords'
 import { browserDownloads } from '@preload/browserDownloads'
 import { installBrowserPasswordCapture } from '@preload/browser'
-import { BROWSER_PRELOAD_ARGUMENT } from '@shared/preview'
+import { BROWSER_PASSKEY_FALLBACK_ARGUMENT, BROWSER_PRELOAD_ARGUMENT } from '@shared/preview'
 import { BROWSER_COMMAND_CHANNEL, type BrowserCommandRequest } from '@shared/browserControl'
 import { BROWSER_PROFILE_CHANNELS, type BrowserProfileAPI } from '@shared/browserProfile'
 import {
@@ -73,6 +73,7 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
     connectionSession,
     browserPasswords,
     browserDownloads,
+    browserPasskeyFallback: process.argv.includes(BROWSER_PASSKEY_FALLBACK_ARGUMENT),
     fileActions: {
       canReveal: (backendUrl, sessionId) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'canReveal', backendUrl, sessionId),
       reveal: (backendUrl, sessionId, path) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'reveal', backendUrl, sessionId, path),

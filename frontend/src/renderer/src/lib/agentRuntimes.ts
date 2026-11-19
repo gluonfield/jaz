@@ -4,7 +4,6 @@ import type { AgentSettings, ModelProviderOption } from './api/types'
 
 export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
 const HIDDEN_AGENTS = new Set(['jaz'])
-const AUTH_REQUIRED_AGENTS = new Set(['codex', 'claude', 'kimi', 'grok', 'opencode', 'antigravity', 'muse'])
 
 export function enabledACPAgents(settings?: AgentSettings): string[] {
   return (settings?.agents ?? []).filter((agent) => selectableACPAgent(agent) && acpAgentEnabled(settings, agent))
@@ -97,7 +96,20 @@ export function selectedACPModelProvider(
   return selectableACPModelProviders(settings, agent).find((provider) => provider.id === selected)
 }
 
+export function acpAgentModelsReady(settings: AgentSettings | undefined, agent: string, providerId?: string): boolean {
+  const auth = settings?.acp_auth?.[agent]
+  if (!auth || agentInstallation(auth)) return false
+  if (!acpUsesModelProvider(settings, agent)) return auth.ready === true
+  const provider = selectableACPModelProviders(settings, agent).find((option) => option.id === providerId)
+  if (!provider) return false
+  if (acpProviderUsesNativeAuth(settings, agent, provider.id)) {
+    return settings?.acp[agent]?.model_provider === provider.id && auth.ready === true
+  }
+  return modelProviderConnected(provider)
+}
+
 export function acpAgentEnableable(settings: AgentSettings | undefined, agent: string): boolean {
+  if (agentInstallation(settings?.acp_auth?.[agent])) return false
   if (!acpUsesModelProvider(settings, agent)) return acpAgentAuthReady(settings, agent)
   const provider = selectedACPModelProvider(settings, agent)
   return Boolean(provider && acpModelProviderReady(settings, agent, provider))
@@ -105,11 +117,7 @@ export function acpAgentEnableable(settings: AgentSettings | undefined, agent: s
 
 function acpAgentAuthReady(settings: AgentSettings | undefined, agent: string): boolean {
   if (agentInstallation(settings?.acp_auth?.[agent])) return false
-  const options = settings?.acp_options?.[agent]
-  if (options?.local || !AUTH_REQUIRED_AGENTS.has(agent)) return true
-  const auth = settings?.acp_auth?.[agent]
-  if (auth?.authenticated && auth.ready) return true
-  return Boolean(settings?.acp_keys?.[agent]?.trim())
+  return settings?.acp_auth?.[agent]?.ready === true || Boolean(settings?.acp_keys?.[agent]?.trim())
 }
 
 export function acpAgentEnabled(settings: AgentSettings | undefined, agent: string): boolean {

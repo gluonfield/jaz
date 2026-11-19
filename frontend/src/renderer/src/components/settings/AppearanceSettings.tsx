@@ -2,7 +2,7 @@ import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { DitherTerrain } from '@/components/launch/DitherArt'
 import { Switch } from '@/components/ui/Switch'
-import { FONT_SCALES, SCENERIES, useAppearance } from '@/lib/appearance'
+import { FONT_SCALES, MAX_RING_COLORS, SCENERIES, useAppearance } from '@/lib/appearance'
 import { isHomeLogoUrl } from '@/lib/homeWordmark'
 import { ColorThemeSettings } from './ColorThemeSettings'
 import { FontPicker } from './FontPicker'
@@ -54,6 +54,60 @@ function FontSizeSwitcher({ value, onChange }: { value: number; onChange: (value
   )
 }
 
+const SWATCH = 'size-[26px] shrink-0 cursor-pointer rounded-full transition-transform duration-100 hover:scale-105 active:scale-95'
+const SWATCH_ACTIVE = 'ring-2 ring-ink ring-offset-2 ring-offset-surface'
+const SWATCH_IDLE = 'shadow-[0_0_1px_1px_rgb(0_0_0/0.1)]'
+
+// The rainbow default, then the user's own colours: click one to recolour it,
+// hover it to remove it.
+function RingColors({ value, onChange }: { value: string[]; onChange: (value: string[]) => void }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <button
+        type="button"
+        aria-label="Default colors"
+        aria-pressed={!value.length}
+        title="Default"
+        onClick={() => onChange([])}
+        style={{ background: `conic-gradient(${[1, 2, 3, 4, 5, 1].map((i) => `var(--color-rainbow-${i})`)})` }}
+        className={`${SWATCH} ${value.length ? SWATCH_IDLE : SWATCH_ACTIVE}`}
+      />
+      {value.map((color, i) => (
+        <span key={i} className="group relative flex">
+          <label style={{ background: color }} className={`${SWATCH} ${SWATCH_ACTIVE} relative overflow-hidden`}>
+            <input
+              type="color"
+              value={color}
+              aria-label={`Color ${i + 1}`}
+              onChange={(event) => onChange(value.with(i, event.currentTarget.value))}
+              className="absolute inset-0 size-full cursor-pointer opacity-0"
+            />
+          </label>
+          <button
+            type="button"
+            aria-label={`Remove color ${i + 1}`}
+            onClick={() => onChange(value.toSpliced(i, 1))}
+            className="absolute -right-1.5 -top-1.5 hidden size-4 cursor-pointer items-center justify-center rounded-full bg-ink text-[11px] leading-none text-bg group-focus-within:flex group-hover:flex"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      {value.length < MAX_RING_COLORS ? (
+        <button
+          type="button"
+          aria-label="Add color"
+          title="Add color"
+          onClick={() => onChange([...value, '#6366f1'])}
+          className={`${SWATCH} flex items-center justify-center bg-surface-2 text-[15px] leading-none text-ink-3 hover:text-ink`}
+        >
+          +
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export function AppearanceSettings() {
   const { settings, setAppearance } = useAppearance()
   const [homeWordmark, setHomeWordmark] = useState(settings.homeWordmark)
@@ -72,6 +126,15 @@ export function AppearanceSettings() {
             checked={settings.effects}
             onChange={(value) => setAppearance({ effects: value })}
             aria-label="Animated effects"
+          />
+        </Row>
+        <Row
+          title="Composer glow colors"
+          description="The colors circling the composer while you type. Add up to five of your own."
+        >
+          <RingColors
+            value={settings.composerRingColors}
+            onChange={(value) => setAppearance({ composerRingColors: value })}
           />
         </Row>
         <Row title="Font size" description="Scales the whole interface up or down.">

@@ -164,8 +164,6 @@ export function ComposerCard({
     },
   })
 
-  // Claude Code's ghost text: it takes the placeholder's place while the idle
-  // draft is empty, and Tab writes it into the draft.
   const suggestion = !streaming && !disabled && !dictation.phase && mention.text === '' ? suggestedPrompt : undefined
 
   const setGoalRequested = useCallback((next: boolean) => {
@@ -333,16 +331,12 @@ export function ComposerCard({
   const textarea = (
     <MentionTextarea
       mention={mention}
-      placeholder={suggestion || placeholder}
+      placeholder={placeholder}
+      suggestion={suggestion}
       disabled={disabled}
       readOnly={dictation.phase !== null}
       autoFocus={autoFocus}
       onKeyDown={(e) => {
-        const plainTab = e.key === 'Tab' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
-        if (plainTab && suggestion) {
-          e.preventDefault()
-          mention.insertText(suggestion)
-        }
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault()
           if (dictation.phase) {

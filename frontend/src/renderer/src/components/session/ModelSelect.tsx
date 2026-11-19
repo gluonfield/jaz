@@ -1,6 +1,6 @@
 import { Check, ChevronDown, ChevronRight, LoaderCircle, Zap } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
 import { Button } from '@/components/ui/Button'
 import { Popover } from '@/components/ui/Popover'
@@ -33,8 +33,12 @@ export function ModelSelect({
   align?: 'start' | 'end'
   onChange: (selection: ModelSelection) => void
 }) {
+  disabled ||= (suggestions.length === 0 && effortOptions.length === 0 && !fastMode)
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<'slider' | 'models'>('slider')
+  useEffect(() => {
+    if (disabled) setOpen(false)
+  }, [disabled])
   const triggerRef = useRef<HTMLButtonElement>(null)
   const reduceMotion = useReducedMotion()
   const selected = modelSuggestionFor(suggestions, value)
@@ -60,7 +64,7 @@ export function ModelSelect({
 
   return (
     <Popover
-      open={open}
+      open={open && !disabled}
       onClose={() => {
         setOpen(false)
         triggerRef.current?.focus()
@@ -74,7 +78,7 @@ export function ModelSelect({
           size="sm"
           className="model-picker max-w-[13rem] focus-visible:bg-surface-2"
           aria-haspopup="dialog"
-          aria-expanded={open}
+          aria-expanded={open && !disabled}
           aria-label={`Model: ${label}, reasoning effort: ${effortLabel}${fast ? ', Fast Mode' : ''}`}
           title={`${label} ${effortLabel}${fast ? ' · Fast Mode' : ''}`}
           disabled={disabled}
@@ -112,6 +116,7 @@ export function ModelSelect({
                   type="button"
                   onClick={() => setView('models')}
                   aria-label={`Select model, ${label}`}
+                  disabled={loading || !suggestions.length}
                   className="inline-flex h-6 min-w-0 items-center gap-1.5 rounded-control px-2 text-[12px] font-medium transition-colors hover:bg-surface-2 focus-visible:bg-surface-2"
                 >
                   <span className="min-w-0 truncate text-ink">
@@ -141,7 +146,7 @@ export function ModelSelect({
                   compact
                   options={options}
                   value={effortValue}
-                  disabled={disabled || loading}
+                  disabled={disabled}
                   onChange={(effort) => onChange({ model: value, effort })}
                 />
               ) : null}

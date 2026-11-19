@@ -42,7 +42,7 @@ export function UsageSettings() {
   const usage = useQuery(dailyUsageQuery(window))
   const agentSettings = useQuery(agentSettingsQuery)
   const openRouter = useQuery(openRouterModelsQuery)
-  const pricing = useMemo(() => buildPricingIndex(openRouter.data ?? []), [openRouter.data])
+  const pricing = useMemo(() => buildPricingIndex(openRouter.data?.models ?? []), [openRouter.data])
 
   return (
     <section className="py-4">
