@@ -206,7 +206,7 @@ func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, chall
 	}
 
 	scopes := scopesFromChallenges(challenges)
-	if len(scopes) == 0 {
+	if len(scopes) == 0 && !h.oauth.UseAppScopes {
 		scopes = prm.ScopesSupported
 	}
 	clientConfig, err := h.authorizationClientConfig(ctx, asm.AuthServerMeta)

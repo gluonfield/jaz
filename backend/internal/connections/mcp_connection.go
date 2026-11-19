@@ -20,16 +20,21 @@ type MCPConnectionStore interface {
 type MCPConnectionConnector struct {
 	store      MCPConnectionStore
 	authorizer MCPConnectionAuthorizer
+	clients    map[string]mcpconfig.OAuthConfig
 }
 
-func NewMCPConnectionConnector(store MCPConnectionStore, authorizer MCPConnectionAuthorizer) *MCPConnectionConnector {
-	return &MCPConnectionConnector{store: store, authorizer: authorizer}
+func NewMCPConnectionConnector(store MCPConnectionStore, authorizer MCPConnectionAuthorizer, clients map[string]mcpconfig.OAuthConfig) *MCPConnectionConnector {
+	return &MCPConnectionConnector{store: store, authorizer: authorizer, clients: clients}
 }
 
 func (c *MCPConnectionConnector) Connect(ctx context.Context, plugin integrations.Plugin, redirectURL string) (OAuthStart, error) {
 	connection, server, err := mcpConnectionSpec(plugin)
 	if err != nil {
 		return OAuthStart{}, err
+	}
+	server.OAuth = c.clients[connection.Provider]
+	if plugin.RemoteMCP.OAuthSecrets && (server.OAuth.ClientID == "" || server.OAuth.ClientSecretEnvVar == "") {
+		return OAuthStart{}, fmt.Errorf("%s requires a registered OAuth app; configure jaz.connections.mcp.%s.clientid and clientsecretenvvar on the Jaz backend", plugin.Name, connection.Provider)
 	}
 	status := c.authorizer.AuthorizeWithHook(ctx, server, mcpconfig.AuthorizeOptions{
 		RedirectURL: redirectURL,

@@ -164,3 +164,24 @@ func TestConnectionMCPServerReaderKeepsDriveAccountsAndToolsDistinct(t *testing.
 		t.Fatalf("distinct account tool count = %d", count)
 	}
 }
+
+func TestZoomConnectionRetainsClientAndManualServers(t *testing.T) {
+	manual := mcpconfig.Server{ID: "manual-zoom", Name: "Zoom", URL: "https://mcp.zoom.us/", OAuth: mcpconfig.OAuthConfig{ClientID: "custom-client"}}
+	reader := connectionReader(fakeConnectionTokenStore{
+		servers:     []mcpconfig.Server{manual},
+		connections: map[string][]integrations.Connection{"zoom": {{ID: "zoom:account", Provider: "zoom", AccountName: "Zoom"}}},
+	})
+	client := mcpconfig.OAuthConfig{ClientID: "registered-client", ClientSecretEnvVar: "ZOOM_TEST_SECRET", UseAppScopes: true}
+	reader.clients = map[string]mcpconfig.OAuthConfig{"zoom": client}
+	servers, err := reader.ListMCPServers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 2 || servers[0].OAuth != manual.OAuth || servers[0].URL != manual.URL {
+		t.Fatalf("manual server changed: %#v", servers)
+	}
+	managed := servers[1]
+	if managed.ID != "zoom:account" || managed.OAuth != client || managed.Source != mcpconfig.SourceConnection {
+		t.Fatalf("managed server = %#v", managed)
+	}
+}

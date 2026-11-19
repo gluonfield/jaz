@@ -15,6 +15,7 @@ import {
 import { memo, useState } from 'react'
 import { Collapse } from '@/components/ui/Collapse'
 import { Favicon } from '@/components/ui/Favicon'
+import { ToolActivityLabel } from '@/components/session/ToolActivityLabel'
 import type { ACPToolCall } from '@/lib/api/types'
 import {
   isRunningToolStatus,
@@ -109,9 +110,11 @@ const categoryIcons: Record<ToolCategory, LucideIcon> = {
 export const ToolCallDetail = memo(function ToolCallDetail({
   call,
   active = false,
+  reveal = false,
 }: {
   call: ACPToolCall
   active?: boolean
+  reveal?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const presentation = toolCallPresentation(call)
@@ -131,7 +134,11 @@ export const ToolCallDetail = memo(function ToolCallDetail({
         <span className="relative z-[1] flex size-5 shrink-0 items-center justify-center rounded-full bg-bg text-ink-3">
           <Icon size={12} aria-hidden />
         </span>
-        <span className="min-w-0 truncate text-[13px] text-ink-2">{presentation.label}</span>
+        <ToolActivityLabel
+          text={presentation.label}
+          reveal={reveal}
+          className={`block min-w-0 truncate text-[13px] ${failed && !presentation.meta ? 'text-danger' : 'text-ink-2'}`}
+        />
         {expandable ? (
           <ChevronRight
             size={12}

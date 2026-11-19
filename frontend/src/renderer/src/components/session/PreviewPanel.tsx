@@ -339,7 +339,7 @@ export function PreviewPanel({
             spellCheck={false}
             className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
           />
-          {resolvedSourceUrl ? <BrowserAddressActions url={resolvedSourceUrl} visible={visible} /> : null}
+          {resolvedSourceUrl ? <BrowserAddressActions url={resolvedSourceUrl} title={target.title} visible={visible} /> : null}
         </div>
         <IconButton
           aria-label={annotating ? 'Stop annotation' : 'Annotate preview'}

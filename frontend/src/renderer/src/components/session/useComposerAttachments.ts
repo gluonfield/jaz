@@ -7,6 +7,7 @@ import {
   saveAttachmentDraft,
 } from '@/components/session/composerAttachmentDraftStore'
 import {
+  fileAttachment,
   pendingUploadFile,
   uploadedAttachment,
   withUploadedAttachment,
@@ -70,14 +71,7 @@ export function useComposerAttachments({
 
   const addFiles = useCallback((files: File[]) => {
     if (disabled || files.length === 0) return
-    const items: ComposerAttachment[] = files.map((file) => ({
-      localId: crypto.randomUUID(),
-      name: file.name,
-      size: file.size,
-      ...(file.type ? { mime_type: file.type } : {}),
-      file,
-      uploading: Boolean(onUploadAttachment),
-    }))
+    const items = files.map((file) => ({ ...fileAttachment(file), uploading: Boolean(onUploadAttachment) }))
     commitAttachments([...attachmentsRef.current, ...items])
     if (!onUploadAttachment) return
     for (const item of items) {

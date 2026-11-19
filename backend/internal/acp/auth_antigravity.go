@@ -4,10 +4,87 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os/exec"
+	"runtime"
+	"slices"
 	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
+	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/gluonfield/acp-transport/stdio"
+	"github.com/wins/jaz/backend/internal/processenv"
 )
+
+const (
+	AntigravityGoogleAccount = "oauth-personal"
+	AntigravityCloudProject  = "oauth-business"
+)
+
+func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) ([]string, error) {
+	if runtime.GOOS == "windows" {
+		return nil, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	invocation := AgentLoginInvocationFor(AgentAntigravity, root, cfg.Auth, loginBinDirs(cfg), cfg.Env)
+	if !invocation.Available {
+		return nil, nil
+	}
+	if err := PrepareAgentLoginInvocation(AgentAntigravity, cfg.Auth, root, invocation); err != nil {
+		return nil, err
+	}
+	manager := NewManager(nil, Config{Root: root}, nil)
+	defer manager.Close()
+	cmd := exec.CommandContext(ctx, invocation.Executable, "acp", "--disable-telemetry")
+	cmd.Env = processenv.List(manager.probeEnv(AgentAntigravity, cfg))
+	cmd.Dir = invocation.Cwd
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	defer func() {
+		cancel()
+		_ = cmd.Wait()
+	}()
+	peer := jsonrpc.NewPeer(stdio.New(stdout, stdin), nil)
+	go func() {
+		_ = peer.Serve(ctx)
+	}()
+	raw, err := peer.Call(ctx, acpschema.AgentMethodInitialize, acpschema.InitializeRequest{
+		ProtocolVersion: acpschema.ProtocolVersionNumber,
+		ClientInfo:      &acpschema.Implementation{Name: "jaz", Title: "Jaz"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var initialized struct {
+		ProtocolVersion acpschema.ProtocolVersion `json:"protocolVersion"`
+		AuthMethods     []agentAuthMethod         `json:"authMethods"`
+	}
+	if err := json.Unmarshal(raw, &initialized); err != nil {
+		return nil, err
+	}
+	if initialized.ProtocolVersion != acpschema.ProtocolVersionNumber {
+		return nil, fmt.Errorf("unsupported ACP protocol version %d", initialized.ProtocolVersion)
+	}
+	var methods []string
+	for _, id := range []string{AntigravityGoogleAccount, AntigravityCloudProject} {
+		if slices.ContainsFunc(initialized.AuthMethods, func(method agentAuthMethod) bool {
+			return string(method.ID) == id && method.Type != "terminal"
+		}) {
+			methods = append(methods, id)
+		}
+	}
+	return methods, nil
+}
 
 func disconnectAntigravityAuth(ctx context.Context, cfg AgentConfig, root string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

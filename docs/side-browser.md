@@ -136,6 +136,10 @@ with Google” popups, continues to Google's password or passkey step. Google's 
 can still change; if it rejects again, sign in with Chrome and use
 **Import cookies and passwords** with **Cookies** enabled.
 
+On macOS builds without native browser passkeys, a Google passkey challenge in
+a side-browser tab offers **Open Google sign-in in browser**. The button starts
+a separate sign-in in your default browser.
+
 ### LinkedIn
 
 LinkedIn's public homepage can return a Cloudflare block even while its sign-in

@@ -18,8 +18,8 @@ function PluginPage() {
   const navigate = useNavigate()
   const input = useMemo(() => ({ title, code: page.data?.view ?? '', loadingMessages: [] }), [title, page.data?.view])
   const data = useMemo(() => ({ items: page.data?.items ?? [] }), [page.data?.items])
-  const sendPrompt = useCallback((text: string) => {
-    void navigate({ to: '/new', state: { newThreadPrompt: { text, mode: 'draft' } } })
+  const sendPrompt = useCallback((text: string, files: File[]) => {
+    void navigate({ to: '/new', state: { newThreadPrompt: { text, files, mode: 'draft' } } })
   }, [navigate])
   const openLink = useCallback((href: string) => {
     const session = /^\/sessions\/([^/?#]+)$/.exec(href)?.[1]

@@ -12,6 +12,7 @@ window.__JAZ_DEFAULTS__ = {
   // effects: true,                // decorative motion (composer glow, shimmer)
   // wideLayout: false,            // wider thread column
   // showModelIcons: false,        // ACP agent/model marks in the left sidebar
+  // composerRingColors: ['#6366f1'], // up to five hex colours for the composer focus glow; omit for the rainbow
   // homeWordmark: 'jaz',          // name or image URL above the new-thread composer
   // invertHomeLogoInLightMode: false, // darkens white image logos in light mode
   // invertHomeLogoInDarkMode: false, // lightens black image logos in dark mode

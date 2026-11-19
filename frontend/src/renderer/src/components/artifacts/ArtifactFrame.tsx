@@ -8,6 +8,7 @@ interface ArtifactMessage {
   height?: number
   message?: string
   text?: string
+  files?: unknown[]
   href?: string
   name?: string
   title?: string
@@ -26,7 +27,7 @@ export function ArtifactFrame({ input, data, agentState, pending = false, execut
   agentState?: AgentState
   pending?: boolean
   executionError?: string
-  onSendPrompt?: (text: string) => void
+  onSendPrompt?: (text: string, files: File[]) => void
   onOpenLink?: (href: string) => boolean
   onOpenView?: (name: string, title: string) => void
 }) {
@@ -62,7 +63,7 @@ export function ArtifactFrame({ input, data, agentState, pending = false, execut
       }
       if (message?.type === 'jaz:artifact-link' && message.href && !onOpenLink?.(message.href)) window.open(message.href, '_blank', 'noopener,noreferrer')
       if (message?.type === 'jaz:artifact-open-view' && typeof message.name === 'string' && typeof message.title === 'string') onOpenView?.(message.name, message.title)
-      if (message?.type === 'jaz:artifact-send-prompt' && message.text?.trim()) onSendPrompt?.(message.text.trim())
+      if (message?.type === 'jaz:artifact-send-prompt' && message.text?.trim()) onSendPrompt?.(message.text.trim(), message.files?.filter((file): file is File => file instanceof File) ?? [])
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)

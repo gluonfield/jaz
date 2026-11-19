@@ -3,7 +3,8 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { NewThreadOptions } from '@/components/home/NewThreadOptions'
 import { ThreadModeSwitch } from '@/components/home/ThreadModeSwitch'
-import { deleteAttachmentDraft } from '@/components/session/composerAttachmentDraftStore'
+import { deleteAttachmentDraft, saveAttachmentDraft } from '@/components/session/composerAttachmentDraftStore'
+import { fileAttachment } from '@/components/session/composerAttachmentTypes'
 import { useComposerDraft } from '@/components/session/useComposerDraft'
 import { ProjectPicker } from '@/components/session/NewThreadControls'
 import { AgentModelControls, useNewThreadControls } from '@/components/session/useNewThreadControls'
@@ -150,8 +151,12 @@ function NewSessionPage() {
     if (handledPrompt.current === prompt) return
     handledPrompt.current = prompt
     void navigate({ replace: true, state: (previous) => ({ ...previous, newThreadPrompt: undefined }) })
-    if (prompt.mode === 'draft') setDraft({ text: prompt.text, tokens: new Map() })
-    else void handleStart(prompt.text, {}, true)
+    if (prompt.mode === 'send') {
+      void handleStart(prompt.text, { files: prompt.files }, true)
+      return
+    }
+    setDraft({ text: prompt.text, tokens: new Map() })
+    if (prompt.files?.length) void saveAttachmentDraft(NEW_SESSION_DRAFT_KEY, 'session', prompt.files.map(fileAttachment)).catch(() => {})
   })
   useEffect(() => {
     if (!incomingPrompt) return

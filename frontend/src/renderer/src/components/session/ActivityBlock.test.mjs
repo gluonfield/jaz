@@ -91,14 +91,23 @@ test('the transcript shows one written answer while spoken wording remains avail
   }
 })
 
-test('an agent action spinner follows its own status within an active turn', () => {
+test('an agent action shows its outcome once and only the trailing running row spins', () => {
   const [call] = codexAgentCalls
-  for (const status of ['completed', 'failed', 'in_progress']) {
+  for (const [status, label] of [
+    ['completed', 'Created an agent'],
+    ['failed', 'Failed to create an agent'],
+    ['in_progress', 'Creating an agent'],
+  ]) {
     const html = renderToStaticMarkup(createElement(ActivityBlock, {
-      entries: [tool({ ...call, status })],
+      entries: [
+        tool({ id: 'command', tool_name: 'exec_command', status: 'in_progress' }),
+        tool({ ...call, status }),
+      ],
       active: true,
     }))
-    expect(html.includes('animate-spin')).toBe(status === 'in_progress')
+    expect(html).toContain(`>${label}<`)
+    expect(html).not.toContain('>failed<')
+    expect(html.match(/animate-spin/g) ?? []).toHaveLength(status === 'in_progress' ? 1 : 0)
   }
 })
 
@@ -118,7 +127,7 @@ test('the production transcript gives each agent action its own row between regu
           { ...activity, id: 'second' },
           { ...collaboration, id: 'resume', title: 'resumeAgent' },
           { ...collaboration, id: 'message', title: 'sendInput' },
-          { id: 'read', tool_name: 'read' },
+          { id: 'read', tool_name: 'read', status: 'in_progress' },
         ],
       },
     }],
@@ -128,12 +137,34 @@ test('the production transcript gives each agent action its own row between regu
 
   expect(html.match(/Created an agent/g)).toHaveLength(2)
   expect(html.match(/lucide-bot/g)).toHaveLength(4)
+  expect(html.match(/animate-spin/g)).toHaveLength(1)
   const ordered = ['Ran a command', 'Created an agent', 'Resumed an agent', 'Messaged an agent', 'Read a file']
     .map((value) => html.indexOf(value))
   expect(ordered.every((index) => index >= 0)).toBe(true)
   expect(ordered).toEqual([...ordered].sort((a, b) => a - b))
   expect(html).not.toContain('Find the current weather')
   expect(html).not.toContain('Used tools')
+})
+
+test('expanding transcript activity never nests another agent completion row', () => {
+  const [, activity] = codexAgentCalls
+  const html = renderToStaticMarkup(createElement(ActivityBlock, {
+    entries: [
+      tool({ ...activity, raw_input: { ...activity.raw_input, activityKind: 'completed' } }),
+      tool({ id: 'empty-completion', tool_name: 'codex.completed', status: 'completed' }),
+      tool({ id: 'read', tool_name: 'read', title: 'Read hidden detail', status: 'failed' }),
+    ],
+    findActive: true,
+  }))
+
+  const completions = html.match(/<button\b[^>]*>.*?<\/button>/g)
+    .filter((button) => button.includes('Agent finished'))
+  expect(completions).toHaveLength(2)
+  expect(completions[0]).toContain('aria-expanded="false"')
+  expect(completions[1]).toContain('disabled=""')
+  expect(completions[1]).not.toContain('aria-expanded')
+  expect(html).toContain('Read hidden detail')
+  expect(html).toContain('>failed<')
 })
 
 test('the live production transcript separates collapsed thoughts from visible commentary and tools', () => {

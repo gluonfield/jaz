@@ -13,6 +13,10 @@ export type ComposerAttachment = {
   error?: string
 }
 
+export function fileAttachment(file: File): ComposerAttachment {
+  return { localId: crypto.randomUUID(), name: file.name, size: file.size, ...(file.type ? { mime_type: file.type } : {}), file }
+}
+
 export function uploadedAttachment(item: ComposerAttachment): Attachment | null {
   if (item.uploading || item.error || !item.id) return null
   return {

@@ -1,5 +1,5 @@
 import { app, session, type WebContents, type WebPreferences } from 'electron'
-import { BROWSER_PRELOAD_ARGUMENT, PREVIEW_PARTITION, isPreviewURL } from '@shared/preview'
+import { BROWSER_PASSKEY_FALLBACK_ARGUMENT, BROWSER_PRELOAD_ARGUMENT, PREVIEW_PARTITION, isPreviewURL } from '@shared/preview'
 
 export const PREVIEW_WEB_PREFERENCES: WebPreferences = {
   nodeIntegration: false,
@@ -11,6 +11,19 @@ export const PREVIEW_WEB_PREFERENCES: WebPreferences = {
   allowRunningInsecureContent: false,
   webviewTag: false,
   transparent: false,
+}
+
+let browserPasskeyFallback = false
+
+export function previewHostPreferences(preload: string): WebPreferences {
+  return {
+    preload,
+    contextIsolation: true,
+    nodeIntegration: false,
+    sandbox: false,
+    webviewTag: true,
+    additionalArguments: browserPasskeyFallback ? [BROWSER_PASSKEY_FALLBACK_ARGUMENT] : [],
+  }
 }
 
 export function attachPreviewWebviews(host: WebContents, preload: string): void {
@@ -28,7 +41,7 @@ export function attachPreviewWebviews(host: WebContents, preload: string): void 
 
 export function configureBrowserSessions(chromePreload: string): void {
   const browserApp = app as typeof app & { enableWebAuthnBrowserAuthenticator?: () => boolean }
-  browserApp.enableWebAuthnBrowserAuthenticator?.()
+  browserPasskeyFallback = process.platform === 'darwin' && browserApp.enableWebAuthnBrowserAuthenticator?.() !== true
   const appProduct = `${app.getName().replaceAll(' ', '')}/${app.getVersion()}`
   app.userAgentFallback = app.userAgentFallback
     .replace(` ${appProduct}`, '')

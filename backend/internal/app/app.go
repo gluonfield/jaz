@@ -109,6 +109,7 @@ type MemoryConfig struct {
 }
 
 type ConnectionsConfig struct {
+	MCP      map[string]mcpconfig.OAuthConfig
 	Calendar GoogleConnectionConfig
 	Drive    GoogleConnectionConfig
 	Gmail    GoogleConnectionConfig

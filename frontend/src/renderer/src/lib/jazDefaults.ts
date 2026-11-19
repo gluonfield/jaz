@@ -40,6 +40,7 @@ export interface JazDefaults {
   effects?: boolean
   wideLayout?: boolean
   showModelIcons?: boolean
+  composerRingColors?: string[]
   homeWordmark?: string
   invertHomeLogoInLightMode?: boolean
   invertHomeLogoInDarkMode?: boolean

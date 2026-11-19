@@ -43,6 +43,7 @@ import { exerciseMarkdownDocuments } from './markdown-documents'
 import { exerciseMarkdownArtifacts } from './markdown-artifacts'
 import { exerciseBrowserAppearance } from './appearance'
 import { exerciseAddressBar } from './address-bar'
+import { exerciseGooglePasskeys } from './google-passkeys'
 import { exerciseClaudeVoice } from './claude-voice'
 import { exerciseConnectionSecurity } from './connection-security'
 import { exerciseBrowserVisibility } from './browser-visibility'
@@ -130,6 +131,12 @@ function Fixture() {
           window.smoke.result({ ok: true, checks: ['new grouped tool and inline shell labels reveal once, with stable rows and still history, Reduce Motion, and Effects off'] })
           return
         }
+      }
+      if (suite === 'google-passkeys') {
+        progress('Google passkey handoff')
+        await exerciseGooglePasskeys(browser)
+        window.smoke.result({ ok: true, checks: ['Google passkey handoff follows the desktop platform and restarts only after a click'] })
+        return
       }
       if (suite === 'bot-chat') {
         await exerciseBotChat()

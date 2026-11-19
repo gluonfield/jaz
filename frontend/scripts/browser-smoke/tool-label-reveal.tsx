@@ -113,9 +113,12 @@ export async function exerciseToolLabelReveal(): Promise<void> {
     expectStill('Effects off')
 
     setAppearance({ effects: true, inlineShellCommands: true })
-    render([...quiet, command(13, 'inline')], 'reopened')
-    if (sweeping().map((element) => element.textContent).join() !== 'git status --short') {
-      throw new Error('A new inline command did not sweep its command label once')
+    const agent = event(14, 'acp_tool', {
+      tool_calls: [{ id: 'agent', tool_name: 'codex.spawnAgent', status: 'running' }],
+    })
+    render([...quiet, command(13, 'inline'), agent], 'reopened')
+    if (sweeping().map((element) => element.textContent).join() !== 'git status --short,Creating an agent') {
+      throw new Error('New inline command and agent rows did not each sweep their label once')
     }
   } finally {
     root.unmount()

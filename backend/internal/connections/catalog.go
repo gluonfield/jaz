@@ -13,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
+	"github.com/wins/jaz/backend/internal/connectors/zoom"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
@@ -32,6 +33,7 @@ func NewCatalog() *Catalog {
 		slack.Plugin(),
 		telegram.Plugin(),
 		whatsapp.Plugin(),
+		zoom.Plugin(),
 	}}
 }
 
