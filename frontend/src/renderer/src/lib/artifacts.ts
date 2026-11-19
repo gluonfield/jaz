@@ -112,14 +112,25 @@ const canvasBridgeScript = `
 })();
 `
 
-// A view draws `data` and hears of later changes. A card on the canvas also
-// saves it on its item, where the user's undo or the agent can change it.
-function dataScript(data: unknown): string {
+// What the thread's agent is doing, as a plugin's view hears it: asking means
+// a question to the user is open in the chat.
+export type AgentState = 'idle' | 'working' | 'asking'
+
+// A view draws `data` and hears of later changes, and of changes in what the
+// thread's agent is doing. A card on the canvas also saves its data on its
+// item, where the user's undo or the agent can change it.
+function dataScript(data: unknown, agentState: AgentState = 'idle'): string {
   const saved = JSON.stringify(data ?? null).replace(/[<\u2028\u2029]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)
   return `
 (() => {
   const listeners = new Set()
+  const watchers = new Set()
   window.data = ${saved}
+  window.agentState = '${agentState}'
+  window.onAgentState = (listener) => {
+    watchers.add(listener)
+    return () => watchers.delete(listener)
+  }
   window.saveData = (value) => {
     window.data = value
     parent.postMessage({ type: 'jaz:canvas-data', data: value }, '*')
@@ -129,11 +140,17 @@ function dataScript(data: unknown): string {
     return () => listeners.delete(listener)
   }
   window.addEventListener('message', (event) => {
-    if (event.source !== parent || event.data?.type !== 'jaz:canvas-data') {
+    if (event.source !== parent) {
       return
     }
-    window.data = event.data.data
-    listeners.forEach((listener) => listener(window.data))
+    if (event.data?.type === 'jaz:canvas-data') {
+      window.data = event.data.data
+      listeners.forEach((listener) => listener(window.data))
+    }
+    if (event.data?.type === 'jaz:artifact-agent-state' && event.data.state !== window.agentState) {
+      window.agentState = event.data.state
+      watchers.forEach((listener) => listener(window.agentState))
+    }
   })
 })();
 `
@@ -239,9 +256,9 @@ export function buildArtifactThemeCSS(darkOverride?: boolean): string {
 export function buildArtifactDocument(
   input: ArtifactInput,
   theme: string,
-  opts: { measureLayout?: boolean; canvas?: boolean; data?: unknown } = {},
+  opts: { measureLayout?: boolean; canvas?: boolean; data?: unknown; agentState?: AgentState } = {},
 ): string {
-  const data = opts.canvas || opts.data !== undefined ? dataScript(opts.data) : ''
+  const data = opts.canvas || opts.data !== undefined ? dataScript(opts.data, opts.agentState) : ''
   const bridge = bridgeScript + (opts.measureLayout ? widgetBridgeScript : '') + (opts.canvas ? canvasBridgeScript : '') + data
   if (opts.canvas) {
     theme += canvasCSS

@@ -1,6 +1,6 @@
 import { LoaderCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { artifactErrorForDisplay, buildArtifactDocument, type ArtifactInput } from '@/lib/artifacts'
+import { artifactErrorForDisplay, buildArtifactDocument, type AgentState, type ArtifactInput } from '@/lib/artifacts'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
 
 interface ArtifactMessage {
@@ -20,9 +20,10 @@ function clampHeight(height: number): number {
   return Math.max(MIN_HEIGHT, Math.ceil(height))
 }
 
-export function ArtifactFrame({ input, data, pending = false, executionError = '', onSendPrompt, onOpenLink, onOpenView }: {
+export function ArtifactFrame({ input, data, agentState, pending = false, executionError = '', onSendPrompt, onOpenLink, onOpenView }: {
   input: ArtifactInput
   data?: unknown
+  agentState?: AgentState
   pending?: boolean
   executionError?: string
   onSendPrompt?: (text: string) => void
@@ -33,14 +34,16 @@ export function ArtifactFrame({ input, data, pending = false, executionError = '
   const frameRef = useRef<HTMLIFrameElement>(null)
   const [height, setHeight] = useState(280)
   const [error, setError] = useState('')
-  const [built] = useState(data)
+  const [built] = useState({ data, agentState })
   const doc = useMemo(() => {
     if (executionError) return ''
-    return buildArtifactDocument(input, theme, { data: built })
+    return buildArtifactDocument(input, theme, built)
   }, [built, executionError, input, theme])
   const sendData = useCallback(() => {
-    if (data !== built) frameRef.current?.contentWindow?.postMessage({ type: 'jaz:canvas-data', data }, '*')
-  }, [built, data])
+    const frame = frameRef.current?.contentWindow
+    if (data !== built.data) frame?.postMessage({ type: 'jaz:canvas-data', data }, '*')
+    if (agentState) frame?.postMessage({ type: 'jaz:artifact-agent-state', state: agentState }, '*')
+  }, [built, data, agentState])
   useEffect(sendData, [sendData])
 
   useEffect(() => {

@@ -18,11 +18,12 @@ function parse(content?: string): unknown {
 
 // A plugin's view in the side panel draws a JSON file in the thread's folder
 // and follows it while the agent works, as a document does.
-export function ViewPanel({ sessionId, view, visible, working, onOpenFile, onOpenView }: {
+export function ViewPanel({ sessionId, view, visible, working, asking, onOpenFile, onOpenView }: {
   sessionId: string
   view: PanelView
   visible: boolean
   working: boolean
+  asking: boolean
   onOpenFile: (file: FileReference) => boolean
   onOpenView: (view: PanelPresentation) => void
 }) {
@@ -53,7 +54,7 @@ export function ViewPanel({ sessionId, view, visible, working, onOpenFile, onOpe
   return (
     <div className="h-full overflow-y-auto">
       {error ? <p role="alert" className="px-3 py-2 text-sm text-danger">{error}</p> : null}
-      <ArtifactBlock artifact={view} data={data} onSendPrompt={thread?.send} onOpenFile={openFile} onOpenView={view.reference ? openSibling : undefined} />
+      <ArtifactBlock artifact={view} data={data} agentState={asking ? 'asking' : working ? 'working' : 'idle'} onSendPrompt={thread?.send} onOpenFile={openFile} onOpenView={view.reference ? openSibling : undefined} />
     </div>
   )
 }

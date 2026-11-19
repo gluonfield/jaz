@@ -516,6 +516,7 @@ export function ThreadView({
         subagents={providerSubagents}
         spawnedThreads={spawnedThreads}
         working={sessionRunning}
+        asking={hasBlockingPendingPermission}
         panel={sidePanel}
         sideChatAvailable={sideChatAvailable}
         sideChatEvents={sideChatEvents}

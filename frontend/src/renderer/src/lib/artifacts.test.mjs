@@ -18,5 +18,7 @@ test("a plugin's view starts with its data and is not treated as a canvas card",
   const html = buildArtifactDocument({ title: 'status', code: '<p>status</p>', loadingMessages: [] }, '', { data: { points: 12 } })
   expect(html).toContain('window.data = {"points":12}')
   expect(html).toContain('window.onData')
+  expect(html).toContain("window.agentState = 'idle'")
+  expect(buildArtifactDocument({ title: 'status', code: '<p>status</p>', loadingMessages: [] }, '', { data: {}, agentState: 'asking' })).toContain("window.agentState = 'asking'")
   expect(html).not.toContain('jaz:canvas-wheel')
 })

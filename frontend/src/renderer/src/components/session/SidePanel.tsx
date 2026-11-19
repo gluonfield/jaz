@@ -19,7 +19,7 @@ import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { SidePanelCloseGuard, type useSidePanelState } from '@/components/session/SidePanelState'
 
 export function SidePanel({
-  session, panel, progress, subagents, spawnedThreads, working,
+  session, panel, progress, subagents, spawnedThreads, working, asking,
   sideChatAvailable, sideChatEvents, onAddBrowserAnnotation, onUploadAttachment,
   onSend, onQueuePrompt, onQueueAction, onSendSideChat, overview, overviewLabel, canvas,
 }: {
@@ -30,6 +30,7 @@ export function SidePanel({
   subagents: ProviderSubagentView[]
   spawnedThreads: SpawnedThreadView[]
   working: boolean
+  asking: boolean
   sideChatAvailable: boolean
   sideChatEvents: SessionEvent[]
   onAddBrowserAnnotation?: (annotation: BrowserAnnotation, screenshot?: Attachment) => void
@@ -112,7 +113,7 @@ export function SidePanel({
               ) : tab.kind === 'app' ? (
                 <MCPAppFrame app={tab.app} file={tab.file} call={tab.call} active={visible} />
               ) : tab.kind === 'view' ? (
-                <ViewPanel sessionId={session.id} view={tab.view} visible={visible} working={working} onOpenFile={panel.openFile} onOpenView={panel.openView} />
+                <ViewPanel sessionId={session.id} view={tab.view} visible={visible} working={working} asking={asking} onOpenFile={panel.openFile} onOpenView={panel.openView} />
               ) : (
                 <SideChatPanel
                   sessionId={session.id}

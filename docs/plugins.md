@@ -107,6 +107,8 @@ On a page, `sendPrompt(text)` opens the new-thread composer with the text ready 
 An agent can also show a view inside a thread using `show_view` with `view: "<plugin>/<view>"`, a `title`, and either `data` for a conversation card or `file` for a side-panel tab. Inside a thread, `sendPrompt` sends to that thread and `openLink` can open its files.
 
 
+A file-following thread view also knows what the thread's agent is doing: `window.agentState` is `working` while a turn runs, `asking` while a question to the user is open in the chat, and `idle` otherwise; `window.onAgentState(callback)` hears each change. Use it to show progress, or point at the question, in place of actions that would send another message.
+
 File-following plugin views are restored when a thread is reopened. The titlebar's **Plugin views** button reopens any shown view without finding its transcript row.
 
 Inside a file-following thread view, `openView('quiz', 'Tender quiz')` opens another HTML view of the same plugin using the caller's same data file. The name is a plain view filename without `.html`, never a plugin reference or path. Each plugin/view/file combination has one tab; reopening unchanged HTML focuses that tab without adding another transcript row. Changed HTML saves a new presentation. Retained views follow file updates through `onData` while work runs, when it ends, and when a tab becomes visible. Legacy views without an owner reference still render but cannot call `openView`. This bridge is not available on navigation pages or ordinary artifacts.

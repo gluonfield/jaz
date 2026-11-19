@@ -3,7 +3,7 @@ import { ArtifactFrame } from '@/components/artifacts/ArtifactFrame'
 import { useFileLinks } from '@/lib/fileLinks'
 import { resolveFileLink } from '@shared/fileReader'
 import type { ArtifactEvent } from '@/lib/api/types'
-import { artifactErrorForDisplay, artifactInputFromEvent, parseArtifactToolArgs } from '@/lib/artifacts'
+import { artifactErrorForDisplay, artifactInputFromEvent, parseArtifactToolArgs, type AgentState } from '@/lib/artifacts'
 
 function toolError(result?: string): string {
   if (!result) return ''
@@ -15,12 +15,13 @@ function toolError(result?: string): string {
   }
 }
 
-export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, result, pending = false, data = artifact?.data, onSendPrompt, onOpenFile, onOpenView }: {
+export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, result, pending = false, data = artifact?.data, agentState, onSendPrompt, onOpenFile, onOpenView }: {
   artifact?: ArtifactEvent
   args?: string
   result?: string
   pending?: boolean
   data?: unknown
+  agentState?: AgentState
   onSendPrompt?: (text: string) => void
   onOpenFile?: (href: string) => boolean
   onOpenView?: (name: string, title: string) => void
@@ -41,5 +42,5 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
   if (!input) {
     return <div className="rounded-card border border-border bg-surface px-3 py-2 text-sm text-ink-2">Could not render artifact: invalid visualise_show_widget input.</div>
   }
-  return <ArtifactFrame input={input} data={data} pending={pending} executionError={artifactErrorForDisplay(toolError(result))} onSendPrompt={onSendPrompt} onOpenLink={openLink} onOpenView={onOpenView} />
+  return <ArtifactFrame input={input} data={data} agentState={agentState} pending={pending} executionError={artifactErrorForDisplay(toolError(result))} onSendPrompt={onSendPrompt} onOpenLink={openLink} onOpenView={onOpenView} />
 })
