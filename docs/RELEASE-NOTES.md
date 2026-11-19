@@ -1,2 +1,2 @@
-- Stops MCP session recovery and cleanup from retrying a failed OAuth refresh.
-- Preserves explicit sign-in for providers that reuse or omit refresh tokens.
+- Plugin views in a thread now know when the agent is working or has a question open, so they can show progress in place of actions.
+- The highlighted passage in a PDF opened from a link is now visible on every theme.
