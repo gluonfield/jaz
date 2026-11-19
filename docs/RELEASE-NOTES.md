@@ -1,3 +1,5 @@
+Changes since v0.0.277:
+
 - Plugin pages can hand the files a person picked to the new-thread composer together with the prompt text.
 - Adds a managed Zoom connection and normalizes managed MCP OAuth configuration when it loads.
 - Antigravity sign-in offers Google Account and Google Cloud project sign-in. Live Google Cloud sign-in and billing remain unverified.
