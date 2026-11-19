@@ -390,7 +390,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
       x, y, button, buttons: pointerPressed ? button === 'left' ? 1 : 2 : 0,
       clickCount: type === 'mouseMove' ? 0 : 1,
     })
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await window.webContents.executeJavaScript('new Promise(requestAnimationFrame)')
   })
   window.webContents.on('console-message', ({ level, message }) => {
     if (level === 'warning' || level === 'error') {
@@ -406,8 +406,10 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     if (keyCode === 'Enter') {
       target.sendInputEvent({ type: 'char', keyCode: '\r' })
     }
-    if (!target.isDestroyed()) target.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    if (!target.isDestroyed()) {
+      target.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
+      await target.executeJavaScript('new Promise(requestAnimationFrame)')
+    }
   })
   ipcMain.handle('smoke:wheel', async (_event, x: number, y: number, deltaY: number, control = false) => {
     await window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY, modifiers: control ? 2 : 0 })
