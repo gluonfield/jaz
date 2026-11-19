@@ -2,7 +2,7 @@ import { queryOptions, useQuery } from '@tanstack/react-query'
 import { get } from './api/client'
 import { agentSettingsQuery } from './api/settings'
 import { keys } from '@/lib/query/keys'
-import type { AgentSettings, ModelCatalogEntry, ModelProviderOption, Session } from './api/types'
+import type { AgentSettings, ModelCatalogEntry, Session } from './api/types'
 import { modelProviderModelsRequest } from './modelProviderRequest'
 import { modelSuggestionFor, type ModelSuggestion } from './modelSuggestion'
 
@@ -48,52 +48,23 @@ export function usageModelLabel(
   return usageCatalogEntry(model, settings)?.label || model.model?.trim() || 'Unknown model'
 }
 
-export function modelSuggestionsForProvider(
-  provider: ModelProviderOption | undefined,
-  providerModels: ModelSuggestion[] = [],
-): ModelSuggestion[] {
-  if (!provider) return []
-  if (providerModels.length > 0) return providerModels
-  if (provider.default_model) {
-    return [{
-      value: provider.default_model,
-      label: provider.default_model,
-      description: provider.label,
-      reasoning: { status: 'unavailable' },
-    }]
-  }
-  return []
-}
-
-export function modelProviderModelsQuery(provider: string | undefined, agent: string) {
-  const request = modelProviderModelsRequest(provider, agent)
+export function modelCatalogQuery(agent: string, provider?: string) {
+  const request = provider === undefined
+    ? { queryKey: keys.acpAgentModels(agent), path: `/v1/acp/agents/${encodeURIComponent(agent)}/models` }
+    : modelProviderModelsRequest(provider, agent)
   return queryOptions({
     queryKey: request.queryKey,
-    queryFn: async (): Promise<ModelSuggestion[]> => {
-      const body = await get<{ models?: ModelCatalogEntry[] }>(request.path)
-      return modelSuggestionsFromCatalog(body.models ?? [])
+    queryFn: async () => {
+      const body = await get<{ models?: ModelCatalogEntry[]; default_model?: string }>(request.path)
+      return { models: modelSuggestionsFromCatalog(body.models ?? []), defaultModel: body.default_model }
     },
-    staleTime: 60 * 60 * 1000,
-    retry: 5,
+    staleTime: provider === undefined ? 60_000 : 60 * 60 * 1000,
+    retry: provider === undefined ? false : 5,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
   })
 }
 
-export const openRouterModelsQuery = modelProviderModelsQuery('openrouter', '')
-
-export function agentModelsQuery(agent: string) {
-  return queryOptions({
-    queryKey: keys.acpAgentModels(agent),
-    queryFn: async () => {
-      const body = await get<{ models: ModelCatalogEntry[]; default_model?: string }>(
-        `/v1/acp/agents/${encodeURIComponent(agent)}/models`,
-      )
-      return { models: modelSuggestionsFromCatalog(body.models), defaultModel: body.default_model }
-    },
-    staleTime: 60_000,
-    retry: false,
-  })
-}
+export const openRouterModelsQuery = modelCatalogQuery('', 'openrouter')
 
 function modelSuggestionsFromCatalog(models: ModelCatalogEntry[]): ModelSuggestion[] {
   return models.map((model) => ({
@@ -142,7 +113,7 @@ export function useContextWindow(session: Session): number | null {
 
   if (usage?.context_window_tokens) return usage.context_window_tokens
   const known = (agent ? acpAgentModelSuggestions(settings.data, agent) : [])
-    .concat(wantsOpenRouter ? (openRouter.data ?? []) : [])
+    .concat(wantsOpenRouter ? (openRouter.data?.models ?? []) : [])
     .find((m) => m.value === session.model)
   return known?.contextLength ?? null
 }

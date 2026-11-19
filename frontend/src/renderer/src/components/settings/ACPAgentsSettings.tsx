@@ -80,6 +80,7 @@ function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
     const current = settings.acp[agent]
     if (!acpAgentEnabled(settings, agent)) return false
     return (current?.model ?? '').trim() === ''
+      && !acpProviderUsesNativeAuth(settings, agent, current.model_provider)
   })
 }
 
@@ -170,6 +171,7 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
               key={agent}
               agent={agent}
               settings={draft}
+              persistedSettings={settings.data}
               disabled={save.isPending}
               loginJob={loginJobs[agent]}
               loginPending={login.isPending && login.variables?.agent === agent}
@@ -193,6 +195,7 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
 function ACPAgentRow({
   agent,
   settings,
+  persistedSettings,
   disabled,
   loginJob,
   loginPending,
@@ -206,6 +209,7 @@ function ACPAgentRow({
 }: {
   agent: string
   settings: AgentSettingsData
+  persistedSettings: AgentSettingsData
   disabled: boolean
   loginJob?: ACPAuthLogin
   loginPending: boolean
@@ -246,18 +250,17 @@ function ACPAgentRow({
   const {
     modelSuggestions,
     modelsLoading,
+    modelsReady,
     defaultModel,
     modelsError,
     reasoningOptions,
     reasoningForModel,
   } = useModelReasoningState({
-    settings,
+    settings: persistedSettings,
     agent,
     model: reasoningModel,
     reasoningEffort,
-    usesProvider: usesModelProvider,
     provider: current.model_provider,
-    selectedProvider,
     settingsMode: true,
   })
   const update = useCallback((next: Partial<typeof current>) => {
@@ -391,19 +394,18 @@ function ACPAgentRow({
           </>
         ) : null}
 
-        <SettingsRow title="Model" description="Model copied into new threads for this client.">
+        <SettingsRow title="Model" description={modelsLoading ? 'Loading models…' : modelsError || 'Model copied into new threads for this client.'}>
           <ModelCombobox
             value={current.model ?? ''}
             suggestions={modelSuggestions}
-            loading={modelsLoading}
+            allowDefault={!usesModelProvider || selectedProviderNativeAuth}
             placeholder={defaultModel ? `Default: ${defaultModel}` : 'Default'}
-            error={modelsError}
-            disabled={disabled}
+            disabled={disabled || !modelsReady}
             onChange={(model) => {
               const nextReasoning = reasoningForModel(model, reasoningEffort)
               update({
                 model,
-                reasoning_effort: nextReasoning.supported ? reasoningEffort : '',
+                reasoning_effort: !model || nextReasoning.supported ? reasoningEffort : '',
               })
             }}
             aria-label={`${agentLabel(agent)} model`}

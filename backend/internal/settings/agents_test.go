@@ -260,3 +260,35 @@ func TestMergeAgentDefaultsDropsRetiredQwenAgent(t *testing.T) {
 		t.Fatalf("retired Qwen agent survived settings merge: %#v", merged.ACP["qwen"])
 	}
 }
+
+func TestNativeDefaultModelKeepsReasoningThroughSettingsSave(t *testing.T) {
+	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude} {
+		t.Run(agent, func(t *testing.T) {
+			store, err := jsonstore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defaults := AgentDefaults{ACP: map[string]ACPAgentDefaults{}}
+			current := testAgentDefaultsSeed().ACP[agent]
+			current.Enabled = true
+			current.Model = ""
+			current.ReasoningEffort = "medium"
+			defaults.ACP[agent] = current
+			normalized, err := NormalizeAgentDefaults(defaults, acp.BuiltinAgents(), acp.ModelCapabilities{Catalog: modelcatalog.NewService(nil)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			saved, err := SaveAgentDefaults(store, normalized)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if saved.ACP[agent].Model != "" || saved.ACP[agent].ReasoningEffort != "medium" {
+				t.Fatalf("native default changed during save: %#v", saved.ACP[agent])
+			}
+			cfg, ok, err := NewACPConfigSource(store, acp.BuiltinAgents()).AgentConfig(agent)
+			if err != nil || !ok || cfg.ReasoningEffort != "medium" {
+				t.Fatalf("native default after settings save: config=%#v ok=%v err=%v", cfg, ok, err)
+			}
+		})
+	}
+}

@@ -27,9 +27,7 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
     agent,
     model,
     reasoningEffort: live('thought_level') || bot.reasoning_effort || runtime.defaultEffort,
-    usesProvider: runtime.usesProvider,
     provider: runtime.provider,
-    selectedProvider: runtime.selectedProvider,
   })
   return (
     <div className="-mx-2.5 flex flex-col">

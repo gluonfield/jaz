@@ -36,7 +36,7 @@ export function useNewThreadControls() {
   }, [agents, runtime, runtimeReady])
 
   const model = runtimeModelState(agentSettings, runtime)
-  const { usesProvider, provider, selectedProvider } = model
+  const { usesProvider, provider } = model
   const agentOptions = agentSettings?.acp_options?.[runtime]
   const selectionKey = `${runtime}/${provider}`
   const selection = selections[selectionKey]
@@ -55,9 +55,7 @@ export function useNewThreadControls() {
     agent: runtime,
     model: selectedModel,
     reasoningEffort: requestedEffort,
-    usesProvider,
     provider,
-    selectedProvider,
   })
 
   const composer = composerConfig()

@@ -91,22 +91,24 @@ export function Popover({
     <div ref={anchorRef} className="relative" data-escape-surface={open ? '' : undefined}>
       {trigger}
       {createPortal(
-        <AnimatePresence initial={false}>
-          {open && rect ? (
-            <motion.div
-              ref={menuRef}
-              data-escape-surface=""
-              initial={{ opacity: 0, y: slide }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: slide }}
-              transition={{ duration: 0.15, ease: 'easeOut' }}
-              style={style}
-              className={menuPanelClass}
-            >
-              {children}
-            </motion.div>
-          ) : null}
-        </AnimatePresence>,
+        <div inert={!open}>
+          <AnimatePresence initial={false}>
+            {open && rect ? (
+              <motion.div
+                ref={menuRef}
+                data-escape-surface=""
+                initial={{ opacity: 0, y: slide }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: slide }}
+                transition={{ duration: 0.15, ease: 'easeOut' }}
+                style={style}
+                className={menuPanelClass}
+              >
+                {children}
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </div>,
         document.body,
       )}
     </div>
