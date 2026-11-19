@@ -3,12 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { Composer } from '@/components/session/Composer'
 import { useLiveSessionSend } from '@/components/session/useLiveSessionSend'
 
-// The prompt Claude Code predicts comes next stands in for the placeholder of an
-// empty idle composer, in threads and bot chats alike. Tab writes it into the
-// draft; a draft hides it and emptying the draft shows it again; once a message
-// is sent it stays hidden while the turn runs.
 export async function exerciseComposerSuggestion(): Promise<void> {
-  const prediction = 'run the tests'
+  const prediction = 'Run the tests and give me a short summary of any failures you find.'
   const finishes: (() => void)[] = []
   const originalFetch = window.fetch
   window.fetch = async (input, init) => {
@@ -33,9 +29,9 @@ export async function exerciseComposerSuggestion(): Promise<void> {
   function Thread({ chat, suggestedPrompt }: { chat: boolean; suggestedPrompt?: string }) {
     const live = useLiveSessionSend({ sessionId: 'suggestion', onCriticalError: () => {} })
     return (
-      <div style={{ width: 640 }}>
+      <div style={{ width: chat ? 320 : 640 }}>
         <Composer chat={chat} streaming={live.streaming} suggestedPrompt={suggestedPrompt} onSend={live.send} onStop={live.abort}
-          draftStorageKey={`composer-suggestion-smoke:${chat}`} />
+          placeholder="Message" draftStorageKey={`composer-suggestion-smoke:${chat}`} />
       </div>
     )
   }
@@ -49,6 +45,7 @@ export async function exerciseComposerSuggestion(): Promise<void> {
     }
   }
   const field = () => element.querySelector<HTMLTextAreaElement>('textarea')!
+  const hint = () => element.querySelector('kbd')
   const setDraft = (text: string) => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field(), text)
     field().dispatchEvent(new Event('input', { bubbles: true }))
@@ -59,19 +56,27 @@ export async function exerciseComposerSuggestion(): Promise<void> {
       root.render(<QueryClientProvider client={client}><Thread chat={chat} /></QueryClientProvider>)
       await until(() => Boolean(element.querySelector('textarea')))
       const placeholder = field().placeholder
+      const emptyHeight = field().getBoundingClientRect().height
       root.render(<QueryClientProvider client={client}><Thread chat={chat} suggestedPrompt={prediction} /></QueryClientProvider>)
-      await until(() => field().placeholder === prediction)
+      await until(() => hint()?.textContent?.trim() === 'Tab' && hint()?.nextElementSibling?.textContent === prediction)
+      const keycap = hint()!
+      if (keycap.getBoundingClientRect().right >= keycap.nextElementSibling!.getBoundingClientRect().left) {
+        throw new Error(`The ${layout} Tab keycap does not sit before the suggestion`)
+      }
       await window.smoke.capture(chat ? 'suggested-prompt-bot-chat' : 'suggested-prompt-thread')
       field().focus()
       await window.smoke.key('Tab')
-      await until(() => field().value === prediction)
+      await until(() => field().value === prediction && !hint())
       if (document.activeElement !== field() || field().selectionStart !== prediction.length) {
         throw new Error(`Tab in a ${layout} left the composer or the caret short of the accepted prompt`)
       }
       setDraft('')
-      await until(() => field().placeholder === prediction)
+      await until(() => Boolean(hint()))
+      if (field().getBoundingClientRect().height !== emptyHeight) {
+        throw new Error(`A long prediction changes the empty ${layout} composer's height`)
+      }
       await window.smoke.key('x')
-      if (field().placeholder !== placeholder) {
+      if (field().placeholder !== placeholder || hint()) {
         throw new Error(`A ${layout} draft still carries the prediction`)
       }
       await window.smoke.key('Tab')
@@ -83,7 +88,7 @@ export async function exerciseComposerSuggestion(): Promise<void> {
       await until(() => !element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.disabled)
       element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click()
       await until(() => finishes.length > 0 && field().value === '' && Boolean(element.querySelector('button[aria-label="Stop response"]')))
-      if (field().placeholder !== placeholder) {
+      if (field().placeholder !== placeholder || hint()) {
         throw new Error(`A running ${layout} turn still offers the old prediction`)
       }
       field().focus()
