@@ -61,6 +61,6 @@
 .pdf-file-view .textLayer ::selection { background: var(--color-primary-soft); }
 
 ::highlight(pdf-location) {
-  background: color-mix(in oklab, var(--color-primary) 45%, transparent);
+  background: color-mix(in oklab, var(--color-accent) 45%, transparent);
   color: transparent;
 }
