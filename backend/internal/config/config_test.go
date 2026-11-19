@@ -145,3 +145,17 @@ openai:
 		t.Fatalf("configured schedule = %+v", routine)
 	}
 }
+
+func TestLoadZoomMCPClientFromEnvironment(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("JAZ_ZOOM_OAUTH_CLIENT_ID", "registered-client")
+	cfg, err := LoadConfig[Config]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	zoom := cfg.Jaz.Connections.MCP["zoom"]
+	if zoom.ClientID != "registered-client" || zoom.ClientSecretEnvVar != "JAZ_ZOOM_OAUTH_CLIENT_SECRET" || !zoom.UseAppScopes {
+		t.Fatalf("Zoom client = %#v", zoom)
+	}
+}

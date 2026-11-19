@@ -18,7 +18,7 @@ func TestConnectStartDoesNotLeakMCPConnectionInternals(t *testing.T) {
 	refresher := newTestMCPRefresher()
 	store := &connectionStore{}
 	authorizer := &mcpConnectionAuthorizer{authURL: "https://deployink.com/oauth"}
-	service := core.NewConnectService(core.NewCatalog(), nil, nil, nil, core.NewMCPConnectionConnector(store, authorizer))
+	service := core.NewConnectService(core.NewCatalog(), nil, nil, nil, core.NewMCPConnectionConnector(store, authorizer, nil))
 	handler := NewConnectHandler(service, nil, nil, refresher, "")
 	req := httptest.NewRequest(http.MethodPost, "/v1/connections/plugins/deployink/connect", nil)
 	req.SetPathValue("id", deployink.ProviderID)

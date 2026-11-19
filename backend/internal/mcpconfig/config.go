@@ -36,6 +36,7 @@ type Header struct {
 }
 
 type OAuthConfig struct {
+	UseAppScopes       bool   `json:"use_app_scopes,omitempty"`
 	ClientID           string `json:"client_id,omitempty"`
 	ClientSecretEnvVar string `json:"client_secret_env_var,omitempty"`
 	Issuer             string `json:"issuer,omitempty"`

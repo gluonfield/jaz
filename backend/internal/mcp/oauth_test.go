@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -230,51 +231,64 @@ func TestRunAuthorizationCompletesFlow(t *testing.T) {
 }
 
 func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
-	t.Setenv("STATIC_OAUTH_SECRET", "static-secret")
-	srv := mockStaticAuthServer(t)
-	store := newMemTokenStore()
+	for _, appScopes := range []bool{false, true} {
+		t.Run(fmt.Sprint(appScopes), func(t *testing.T) {
+			t.Setenv("STATIC_OAUTH_SECRET", "static-secret")
+			srv := mockStaticAuthServer(t)
+			store := newMemTokenStore()
 
-	server := mcpconfig.Server{
-		ID:  "srv-static",
-		URL: srv.URL + "/mcp",
-		OAuth: mcpconfig.OAuthConfig{
-			ClientID:           "static-client",
-			ClientSecretEnvVar: "STATIC_OAUTH_SECRET",
-		},
-	}
-	handler := newOAuthHandler(server, store, http.DefaultClient, nil)
-	handler.mode = oauthModeInteractive
-	handler.redirectURL = "http://127.0.0.1:5599/callback"
-	handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
-		u, err := url.Parse(authURL)
-		if err != nil {
-			return mcpconfig.AuthorizationResponse{}, err
-		}
-		q := u.Query()
-		if q.Get("client_id") != "static-client" {
-			t.Errorf("authorization URL client_id = %q", q.Get("client_id"))
-		}
-		if q.Get("resource") != srv.URL+"/mcp" {
-			t.Errorf("authorization URL resource = %q", q.Get("resource"))
-		}
-		return mcpconfig.AuthorizationResponse{Code: "the-auth-code", State: q.Get("state")}, nil
-	}
+			server := mcpconfig.Server{
+				ID:  "srv-static",
+				URL: srv.URL + "/mcp",
+				OAuth: mcpconfig.OAuthConfig{
+					ClientID:           "static-client",
+					UseAppScopes:       appScopes,
+					ClientSecretEnvVar: "STATIC_OAUTH_SECRET",
+				},
+			}
+			handler := newOAuthHandler(server, store, http.DefaultClient, nil)
+			handler.mode = oauthModeInteractive
+			handler.redirectURL = "http://127.0.0.1:5599/callback"
+			handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
+				u, err := url.Parse(authURL)
+				if err != nil {
+					return mcpconfig.AuthorizationResponse{}, err
+				}
+				q := u.Query()
+				wantScope := "read write"
+				if appScopes {
+					wantScope = ""
+				}
+				if q.Get("scope") != wantScope {
+					t.Errorf("scope = %q, want %q", q.Get("scope"), wantScope)
+				}
+				if q.Get("client_id") != "static-client" {
+					t.Errorf("authorization URL client_id = %q", q.Get("client_id"))
+				}
+				if q.Get("resource") != srv.URL+"/mcp" {
+					t.Errorf("authorization URL resource = %q", q.Get("resource"))
+				}
+				return mcpconfig.AuthorizationResponse{Code: "the-auth-code", State: q.Get("state")}, nil
+			}
 
-	if err := handler.AuthorizeFromMetadata(context.Background()); err != nil {
-		t.Fatalf("AuthorizeFromMetadata: %v", err)
-	}
-	tok, ok, err := store.LoadToken(context.Background(), mcpconfig.OAuthConnectionID("srv-static"))
-	if err != nil || !ok {
-		t.Fatalf("LoadToken ok=%v err=%v", ok, err)
-	}
-	if tok.AccessToken != "static-access" {
-		t.Fatalf("token = %#v", tok)
-	}
-	if tok.ClientID != "static-client" || tok.Issuer != srv.URL || tok.ClientSecret != "" {
-		t.Fatalf("token stored static client fields = %#v", tok)
-	}
-	if !handler.didAuthorize() {
-		t.Fatal("didAuthorize() = false, want true")
+			if err := handler.AuthorizeFromMetadata(context.Background()); err != nil {
+				t.Fatalf("AuthorizeFromMetadata: %v", err)
+			}
+			tok, ok, err := store.LoadToken(context.Background(), mcpconfig.OAuthConnectionID("srv-static"))
+			if err != nil || !ok {
+				t.Fatalf("LoadToken ok=%v err=%v", ok, err)
+			}
+			if tok.AccessToken != "static-access" {
+				t.Fatalf("token = %#v", tok)
+			}
+			if tok.ClientID != "static-client" || tok.Issuer != srv.URL || tok.ClientSecret != "" {
+				t.Fatalf("token stored static client fields = %#v", tok)
+			}
+			if !handler.didAuthorize() {
+				t.Fatal("didAuthorize() = false, want true")
+			}
+
+		})
 	}
 }
 
