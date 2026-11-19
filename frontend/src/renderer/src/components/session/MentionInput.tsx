@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { ArrowRightToLine } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import {
   type ChangeEvent,
@@ -619,6 +620,7 @@ function prefersAbove(placement: 'above' | 'below', rect: DOMRect): boolean {
 export function MentionTextarea({
   mention,
   placeholder,
+  suggestion,
   disabled,
   readOnly,
   autoFocus,
@@ -627,6 +629,7 @@ export function MentionTextarea({
 }: {
   mention: MentionInput
   placeholder?: string
+  suggestion?: string
   disabled?: boolean
   readOnly?: boolean
   autoFocus?: boolean
@@ -641,7 +644,14 @@ export function MentionTextarea({
         aria-hidden
         className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap [overflow-wrap:break-word] ${TEXT_CLASSES} text-ink`}
       >
-        {mention.segments.map((segment, index) =>
+        {suggestion ? (
+          <div className="flex items-center gap-2 text-ink-3">
+            <kbd className="ml-1 inline-flex h-[18px] shrink-0 items-center gap-1 rounded-[5px] border border-border bg-surface-2 px-1.5 font-sans text-[10px] leading-none font-medium text-ink-2">
+              Tab <ArrowRightToLine size={10} aria-hidden />
+            </kbd>
+            <span className="truncate">{suggestion}</span>
+          </div>
+        ) : mention.segments.map((segment, index) =>
           segment.token ? (
             <span key={index} className="rounded-[4px] bg-primary-soft text-primary-strong">
               {segment.text}
@@ -660,9 +670,12 @@ export function MentionTextarea({
         autoFocus={autoFocus}
         disabled={disabled}
         readOnly={readOnly}
-        placeholder={placeholder}
+        placeholder={suggestion ? undefined : placeholder}
+        aria-label={suggestion ? placeholder : undefined}
+        aria-placeholder={suggestion}
         aria-autocomplete="list"
         aria-expanded={mention.menuOpen}
+        aria-keyshortcuts={suggestion ? 'Tab' : undefined}
         // No spellcheck: squiggles under skill/path tokens read as errors.
         spellCheck={false}
         className={`composer-input relative z-[1] block w-full resize-none bg-transparent ${minHeightClass} ${TEXT_CLASSES} text-transparent caret-ink select-text placeholder:text-ink-3 disabled:cursor-default`}
@@ -680,6 +693,11 @@ export function MentionTextarea({
             return
           }
           if (mention.onKeyDown(e)) return
+          if (suggestion && e.key === 'Tab' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            e.preventDefault()
+            mention.insertText(suggestion)
+            return
+          }
           onKeyDown?.(e)
         }}
       />
