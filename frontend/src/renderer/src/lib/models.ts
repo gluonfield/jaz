@@ -2,7 +2,7 @@ import { queryOptions, useQuery } from '@tanstack/react-query'
 import { get } from './api/client'
 import { agentSettingsQuery } from './api/settings'
 import { keys } from '@/lib/query/keys'
-import type { AgentSettings, ModelCatalogEntry, ModelProviderOption, Session } from './api/types'
+import type { AgentSettings, ModelCatalogEntry, Session } from './api/types'
 import { modelProviderModelsRequest } from './modelProviderRequest'
 import { modelSuggestionFor, type ModelSuggestion } from './modelSuggestion'
 
@@ -46,23 +46,6 @@ export function usageModelLabel(
   settings?: AgentSettings,
 ): string {
   return usageCatalogEntry(model, settings)?.label || model.model?.trim() || 'Unknown model'
-}
-
-export function modelSuggestionsForProvider(
-  provider: ModelProviderOption | undefined,
-  providerModels: ModelSuggestion[] = [],
-): ModelSuggestion[] {
-  if (!provider) return []
-  if (providerModels.length > 0) return providerModels
-  if (provider.default_model) {
-    return [{
-      value: provider.default_model,
-      label: provider.default_model,
-      description: provider.label,
-      reasoning: { status: 'unavailable' },
-    }]
-  }
-  return []
 }
 
 export function modelProviderModelsQuery(provider: string | undefined, agent: string) {

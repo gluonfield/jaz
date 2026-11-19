@@ -4,6 +4,9 @@ import { createRoot } from 'react-dom/client'
 import { AgentModelControls, useNewThreadControls } from '@/components/session/useNewThreadControls'
 import type { AgentSettings, ModelCatalogEntry } from '@/lib/api/types'
 import { NEW_SESSION_AGENT_KEY, NEW_SESSION_MODELS_KEY } from '@/lib/newSessionConfig'
+import { ModelCombobox } from '@/components/ui/ModelCombobox'
+import { useModelReasoningState } from '@/lib/modelReasoning'
+import { agentModelsQuery } from '@/lib/models'
 import { keys } from '@/lib/query/keys'
 
 export async function exerciseModelPicker(): Promise<void> {
@@ -43,11 +46,14 @@ export async function exerciseModelPicker(): Promise<void> {
   const originalModels = localStorage.getItem(NEW_SESSION_MODELS_KEY)
   localStorage.setItem(NEW_SESSION_AGENT_KEY, 'codex')
   localStorage.removeItem(NEW_SESSION_MODELS_KEY)
+  let nativeDiscoveryFails = false
   window.fetch = async (input, init) => {
     const url = String(input)
     if (url.includes('/v1/settings/agents')) {
       return Response.json(settings)
     }
+    if (url.includes('/v1/acp/agents/claude/models')) return Response.json({ models: claude })
+    if (url.includes('/v1/acp/agents/antigravity/models')) return nativeDiscoveryFails ? Response.json({ error: 'Discovery failed' }, { status: 500 }) : Response.json({ models: [] })
     if (url.includes('/v1/model-providers/')) {
       return Response.json({ models: url.includes('/openai/') ? codex : [model('qwen/qwen3', 'Qwen 3', ['low', 'high'])] })
     }
@@ -300,6 +306,63 @@ export async function exerciseModelPicker(): Promise<void> {
     await window.smoke.pointer('mouseUp', Math.round(firstStop.left + 16), Math.round(firstStop.y + firstStop.height / 2))
     await until(() => configIs('codex', 'gpt-6-astra', 'low'))
     await close()
+
+    await window.smoke.resize(1050, 850)
+    let availability: ReturnType<typeof useModelReasoningState>
+    let picked = 'legacy-model'
+    const unavailable: AgentSettings = {
+      agents: ['antigravity'], providers: [],
+      acp: { antigravity: { model: picked } },
+      acp_options: { antigravity: { supports_auth: true, reasoning_efforts: [], models: claude } },
+      acp_auth: { antigravity: { authenticated: false, ready: false, api_key_configured: false, login_command_available: false } },
+    }
+    function SettingsModel({ settings }: { settings: AgentSettings }) {
+      availability = useModelReasoningState({ settings, agent: 'antigravity', model: picked, reasoningEffort: '', usesProvider: false, provider: '' })
+      return <ModelCombobox value={picked} suggestions={availability.modelSuggestions} disabled={!availability.modelsReady} onChange={(value) => { picked = value }} aria-label="Antigravity model" />
+    }
+    const showSettings = (settings: AgentSettings) => root.render(<QueryClientProvider client={client}><SettingsModel settings={settings} /></QueryClientProvider>)
+    const input = () => element.querySelector<HTMLInputElement>('input')!
+    const nativeKey = agentModelsQuery('antigravity').queryKey
+    client.setQueryData(nativeKey, { models: [{ value: 'reported-model', label: 'Reported model', reasoning: { status: 'unavailable' } }], defaultModel: 'reported-model' })
+    showSettings(unavailable)
+    await until(() => input()?.disabled === true)
+    if (availability!.modelSuggestions.length || input().value !== picked) throw new Error('Signed-out agent exposes cached or settings models, or loses saved model')
+    const readySettings = { ...unavailable, acp_auth: { antigravity: { ...unavailable.acp_auth!.antigravity, authenticated: true, ready: true } } }
+    showSettings(readySettings)
+    await until(() => input()?.disabled === false)
+    await click(input())
+    await until(() => Boolean(document.querySelector('[role="listbox"]')))
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input(), 'invented-model')
+    input().dispatchEvent(new Event('input', { bubbles: true }))
+    await frame()
+    if (picked !== 'legacy-model') throw new Error('Typing an unreported model saved it')
+    for (const state of ['missing', 'downloading', 'failed', 'unsupported'] as const) {
+      showSettings({ ...readySettings, acp_auth: { antigravity: { ...readySettings.acp_auth.antigravity, managed_adapter: { adapter: 'antigravity', state } } } })
+      await until(() => input()?.disabled === true && !document.querySelector('[role="listbox"]'))
+      if (availability!.modelSuggestions.length) throw new Error('Unavailable adapter exposes cached models')
+    }
+    showSettings(readySettings)
+    await until(() => input()?.disabled === false)
+    await click(input())
+    await click(button('Reported model'))
+    await until(() => picked === 'reported-model')
+    showSettings(readySettings)
+    await click(input())
+    await click(button('Default'))
+    await until(() => picked === '')
+    await click(input())
+    showSettings(unavailable)
+    await until(() => input()?.disabled === true && !document.querySelector('[role="listbox"]'))
+    if (availability!.modelSuggestions.length) throw new Error('Sign-out exposes cached models')
+    showSettings(readySettings)
+    client.setQueryData(nativeKey, { models: [] })
+    await until(() => input()?.disabled === true)
+    if (availability!.reasoningOptions.length) throw new Error('Empty discovery exposes reasoning controls')
+    nativeDiscoveryFails = true
+    await client.refetchQueries({ queryKey: nativeKey })
+    await until(() => Boolean(availability!.modelsError) && input().disabled)
+    if (availability!.modelSuggestions.length) throw new Error('Failed discovery exposes cached models')
+    await window.smoke.capture('model-picker-unavailable')
 
   } finally {
     document.documentElement.classList.toggle('dark', originallyDark)

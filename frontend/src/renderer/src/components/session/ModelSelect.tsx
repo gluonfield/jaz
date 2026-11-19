@@ -33,6 +33,7 @@ export function ModelSelect({
   align?: 'start' | 'end'
   onChange: (selection: ModelSelection) => void
 }) {
+  disabled ||= loading || suggestions.length === 0
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<'slider' | 'models'>('slider')
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -60,7 +61,8 @@ export function ModelSelect({
 
   return (
     <Popover
-      open={open}
+      key={disabled ? 'disabled' : 'enabled'}
+      open={open && !disabled}
       onClose={() => {
         setOpen(false)
         triggerRef.current?.focus()

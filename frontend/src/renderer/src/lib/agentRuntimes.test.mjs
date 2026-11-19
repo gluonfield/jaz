@@ -39,3 +39,14 @@ describe('native agent readiness', () => {
     expect(acpAgentEnableable(settings, agent)).toBe(false)
   })
 })
+
+test.each(['missing', 'downloading', 'failed', 'unsupported'])('provider credentials do not bypass a %s ACP installation', (state) => {
+  const settings = {
+    acp: { codex: { model_provider: 'openrouter' } },
+    acp_options: { codex: { provider_mode: 'agent_defaults', model_providers: [{ id: 'openrouter', configured: true }] } },
+    acp_auth: { codex: { managed_adapter: { state } } },
+  }
+  expect(acpAgentEnableable(settings, 'codex')).toBe(false)
+  settings.acp_auth.codex.managed_adapter.state = 'ready'
+  expect(acpAgentEnableable(settings, 'codex')).toBe(true)
+})

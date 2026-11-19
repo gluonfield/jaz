@@ -98,6 +98,7 @@ export function selectedACPModelProvider(
 }
 
 export function acpAgentEnableable(settings: AgentSettings | undefined, agent: string): boolean {
+  if (agentInstallation(settings?.acp_auth?.[agent])) return false
   if (!acpUsesModelProvider(settings, agent)) return acpAgentAuthReady(settings, agent)
   const provider = selectedACPModelProvider(settings, agent)
   return Boolean(provider && acpModelProviderReady(settings, agent, provider))

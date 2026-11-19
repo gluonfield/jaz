@@ -246,6 +246,7 @@ function ACPAgentRow({
   const {
     modelSuggestions,
     modelsLoading,
+    modelsReady,
     defaultModel,
     modelsError,
     reasoningOptions,
@@ -257,7 +258,6 @@ function ACPAgentRow({
     reasoningEffort,
     usesProvider: usesModelProvider,
     provider: current.model_provider,
-    selectedProvider,
     settingsMode: true,
   })
   const update = useCallback((next: Partial<typeof current>) => {
@@ -391,14 +391,12 @@ function ACPAgentRow({
           </>
         ) : null}
 
-        <SettingsRow title="Model" description="Model copied into new threads for this client.">
+        <SettingsRow title="Model" description={modelsLoading ? 'Loading models…' : modelsError || 'Model copied into new threads for this client.'}>
           <ModelCombobox
             value={current.model ?? ''}
             suggestions={modelSuggestions}
-            loading={modelsLoading}
             placeholder={defaultModel ? `Default: ${defaultModel}` : 'Default'}
-            error={modelsError}
-            disabled={disabled}
+            disabled={disabled || !modelsReady}
             onChange={(model) => {
               const nextReasoning = reasoningForModel(model, reasoningEffort)
               update({

@@ -20,10 +20,10 @@ import {
   updateMemorySettings,
 } from '@/lib/api/memory'
 import type { MemoryHorizon, MemoryQueueStatus, MemoryStatus, MemoryTask } from '@/lib/api/types'
-import { enabledACPAgents } from '@/lib/agentRuntimes'
+import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
 import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
-import { acpAgentModelSuggestions, modelSuggestionFor } from '@/lib/models'
-import { modelReasoningEffortOptions } from '@/lib/reasoningEfforts'
+import { modelSuggestionFor } from '@/lib/models'
+import { useModelReasoningState } from '@/lib/modelReasoning'
 import { keys } from '@/lib/query/keys'
 
 const HORIZON_DESCRIPTIONS: Record<string, string> = {
@@ -164,6 +164,18 @@ export function MemorySettings() {
     },
   })
 
+  const selectedMemoryAgent = status.data?.agent ?? ''
+  const effectiveMemoryModel = status.data?.model || status.data?.default_model || ''
+  const runtime = runtimeModelState(agentSettings.data, selectedMemoryAgent)
+  const { modelSuggestions, modelsReady, reasoningOptions } = useModelReasoningState({
+    settings: agentSettings.data,
+    agent: selectedMemoryAgent,
+    model: effectiveMemoryModel,
+    reasoningEffort: status.data?.reasoning_effort ?? '',
+    usesProvider: runtime.usesProvider,
+    provider: runtime.provider,
+  })
+
   if (status.isPending) {
     return (
       <div className="mx-auto max-w-[860px] px-10">
@@ -188,7 +200,6 @@ export function MemorySettings() {
   const activeName = activeHorizon ?? horizons[0]?.name
   const active = horizons.find((h) => h.name === activeName)
   const memoryAgents = enabledACPAgents(agentSettings.data)
-  const selectedMemoryAgent = memory.agent ?? ''
   const staleMemoryAgent = selectedMemoryAgent && !memoryAgents.includes(selectedMemoryAgent)
   const memoryAgentOptions = [
     { value: '', label: 'Not selected' },
@@ -209,22 +220,13 @@ export function MemorySettings() {
     !selectedMemoryAgent || memoryAgents.includes(selectedMemoryAgent) || agentSettings.isPending
   const summary = memoryStatusSummary(memory, selectedMemoryAgent, memoryAgentValid)
 
-  const modelSuggestions = selectedMemoryAgent
-    ? acpAgentModelSuggestions(agentSettings.data, selectedMemoryAgent)
-    : []
-  const effectiveMemoryModel = memory.model || memory.default_model || ''
   const memoryModelOptions = [
     ...(effectiveMemoryModel === '' || modelSuggestions.some((s) => s.value === effectiveMemoryModel)
       ? []
       : [{ value: effectiveMemoryModel, label: effectiveMemoryModel }]),
     ...modelSuggestions.map((s) => ({ value: s.value, label: s.label })),
   ]
-  const memoryEffortStops = modelReasoningEffortOptions(
-    agentSettings.data,
-    selectedMemoryAgent,
-    effectiveMemoryModel,
-    modelSuggestions,
-  ).filter((option) => option.value !== '')
+  const memoryEffortStops = reasoningOptions.filter((option) => option.value !== '')
   const defaultMemoryEffort =
     memory.default_reasoning_effort ||
     modelSuggestionFor(modelSuggestions, effectiveMemoryModel)?.reasoning.default_effort
@@ -288,9 +290,10 @@ export function MemorySettings() {
           >
             <div className="grid w-full gap-2 md:w-[260px]">
               <Select
+                key={modelsReady ? 'ready' : 'unavailable'}
                 value={effectiveMemoryModel}
                 options={memoryModelOptions}
-                disabled={!enabled || update.isPending || agentSettings.isPending}
+                disabled={!enabled || update.isPending || !modelsReady}
                 onChange={(model) => update.mutate({ model })}
                 aria-label="Memory model"
                 className="w-full"

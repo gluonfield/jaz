@@ -1,19 +1,14 @@
-import { Check, LoaderCircle } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { layoutRect } from '@/lib/dom/zoom'
 import { filterModelSuggestions, modelSuggestionLabel, type ModelSuggestion } from '@/lib/models'
 
-// Free-text input with a portalled suggestion menu (portalled so it escapes the
-// `overflow-hidden` settings cards, like Select). Known suggestions display
-// their label while selections still emit the raw model id.
 export function ModelCombobox({
   value,
   suggestions,
-  loading,
   placeholder = 'Default',
-  error,
   disabled,
   onChange,
   className = '',
@@ -21,9 +16,7 @@ export function ModelCombobox({
 }: {
   value: string
   suggestions: ModelSuggestion[]
-  loading?: boolean
   placeholder?: string
-  error?: string
   disabled?: boolean
   onChange: (value: string) => void
   className?: string
@@ -32,18 +25,19 @@ export function ModelCombobox({
   const [open, setOpen] = useState(false)
   const [rect, setRect] = useState<DOMRect | null>(null)
   // Show the full list when the menu opens on focus; filter once the user types.
-  const [filtering, setFiltering] = useState(false)
+  const [filter, setFilter] = useState<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const reduce = useReducedMotion()
 
-  const filtered = filtering ? filterModelSuggestions(suggestions, value) : suggestions
-  const hasMenu = suggestions.length > 0 || Boolean(loading) || Boolean(error)
+  const choices = [{ value: '', label: placeholder, reasoning: { status: 'unavailable' as const } }, ...suggestions]
+  const filtered = filter === null ? choices : filterModelSuggestions(choices, filter)
+  const hasMenu = suggestions.length > 0
 
   const openMenu = () => {
     if (!hasMenu) return
-    setFiltering(false)
+    setFilter(null)
     setActiveIndex(-1)
     setOpen(true)
   }
@@ -84,19 +78,18 @@ export function ModelCombobox({
     <>
       <input
         ref={inputRef}
-        value={open ? value : modelSuggestionLabel(suggestions, value)}
+        value={open && filter !== null ? filter : modelSuggestionLabel(suggestions, value)}
         disabled={disabled}
         placeholder={placeholder}
         aria-label={ariaLabel}
-        aria-expanded={open}
+        aria-expanded={open && !disabled}
         role="combobox"
         onFocus={openMenu}
         onClick={() => {
           if (!open) openMenu()
         }}
         onChange={(e) => {
-          onChange(e.target.value)
-          setFiltering(true)
+          setFilter(e.target.value)
           setActiveIndex(-1)
           if (!open && hasMenu) setOpen(true)
         }}
@@ -128,7 +121,7 @@ export function ModelCombobox({
         }}
         className={`h-7 rounded-full bg-ink/10 px-3 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50 ${className}`}
       />
-      {createPortal(
+      {!disabled ? createPortal(
         <AnimatePresence>
           {open && rect && hasMenu ? (
             <motion.div
@@ -149,14 +142,7 @@ export function ModelCombobox({
               }}
               className="max-h-[280px] overflow-y-auto rounded-[8px] bg-surface p-1 shadow-xl ring-1 ring-border"
             >
-              {loading ? (
-                <div className="flex h-7 items-center gap-2 px-2 text-[12px] text-ink-3">
-                  <LoaderCircle size={13} className="animate-spin" />
-                  Loading models...
-                </div>
-              ) : error ? (
-                <div className="px-2 py-1 text-[12px] text-danger">{error}</div>
-              ) : filtered.length > 0 ? (
+              {filtered.length > 0 ? (
                 filtered.map((s, index) => {
                   const selected = s.value === value
                   return (
@@ -196,7 +182,7 @@ export function ModelCombobox({
           ) : null}
         </AnimatePresence>,
         document.body,
-      )}
+      ) : null}
     </>
   )
 }
