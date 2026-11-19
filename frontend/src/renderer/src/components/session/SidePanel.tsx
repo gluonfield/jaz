@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { Attachment, QueuedAction, Session, SessionEvent } from '@/lib/api/types'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
@@ -17,6 +17,14 @@ import { SidePanelControl } from '@/components/session/SidePanelControl'
 import { SidePanelTabMenu, SidePanelTabs } from '@/components/session/SidePanelTabs'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { SidePanelCloseGuard, type useSidePanelState } from '@/components/session/SidePanelState'
+
+function TabBody({ id, active, visible, children }: { id: string; active: boolean; visible: boolean; children: ReactNode }) {
+  const [mounted, setMounted] = useState(visible)
+  if (visible && !mounted) setMounted(true)
+  return <div id={`panel-body-${id}`} role="tabpanel" aria-labelledby={`panel-tab-${id}`} hidden={!active} inert={!visible} className="min-h-0 flex-1">
+    {mounted ? children : null}
+  </div>
+}
 
 export function SidePanel({
   session, panel, progress, subagents, spawnedThreads, working, asking,
@@ -84,14 +92,11 @@ export function SidePanel({
           const active = panel.activeTab?.id === tab.id
           const visible = panel.open && panel.mode === 'tabs' && active
           return (
-            <div
+            <TabBody
               key={tab.id}
-              id={`panel-body-${tab.id}`}
-              role="tabpanel"
-              aria-labelledby={`panel-tab-${tab.id}`}
-              hidden={!active}
-              inert={!visible}
-              className="min-h-0 flex-1"
+              id={tab.id}
+              active={active}
+              visible={visible}
             >
               {tab.kind === 'preview' ? (
                 <BrowserPanelSlot
@@ -124,7 +129,7 @@ export function SidePanel({
                   onSend={onSendSideChat}
                 />
               )}
-            </div>
+            </TabBody>
           )
         })}
       </div>
