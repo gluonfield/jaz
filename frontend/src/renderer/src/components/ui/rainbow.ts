@@ -7,6 +7,13 @@
 export const RAINBOW_BEAM =
   'conic-gradient(from var(--ring-angle, 0deg), transparent 0deg 250deg, var(--color-rainbow-1) 278deg, var(--color-rainbow-2) 296deg, var(--color-rainbow-3) 312deg, var(--color-rainbow-4) 326deg, var(--color-rainbow-5) 340deg, transparent 352deg 360deg)'
 
+// The same comet in the user's own colours, spread evenly along its arc.
+export function beam(colors: string[]): string {
+  const stops = colors.map((color, i) => `${color} ${278 + (62 * i) / Math.max(1, colors.length - 1)}deg`)
+  if (stops.length === 1) stops[0] += ' 340deg'
+  return `conic-gradient(from var(--ring-angle, 0deg), transparent 0deg 250deg, ${stops.join(', ')}, transparent 352deg 360deg)`
+}
+
 // The fresh-data scanline: a vertical rainbow band swept across a widget,
 // comet-tailed by the mask so only the leading edge glows.
 export const SCANLINE_BACKGROUND =

@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ComponentProps, useEffect, useRef, useState } from 'react'
-import { RAINBOW_BEAM } from '@/components/ui/rainbow'
-import { useEffectsEnabled } from '@/lib/appearance'
+import { RAINBOW_BEAM, beam } from '@/components/ui/rainbow'
+import { useComposerRingColors, useEffectsEnabled } from '@/lib/appearance'
 
 // Borderless card, agent-council style: the surface tone IS the card. While
 // focused a rainbow conic ring circles it; with effects off the ring is a calm
@@ -12,6 +12,8 @@ export function ComposerFrame({ chat = false, className = '', ...card }: { chat?
   const [focused, setFocused] = useState(false)
   const reducedMotion = useReducedMotion()
   const effectsEnabled = useEffectsEnabled()
+  const ringColors = useComposerRingColors()
+  const ring = ringColors.length ? beam(ringColors) : RAINBOW_BEAM
   const radius = chat ? 26 : 12
   // autoFocus lands before React's focus listeners attach; sync the ring state.
   useEffect(() => {
@@ -46,10 +48,10 @@ export function ComposerFrame({ chat = false, className = '', ...card }: { chat?
             {/* glow trailing the comet, bleeding softly outside the card */}
             <div
               className="absolute -inset-[4px] opacity-50 blur-[10px]"
-              style={{ background: RAINBOW_BEAM, borderRadius: radius + 6 }}
+              style={{ background: ring, borderRadius: radius + 6 }}
             />
             {/* the comet itself; the card's opaque surface covers the center */}
-            <div className="absolute inset-0" style={{ background: RAINBOW_BEAM, borderRadius: radius + 2 }} />
+            <div className="absolute inset-0" style={{ background: ring, borderRadius: radius + 2 }} />
           </motion.div>
         ) : null}
       </AnimatePresence>
