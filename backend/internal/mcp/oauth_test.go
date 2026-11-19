@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -231,8 +230,17 @@ func TestRunAuthorizationCompletesFlow(t *testing.T) {
 }
 
 func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
-	for _, appScopes := range []bool{false, true} {
-		t.Run(fmt.Sprint(appScopes), func(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		appScopes bool
+		challenge string
+		scope     string
+	}{
+		{name: "discovered-scopes", scope: "read write"},
+		{name: "app-defaults", appScopes: true},
+		{name: "challenge-overrides-app-defaults", appScopes: true, challenge: `Bearer scope="read"`, scope: "read"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("STATIC_OAUTH_SECRET", "static-secret")
 			srv := mockStaticAuthServer(t)
 			store := newMemTokenStore()
@@ -242,7 +250,7 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 				URL: srv.URL + "/mcp",
 				OAuth: mcpconfig.OAuthConfig{
 					ClientID:           "static-client",
-					UseAppScopes:       appScopes,
+					UseAppScopes:       test.appScopes,
 					ClientSecretEnvVar: "STATIC_OAUTH_SECRET",
 				},
 			}
@@ -255,12 +263,8 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 					return mcpconfig.AuthorizationResponse{}, err
 				}
 				q := u.Query()
-				wantScope := "read write"
-				if appScopes {
-					wantScope = ""
-				}
-				if q.Get("scope") != wantScope {
-					t.Errorf("scope = %q, want %q", q.Get("scope"), wantScope)
+				if q.Get("scope") != test.scope || test.scope == "" && q.Has("scope") {
+					t.Errorf("scope parameter = %v, want %q (omitted when empty)", q["scope"], test.scope)
 				}
 				if q.Get("client_id") != "static-client" {
 					t.Errorf("authorization URL client_id = %q", q.Get("client_id"))
@@ -271,8 +275,14 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 				return mcpconfig.AuthorizationResponse{Code: "the-auth-code", State: q.Get("state")}, nil
 			}
 
-			if err := handler.AuthorizeFromMetadata(context.Background()); err != nil {
-				t.Fatalf("AuthorizeFromMetadata: %v", err)
+			var err error
+			if test.challenge == "" {
+				err = handler.AuthorizeFromMetadata(context.Background())
+			} else {
+				err = handler.Authorize(context.Background(), nil, &http.Response{StatusCode: http.StatusUnauthorized, Header: http.Header{"Www-Authenticate": {test.challenge}}, Body: io.NopCloser(strings.NewReader(""))})
+			}
+			if err != nil {
+				t.Fatalf("authorize: %v", err)
 			}
 			tok, ok, err := store.LoadToken(context.Background(), mcpconfig.OAuthConnectionID("srv-static"))
 			if err != nil || !ok {

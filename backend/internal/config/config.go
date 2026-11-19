@@ -8,6 +8,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 	"github.com/wins/jaz/backend/internal/app"
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/provider"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
 	openrouterprovider "github.com/wins/jaz/backend/internal/provider/openrouter"
@@ -26,6 +27,9 @@ func Load() (Config, error) {
 	cfg, err := LoadConfig[Config]()
 	if err != nil {
 		return Config{}, err
+	}
+	for provider, client := range cfg.Jaz.Connections.MCP {
+		cfg.Jaz.Connections.MCP[provider] = mcpconfig.NormalizeOAuth(client)
 	}
 	if err := applyProvider(&cfg); err != nil {
 		return Config{}, err

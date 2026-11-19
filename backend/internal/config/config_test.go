@@ -149,8 +149,8 @@ openai:
 func TestLoadZoomMCPClientFromEnvironment(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
-	t.Setenv("JAZ_ZOOM_OAUTH_CLIENT_ID", "registered-client")
-	cfg, err := LoadConfig[Config]()
+	t.Setenv("JAZ_ZOOM_OAUTH_CLIENT_ID", " registered-client ")
+	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
