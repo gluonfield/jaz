@@ -31,7 +31,7 @@ import { installComputerControl } from '@main/computerControl'
 import { installSystemPermissions } from '@main/systemPermissions'
 import { installBrowserControl } from '@main/browserControl'
 import { installBrowserProfileImport } from '@main/browserProfileImport'
-import { attachPreviewWebviews, configureBrowserSessions } from '@main/previewSession'
+import { attachPreviewWebviews, configureBrowserSessions, previewHostPreferences } from '@main/previewSession'
 import { installBrowserPasswords } from '@main/browserPasswords'
 import { installBrowserDownloads } from '@main/browserDownloads'
 import { setupLauncher, teardownLauncher } from './spotlight'
@@ -192,13 +192,7 @@ function createWindow(): void {
     ...(mac ? { vibrancy: 'sidebar' as const, visualEffectState: 'followWindow' as const } : {}),
     titleBarStyle: mac ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 13 },
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-      webviewTag: true,
-    },
+    webPreferences: previewHostPreferences(join(__dirname, '../preload/index.js')),
   })
 
   mainWindow = win

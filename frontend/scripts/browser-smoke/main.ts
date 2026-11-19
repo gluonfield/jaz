@@ -7,7 +7,8 @@ import { basename, join } from 'node:path'
 import { ClaudeVoiceBridge, installClaudeVoice } from '@main/claudeVoice'
 import { installBrowserControl } from '@main/browserControl'
 import { attachWindowOpenHandler } from '@main/browserPopups'
-import { attachPreviewWebviews, configureBrowserSessions } from '@main/previewSession'
+import { attachPreviewWebviews, configureBrowserSessions, previewHostPreferences } from '@main/previewSession'
+import { createConnectionSession } from '@main/connectionSession'
 import { attachBrowserCloseShortcut } from '@main/browserCloseShortcut'
 import { installBrowserPasswords } from '@main/browserPasswords'
 import { installBrowserDownloads } from '@main/browserDownloads'
@@ -48,6 +49,7 @@ app.on('web-contents-created', (_event, contents) => {
 app.setPath('userData', join(process.env.JAZ_BROWSER_SMOKE_DIR!, `profile-${process.pid}`))
 app.commandLine.appendSwitch('host-resolver-rules', 'MAP linkedin.com 127.0.0.1, MAP www.linkedin.com 127.0.0.1')
 const timeout = Number(process.env.JAZ_BROWSER_SMOKE_TIMEOUT_MS || 30000)
+const googlePasskeys = process.env.JAZ_BROWSER_SMOKE_SUITE === 'google-passkeys'
 const openedURLs: string[] = []
 const popupURLs: string[] = []
 const tabURLs: string[] = []
@@ -236,7 +238,10 @@ server.listen(0, '127.0.0.1', async () => {
       const protocol = session.fromPartition(PREVIEW_PARTITION).protocol
       for (const scheme of ['http', 'https']) {
         if (enabled) {
-          protocol.handle(scheme, () => new Response('<!doctype html><title>Address probe</title>', { headers: { 'Content-Type': 'text/html' } }))
+          protocol.handle(scheme, (request) => {
+            const title = googlePasskeys && new URL(request.url).searchParams.has('cloud-fixture') ? 'Google Cloud Platform' : 'Address probe'
+            return new Response(`<!doctype html><title>${title}</title>`, { headers: { 'Content-Type': 'text/html' } })
+          })
         } else {
           protocol.unhandle(scheme)
         }
@@ -317,15 +322,23 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     width: 1050,
     height: 850,
     show: false,
+    focusable: !googlePasskeys,
     webPreferences: {
-      webviewTag: true,
+      ...previewHostPreferences(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'preload.js')),
       offscreen: process.env.JAZ_BROWSER_SMOKE_SUITE === 'bot-chat',
       backgroundThrottling: false,
-      contextIsolation: true,
-      sandbox: true,
-      preload: join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'preload.js'),
+      sandbox: !googlePasskeys,
     },
   })
+  if (googlePasskeys) {
+    ipcMain.handle('jaz:configure-notifications', () => true)
+    createConnectionSession({
+      rendererPath: '',
+      startLocal: async () => { throw new Error('Unexpected local startup') },
+      profile: () => { throw new Error('Unexpected device registration') },
+      stopConsumers: () => {},
+    }).attach(window, true)
+  }
   let painted: NativeImage | undefined
   let paintFrames = 0
   let paintedAt = 0
@@ -356,7 +369,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     }
     return { contrast: max - min, inkPixels: Math.min(high, pixels.length / 4 - high), frames, paintedAt: at }
   })
-  await exerciseClipboard(process.env.ELECTRON_RENDERER_URL)
+  if (!googlePasskeys) await exerciseClipboard(process.env.ELECTRON_RENDERER_URL)
   attachPreviewWebviews(window.webContents, join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js'))
   ipcMain.handle('smoke:password-store', async () => {
     const file = join(app.getPath('userData'), 'browser-passwords.enc')
@@ -400,8 +413,10 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     await window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY, modifiers: control ? 2 : 0 })
     await new Promise((resolve) => setTimeout(resolve, 20))
   })
-  await assertUntrustedProfileCaller(process.env.JAZ_BROWSER_SMOKE_DIR!)
-  await exerciseBrowserPopups(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js'), openedURLs)
+  if (!googlePasskeys) {
+    await assertUntrustedProfileCaller(process.env.JAZ_BROWSER_SMOKE_DIR!)
+    await exerciseBrowserPopups(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js'), openedURLs)
+  }
   app.on('web-contents-created', (_event, contents) => {
     contents.on('did-create-window', (popup, { url }) => {
       popupURLs.push(url)

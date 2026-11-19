@@ -2,6 +2,7 @@ import { parseFileReference } from './fileReader'
 
 export const PREVIEW_PARTITION = 'persist:jaz-preview'
 export const BROWSER_PRELOAD_ARGUMENT = '--jaz-side-browser'
+export const BROWSER_PASSKEY_FALLBACK_ARGUMENT = '--jaz-browser-passkey-fallback'
 
 const SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i
 
