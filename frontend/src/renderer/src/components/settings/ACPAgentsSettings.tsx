@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
+import { AntigravitySignIn } from '@/components/settings/AntigravitySignIn'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsSection, useAgentSettingsDraft } from '@/components/settings/agentSettingsShell'
 import { Button } from '@/components/ui/Button'
@@ -88,17 +89,24 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
   // This screen owns extra mutations (sign-in, disconnect) beyond the shared save.
   const queryClient = useQueryClient()
   const toast = useToast()
+  const connectAgent = (agent: string) => {
+    if (draft?.acp[agent]) {
+      save.mutate(withEnabledAgent(withLoginAuth(draft, agent), agent))
+    } else {
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+    }
+    queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+  }
 
   // A finished sign-in connects the agent: turn it on and persist so it works
   // right away (matching onboarding, no extra Enabled toggle). The hook reads
   // this through a ref, so `draft`/`save` are always current here.
   const { loginJobs, trackLoginJob, forgetLoginJob } = useACPLoginPolling((job) => {
-    if (job.status === 'succeeded' && draft?.acp[job.agent]) {
-      const next = withEnabledAgent(withLoginAuth(draft, job.agent), job.agent)
-      save.mutate(next)
-    } else {
-      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+    if (job.status === 'succeeded') {
+      connectAgent(job.agent)
+      return
     }
+    queryClient.invalidateQueries({ queryKey: keys.agentSettings })
     queryClient.invalidateQueries({ queryKey: keys.acpAgents })
   })
 
@@ -179,6 +187,7 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
               onStartLogin={(auth) =>
                 login.mutate({ agent, auth: loginAuth(agent, auth) })
               }
+              onConnected={() => connectAgent(agent)}
               onDisconnect={() => disconnect.mutate(agent)}
               onOpenProviders={onOpenProviders}
               onChange={setDraft}
@@ -200,6 +209,7 @@ function ACPAgentRow({
   installing,
   onInstall,
   onStartLogin,
+  onConnected,
   onDisconnect,
   onOpenProviders,
   onChange,
@@ -213,6 +223,7 @@ function ACPAgentRow({
   installing: boolean
   onInstall: () => void
   onStartLogin: (auth: ACPAuthDraft) => void
+  onConnected: () => void
   onDisconnect: () => void
   onOpenProviders: () => void
   onChange: (settings: AgentSettingsData) => void
@@ -336,6 +347,7 @@ function ACPAgentRow({
                 Provider, so they show a read-only connection status instead. */}
             <AgentAuthPanel
               agent={agent}
+              active={expanded}
               disabled={disabled}
               status={authStatus}
               apiKeyValue={settings.acp_keys?.[agent] ?? ''}
@@ -343,6 +355,7 @@ function ACPAgentRow({
               loginPending={loginPending}
               disconnecting={disconnecting}
               onStartLogin={() => onStartLogin(current.auth)}
+              onConnected={onConnected}
               onDisconnect={onDisconnect}
               onAPIKeyChange={(value) =>
                 onChange({
@@ -435,6 +448,7 @@ function ACPAgentRow({
 
 function AgentAuthPanel({
   agent,
+  active,
   disabled,
   status,
   apiKeyValue,
@@ -442,10 +456,12 @@ function AgentAuthPanel({
   loginPending,
   disconnecting,
   onStartLogin,
+  onConnected,
   onDisconnect,
   onAPIKeyChange,
 }: {
   agent: string
+  active: boolean
   disabled: boolean
   status?: ACPAgentAuthStatus
   apiKeyValue: string
@@ -453,6 +469,7 @@ function AgentAuthPanel({
   loginPending: boolean
   disconnecting: boolean
   onStartLogin: () => void
+  onConnected: () => void
   onDisconnect: () => void
   onAPIKeyChange: (value: string) => void
 }) {
@@ -533,6 +550,19 @@ function AgentAuthPanel({
           </div>
         ) : null}
       </div>
+    )
+  }
+
+  if (agent === 'antigravity' && canLogin) {
+    return (
+      <AntigravitySignIn
+        active={active}
+        disabled={disabled}
+        running={running}
+        loginJob={loginJob}
+        onPersonal={onStartLogin}
+        onConnected={onConnected}
+      />
     )
   }
 

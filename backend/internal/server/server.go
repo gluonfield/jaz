@@ -132,8 +132,9 @@ type Server struct {
 	Devices      *deviceauth.Service
 	terminalOnce sync.Once
 
-	acpAuthLoginJobs sync.Map
-	worktreePruneMu  sync.Mutex
+	acpAuthLoginJobs   sync.Map
+	antigravityLoginMu sync.Mutex
+	worktreePruneMu    sync.Mutex
 }
 
 type sourceQueueStatsReader interface {

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/wins/jaz/backend/internal/shellcmd"
@@ -70,10 +71,21 @@ func (m *Manager) Open(id, cwd string, size Size) (*Session, error) {
 		}
 		m.mu.Unlock()
 	})
-	if err := session.start(size); err != nil {
+	cmd := exec.Command(shellcmd.DefaultShell())
+	cmd.Dir = cwd
+	cmd.Env = os.Environ()
+	if err := session.start(cmd, size); err != nil {
 		return nil, err
 	}
 	m.sessions[id] = session
+	return session, nil
+}
+
+func OpenCommand(cmd *exec.Cmd, size Size) (*Session, error) {
+	session := newSession(cmd.Dir, defaultReplayBytes, nil)
+	if err := session.start(cmd, size); err != nil {
+		return nil, err
+	}
 	return session, nil
 }
 
@@ -116,6 +128,7 @@ type Session struct {
 	cmd     *exec.Cmd
 	file    *os.File
 	closed  bool
+	exit    Message
 	buffer  []byte
 	clients map[chan Message]struct{}
 }
@@ -139,16 +152,14 @@ func (s *Session) Alive() bool {
 	return !s.closed
 }
 
-func (s *Session) Replay() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return string(append([]byte(nil), s.buffer...))
-}
-
 func (s *Session) Subscribe() (<-chan Message, func()) {
 	ch := make(chan Message, 128)
 	s.mu.Lock()
+	if len(s.buffer) != 0 {
+		ch <- Message{Type: "output", Data: string(s.buffer)}
+	}
 	if s.closed {
+		ch <- s.exit
 		close(ch)
 		s.mu.Unlock()
 		return ch, func() {}
@@ -208,13 +219,11 @@ func (s *Session) Terminate() {
 	}
 }
 
-func (s *Session) start(size Size) error {
+func (s *Session) start(cmd *exec.Cmd, size Size) error {
 	if runtime.GOOS == "windows" {
 		return ErrUnsupported
 	}
-	cmd := exec.Command(shellcmd.DefaultShell())
-	cmd.Dir = s.cwd
-	cmd.Env = terminalEnv(os.Environ())
+	cmd.Env = terminalEnv(cmd.Environ())
 	win := &pty.Winsize{Cols: firstNonZero(size.Cols, 80), Rows: firstNonZero(size.Rows, 24)}
 	file, err := pty.StartWithSize(cmd, win)
 	if err != nil {
@@ -224,8 +233,12 @@ func (s *Session) start(size Size) error {
 	s.cmd = cmd
 	s.file = file
 	s.mu.Unlock()
-	go s.read()
-	go s.wait()
+	drained := make(chan struct{})
+	go func() {
+		s.read()
+		close(drained)
+	}()
+	go s.wait(drained)
 	return nil
 }
 
@@ -242,8 +255,14 @@ func (s *Session) read() {
 	}
 }
 
-func (s *Session) wait() {
+func (s *Session) wait(drained <-chan struct{}) {
 	err := s.cmd.Wait()
+	select {
+	case <-drained:
+	case <-time.After(time.Second):
+		_ = s.file.Close()
+		<-drained
+	}
 	code := exitCode(err)
 	msg := Message{Type: "exit", Code: code}
 	if err != nil && !errors.Is(err, os.ErrProcessDone) {
@@ -255,6 +274,7 @@ func (s *Session) wait() {
 		return
 	}
 	s.closed = true
+	s.exit = msg
 	clients := s.clients
 	s.clients = map[chan Message]struct{}{}
 	for ch := range clients {

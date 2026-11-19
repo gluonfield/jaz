@@ -57,6 +57,10 @@ func (s *Server) handleSessionTerminal(w http.ResponseWriter, r *http.Request, s
 		_ = writeTerminalMessage(conn, terminal.Message{Type: "error", Err: err.Error()})
 		return
 	}
+	serveTerminal(conn, term, func() { s.terminalManager().Kill(session.ID) }, nil)
+}
+
+func serveTerminal(conn *websocket.Conn, term *terminal.Session, terminate func(), finalize func(terminal.Message) terminal.Message) {
 	events, unsubscribe := term.Subscribe()
 	defer unsubscribe()
 	var writeMu sync.Mutex
@@ -68,16 +72,14 @@ func (s *Server) handleSessionTerminal(w http.ResponseWriter, r *http.Request, s
 	if err := send(terminal.Message{Type: "ready", Cwd: term.Cwd()}); err != nil {
 		return
 	}
-	if replay := term.Replay(); replay != "" {
-		if err := send(terminal.Message{Type: "output", Data: replay}); err != nil {
-			return
-		}
-	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		defer conn.Close()
 		for msg := range events {
+			if msg.Type == "exit" && finalize != nil {
+				msg = finalize(msg)
+			}
 			if err := send(msg); err != nil {
 				return
 			}
@@ -101,9 +103,9 @@ func (s *Server) handleSessionTerminal(w http.ResponseWriter, r *http.Request, s
 				_ = send(terminal.Message{Type: "error", Err: err.Error()})
 			}
 		case "terminate":
-			s.terminalManager().Kill(session.ID)
+			terminate()
 		case "restart":
-			s.terminalManager().Kill(session.ID)
+			terminate()
 			return
 		}
 	}
