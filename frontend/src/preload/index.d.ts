@@ -33,6 +33,7 @@ declare global {
       browserProfiles: BrowserProfileAPI
       browserPasswords: BrowserPasswordAPI
       browserDownloads: BrowserDownloadAPI
+      browserPasskeyFallback: boolean
       browserCommand: (request: BrowserCommandRequest) => Promise<unknown>
       encryptCredential: (value: string) => string
       decryptCredential: (value: string) => string

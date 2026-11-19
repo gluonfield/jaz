@@ -31,7 +31,7 @@ import { installComputerControl } from '@main/computerControl'
 import { installSystemPermissions } from '@main/systemPermissions'
 import { installBrowserControl } from '@main/browserControl'
 import { installBrowserProfileImport } from '@main/browserProfileImport'
-import { attachPreviewWebviews, configureBrowserSessions } from '@main/previewSession'
+import { attachPreviewWebviews, configureBrowserSessions, previewHostArguments } from '@main/previewSession'
 import { installBrowserPasswords } from '@main/browserPasswords'
 import { installBrowserDownloads } from '@main/browserDownloads'
 import { setupLauncher, teardownLauncher } from './spotlight'
@@ -198,6 +198,7 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: false,
       webviewTag: true,
+      additionalArguments: previewHostArguments(),
     },
   })
 
@@ -277,7 +278,7 @@ function openBoardWindow(boardId: string): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      additionalArguments: ['--jaz-board-window'],
+      additionalArguments: previewHostArguments('--jaz-board-window'),
     },
   })
   boardWindows.set(boardId, win)

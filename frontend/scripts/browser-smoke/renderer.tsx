@@ -42,6 +42,7 @@ import { exerciseMarkdownDocuments } from './markdown-documents'
 import { exerciseMarkdownArtifacts } from './markdown-artifacts'
 import { exerciseBrowserAppearance } from './appearance'
 import { exerciseAddressBar } from './address-bar'
+import { exerciseGooglePasskeys } from './google-passkeys'
 import { exerciseClaudeVoice } from './claude-voice'
 import { exerciseConnectionSecurity } from './connection-security'
 import { exerciseBrowserVisibility } from './browser-visibility'
@@ -122,6 +123,14 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (!suite || suite === 'google-passkeys') {
+        progress('Google passkey handoff')
+        await exerciseGooglePasskeys(browser)
+      }
+      if (suite === 'google-passkeys') {
+        window.smoke.result({ ok: true, checks: ['Google passkey handoff follows the desktop platform and restarts only after a click'] })
+        return
+      }
       if (suite === 'bot-chat') {
         await exerciseBotChat()
         window.smoke.result({ ok: true, checks: ['real HTTP/SSE bot conversation visibly painted before scroll in development StrictMode; cold/warm history, authorship, stable reader and paging'] })

@@ -7,7 +7,7 @@ import { basename, join } from 'node:path'
 import { ClaudeVoiceBridge, installClaudeVoice } from '@main/claudeVoice'
 import { installBrowserControl } from '@main/browserControl'
 import { attachWindowOpenHandler } from '@main/browserPopups'
-import { attachPreviewWebviews, configureBrowserSessions } from '@main/previewSession'
+import { attachPreviewWebviews, configureBrowserSessions, previewHostArguments } from '@main/previewSession'
 import { attachBrowserCloseShortcut } from '@main/browserCloseShortcut'
 import { installBrowserPasswords } from '@main/browserPasswords'
 import { installBrowserDownloads } from '@main/browserDownloads'
@@ -236,7 +236,10 @@ server.listen(0, '127.0.0.1', async () => {
       const protocol = session.fromPartition(PREVIEW_PARTITION).protocol
       for (const scheme of ['http', 'https']) {
         if (enabled) {
-          protocol.handle(scheme, () => new Response('<!doctype html><title>Address probe</title>', { headers: { 'Content-Type': 'text/html' } }))
+          protocol.handle(scheme, (request) => {
+            const title = new URL(request.url).searchParams.has('cloud-fixture') ? 'Google Cloud Platform' : 'Address probe'
+            return new Response(`<!doctype html><title>${title}</title>`, { headers: { 'Content-Type': 'text/html' } })
+          })
         } else {
           protocol.unhandle(scheme)
         }
@@ -324,6 +327,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
       contextIsolation: true,
       sandbox: true,
       preload: join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'preload.js'),
+      additionalArguments: previewHostArguments(),
     },
   })
   let painted: NativeImage | undefined
