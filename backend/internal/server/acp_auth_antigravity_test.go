@@ -31,9 +31,15 @@ acp)
     [ "$2" = "--disable-telemetry" ] || exit 2
     IFS= read -r init
     case "$init" in *'"method":"initialize"'*) ;; *) exit 3 ;; esac
-    printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"authMethods":[{"id":"oauth-business","name":"Cloud"},{"id":"oauth-personal","name":"Google"}]}}'
+    version=1
+    if [ -f "$HOME/fail-discovery" ]; then version=99; fi
+    printf '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":%s,"authMethods":[{"id":"oauth-business","name":"Cloud"},{"id":"oauth-personal","name":"Google"}]}}\n' "$version"
     ;;
-models) test -f "$HOME/cloud-sign-in" ;;
+models)
+    test -f "$HOME/cloud-sign-in" || exit 1
+    touch "$HOME/verifying"
+    while [ ! -f "$HOME/release-verification" ]; do sleep 0.02; done
+    ;;
 "")
     test -n "$SSH_CONNECTION" || exit 4
     test -t 0 || exit 5
@@ -53,6 +59,21 @@ esac
 		t.Fatal(err)
 	}
 	request.Header.Set("Authorization", "Bearer test-key")
+	failDiscovery := filepath.Join(home, "fail-discovery")
+	if err := os.WriteFile(failDiscovery, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	failure, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = failure.Body.Close()
+	if failure.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("failed capability probe status = %d", failure.StatusCode)
+	}
+	if err := os.Remove(failDiscovery); err != nil {
+		t.Fatal(err)
+	}
 	response, err := server.Client().Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -90,10 +111,39 @@ esac
 	if event := next(conn); event.Type != "output" || !strings.Contains(event.Data, "Use a Google Cloud project") {
 		t.Fatalf("expected the native Cloud prompt, got %+v", event)
 	}
-	if event := next(open()); event.Type != "error" || event.Err != errAntigravityLoginRunning.Error() {
+	if event := next(open()); event.Type != "error" || event.Err != errAntigravityAuthBusy.Error() {
 		t.Fatalf("expected a concurrent login rejection, got %+v", event)
 	}
 	if err := conn.WriteJSON(terminalClientMessage{Type: "input", Data: "test-project\r"}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, err := os.Stat(filepath.Join(home, "verifying")); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("terminal exited without verifying authentication")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := conn.WriteJSON(terminalClientMessage{Type: "resize", Cols: 81, Rows: 24}); err != nil {
+		t.Fatal(err)
+	}
+	disconnect, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+path+"/disconnect", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disconnect.Header = request.Header.Clone()
+	blocked, err := server.Client().Do(disconnect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = blocked.Body.Close()
+	if blocked.StatusCode != http.StatusConflict {
+		t.Fatalf("disconnect during sign-in status = %d", blocked.StatusCode)
+	}
+	if err := os.WriteFile(filepath.Join(home, "release-verification"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for {

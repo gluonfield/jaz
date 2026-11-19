@@ -20,7 +20,11 @@ func (s *Server) antigravityLoginConfig() acp.AgentConfig {
 }
 
 func (s *Server) handleAntigravityAuthMethods(w http.ResponseWriter, r *http.Request) {
-	methods := acp.AntigravityLoginMethods(r.Context(), s.antigravityLoginConfig(), s.runtimeRoot())
+	methods, err := acp.AntigravityLoginMethods(r.Context(), s.antigravityLoginConfig(), s.runtimeRoot())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("could not read Antigravity sign-in methods"))
+		return
+	}
 	writeJSON(w, http.StatusOK, append([]string{}, methods...))
 }
 
@@ -36,14 +40,20 @@ func (s *Server) handleAntigravityCloudLogin(w http.ResponseWriter, r *http.Requ
 	fail := func(message string) {
 		_ = writeTerminalMessage(conn, terminal.Message{Type: "error", Err: message})
 	}
-	if !s.antigravityLoginMu.TryLock() {
-		fail(errAntigravityLoginRunning.Error())
+	release, err := s.claimACPAuth(acp.AgentAntigravity)
+	if err != nil {
+		fail(err.Error())
 		return
 	}
-	defer s.antigravityLoginMu.Unlock()
+	defer release()
 	cfg := s.antigravityLoginConfig()
 	root := s.runtimeRoot()
-	if !slices.Contains(acp.AntigravityLoginMethods(ctx, cfg, root), acp.AntigravityCloudProject) {
+	methods, err := acp.AntigravityLoginMethods(ctx, cfg, root)
+	if err != nil {
+		fail("Could not read Antigravity sign-in methods. Start sign-in again to retry.")
+		return
+	}
+	if !slices.Contains(methods, acp.AntigravityCloudProject) {
 		fail("This Antigravity CLI does not offer Google Cloud sign-in.")
 		return
 	}
@@ -63,7 +73,7 @@ func (s *Server) handleAntigravityCloudLogin(w http.ResponseWriter, r *http.Requ
 		fail(fmt.Sprintf("Could not start Antigravity sign-in: %v", err))
 		return
 	}
-	defer term.Terminate()
+	defer term.Close()
 	serveTerminal(conn, term, term.Terminate, func(msg terminal.Message) terminal.Message {
 		if msg.Code == 0 {
 			if err := s.verifyACPAuthLogin(acp.AgentAntigravity, cfg.Auth); err != nil {

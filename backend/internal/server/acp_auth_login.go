@@ -23,7 +23,17 @@ import (
 
 const acpAuthLoginTimeout = 16 * time.Minute
 
-var errAntigravityLoginRunning = errors.New("an Antigravity sign-in is already running")
+var errAntigravityAuthBusy = errors.New("another Antigravity account operation is in progress")
+
+func (s *Server) claimACPAuth(agent string) (func(), error) {
+	if agent != acp.AgentAntigravity {
+		return func() {}, nil
+	}
+	if !s.antigravityLoginMu.TryLock() {
+		return nil, errAntigravityAuthBusy
+	}
+	return s.antigravityLoginMu.Unlock, nil
+}
 
 type acpAuthLoginRequest struct {
 	Auth acp.AgentAuthConfig `json:"auth,omitempty"`
@@ -93,7 +103,7 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 	}
 	job, err := s.runACPAuthLogin(r.Context(), agent, auth, invocation)
 	if err != nil {
-		if errors.Is(err, errAntigravityLoginRunning) {
+		if errors.Is(err, errAntigravityAuthBusy) {
 			writeError(w, http.StatusConflict, err)
 			return
 		}
@@ -185,23 +195,20 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 	cmd.Env = acpAuthLoginEnv(invocation)
 	cmd.Dir = firstNonEmpty(strings.TrimSpace(invocation.Cwd), strings.TrimSpace(s.runtimeRoot()))
 	writer := acpAuthLoginWriter{job: job}
-	if agent == acp.AgentAntigravity && !s.antigravityLoginMu.TryLock() {
+	release, err := s.claimACPAuth(agent)
+	if err != nil {
 		cancel()
-		return nil, errAntigravityLoginRunning
+		return nil, err
 	}
 	outputDone, err := startACPAuthLoginProcess(cmd, job, writer, invocation.UsePTY)
 	if err != nil {
-		if agent == acp.AgentAntigravity {
-			s.antigravityLoginMu.Unlock()
-		}
+		release()
 		cancel()
 		return nil, err
 	}
 	s.acpAuthLoginJobs.Store(job.ID, job)
 	go func() {
-		if agent == acp.AgentAntigravity {
-			defer s.antigravityLoginMu.Unlock()
-		}
+		defer release()
 		defer cancel()
 		err := cmd.Wait()
 		// Let the pty reader deliver the CLI's final lines before closing the

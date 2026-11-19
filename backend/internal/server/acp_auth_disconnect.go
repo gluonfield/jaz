@@ -25,6 +25,12 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusForbidden, fmt.Errorf("disconnecting is only available from the backend host"))
 		return
 	}
+	release, err := s.claimACPAuth(agent)
+	if err != nil {
+		writeError(w, http.StatusConflict, err)
+		return
+	}
+	defer release()
 	store, ok := s.Store.(storage.SettingsStorage)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("settings store is not configured"))

@@ -20,15 +20,18 @@ const (
 	AntigravityCloudProject  = "oauth-business"
 )
 
-func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) []string {
+func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) ([]string, error) {
 	if runtime.GOOS == "windows" {
-		return nil
+		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	invocation := AgentLoginInvocationFor(AgentAntigravity, root, cfg.Auth, loginBinDirs(cfg), cfg.Env)
-	if !invocation.Available || PrepareAgentLoginInvocation(AgentAntigravity, cfg.Auth, root, invocation) != nil {
-		return nil
+	if !invocation.Available {
+		return nil, nil
+	}
+	if err := PrepareAgentLoginInvocation(AgentAntigravity, cfg.Auth, root, invocation); err != nil {
+		return nil, err
 	}
 	manager := NewManager(nil, Config{Root: root}, nil)
 	defer manager.Close()
@@ -37,15 +40,15 @@ func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) 
 	cmd.Dir = invocation.Cwd
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		_ = stdin.Close()
-		return nil
+		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
-		return nil
+		return nil, err
 	}
 	defer func() {
 		cancel()
@@ -59,12 +62,18 @@ func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) 
 		ProtocolVersion: acpschema.ProtocolVersionNumber,
 		ClientInfo:      &acpschema.Implementation{Name: "jaz", Title: "Jaz"},
 	})
+	if err != nil {
+		return nil, err
+	}
 	var initialized struct {
 		ProtocolVersion acpschema.ProtocolVersion `json:"protocolVersion"`
 		AuthMethods     []agentAuthMethod         `json:"authMethods"`
 	}
-	if err != nil || json.Unmarshal(raw, &initialized) != nil || initialized.ProtocolVersion != acpschema.ProtocolVersionNumber {
-		return nil
+	if err := json.Unmarshal(raw, &initialized); err != nil {
+		return nil, err
+	}
+	if initialized.ProtocolVersion != acpschema.ProtocolVersionNumber {
+		return nil, fmt.Errorf("unsupported ACP protocol version %d", initialized.ProtocolVersion)
 	}
 	var methods []string
 	for _, id := range []string{AntigravityGoogleAccount, AntigravityCloudProject} {
@@ -74,7 +83,7 @@ func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) 
 			methods = append(methods, id)
 		}
 	}
-	return methods
+	return methods, nil
 }
 
 func disconnectAntigravityAuth(ctx context.Context, cfg AgentConfig, root string) error {

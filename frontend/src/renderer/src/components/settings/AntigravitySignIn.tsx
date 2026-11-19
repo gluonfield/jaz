@@ -1,14 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { FitAddon } from '@xterm/addon-fit'
-import { Terminal } from '@xterm/xterm'
 import { LoaderCircle, LogIn } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
-import { apiWebSocket, get } from '@/lib/api/client'
+import { get } from '@/lib/api/client'
 import type { ACPAuthLogin } from '@/lib/api/types'
 import { openExternal } from '@/lib/clientRuntime'
+import { connectTerminal } from '@/lib/terminalConnection'
 
 const authPath = '/v1/acp/agents/antigravity/auth'
 const loginOptions = [
@@ -24,17 +23,16 @@ export function AntigravitySignIn({ active, disabled, running, loginJob, onPerso
   onPersonal: () => void
   onConnected: () => void
 }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['antigravity', 'login-methods'],
-    queryFn: () => get<string[]>(`${authPath}/methods`),
-    enabled: active,
-    retry: false,
-    staleTime: 60_000,
-  })
-  const options = loginOptions.filter(({ value }) => data?.includes(value))
   const [selection, setSelection] = useState('oauth-personal')
   const [cloudOpen, setCloudOpen] = useState(false)
   const [error, setError] = useState('')
+  const { data, isError, isFetching, refetch } = useQuery({
+    queryKey: ['antigravity', 'login-methods'],
+    queryFn: () => get<string[]>(`${authPath}/methods`),
+    enabled: active && !running && !cloudOpen,
+    retry: false,
+  })
+  const options = loginOptions.filter(({ value }) => data?.includes(value))
   const selected = options.find(({ value }) => value === selection) ?? options[0]
   const cloud = selected?.value === 'oauth-business'
 
@@ -54,13 +52,13 @@ export function AntigravitySignIn({ active, disabled, running, loginJob, onPerso
             disabled={disabled || running || cloudOpen}
           />
         ) : null}
-        <Button variant="primary" size="md" disabled={disabled || running || cloudOpen || isLoading} onClick={() => {
+        <Button variant="primary" size="md" disabled={disabled || running || cloudOpen || isFetching} onClick={() => {
           setError('')
           if (cloud) setCloudOpen(true)
           else onPersonal()
         }}>
-          {running || isLoading ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-          {running ? 'Waiting for sign-in…' : cloud ? 'Continue in Antigravity' : 'Sign in with Google'}
+          {running || isFetching ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
+          {running ? 'Waiting for sign-in…' : isFetching ? 'Checking sign-in…' : cloud ? 'Continue in Antigravity' : 'Sign in with Google'}
         </Button>
         {cloudOpen ? <Button variant="ghost" size="sm" onClick={() => setCloudOpen(false)}>Cancel</Button> : null}
       </div>
@@ -77,6 +75,12 @@ export function AntigravitySignIn({ active, disabled, running, loginJob, onPerso
           }} />
         </>
       ) : null}
+      {isError ? (
+        <div className="flex flex-wrap items-center gap-2 text-[12px] text-ink-3">
+          Could not load Google Cloud sign-in availability.
+          <Button size="sm" variant="ghost" disabled={isFetching} onClick={() => void refetch()}>Retry</Button>
+        </div>
+      ) : null}
       {error ? <p role="alert" className="text-[12px] text-danger">{error}</p> : null}
       {cloudOpen ? null : <AuthLoginStatus job={loginJob} running={running} />}
     </div>
@@ -90,59 +94,19 @@ function AntigravityAuthTerminal({ onExit }: { onExit: (error: string) => void }
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
-    const term = new Terminal({
-      fontSize: 12,
-      fontFamily: "'JetBrains Mono Variable', ui-monospace, monospace",
-      theme: { background: '#111318', foreground: '#f0f1f4' },
-      linkHandler: {
-        activate: (_event, link) => {
-          if (link.startsWith('https://accounts.google.com/')) openExternal(link)
-        },
-      },
-    })
-    const fit = new FitAddon()
-    term.loadAddon(fit)
-    term.open(host)
-    term.focus()
-
-    const params = new URLSearchParams({ cols: String(term.cols), rows: String(term.rows) })
-    const socket = apiWebSocket(`${authPath}/cloud-terminal?${params}`)
-    const send = (message: object) => {
-      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message))
-    }
-    const input = term.onData((data) => send({ type: 'input', data }))
-    const fitTerminal = () => {
-      if (!host.clientWidth || !host.clientHeight) return
-      fit.fit()
-      send({ type: 'resize', cols: term.cols, rows: term.rows })
-    }
-    const observer = new ResizeObserver(fitTerminal)
-    observer.observe(host)
-    socket.onopen = fitTerminal
-    const finish = (error: string) => {
-      socket.onclose = null
-      socket.onmessage = null
-      onExitRef.current(error)
-    }
-    socket.onmessage = ({ data }) => {
-      const message = JSON.parse(data) as { type: string; data?: string; error?: string; code?: number }
-      if (message.type === 'output') term.write(message.data ?? '')
-      if (message.type === 'error') finish(message.error || 'Antigravity sign-in failed.')
-      if (message.type === 'exit') {
-        finish(message.error || (message.code ? 'Antigravity sign-in failed.' : ''))
+    let resolved = false
+    const connection = connectTerminal(host, `${authPath}/cloud-terminal`, (event) => {
+      if (resolved || event.type === 'ready') return
+      resolved = true
+      if (event.type === 'exit') {
+        onExitRef.current(event.error || (event.code ? 'Antigravity sign-in failed.' : ''))
+      } else {
+        onExitRef.current(event.type === 'error' ? event.error : 'The Antigravity sign-in terminal closed.')
       }
-    }
-    socket.onclose = () => onExitRef.current('The Antigravity sign-in terminal closed.')
-
-    return () => {
-      observer.disconnect()
-      input.dispose()
-      socket.onclose = null
-      socket.onmessage = null
-      socket.onopen = null
-      socket.close()
-      term.dispose()
-    }
+    }, (link) => {
+      if (link.startsWith('https://accounts.google.com/')) openExternal(link)
+    })
+    return connection?.close
   }, [])
 
   return <div ref={hostRef} className="jaz-terminal !h-80 overflow-hidden rounded-control bg-[#111318]" />

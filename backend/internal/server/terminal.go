@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -62,14 +61,8 @@ func (s *Server) handleSessionTerminal(w http.ResponseWriter, r *http.Request, s
 
 func serveTerminal(conn *websocket.Conn, term *terminal.Session, terminate func(), finalize func(terminal.Message) terminal.Message) {
 	events, unsubscribe := term.Subscribe()
-	defer unsubscribe()
-	var writeMu sync.Mutex
-	send := func(msg terminal.Message) error {
-		writeMu.Lock()
-		defer writeMu.Unlock()
-		return writeTerminalMessage(conn, msg)
-	}
-	if err := send(terminal.Message{Type: "ready", Cwd: term.Cwd()}); err != nil {
+	if err := writeTerminalMessage(conn, terminal.Message{Type: "ready", Cwd: term.Cwd()}); err != nil {
+		unsubscribe()
 		return
 	}
 	done := make(chan struct{})
@@ -80,28 +73,26 @@ func serveTerminal(conn *websocket.Conn, term *terminal.Session, terminate func(
 			if msg.Type == "exit" && finalize != nil {
 				msg = finalize(msg)
 			}
-			if err := send(msg); err != nil {
+			if err := writeTerminalMessage(conn, msg); err != nil {
 				return
 			}
 		}
 	}()
+	defer func() {
+		unsubscribe()
+		_ = conn.Close()
+		<-done
+	}()
 	for {
 		var msg terminalClientMessage
 		if err := conn.ReadJSON(&msg); err != nil {
-			unsubscribe()
-			_ = conn.Close()
-			<-done
 			return
 		}
 		switch msg.Type {
 		case "input":
-			if err := term.Write(msg.Data); err != nil {
-				_ = send(terminal.Message{Type: "error", Err: err.Error()})
-			}
+			_ = term.Write(msg.Data)
 		case "resize":
-			if err := term.Resize(terminal.Size{Cols: msg.Cols, Rows: msg.Rows}); err != nil {
-				_ = send(terminal.Message{Type: "error", Err: err.Error()})
-			}
+			_ = term.Resize(terminal.Size{Cols: msg.Cols, Rows: msg.Rows})
 		case "terminate":
 			terminate()
 		case "restart":

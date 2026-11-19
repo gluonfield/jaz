@@ -123,11 +123,11 @@ type Session struct {
 	cwd       string
 	replayMax int
 	onExit    func(*Session)
+	done      chan struct{}
 
 	mu      sync.Mutex
 	cmd     *exec.Cmd
 	file    *os.File
-	closed  bool
 	exit    Message
 	buffer  []byte
 	clients map[chan Message]struct{}
@@ -139,6 +139,7 @@ func newSession(cwd string, replayMax int, onExit func(*Session)) *Session {
 		replayMax: replayMax,
 		clients:   map[chan Message]struct{}{},
 		onExit:    onExit,
+		done:      make(chan struct{}),
 	}
 }
 
@@ -147,9 +148,12 @@ func (s *Session) Cwd() string {
 }
 
 func (s *Session) Alive() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return !s.closed
+	select {
+	case <-s.done:
+		return false
+	default:
+		return true
+	}
 }
 
 func (s *Session) Subscribe() (<-chan Message, func()) {
@@ -158,7 +162,7 @@ func (s *Session) Subscribe() (<-chan Message, func()) {
 	if len(s.buffer) != 0 {
 		ch <- Message{Type: "output", Data: string(s.buffer)}
 	}
-	if s.closed {
+	if !s.Alive() {
 		ch <- s.exit
 		close(ch)
 		s.mu.Unlock()
@@ -179,9 +183,8 @@ func (s *Session) Subscribe() (<-chan Message, func()) {
 func (s *Session) Write(data string) error {
 	s.mu.Lock()
 	file := s.file
-	closed := s.closed
 	s.mu.Unlock()
-	if closed || file == nil {
+	if !s.Alive() || file == nil {
 		return io.ErrClosedPipe
 	}
 	_, err := io.WriteString(file, data)
@@ -194,9 +197,8 @@ func (s *Session) Resize(size Size) error {
 	}
 	s.mu.Lock()
 	file := s.file
-	closed := s.closed
 	s.mu.Unlock()
-	if closed || file == nil {
+	if !s.Alive() || file == nil {
 		return io.ErrClosedPipe
 	}
 	return pty.Setsize(file, &pty.Winsize{Cols: size.Cols, Rows: size.Rows})
@@ -206,17 +208,21 @@ func (s *Session) Terminate() {
 	s.mu.Lock()
 	file := s.file
 	cmd := s.cmd
-	closed := s.closed
 	s.mu.Unlock()
-	if closed {
+	if !s.Alive() {
 		return
-	}
-	if file != nil {
-		_ = file.Close()
 	}
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
 	}
+	if file != nil {
+		_ = file.Close()
+	}
+}
+
+func (s *Session) Close() {
+	s.Terminate()
+	<-s.done
 }
 
 func (s *Session) start(cmd *exec.Cmd, size Size) error {
@@ -269,12 +275,8 @@ func (s *Session) wait(drained <-chan struct{}) {
 		msg.Err = err.Error()
 	}
 	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		return
-	}
-	s.closed = true
 	s.exit = msg
+	close(s.done)
 	clients := s.clients
 	s.clients = map[chan Message]struct{}{}
 	for ch := range clients {
