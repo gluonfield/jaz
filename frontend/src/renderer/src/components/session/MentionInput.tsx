@@ -646,10 +646,10 @@ export function MentionTextarea({
       >
         {suggestion ? (
           <div className="flex items-center gap-2 text-ink-3">
-            <kbd className="ml-1 inline-flex h-[18px] shrink-0 items-center gap-1 rounded-[5px] border border-border bg-surface-2 px-1.5 font-sans text-[10px] leading-none font-medium text-ink-2">
+            <span className="truncate">{suggestion}</span>
+            <kbd className="inline-flex h-[18px] shrink-0 items-center gap-1 rounded-[5px] border border-border bg-surface-2 px-1.5 font-sans text-[10px] leading-none font-medium text-ink-2">
               Tab <ArrowRightToLine size={10} aria-hidden />
             </kbd>
-            <span className="truncate">{suggestion}</span>
           </div>
         ) : mention.segments.map((segment, index) =>
           segment.token ? (

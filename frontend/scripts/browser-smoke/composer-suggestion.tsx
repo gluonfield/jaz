@@ -58,10 +58,11 @@ export async function exerciseComposerSuggestion(): Promise<void> {
       const placeholder = field().placeholder
       const emptyHeight = field().getBoundingClientRect().height
       root.render(<QueryClientProvider client={client}><Thread chat={chat} suggestedPrompt={prediction} /></QueryClientProvider>)
-      await until(() => hint()?.textContent?.trim() === 'Tab' && hint()?.nextElementSibling?.textContent === prediction)
+      await until(() => hint()?.textContent?.trim() === 'Tab' && hint()?.previousElementSibling?.textContent === prediction)
       const keycap = hint()!
-      if (keycap.getBoundingClientRect().right >= keycap.nextElementSibling!.getBoundingClientRect().left) {
-        throw new Error(`The ${layout} Tab keycap does not sit before the suggestion`)
+      const bounds = keycap.getBoundingClientRect()
+      if (bounds.left <= keycap.previousElementSibling!.getBoundingClientRect().right || bounds.right > field().getBoundingClientRect().right) {
+        throw new Error(`The ${layout} Tab keycap does not fit after the suggestion`)
       }
       await window.smoke.capture(chat ? 'suggested-prompt-bot-chat' : 'suggested-prompt-thread')
       field().focus()
