@@ -9,7 +9,7 @@ import {
   SquareTerminal,
   type LucideIcon,
 } from 'lucide-react'
-import { memo, useState } from 'react'
+import { memo, useState, type ReactElement } from 'react'
 import { Collapse } from '@/components/ui/Collapse'
 import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
 import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
@@ -94,73 +94,45 @@ export const ActivityBlock = memo(function ActivityBlock({
 }) {
   const inlineDiffs = useInlineDiffs()
   const inlineShell = useInlineShellCommands()
-  const rows: (
-    | { kind: 'thought'; entry: Extract<ActivityEntry, { kind: 'thought' }> }
-    | { kind: 'tools'; entries: ToolEntry[]; key: string }
-    | { kind: 'tool' | 'diff' | 'shell'; entry: ToolEntry }
-  )[] = []
+  const rows: ReactElement[] = []
   let tools: ToolEntry[] = []
-  const flushTools = () => {
+  const flushTools = (rowActive = false) => {
     if (!tools.length) return
-    rows.push({ kind: 'tools', entries: tools, key: `tools-${tools[0].key}` })
+    rows.push(
+      <ActivityToolDisclosure
+        key={`tools-${tools[0].key}`}
+        entries={tools}
+        active={rowActive}
+        findActive={findActive}
+      />,
+    )
     tools = []
   }
-  for (const entry of entries) {
+
+  for (const [index, entry] of entries.entries()) {
+    const rowActive = active && index === entries.length - 1
+    let row: ReactElement
     if (entry.kind === 'thought') {
-      flushTools()
-      rows.push({ kind: 'thought', entry })
+      row = <ThinkingBlock key={entry.key} text={entry.text} pending={rowActive} findActive={findActive} />
+    } else if (toolCallCategory(entry.call) === 'agent') {
+      row = <ToolCallDetail key={entry.key} call={entry.call} active={rowActive} />
+    } else if (inlineDiffs && hasInlineDiff(entry.call)) {
+      row = <EditDiffBlock key={entry.key} call={entry.call} />
+    } else if (inlineShell && hasInlineShellCommand(entry.call)) {
+      row = <ShellCommandBlock key={entry.key} call={entry.call} active={rowActive} />
+    } else {
+      tools.push(entry)
       continue
     }
-    if (toolCallCategory(entry.call) === 'agent') {
-      flushTools()
-      rows.push({ kind: 'tool', entry })
-      continue
-    }
-    if (inlineDiffs && hasInlineDiff(entry.call)) {
-      flushTools()
-      rows.push({ kind: 'diff', entry })
-      continue
-    }
-    if (inlineShell && hasInlineShellCommand(entry.call)) {
-      flushTools()
-      rows.push({ kind: 'shell', entry })
-      continue
-    }
-    tools.push(entry)
+    flushTools()
+    rows.push(row)
   }
-  flushTools()
+  flushTools(active)
 
   return (
     <div className="flex w-full max-w-[var(--prose-max)] flex-col gap-2">
       {header ? <ACPEventHeader {...header} /> : null}
-      {rows.map((row, index) => {
-        const rowActive = active && index === rows.length - 1
-        switch (row.kind) {
-          case 'thought':
-            return <ThinkingBlock key={row.entry.key} text={row.entry.text} pending={rowActive} findActive={findActive} />
-          case 'tool':
-            return <ToolCallDetail key={row.entry.key} call={row.entry.call} active={rowActive} />
-          case 'tools':
-            return (
-              <ActivityToolDisclosure
-                key={row.key}
-                entries={row.entries}
-                active={rowActive}
-                findActive={findActive}
-              />
-            )
-          case 'diff':
-            return <EditDiffBlock key={row.entry.key} call={row.entry.call} />
-          case 'shell':
-            return (
-              <ShellCommandBlock
-                key={row.entry.key}
-                call={row.entry.call}
-                active={rowActive}
-              />
-            )
-        }
-      })}
+      {rows}
     </div>
   )
 })

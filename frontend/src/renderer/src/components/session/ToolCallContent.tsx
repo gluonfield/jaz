@@ -131,7 +131,9 @@ export const ToolCallDetail = memo(function ToolCallDetail({
         <span className="relative z-[1] flex size-5 shrink-0 items-center justify-center rounded-full bg-bg text-ink-3">
           <Icon size={12} aria-hidden />
         </span>
-        <span className="min-w-0 truncate text-[13px] text-ink-2">{presentation.label}</span>
+        <span className={`min-w-0 truncate text-[13px] ${failed && !presentation.meta ? 'text-danger' : 'text-ink-2'}`}>
+          {presentation.label}
+        </span>
         {expandable ? (
           <ChevronRight
             size={12}

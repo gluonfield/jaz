@@ -143,7 +143,7 @@ function agentToolLabel(call: ACPToolCall): string | undefined {
   const name = call.tool_name?.startsWith('codex.')
     ? call.tool_name.slice('codex.'.length)
     : activity ?? (collaboration ? call.title ?? '' : '')
-  if (name === 'completed') return 'Agent finished'
+  if (name === 'completed') return normalized(call.status) === 'failed' ? 'Agent failed' : 'Agent finished'
   if (!Object.hasOwn(agentActions, name)) return undefined
   const action = agentActions[name]
   const count = collaboration ? receivers.length : 1
@@ -263,8 +263,8 @@ function callLabel(call: ACPToolCall, category: ToolCategory, command: string, d
   return title || hint || toolNameLabel(call.tool_name) || 'Tool'
 }
 
-function callMeta(call: ACPToolCall, totalResults: number): string {
-  if (normalized(call.status) === 'failed') return 'failed'
+function callMeta(call: ACPToolCall, category: ToolCategory, totalResults: number): string {
+  if (normalized(call.status) === 'failed') return category === 'agent' ? '' : 'failed'
   if (totalResults) return `${totalResults} result${totalResults === 1 ? '' : 's'}`
   const elapsed = call.runtime?.elapsed_time_seconds
   if (elapsed !== undefined) return `${elapsed < 10 ? elapsed.toFixed(1) : Math.round(elapsed)}s`
@@ -282,7 +282,7 @@ export function toolCallPresentation(call: ACPToolCall): ToolPresentation {
   return {
     category,
     label: callLabel(call, category, command, description),
-    meta: callMeta(call, results.length),
+    meta: callMeta(call, category, results.length),
     output: rawOutput(call),
     command: command || undefined,
     description: description || undefined,

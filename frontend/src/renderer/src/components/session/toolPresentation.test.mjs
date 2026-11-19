@@ -16,14 +16,15 @@ test('both Codex agent event formats get a readable label without a tool_name', 
   }
 })
 
-test('agent identity survives omitted raw details', () => {
-  for (const [name, label] of [
+test('agent identity and outcome survive omitted raw details', () => {
+  for (const [name, label, status = 'completed'] of [
     ['spawnAgent', 'Created an agent'],
     ['wait', 'Waited for an agent'],
     ['started', 'Created an agent'],
     ['completed', 'Agent finished'],
+    ['completed', 'Agent failed', 'failed'],
   ]) {
-    const call = { id: 'large-input', tool_name: `codex.${name}`, status: 'completed' }
+    const call = { id: 'large-input', tool_name: `codex.${name}`, status }
     expect(toolCallCategory(call)).toBe('agent')
     expect(toolCallPresentation(call).label).toBe(label)
   }
