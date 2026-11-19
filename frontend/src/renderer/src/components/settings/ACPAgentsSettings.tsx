@@ -80,6 +80,7 @@ function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
     const current = settings.acp[agent]
     if (!acpAgentEnabled(settings, agent)) return false
     return (current?.model ?? '').trim() === ''
+      && !acpProviderUsesNativeAuth(settings, agent, current.model_provider)
   })
 }
 
@@ -170,6 +171,7 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
               key={agent}
               agent={agent}
               settings={draft}
+              persistedSettings={settings.data}
               disabled={save.isPending}
               loginJob={loginJobs[agent]}
               loginPending={login.isPending && login.variables?.agent === agent}
@@ -193,6 +195,7 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
 function ACPAgentRow({
   agent,
   settings,
+  persistedSettings,
   disabled,
   loginJob,
   loginPending,
@@ -206,6 +209,7 @@ function ACPAgentRow({
 }: {
   agent: string
   settings: AgentSettingsData
+  persistedSettings: AgentSettingsData
   disabled: boolean
   loginJob?: ACPAuthLogin
   loginPending: boolean
@@ -252,11 +256,10 @@ function ACPAgentRow({
     reasoningOptions,
     reasoningForModel,
   } = useModelReasoningState({
-    settings,
+    settings: persistedSettings,
     agent,
     model: reasoningModel,
     reasoningEffort,
-    usesProvider: usesModelProvider,
     provider: current.model_provider,
     settingsMode: true,
   })
@@ -395,13 +398,14 @@ function ACPAgentRow({
           <ModelCombobox
             value={current.model ?? ''}
             suggestions={modelSuggestions}
+            allowDefault={!usesModelProvider || selectedProviderNativeAuth}
             placeholder={defaultModel ? `Default: ${defaultModel}` : 'Default'}
             disabled={disabled || !modelsReady}
             onChange={(model) => {
               const nextReasoning = reasoningForModel(model, reasoningEffort)
               update({
                 model,
-                reasoning_effort: nextReasoning.supported ? reasoningEffort : '',
+                reasoning_effort: !model || nextReasoning.supported ? reasoningEffort : '',
               })
             }}
             aria-label={`${agentLabel(agent)} model`}

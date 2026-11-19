@@ -203,7 +203,7 @@ function LoopPromptCard({
   }, [agents, draft.runtime, runtimeReady, set])
 
   const runtimeModel = runtimeModelState(agentSettings, draft.runtime, draft.provider)
-  const { usesProvider, provider } = runtimeModel
+  const { provider } = runtimeModel
   const defaultModel = runtimeModel.defaultModel
   const model = draft.model || defaultModel
   const requestedEffort = draft.reasoningEffort || runtimeModel.defaultEffort
@@ -218,7 +218,6 @@ function LoopPromptCard({
     agent: draft.runtime,
     model,
     reasoningEffort: requestedEffort,
-    usesProvider,
     provider,
   })
   const reasoningEffortOverride =

@@ -55,7 +55,6 @@ export function useNewThreadControls() {
     agent: runtime,
     model: selectedModel,
     reasoningEffort: requestedEffort,
-    usesProvider,
     provider,
   })
 

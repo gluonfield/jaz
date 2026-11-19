@@ -1,9 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { acpAgentEnableable } from './agentRuntimes'
+import { acpAgentModelsReady, acpUsesModelProvider } from './agentRuntimes'
 import type { AgentSettings, ReasoningEffortOption } from './api/types'
 import {
-  agentModelsQuery,
-  modelProviderModelsQuery,
+  modelCatalogQuery,
   type ModelSuggestion,
 } from './models'
 import {
@@ -31,7 +30,6 @@ export function useModelReasoningState({
   agent,
   model,
   reasoningEffort,
-  usesProvider,
   provider,
   settingsMode = false,
 }: {
@@ -39,20 +37,19 @@ export function useModelReasoningState({
   agent: string
   model: string
   reasoningEffort: string
-  usesProvider: boolean
   provider: string | undefined
   settingsMode?: boolean
 }): ModelReasoningState {
-  const enabled = Boolean(settings && agent) && acpAgentEnableable(settings, agent)
-  const providerModels = useQuery({
-    ...modelProviderModelsQuery(provider, agent),
-    enabled: enabled && usesProvider && Boolean(provider),
+  const usesProvider = acpUsesModelProvider(settings, agent)
+  const enabled = acpAgentModelsReady(settings, agent, provider)
+  const query = useQuery({
+    ...modelCatalogQuery(agent, usesProvider ? provider : undefined),
+    enabled,
+    staleTime: 0,
   })
-  const nativeModels = useQuery({ ...agentModelsQuery(agent), enabled: enabled && !usesProvider })
-  const query = usesProvider ? providerModels : nativeModels
   const ready = enabled && query.isSuccess
-  const modelSuggestions = ready ? (usesProvider ? providerModels.data ?? [] : nativeModels.data?.models ?? []) : []
-  const defaultModel = ready && !usesProvider ? nativeModels.data?.defaultModel : undefined
+  const modelSuggestions = ready ? query.data.models : []
+  const defaultModel = ready ? query.data.defaultModel : undefined
   const catalog: ModelReasoningCatalog = ready && modelSuggestions.length > 0
     ? { status: 'ready', suggestions: modelSuggestions, unknownModel: usesProvider ? 'unavailable' : 'ready' }
     : { status: query.isError || ready ? 'error' : 'pending' }
@@ -66,9 +63,9 @@ export function useModelReasoningState({
   })
   const reasoning = reasoningForModel(model, reasoningEffort)
   return {
-    modelSuggestions,
-    modelsLoading: enabled && query.isPending,
-    modelsReady: ready && modelSuggestions.length > 0,
+    modelSuggestions: query.isFetching ? [] : modelSuggestions,
+    modelsLoading: enabled && (query.isPending || query.isFetching),
+    modelsReady: ready && !query.isFetching && modelSuggestions.length > 0,
     defaultModel,
     modelsError: !enabled ? undefined : query.error?.message || (ready && modelSuggestions.length === 0
       ? 'No models reported by this agent.'

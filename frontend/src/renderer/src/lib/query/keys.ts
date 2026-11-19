@@ -50,7 +50,7 @@ export const keys = {
   openRouterModels: ['openrouter', 'models'] as const,
   providerStatuses: ['model-providers', 'status'] as const,
   modelProviderModels: (provider: string, agent: string) =>
-    ['model-providers', provider, 'models', ...(agent ? [agent] : [])] as const,
+    agent ? ['acp', 'agents', agent, 'provider-models', provider] as const : ['model-providers', provider, 'models'] as const,
   modelProviderStatus: (provider: string) => ['model-providers', provider, 'status'] as const,
   projects: ['projects'] as const,
   filesystemDirs: (path: string) => ['filesystem', 'dirs', path] as const,

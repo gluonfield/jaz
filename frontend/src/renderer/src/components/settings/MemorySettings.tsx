@@ -172,7 +172,6 @@ export function MemorySettings() {
     agent: selectedMemoryAgent,
     model: effectiveMemoryModel,
     reasoningEffort: status.data?.reasoning_effort ?? '',
-    usesProvider: runtime.usesProvider,
     provider: runtime.provider,
   })
 

@@ -6,7 +6,7 @@ describe('modelProviderModelsRequest', () => {
     const request = modelProviderModelsRequest('openai', 'codex')
 
     expect(request.path).toBe('/v1/model-providers/openai/models?agent=codex')
-    expect(request.queryKey).toEqual(['model-providers', 'openai', 'models', 'codex'])
+    expect(request.queryKey).toEqual(['acp', 'agents', 'codex', 'provider-models', 'openai'])
   })
 
   test('keeps unscoped provider requests generic', () => {

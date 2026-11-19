@@ -1,5 +1,5 @@
 import { Check } from 'lucide-react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { layoutRect } from '@/lib/dom/zoom'
@@ -9,6 +9,7 @@ export function ModelCombobox({
   value,
   suggestions,
   placeholder = 'Default',
+  allowDefault = true,
   disabled,
   onChange,
   className = '',
@@ -17,6 +18,7 @@ export function ModelCombobox({
   value: string
   suggestions: ModelSuggestion[]
   placeholder?: string
+  allowDefault?: boolean
   disabled?: boolean
   onChange: (value: string) => void
   className?: string
@@ -31,7 +33,7 @@ export function ModelCombobox({
   const menuRef = useRef<HTMLDivElement>(null)
   const reduce = useReducedMotion()
 
-  const choices = [{ value: '', label: placeholder, reasoning: { status: 'unavailable' as const } }, ...suggestions]
+  const choices = allowDefault ? [{ value: '', label: placeholder, reasoning: { status: 'unavailable' as const } }, ...suggestions] : suggestions
   const filtered = filter === null ? choices : filterModelSuggestions(choices, filter)
   const hasMenu = suggestions.length > 0
 
@@ -45,6 +47,13 @@ export function ModelCombobox({
     setOpen(false)
     setActiveIndex(-1)
   }
+
+  useEffect(() => {
+    if (disabled) {
+      setOpen(false)
+      setActiveIndex(-1)
+    }
+  }, [disabled])
 
   useLayoutEffect(() => {
     if (open && inputRef.current) setRect(layoutRect(inputRef.current))
@@ -121,66 +130,61 @@ export function ModelCombobox({
         }}
         className={`h-7 rounded-full bg-ink/10 px-3 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50 ${className}`}
       />
-      {!disabled ? createPortal(
-        <AnimatePresence>
-          {open && rect && hasMenu ? (
-            <motion.div
-              ref={menuRef}
-              role="listbox"
-              aria-label={ariaLabel}
-              initial={{ opacity: 0, y: reduce ? 0 : -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: reduce ? 0 : -4 }}
-              transition={{ duration: 0.12, ease: 'easeOut' }}
-              style={{
-                position: 'fixed',
-                top: rect.bottom + 4,
-                left: rect.left,
-                minWidth: rect.width,
-                maxWidth: Math.max(rect.width, 320),
-                zIndex: 'var(--z-modal)',
-              }}
-              className="max-h-[280px] overflow-y-auto rounded-[8px] bg-surface p-1 shadow-xl ring-1 ring-border"
-            >
-              {filtered.length > 0 ? (
-                filtered.map((s, index) => {
-                  const selected = s.value === value
-                  return (
-                    <button
-                      key={s.value}
-                      type="button"
-                      role="option"
-                      aria-selected={selected}
-                      tabIndex={-1}
-                      // mousedown beats the input blur/outside-click close
-                      onMouseDown={(e) => {
-                        e.preventDefault()
-                        onChange(s.value)
-                        closeMenu()
-                      }}
-                      onMouseEnter={() => setActiveIndex(index)}
-                      className={`flex w-full items-start gap-2 rounded-[6px] px-2 py-1 text-left transition-colors duration-150 hover:bg-surface-2 ${
-                        index === activeIndex ? 'bg-surface-2' : ''
-                      } ${selected ? 'text-ink' : 'text-ink-2'}`}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12px]">{s.label}</span>
-                        {s.description ? (
-                          <span className="mt-0.5 block truncate text-[11px] text-ink-3">
-                            {s.description}
-                          </span>
-                        ) : null}
+      {open && !disabled && rect && hasMenu ? createPortal(
+        <motion.div
+          ref={menuRef}
+          role="listbox"
+          aria-label={ariaLabel}
+          initial={{ opacity: 0, y: reduce ? 0 : -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.12, ease: 'easeOut' }}
+          style={{
+            position: 'fixed',
+            top: rect.bottom + 4,
+            left: rect.left,
+            minWidth: rect.width,
+            maxWidth: Math.max(rect.width, 320),
+            zIndex: 'var(--z-modal)',
+          }}
+          className="max-h-[280px] overflow-y-auto rounded-[8px] bg-surface p-1 shadow-xl ring-1 ring-border"
+        >
+          {filtered.length > 0 ? (
+            filtered.map((s, index) => {
+              const selected = s.value === value
+              return (
+                <button
+                  key={s.value}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  tabIndex={-1}
+                  // mousedown beats the input blur/outside-click close
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    onChange(s.value)
+                    closeMenu()
+                  }}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  className={`flex w-full items-start gap-2 rounded-[6px] px-2 py-1 text-left transition-colors duration-150 hover:bg-surface-2 ${
+                    index === activeIndex ? 'bg-surface-2' : ''
+                  } ${selected ? 'text-ink' : 'text-ink-2'}`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12px]">{s.label}</span>
+                    {s.description ? (
+                      <span className="mt-0.5 block truncate text-[11px] text-ink-3">
+                        {s.description}
                       </span>
-                      {selected ? <Check size={13} className="mt-0.5 shrink-0 text-ink" /> : null}
-                    </button>
-                  )
-                })
-              ) : (
-                <div className="px-2 py-1 text-[12px] text-ink-3">No matching models.</div>
-              )}
-            </motion.div>
-          ) : null}
-        </AnimatePresence>,
+                    ) : null}
+                  </span>
+                  {selected ? <Check size={13} className="mt-0.5 shrink-0 text-ink" /> : null}
+                </button>
+              )
+            })
+          ) : (
+            <div className="px-2 py-1 text-[12px] text-ink-3">No matching models.</div>
+          )}
+        </motion.div>,
         document.body,
       ) : null}
     </>
