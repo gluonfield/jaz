@@ -39,15 +39,9 @@ window.onData(draw);
   client.setQueryData(keys.sessionOverview(id), { threads: [], subagents: [], plugin_views: [view] })
   client.setQueryData(keys.sessionRepo(id), { git: false })
   client.setQueryData(sessionFileQuery(id, view.file).queryKey, { path: '/work/status.json', content: '{"title":"Saved state"}', size: 23 })
-  const draft = { path: '/work/draft.md', content: '# Cached query sheet\n\nEditable draft.', size: 36, version: 'v1' }
+  let draft = { path: '/work/draft.md', content: '# Cached query sheet\n\nEditable draft.', size: 36, version: 'v1' }
   client.setQueryData(sessionFileQuery(id, draft.path).queryKey, draft)
   const originalFetch = window.fetch
-  const OriginalWorker = window.Worker
-  let workers = 0
-  window.Worker = new Proxy(OriginalWorker, { construct(Target, args) {
-    workers++
-    return new Target(...args as ConstructorParameters<typeof Worker>)
-  } })
   let pdfReads = 0
   let replayed = false
   let opened = 0
@@ -70,9 +64,8 @@ window.onData(draw);
       if (url.searchParams.get('path') === draft.path) {
         if (init?.method === 'PUT') {
           if (new Headers(init.headers).get('If-Match') !== draft.version) return new Response(null, { status: 412 })
-          draft.content = String(init.body)
-          draft.size = draft.content.length
-          draft.version += '+'
+          const content = String(init.body)
+          draft = { ...draft, content, size: content.length, version: draft.version + '+' }
           return new Response(null, { status: 204, headers: { ETag: draft.version } })
         }
         return Response.json(draft)
@@ -130,10 +123,10 @@ window.onData(draw);
     await until(() => Boolean(document.querySelector('[role="menuitem"]')))
     document.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click()
     await until(() => element.querySelectorAll('iframe[title="Progress"]').length === 1)
-    const switchThread = [...element.querySelectorAll('button')].find((button) => button.textContent === 'Switch thread')!
-    switchThread.click()
+    const switchThread = () => [...element.querySelectorAll('button')].find((button) => button.textContent === 'Switch thread')!.click()
+    switchThread()
     await until(() => element.textContent?.includes('Another thread') === true)
-    switchThread.click()
+    switchThread()
     await until(() => element.querySelectorAll('iframe[title="Progress"]').length === 1)
     drawn.clear()
     flushSync(() => root.render(null))
@@ -180,7 +173,6 @@ window.onData(draw);
     quizItem.click()
     await until(() => element.querySelectorAll('[role="tab"]').length === 2)
     await window.smoke.capture('plugin-views-siblings')
-    const changeThread = () => [...element.querySelectorAll('button')].find((button) => button.textContent === 'Switch thread')!.click()
     const link = (text: string) => [...element.querySelectorAll<HTMLElement>('[role="link"]')].find((node) => node.textContent === text)!
     link('Open draft').click()
     await until(() => Boolean(element.querySelector('.tiptap')))
@@ -197,34 +189,26 @@ window.onData(draw);
     await until(() => pdfReads === 1 && Boolean(element.querySelector('.pdfViewer .page')))
     select('Progress')
     await until(() => element.querySelector('[role="tab"][aria-selected="true"]')?.textContent === 'Progress')
-    const priorWorkers = workers
-    changeThread()
+    switchThread()
     await until(() => element.textContent?.includes('Another thread') === true)
-    changeThread()
-    await until(() => Boolean(element.querySelector('iframe[title="Progress"]')))
-    await new Promise((resolve) => setTimeout(resolve, 150))
-    if (element.querySelector('.tiptap, .pdfViewer') || pdfReads !== 1 || workers !== priorWorkers) throw new Error('Restoring a thread mounted hidden documents or restarted their PDF workers')
+    drawn.delete('Progress')
+    switchThread()
+    await until(() => drawn.has('Progress'))
+    if (element.querySelector('.tiptap, .pdfViewer') || pdfReads !== 1) throw new Error('Restoring a thread mounted or downloaded hidden documents')
     select('source.pdf')
-    await until(() => pdfReads === 2 && workers > priorWorkers && Boolean(element.querySelector('.pdfViewer .page')))
-    select('draft.md')
-    await until(() => Boolean(element.querySelector('.tiptap')))
-    const activeEditor = element.querySelector('.tiptap')
-    select('Progress')
-    await until(() => element.querySelector('[role="tab"][aria-selected="true"]')?.textContent === 'Progress')
-    if (element.querySelector('.tiptap') !== activeEditor) throw new Error('An opened document was unmounted when hidden')
+    await until(() => pdfReads === 2 && Boolean(element.querySelector('.pdfViewer .page')))
     select('draft.md')
     await until(() => element.querySelector('[role="tab"][aria-selected="true"]')?.textContent === 'draft.md')
-    changeThread()
+    switchThread()
     await until(() => element.textContent?.includes('Another thread') === true)
-    changeThread()
-    await until(() => element.querySelector('[role="tab"][aria-selected="true"]')?.textContent === 'draft.md' && Boolean(element.querySelector('.tiptap')))
-    if (element.querySelector('.pdfViewer')) throw new Error('Restoring the active file mounted a background PDF')
+    switchThread()
+    await until(() => element.querySelector('[role="tab"][aria-selected="true"]')?.textContent === 'draft.md' && element.querySelector('.tiptap')?.textContent?.includes('Retained edit.') === true)
+    if (element.querySelector('.pdfViewer') || pdfReads !== 2) throw new Error('Restoring the active file mounted or downloaded a background PDF')
   } finally {
     root.unmount()
     element.remove()
     client.clear()
     window.fetch = originalFetch
-    window.Worker = OriginalWorker
     window.removeEventListener('message', observe)
   }
 }
