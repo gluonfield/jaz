@@ -38,6 +38,7 @@ mock.module('@/lib/browserSessions', () => ({
   useSessionPreview: () => ({ target: { displayUrl: '', sourceUrl: '' }, setTarget: () => {} }),
 }))
 mock.module('@/lib/appearance', () => ({
+  useComposerRingColors: () => [],
   useEffectsEnabled: () => false,
   useShowModelIcons: () => false,
   useInlineDiffs: () => true,
