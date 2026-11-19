@@ -23,14 +23,18 @@ export async function exerciseGooglePasskeys(browser: SideBrowser): Promise<void
         if (Date.now() >= deadline) throw new Error(`Passkey fixture did not finish navigating to ${url}`)
         await new Promise((resolve) => setTimeout(resolve, 20))
       }
-      const destination = mac ? restart : ''
-      const button = [...document.querySelectorAll('button')].find((candidate) => candidate.textContent === 'Open Google sign-in in browser')
-      if (Boolean(button) !== Boolean(destination)) throw new Error(`Incorrect passkey handoff visibility at ${url}`)
+      const handoff = [...document.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === 'Open Google sign-in in browser')
+      const openExternal = document.querySelector<HTMLButtonElement>('button[aria-label="Open in Browser"]')
+      if (Boolean(handoff) !== Boolean(mac && restart) || Boolean(handoff) === Boolean(openExternal)) {
+        throw new Error(`Incorrect browser handoff action at ${url}`)
+      }
       if (JSON.stringify(await window.smoke.openedURLs()) !== JSON.stringify(opened)) throw new Error('Restarts must wait for a click')
-      if (!button) continue
+      const button = handoff ?? openExternal!
       button.click()
-      opened.push(destination)
-      if (JSON.stringify(await window.smoke.openedURLs()) !== JSON.stringify(opened)) throw new Error('The handoff must restart at the fixed destination')
+      opened.push(restart || url)
+      if (JSON.stringify(await window.smoke.openedURLs()) !== JSON.stringify(opened)) {
+        throw new Error('The browser action opened the wrong URL')
+      }
     }
   } finally {
     await window.smoke.navigationProbe(false)

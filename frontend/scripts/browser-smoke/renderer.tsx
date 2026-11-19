@@ -123,11 +123,9 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
-      if (!suite || suite === 'google-passkeys') {
+      if (suite === 'google-passkeys') {
         progress('Google passkey handoff')
         await exerciseGooglePasskeys(browser)
-      }
-      if (suite === 'google-passkeys') {
         window.smoke.result({ ok: true, checks: ['Google passkey handoff follows the desktop platform and restarts only after a click'] })
         return
       }

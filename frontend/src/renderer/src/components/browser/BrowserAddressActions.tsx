@@ -1,13 +1,25 @@
 import { ExternalLink, QrCode } from 'lucide-react'
 import { useState } from 'react'
+import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { Popover } from '@/components/ui/Popover'
 import { QRCodeImage } from '@/components/ui/QRCodeImage'
 import { openExternal } from '@/lib/clientRuntime'
 
-export function BrowserAddressActions({ url, visible }: { url: string; visible: boolean }) {
+export function BrowserAddressActions({ url, title, visible }: { url: string; title?: string; visible: boolean }) {
   const [open, setOpen] = useState(false)
   const shown = open && visible
+  const page = URL.parse(url)
+  const passkeyChallenge = page?.origin === 'https://accounts.google.com' && /^\/v3\/signin\/challenge\/pk(?:\/|$)/.test(page.pathname)
+  const destination = passkeyChallenge
+    ? title === 'Google Cloud Platform' ? 'https://console.cloud.google.com/' : 'https://accounts.google.com/'
+    : url
+  const openInBrowser = () => openExternal(destination)
+  if (passkeyChallenge && window.jaz?.browserPasskeyFallback) {
+    return <Button size="sm" className="h-6 px-1.5" title="Start a separate Google sign-in in your default browser" onClick={openInBrowser}>
+      Open Google sign-in in browser
+    </Button>
+  }
   return <div className="-mr-1.5 flex shrink-0 items-center opacity-0 transition-opacity duration-150 group-hover/address:opacity-100 has-focus-visible:opacity-100 has-aria-expanded:opacity-100 pointer-coarse:opacity-100">
     <Popover
       open={shown}
@@ -17,9 +29,9 @@ export function BrowserAddressActions({ url, visible }: { url: string; visible: 
       trigger={<IconButton size="2xs" className="pointer-coarse:size-7" aria-label="Open on phone" title="Open on phone" aria-expanded={shown} onClick={() => setOpen((value) => !value)}><QrCode size={12} /></IconButton>}
     >
       <div className="grid size-41 place-items-center rounded-lg bg-white p-1.5">
-        <QRCodeImage value={url} label="QR code for this page" />
+        <QRCodeImage value={destination} label={passkeyChallenge ? 'QR code to start a separate Google sign-in' : 'QR code for this page'} />
       </div>
     </Popover>
-    <IconButton size="2xs" className="pointer-coarse:size-7" aria-label="Open in Browser" title="Open in Browser" onClick={() => openExternal(url)}><ExternalLink size={12} /></IconButton>
+    <IconButton size="2xs" className="pointer-coarse:size-7" aria-label="Open in Browser" title="Open in Browser" onClick={openInBrowser}><ExternalLink size={12} /></IconButton>
   </div>
 }

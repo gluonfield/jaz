@@ -92,17 +92,21 @@ document.querySelector('button').addEventListener('click', (event) => {
 const electron = process.env.JAZ_ELECTRON_BINARY || createRequire(import.meta.url)('electron') as string
 console.log(`Browser smoke artifacts: ${output}`)
 const tests = process.argv.includes('--browser-close') ? 'TestDesktopElectron' : 'TestDesktopElectron|TestBotListElectron'
-const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './internal/browsercontrol', './internal/acp', '-p=1', `-run=${tests}`, '-count=1', '-v'], {
-  cwd: resolve('../backend'),
-  env: {
-    ...process.env,
-    JAZ_BROWSER_SMOKE_DIR: output,
-    JAZ_ELECTRON_BINARY: electron,
-    JAZ_BROWSER_CODEX_BINARY: codex,
-    JAZ_BROWSER_SMOKE_TIMEOUT_MS: '180000',
-    JAZ_BROWSER_SMOKE_SUITE: ['browser-close', 'browser-identity', 'browser-startup', 'repo-status', 'claude-voice', 'connection-security', 'browser-visibility', 'chat-history', 'bot-chat', 'appearance', 'welcome', 'bots-live', 'bot-panel', 'model-picker', 'session-config', 'side-panel', 'address-bar', 'google-passkeys', 'linkedin', 'composer', 'app-navigation', 'canvas', 'images', 'markdown-documents', 'layout'].find(suite => process.argv.includes(`--${suite}`)) || '',
-  },
-  stdout: 'inherit',
-  stderr: 'inherit',
-})
-process.exit(await processHandle.exited)
+const suite = ['browser-close', 'browser-identity', 'browser-startup', 'repo-status', 'claude-voice', 'connection-security', 'browser-visibility', 'chat-history', 'bot-chat', 'appearance', 'welcome', 'bots-live', 'bot-panel', 'model-picker', 'session-config', 'side-panel', 'address-bar', 'google-passkeys', 'linkedin', 'composer', 'app-navigation', 'canvas', 'images', 'markdown-documents', 'layout'].find(name => process.argv.includes(`--${name}`))
+for (const run of suite ? [suite] : ['', 'google-passkeys']) {
+  const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './internal/browsercontrol', './internal/acp', '-p=1', `-run=${tests}`, '-count=1', '-v'], {
+    cwd: resolve('../backend'),
+    env: {
+      ...process.env,
+      JAZ_BROWSER_SMOKE_DIR: output,
+      JAZ_ELECTRON_BINARY: electron,
+      JAZ_BROWSER_CODEX_BINARY: codex,
+      JAZ_BROWSER_SMOKE_TIMEOUT_MS: '180000',
+      JAZ_BROWSER_SMOKE_SUITE: run,
+    },
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  const status = await processHandle.exited
+  if (status !== 0) process.exit(status)
+}

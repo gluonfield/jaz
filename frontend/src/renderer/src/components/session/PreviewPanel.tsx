@@ -32,7 +32,6 @@ import type { PreviewTarget } from '@/lib/browserSessions'
 import type { SideBrowser } from '@/lib/sideBrowser'
 import { BrowserMenu } from '@/components/browser/BrowserMenu'
 import { BrowserAddressActions } from '@/components/browser/BrowserAddressActions'
-import { GooglePasskeyNotice } from '@/components/browser/GooglePasskeyNotice'
 import { PREVIEW_PARTITION } from '@shared/preview'
 import { usePreviewFindControls } from './usePreviewFindControls'
 
@@ -340,7 +339,7 @@ export function PreviewPanel({
             spellCheck={false}
             className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
           />
-          {resolvedSourceUrl ? <BrowserAddressActions url={resolvedSourceUrl} visible={visible} /> : null}
+          {resolvedSourceUrl ? <BrowserAddressActions url={resolvedSourceUrl} title={target.title} visible={visible} /> : null}
         </div>
         <IconButton
           aria-label={annotating ? 'Stop annotation' : 'Annotate preview'}
@@ -362,7 +361,6 @@ export function PreviewPanel({
           <X size={15} />
         </button> : null}
       </form>
-      <GooglePasskeyNotice sourceUrl={target.sourceUrl} title={target.title} />
       {error ? (
         <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">{error}</p>
       ) : null}

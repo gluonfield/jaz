@@ -6,13 +6,13 @@ import { BROWSER_COMMAND_CHANNEL } from '@shared/browserControl'
 import { BROWSER_CLOSE_SHORTCUT_CHANNEL } from '@shared/browserCloseShortcut'
 import { BROWSER_PROFILE_CHANNELS, type BrowserProfileAPI } from '@shared/browserProfile'
 import { LOCAL_BACKEND_TRANSPORT_URL } from '@shared/localBackend'
-import { BROWSER_PASSKEY_FALLBACK_ARGUMENT } from '@shared/preview'
 
-contextBridge.exposeInMainWorld('jaz', {
+if (process.env.JAZ_BROWSER_SMOKE_SUITE === 'google-passkeys') {
+  process.getBuiltinModule('module').createRequire(`${process.env.JAZ_BROWSER_SMOKE_DIR}/preload.js`)('./index.js')
+} else contextBridge.exposeInMainWorld('jaz', {
   claudeVoice,
   browserPasswords,
   browserDownloads,
-  browserPasskeyFallback: process.argv.includes(BROWSER_PASSKEY_FALLBACK_ARGUMENT),
   localBackendTransport: LOCAL_BACKEND_TRANSPORT_URL,
   browserProfiles: {
     list: () => ipcRenderer.invoke(BROWSER_PROFILE_CHANNELS.list),

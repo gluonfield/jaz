@@ -15,8 +15,15 @@ export const PREVIEW_WEB_PREFERENCES: WebPreferences = {
 
 let browserPasskeyFallback = false
 
-export function previewHostArguments(...args: string[]): string[] {
-  return browserPasskeyFallback ? [...args, BROWSER_PASSKEY_FALLBACK_ARGUMENT] : args
+export function previewHostPreferences(preload: string): WebPreferences {
+  return {
+    preload,
+    contextIsolation: true,
+    nodeIntegration: false,
+    sandbox: false,
+    webviewTag: true,
+    additionalArguments: browserPasskeyFallback ? [BROWSER_PASSKEY_FALLBACK_ARGUMENT] : [],
+  }
 }
 
 export function attachPreviewWebviews(host: WebContents, preload: string): void {

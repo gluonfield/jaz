@@ -22,7 +22,6 @@ export interface ClientRuntime {
     localBackend: boolean
     updates: boolean
     previewWebview: boolean
-    browserPasskeyFallback: boolean
   }
   encryptCredential?: (value: string) => string
   decryptCredential?: (value: string) => string
@@ -80,7 +79,6 @@ function createRuntime(): ClientRuntime {
         localBackend: true,
         updates: true,
         previewWebview: true,
-        browserPasskeyFallback: electron.browserPasskeyFallback,
       },
       defaultApiBaseUrl: () => electron.apiBaseUrl,
       localBackendTransport: electron.localBackendTransport,
@@ -120,7 +118,6 @@ function createRuntime(): ClientRuntime {
       localBackend: false,
       updates: false,
       previewWebview: false,
-      browserPasskeyFallback: false,
     },
     defaultApiBaseUrl: webDefaultApiBaseUrl,
   }
