@@ -1,5 +1,6 @@
-Changes since v0.0.275:
-
-- Waits for a ready coding agent and a fresh model catalogue before enabling model selection; preserves native Default and reasoning settings.
-- Opens restored threads without loading inactive side-panel tabs, while preserving opened tabs and unsaved editor state.
-- Unifies Google passkey browser and QR handoff actions around a clean restart URL. Live Google passkey sign-in inside Jaz remains unverified.
+- Plugin pages can hand the files a person picked to the new-thread composer together with the prompt text.
+- Adds a managed Zoom connection and normalizes managed MCP OAuth configuration when it loads.
+- Antigravity sign-in offers Google Account and Google Cloud project sign-in. Live Google Cloud sign-in and billing remain unverified.
+- Shows a Tab keycap after a composer suggestion.
+- Adds custom composer glow colours to appearance settings.
+- Renders agent activity as a single transcript row with simpler failure labels, and reveals new tool labels with an eased sweep.
