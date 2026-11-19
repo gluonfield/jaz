@@ -2,11 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useCallback, useMemo } from 'react'
 import { ArtifactFrame } from '@/components/artifacts/ArtifactFrame'
-import { saveAttachmentDraft } from '@/components/session/composerAttachmentDraftStore'
-import { fileAttachment } from '@/components/session/composerAttachmentTypes'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { pluginPageQuery, pluginsQuery } from '@/lib/api/plugins'
-import { NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionConfig'
 import { useTitlebarSlot } from '@/lib/titlebar'
 
 export const Route = createFileRoute('/plugins/$plugin')({ component: PluginPage })
@@ -21,9 +18,8 @@ function PluginPage() {
   const navigate = useNavigate()
   const input = useMemo(() => ({ title, code: page.data?.view ?? '', loadingMessages: [] }), [title, page.data?.view])
   const data = useMemo(() => ({ items: page.data?.items ?? [] }), [page.data?.items])
-  const sendPrompt = useCallback(async (text: string, files: File[]) => {
-    if (files.length) await saveAttachmentDraft(NEW_SESSION_DRAFT_KEY, 'session', files.map(fileAttachment))
-    void navigate({ to: '/new', state: { newThreadPrompt: { text, mode: 'draft' } } })
+  const sendPrompt = useCallback((text: string, files: File[]) => {
+    void navigate({ to: '/new', state: { newThreadPrompt: { text, files, mode: 'draft' } } })
   }, [navigate])
   const openLink = useCallback((href: string) => {
     const session = /^\/sessions\/([^/?#]+)$/.exec(href)?.[1]
