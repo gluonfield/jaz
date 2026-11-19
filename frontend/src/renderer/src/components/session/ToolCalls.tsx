@@ -21,7 +21,7 @@ function inputValue(raw?: string): unknown {
   }
 }
 
-function ToolCallRun({ calls }: { calls: ToolCallItem[] }) {
+function ToolCallRun({ calls, live }: { calls: ToolCallItem[]; live: boolean }) {
   const toolCalls: ACPToolCall[] = calls.map((call) => ({
     id: call.key,
     tool_name: call.name,
@@ -29,21 +29,23 @@ function ToolCallRun({ calls }: { calls: ToolCallItem[] }) {
     raw_input: inputValue(call.args),
     raw_output: call.result,
   }))
-  return <ToolDisclosure calls={toolCalls} active={calls.some((call) => call.pending)} />
+  return <ToolDisclosure calls={toolCalls} active={calls.some((call) => call.pending)} reveal={live} />
 }
 
 export function ToolCalls({
   calls,
+  live = false,
   onArtifactPrompt,
 }: {
   calls: ToolCallItem[]
+  live?: boolean
   onArtifactPrompt?: (text: string) => void
 }) {
   const rows: ReactNode[] = []
   let run: ToolCallItem[] = []
   const flush = () => {
     if (!run.length) return
-    rows.push(<ToolCallRun key={`run-${run[0].key}`} calls={run} />)
+    rows.push(<ToolCallRun key={`run-${run[0].key}`} calls={run} live={live} />)
     run = []
   }
 

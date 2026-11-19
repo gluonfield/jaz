@@ -759,6 +759,37 @@ img.chat-prose-link-icon {
   color: var(--color-ink-3);
 }
 
+@property --tool-label-edge {
+  syntax: '<length-percentage>';
+  inherits: true;
+  initial-value: 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root:not(.jaz-no-effects) .tool-label-revealing > span {
+    mask-image: linear-gradient(to right, #000 calc(var(--tool-label-edge) - 6px), transparent var(--tool-label-edge));
+  }
+
+  :root:not(.jaz-no-effects) .tool-label-revealing::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: min(calc(100% - 1px), var(--tool-label-edge));
+    width: 1px;
+    height: 1em;
+    border-radius: 1px;
+    background: var(--color-ink-2);
+    transform: translateY(-50%);
+    pointer-events: none;
+    animation: tool-label-caret 500ms both;
+  }
+}
+
+@keyframes tool-label-caret {
+  0%, 100% { opacity: 0; }
+  12%, 74% { opacity: 0.85; }
+}
+
 html,
 body,
 #root {

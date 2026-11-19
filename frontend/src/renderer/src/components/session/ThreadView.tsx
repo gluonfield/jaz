@@ -641,6 +641,7 @@ export function ThreadView({
                             </motion.div>
                             <ThinkingBlock text={live.reasoning} pending={streaming} />
                             <ToolCalls
+                              live
                               calls={live.tools.map((tool) => ({
                                 ...tool,
                                 pending: streaming && tool.result === undefined,

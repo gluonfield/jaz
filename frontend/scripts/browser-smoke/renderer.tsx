@@ -21,6 +21,7 @@ import { exerciseComposerSend } from './composer-send'
 import { exerciseComposerSkills } from './composer-skills'
 import { exerciseComposerWrap } from './composer-wrap'
 import { exerciseComposerSuggestion } from './composer-suggestion'
+import { exerciseToolLabelReveal } from './tool-label-reveal'
 import { exerciseComposerSendMenu } from './composer-send-menu'
 import { exerciseFolderDrop } from './folder-drop'
 import { exerciseComposerAttachments } from './composer-attachments'
@@ -122,6 +123,14 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (!suite || suite === 'tool-label-reveal') {
+        progress('new tool label reveals')
+        await exerciseToolLabelReveal()
+        if (suite === 'tool-label-reveal') {
+          window.smoke.result({ ok: true, checks: ['new grouped tool and inline shell labels reveal once, with stable rows and still history, Reduce Motion, and Effects off'] })
+          return
+        }
+      }
       if (suite === 'bot-chat') {
         await exerciseBotChat()
         window.smoke.result({ ok: true, checks: ['real HTTP/SSE bot conversation visibly painted before scroll in development StrictMode; cold/warm history, authorship, stable reader and paging'] })

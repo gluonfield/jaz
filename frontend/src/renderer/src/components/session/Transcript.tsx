@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, type ReactNode, type RefObject } from 'react'
+import { memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ChatMessage, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
 import { mcpEntrypointsQuery } from '@/lib/api/mcp'
@@ -28,6 +28,7 @@ const NO_ENTRYPOINTS: MCPEntrypoint[] = []
 type RenderOptions = {
   showAssistantCopy?: boolean
   activityActive?: boolean
+  revealTools?: ReadonlySet<string>
 }
 
 function formatDuration(ms: number): string {
@@ -137,10 +138,30 @@ export const Transcript = memo(function Transcript({
     permissionResolutions,
     latestTaskSurfaceEvent,
     pendingPermissionIds,
+    toolSequences,
+    latestSequence,
   } = useMemo(
     () => buildTimeline(messages, events, sessionId, groupTurns, entrypoints),
     [messages, events, sessionId, groupTurns, entrypoints],
   )
+  const previousActivity = useRef({ sessionId, latestSequence, toolSequences })
+  const previous = previousActivity.current
+  let revealTools: Set<string> | undefined
+  if (working && !findActive && previous.sessionId === sessionId && latestSequence > previous.latestSequence) {
+    for (const [key, sequence] of toolSequences) {
+      if (sequence > previous.latestSequence && !previous.toolSequences.has(key)) {
+        (revealTools ??= new Set()).add(key)
+      }
+    }
+  }
+  useLayoutEffect(() => {
+    const observed = previousActivity.current
+    previousActivity.current = {
+      sessionId,
+      latestSequence: observed.sessionId === sessionId ? Math.max(observed.latestSequence, latestSequence) : latestSequence,
+      toolSequences,
+    }
+  }, [sessionId, latestSequence, toolSequences])
   const firstItemAt = (index: number) =>
     groupTurns ? turns[index]?.opener ?? turns[index]?.items[0] : chronological[index]
   const { start: historyStart, historyRef, sentinelRef } = useHistoryWindow({
@@ -188,6 +209,7 @@ export const Transcript = memo(function Transcript({
             header={item.header}
             active={options.activityActive}
             findActive={findActive}
+            revealTools={options.revealTools}
           />
         )
       case 'event': {
@@ -228,6 +250,7 @@ export const Transcript = memo(function Transcript({
         {visibleChronological.map((item, index) =>
           renderItem(item, {
             activityActive: working && index === visibleChronological.length - 1,
+            revealTools,
           }),
         )}
         {tail}
@@ -251,7 +274,7 @@ export const Transcript = memo(function Transcript({
         if (active) {
           flow.forEach((item, index) => {
             const trailing = index === flow.length - 1
-            sections.push(renderItem(item, { activityActive: trailing, showAssistantCopy: false }))
+            sections.push(renderItem(item, { activityActive: trailing, showAssistantCopy: false, revealTools }))
           })
         } else {
           // One "Worked for" disclosure per turn holds all folded work, so a shown

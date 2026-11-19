@@ -33,6 +33,10 @@ export interface ActivityHeader {
 type EventTimelineItem = Extract<TimelineItem, { kind: 'event' }>
 type ActivityEventItem = EventTimelineItem & { event: SessionEvent & { acp: ACPEvent } }
 
+function toolActivityKey(source: string, callId: string): string {
+  return `tool-${source}:${callId}`
+}
+
 export interface Turn {
   opener?: TimelineItem
   items: TimelineItem[]
@@ -128,7 +132,7 @@ function eventActivityEntries(item: ActivityEventItem): ActivityEntry[] {
     entries.push({ kind: 'thought', text: item.event.acp.thought, key: `thought-${eventKey}` })
   }
   for (const call of item.event.acp.tool_calls ?? []) {
-    entries.push({ kind: 'tool', call, key: `tool-${item.event.acp.id}:${call.id}` })
+    entries.push({ kind: 'tool', call, key: toolActivityKey(item.event.acp.id, call.id) })
   }
   return entries
 }
@@ -380,7 +384,11 @@ export function buildTimeline(
   const latestPermissionRequest = new Map<string, number>()
   const latestTaskSurfaceEvent = new Map<string, number>()
   const latestToolEvent = new Map<string, number>()
+  const toolSequences = new Map<string, number>()
+  let latestSequence = 0
   events.forEach((event, index) => {
+    const sequence = event.seq ?? 0
+    latestSequence = Math.max(latestSequence, sequence)
     if (event.type === 'permission_request' && event.permission) {
       latestPermissionRequest.set(event.permission.id, index)
     }
@@ -388,6 +396,12 @@ export function buildTimeline(
       permissionResolutions.set(event.permission.id, event.permission)
     }
     const acp = event.acp
+    if (acp?.tool_calls) {
+      for (const call of acp.tool_calls) {
+        const key = toolActivityKey(acp.id, call.id)
+        toolSequences.set(key, Math.min(sequence, toolSequences.get(key) ?? sequence))
+      }
+    }
     if (acp && taskSurfaceFromEvent(event)) {
       latestTaskSurfaceEvent.set(acp.id, index)
     }
@@ -497,6 +511,8 @@ export function buildTimeline(
     permissionResolutions,
     latestTaskSurfaceEvent,
     pendingPermissionIds,
+    toolSequences,
+    latestSequence,
   }
 }
 

@@ -19,6 +19,7 @@ import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
 import { ToolCallDetail } from './ToolCallContent'
+import { ToolActivityLabel } from '@/components/session/ToolActivityLabel'
 import {
   hasToolCallDetail,
   isRunningToolStatus,
@@ -45,10 +46,12 @@ const ActivityToolDisclosure = memo(function ActivityToolDisclosure({
   entries,
   active = false,
   findActive = false,
+  reveal = false,
 }: {
   entries: ToolEntry[]
   active?: boolean
   findActive?: boolean
+  reveal?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const calls = entries.map((entry) => entry.call)
@@ -62,7 +65,7 @@ const ActivityToolDisclosure = memo(function ActivityToolDisclosure({
         label={(
           <span className="flex min-w-0 items-center gap-2">
             <Icon className="size-3.5 shrink-0" aria-hidden />
-            <span className="truncate">{toolRunLabel(calls)}</span>
+            <ToolActivityLabel text={toolRunLabel(calls)} reveal={reveal} />
           </span>
         )}
         open={effectiveOpen}
@@ -88,11 +91,13 @@ export const ActivityBlock = memo(function ActivityBlock({
   header,
   active = false,
   findActive = false,
+  revealTools,
 }: {
   entries: ActivityEntry[]
   header?: ActivityHeader
   active?: boolean
   findActive?: boolean
+  revealTools?: ReadonlySet<string>
 }) {
   const inlineDiffs = useInlineDiffs()
   const inlineShell = useInlineShellCommands()
@@ -148,6 +153,7 @@ export const ActivityBlock = memo(function ActivityBlock({
                 entries={row.entries}
                 active={rowActive}
                 findActive={findActive}
+                reveal={revealTools && row.entries.every((entry) => revealTools.has(entry.key))}
               />
             )
           case 'diff':
@@ -158,6 +164,7 @@ export const ActivityBlock = memo(function ActivityBlock({
                 key={row.entry.key}
                 call={row.entry.call}
                 active={rowActive}
+                reveal={revealTools?.has(row.entry.key)}
               />
             )
         }

@@ -1,6 +1,7 @@
 import { LoaderCircle } from 'lucide-react'
 import { memo } from 'react'
 import type { ACPToolCall } from '@/lib/api/types'
+import { ToolActivityLabel } from '@/components/session/ToolActivityLabel'
 import { isRunningToolStatus, toolCallCategory, toolCallPresentation } from './toolPresentation'
 import { normalized } from './TranscriptUtils'
 
@@ -18,9 +19,11 @@ function stripWrappingFence(text: string): string {
 export const ShellCommandBlock = memo(function ShellCommandBlock({
   call,
   active = false,
+  reveal = false,
 }: {
   call: ACPToolCall
   active?: boolean
+  reveal?: boolean
 }) {
   const presentation = toolCallPresentation(call)
   const command = presentation.command || (call.title ?? '').trim()
@@ -42,7 +45,7 @@ export const ShellCommandBlock = memo(function ShellCommandBlock({
             title={command || undefined}
             className="min-w-0 flex-1 overflow-x-auto font-mono text-[12px] leading-relaxed whitespace-pre text-ink select-text"
           >
-            {command || '(command)'}
+            <ToolActivityLabel text={command || '(command)'} reveal={reveal && !command.includes('\n')} className="block" />
           </pre>
           {running ? (
             <LoaderCircle className="mt-0.5 size-3 shrink-0 animate-spin text-running" aria-hidden />
