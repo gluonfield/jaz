@@ -1396,6 +1396,11 @@ export interface ACPAuthLogin {
   finished_at?: string
 }
 
+export interface ACPDisconnectResult {
+  settings: ACPAgentDefaults
+  auth: ACPAgentAuthStatus
+}
+
 export interface ReasoningEffortOption {
   value: string
   label: string

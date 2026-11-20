@@ -2,11 +2,11 @@ import { queryOptions } from '@tanstack/react-query'
 import { inputFromSettings, normalizeAgentSettings } from '@/lib/agentSettings'
 import { keys } from '../query/keys'
 import { get, post, put } from './client'
-import type { ACPAgentAuth, ACPAuthLogin, AgentSettings, BrowserStatus } from './types'
+import type { ACPAgentAuth, ACPAuthLogin, ACPDisconnectResult, AgentSettings, BrowserStatus } from './types'
 
 export const agentSettingsQuery = queryOptions({
   queryKey: keys.agentSettings,
-  queryFn: async () => normalizeAgentSettings(await get<AgentSettings>('/v1/settings/agents')),
+  queryFn: async ({ signal }) => normalizeAgentSettings(await get<AgentSettings>('/v1/settings/agents', { signal })),
 })
 
 export const computerSettingsQuery = queryOptions({
@@ -58,10 +58,6 @@ export function submitACPAuthLoginInput(id: string, input: string): Promise<ACPA
   return post<ACPAuthLogin>(`/v1/acp/auth-logins/${encodeURIComponent(id)}/input`, { input })
 }
 
-// Removes an agent's Jaz-managed credential (API key env + Jaz-profile OAuth);
-// never touches the user's global CLI config. Returns the canonical settings snapshot.
-export function disconnectACPAuth(agent: string): Promise<AgentSettings> {
-  return post<AgentSettings>(`/v1/acp/agents/${encodeURIComponent(agent)}/auth/disconnect`).then(
-    normalizeAgentSettings,
-  )
+export function disconnectACPAuth(agent: string): Promise<ACPDisconnectResult> {
+  return post(`/v1/acp/agents/${encodeURIComponent(agent)}/auth/disconnect`)
 }

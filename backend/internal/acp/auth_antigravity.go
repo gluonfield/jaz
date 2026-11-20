@@ -61,13 +61,6 @@ func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) 
 func disconnectAntigravityAuth(ctx context.Context, cfg AgentConfig, root string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if cfg.ManagedAdapter != "" {
-		command, err := antigravityExecutable(loginBinDirs(cfg))
-		if err != nil {
-			return err
-		}
-		cfg.useCommandLaunch(command, cfg.ManagedAdapterArgs)
-	}
 	err := withAntigravityAccountPeer(ctx, cfg, root, "", func(peer *jsonrpc.Peer, init acpschema.InitializeResponse) error {
 		caps := init.AgentCapabilities
 		if caps == nil || caps.Auth == nil || caps.Auth.Logout == nil {
@@ -88,6 +81,13 @@ func withAntigravityAccountPeer(ctx context.Context, cfg AgentConfig, root, cwd 
 	manager := NewManager(nil, Config{Root: root}, nil)
 	defer manager.Close()
 	env := manager.probeEnv(AgentAntigravity, cfg)
+	if cfg.ManagedAdapter != "" {
+		command, err := antigravityExecutable(env["PATH"])
+		if err != nil {
+			return err
+		}
+		cfg.useCommandLaunch(command, cfg.ManagedAdapterArgs)
+	}
 	var conn jsonrpc.MessageConn
 	if cfg.URL != "" {
 		remote, _, err := manager.openConn(ctx, AgentAntigravity, cfg, env, cwd, "")

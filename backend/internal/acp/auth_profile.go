@@ -144,7 +144,7 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 	case AgentOpenCode:
 		return resolveOpenCodeAuth(auth, cfg, root, env, providers)
 	case AgentAntigravity:
-		return resolveAntigravityAuth(auth, root, env)
+		return antigravityAuthStatus(auth, (auth.Mode == AuthModeAuto || auth.Mode == AuthModeExistingCLI) && antigravityCLIAuthenticated(env))
 	case AgentMuse:
 		return resolveMuseAuth(root, env)
 	case AgentCopilot:
@@ -369,7 +369,7 @@ func resolveOpenCodeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env
 	return status
 }
 
-func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]string) resolvedAgentAuth {
+func antigravityAuthStatus(auth AgentAuthConfig, authenticated bool) resolvedAgentAuth {
 	mode := auth.Mode
 	if mode == "" {
 		mode = AuthModeAuto
@@ -380,11 +380,7 @@ func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]st
 		StoragePath: filepath.Join(cliPath, "antigravity-oauth-token"),
 		Source:      mode,
 	}
-	cliAuthenticated := false
-	if mode == AuthModeAuto || mode == AuthModeExistingCLI {
-		cliAuthenticated = antigravityCLIAuthenticated(env)
-	}
-	if cliAuthenticated {
+	if authenticated {
 		status.Config = AgentAuthConfig{Mode: AuthModeExistingCLI, Path: cliPath}
 		status.Source = AuthModeExistingCLI
 		status.markAuthenticated("agy_models", AuthKindOAuth)

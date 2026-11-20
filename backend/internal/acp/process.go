@@ -422,7 +422,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"LC_CTYPE",
 			"NO_PROXY",
 		)
-		addPathDirsToPath(env, agent.LoginBinDir)
+		addPathDirsToPath(env, loginBinDirs(agent))
 	}
 	if prepare {
 		if spec, ok := resolveAgentAPIKeySpec(name); ok {

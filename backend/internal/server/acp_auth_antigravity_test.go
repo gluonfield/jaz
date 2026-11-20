@@ -177,24 +177,31 @@ esac
 	}
 	disconnect.Header = request.Header.Clone()
 	type disconnectResponse struct {
-		Settings agentSettingsResponse
-		Err      error
+		Result acpDisconnectResponse
+		Err    error
 	}
 	disconnected := make(chan disconnectResponse, 1)
 	mark("personal-sign-in")
-	oldSettings, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/v1/settings/agents", nil)
+	settings, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/v1/settings/agents", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldSettings.Header = request.Header.Clone()
-	oldProbeDone := make(chan error, 1)
-	go func() {
-		res, err := server.Client().Do(oldSettings)
-		if err == nil {
-			err = res.Body.Close()
-		}
-		oldProbeDone <- err
-	}()
+	settings.Header = request.Header.Clone()
+	refreshSettings := func() <-chan error {
+		done := make(chan error, 1)
+		go func() {
+			res, err := server.Client().Do(settings.Clone(t.Context()))
+			if err == nil {
+				_ = res.Body.Close()
+				if res.StatusCode != http.StatusOK {
+					err = fmt.Errorf("settings returned %s", res.Status)
+				}
+			}
+			done <- err
+		}()
+		return done
+	}
+	oldProbeDone := refreshSettings()
 	defer mark("release-old-probe")
 	waitFor("signed-in-probes")
 	go func() {
@@ -203,7 +210,7 @@ esac
 		if err == nil {
 			defer res.Body.Close()
 			if res.StatusCode == http.StatusOK {
-				err = json.NewDecoder(res.Body).Decode(&result.Settings)
+				err = json.NewDecoder(res.Body).Decode(&result.Result)
 			} else {
 				err = fmt.Errorf("disconnect returned %s", res.Status)
 			}
@@ -212,7 +219,18 @@ esac
 		disconnected <- result
 	}()
 	defer mark("release-refresh")
-	waitFor("refreshing")
+	select {
+	case response := <-disconnected:
+		result := response.Result
+		if response.Err != nil || result.Settings.Enabled || result.Settings.Auth.Mode != acp.AuthModeAuto || result.Auth.Authenticated || !result.Auth.LoginCommandAvailable {
+			t.Fatalf("expected disabled and signed-out settings, got %+v", response)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("disconnect waited for a settings probe")
+	}
+	if _, err := os.Stat(filepath.Join(home, "probes")); !os.IsNotExist(err) {
+		t.Fatalf("disconnect probed signed-out authentication: %v", err)
+	}
 	if _, err := os.Stat(filepath.Join(home, "logout-worker-stopped")); err != nil {
 		t.Fatalf("disconnect did not clean up the native process group: %v", err)
 	}
@@ -228,6 +246,8 @@ esac
 	case <-time.After(5 * time.Second):
 		t.Fatal("settings request started before disconnect did not return")
 	}
+	refreshed := refreshSettings()
+	waitFor("refreshing")
 	conn := open()
 	if event := next(conn); event.Type != "ready" {
 		t.Fatalf("expected a ready terminal, got %+v", event)
@@ -237,14 +257,12 @@ esac
 	}
 	mark("release-refresh")
 	select {
-	case result := <-disconnected:
-		defaults := result.Settings.ACP[acp.AgentAntigravity]
-		status, ok := result.Settings.ACPAuth[acp.AgentAntigravity]
-		if result.Err != nil || defaults.Enabled || defaults.Auth.Mode != acp.AuthModeAuto || !ok || status.Authenticated {
-			t.Fatalf("expected disabled and signed-out settings, got %+v", result)
+	case err := <-refreshed:
+		if err != nil {
+			t.Fatal(err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("disconnect did not return after the status probe")
+		t.Fatal("settings refresh did not return after the status probe")
 	}
 	if probes, err := os.ReadFile(filepath.Join(home, "probes")); err != nil || len(probes) != 2 {
 		t.Fatalf("expected one settings probe and one sign-in probe, got %q, %v", probes, err)

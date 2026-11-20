@@ -12,6 +12,11 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
+type acpDisconnectResponse struct {
+	Settings agentsettings.ACPAgentDefaults `json:"settings"`
+	Auth     acpAuthStatusResponse          `json:"auth"`
+}
+
 func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
@@ -47,7 +52,9 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := acp.DisconnectAgentAuth(r.Context(), agent, cfg, s.runtimeRoot(), s.modelProviders()); err != nil {
+	root := s.runtimeRoot()
+	providers := s.modelProviders()
+	if err := acp.DisconnectAgentAuth(r.Context(), agent, cfg, root, providers); err != nil {
 		status := http.StatusInternalServerError
 		if _, ok := errors.AsType[acp.ManualDisconnectError](err); ok {
 			status = http.StatusConflict
@@ -73,12 +80,15 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	release()
-	response := s.agentSettingsResponse(defaults)
-	if agent == acp.AgentMuse && response.ACPAuth[agent].Authenticated && response.ACPAuth[agent].AuthKind != acp.AuthKindNone {
+	current := defaults.ACP[agent]
+	cfg.Auth = current.Auth
+	auth, readiness := acp.AuthAndReadinessAfterDisconnect(agent, cfg, root, providers)
+	if agent == acp.AgentMuse && auth.Authenticated && auth.AuthKind != acp.AuthKindNone {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("Muse is signed in through META_API_KEY; remove the environment variable to disconnect"))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	status := s.acpAuthStatus(cfg, auth, readiness)
+	release()
+	writeJSON(w, http.StatusOK, acpDisconnectResponse{Settings: current, Auth: status})
 }

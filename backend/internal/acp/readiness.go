@@ -28,6 +28,15 @@ func ProbeAuthAndReadinessWithProviders(name string, cfg AgentConfig, root strin
 	return auth, probeReadiness(name, cfg, root, env, providers, func() AgentAuthStatus { return auth })
 }
 
+func AuthAndReadinessAfterDisconnect(name string, cfg AgentConfig, root string, providers map[string]provider.ModelProviderConfig) (AgentAuthStatus, Readiness) {
+	if name != AgentAntigravity || cfg.ManagedAdapter == "" {
+		return ProbeAuthAndReadinessWithProviders(name, cfg, root, nil, providers)
+	}
+	env := NewManager(nil, Config{Root: root}, nil).probeEnv(name, cfg)
+	auth := agentAuthStatus(name, cfg, root, env, antigravityAuthStatus(cfg.Auth, false))
+	return auth, Readiness{Reason: auth.Reason}
+}
+
 func probeReadiness(name string, cfg AgentConfig, root string, env map[string]string, providers map[string]provider.ModelProviderConfig, probeAuth func() AgentAuthStatus) Readiness {
 	name = CanonicalAgentName(name)
 	if cfg.Local {

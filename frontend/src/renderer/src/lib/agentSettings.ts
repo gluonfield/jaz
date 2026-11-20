@@ -1,5 +1,5 @@
 import { selectableACPAgent } from './agentRuntimes'
-import type { AgentSettings, AgentSettingsInput } from './api/types'
+import type { ACPDisconnectResult, AgentSettings, AgentSettingsInput } from './api/types'
 
 export function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
   const agents = (settings.agents ?? []).filter(selectableACPAgent)
@@ -95,6 +95,17 @@ export function cloneAgentSettings(settings: AgentSettings): AgentSettings {
     ),
     agents: [...(settings.agents ?? [])],
     acp_options: cloneACPOptions(settings.acp_options),
+  }
+}
+
+export function applyACPDisconnect(settings: AgentSettings, agent: string, result: ACPDisconnectResult): AgentSettings {
+  const acpKeys = { ...settings.acp_keys }
+  delete acpKeys[agent]
+  return {
+    ...settings,
+    acp: { ...settings.acp, [agent]: result.settings },
+    acp_auth: { ...settings.acp_auth, [agent]: result.auth },
+    acp_keys: acpKeys,
   }
 }
 
