@@ -15,7 +15,7 @@ export async function exerciseMarkdownDocuments() {
   const filler = 'A short paragraph explaining the manufacturing options.\n\n'.repeat(12)
   const content = '# Route comparison\n\n## Contents\n\n- [Résumé and costs](#résumé--costs)\n- [Next steps](#next-steps)\n- [More steps](#next-steps-1)\n\n' + filler +
     '## Résumé & **costs**\n\nUse the available presses.\n\nA part costs \\(c = m + t\\) to make.\n\n| Route | Cost |\n| --- | ---: |\n| Press | £1 |\n\n- [ ] Confirm the press\n- [x] Price the blank\n\n```sh\nmake check\n```\n\n' + filler +
-    '## Next steps\n\nConfirm the route.\n\n' + filler + '## Next steps\n\nReserve the presses.\n\n' + filler + '## Next steps-1\n\nKeep the deadline.\n\n' + filler
+    '## Next steps\n\nConfirm the route.\n\n' + filler + '## Next steps\n\nReserve the presses.\n\n' + filler + '## Next steps-1\n\nKeep the deadline.\n\n' + filler + 'See [the other route](other-route.md).\n'
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
   // The file as the backend holds it: a save is refused unless it is made over
   // this version.
@@ -48,8 +48,14 @@ export async function exerciseMarkdownDocuments() {
   document.body.append(host)
   const root = createRoot(host)
   let opens = 0
+  let linked: FileReference | null = null
+  let closeLinked = () => {}
   function View() {
     const [file, setFile] = useState<FileReference | null>(null)
+    // As in the side panel, a linked file opens in a tab of its own and this one is hidden.
+    const [other, setOther] = useState<FileReference | null>(null)
+    linked = other
+    closeLinked = () => setOther(null)
     return <QueryClientProvider client={client}>
       <div className="flex h-full flex-col gap-4 p-4">
         <div className="min-h-0 flex-1 overflow-auto" data-document-chat>
@@ -58,12 +64,12 @@ export async function exerciseMarkdownDocuments() {
             setFile(next)
           }}><MessageMarkdown text={path} /></FileReaderLinkProvider>
         </div>
-        {file ? <div className="h-[55%] min-h-0 border border-border" data-document-reader>
+        {file ? <div className="h-[55%] min-h-0 border border-border" data-document-reader hidden={Boolean(other)}>
           <SidePanelCloseGuard value={(guard) => {
             closeGuard = guard
             return () => { closeGuard = undefined }
           }}>
-            <FileReaderPanel sessionId="documents" fileRef={file} visible onOpenFile={setFile} onClose={() => setFile(null)} />
+            <FileReaderPanel sessionId="documents" fileRef={file} visible onOpenFile={(next) => next.path === path ? setFile(next) : setOther(next)} onClose={() => setFile(null)} />
           </SidePanelCloseGuard>
         </div> : null}
       </div>
@@ -267,6 +273,20 @@ export async function exerciseMarkdownDocuments() {
         await until(() => Math.abs(heading.getBoundingClientRect().top - scroll.getBoundingClientRect().top) < 48)
         if (location.href !== url || client.getQueryCache().getAll().length !== queries || opens !== opened) throw new Error('Contents navigation changed the document or thread')
       }
+      // A link to another file hides this document before the click has ended.
+      // The app lays out in between, after which the browser follows a hidden link.
+      const layout = () => void document.body.offsetHeight
+      window.addEventListener('click', layout, true)
+      const fileLink = [...reader.querySelectorAll('a[href]')].find((node) => node.getAttribute('href') === 'other-route.md') ?? null
+      fileLink?.scrollIntoView({ block: 'center' })
+      await new Promise(requestAnimationFrame)
+      await click(fileLink)
+      await until(() => linked?.path === '/workspace/reports/other-route.md')
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      window.removeEventListener('click', layout, true)
+      if (location.href !== url) throw new Error('A file link navigated the window')
+      closeLinked()
+      await until(() => !reader.hidden)
       if (saves.length !== saved) throw new Error('Reading a document saved it')
       if (width === 1200) await edit(reader)
       if (reader.scrollWidth > reader.clientWidth || document.documentElement.scrollWidth > innerWidth) throw new Error('Document reader overflows its viewport')

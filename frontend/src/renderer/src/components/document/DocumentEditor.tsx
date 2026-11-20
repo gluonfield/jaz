@@ -115,11 +115,16 @@ export function DocumentEditor({
     contentType: 'markdown',
     editorProps: {
       attributes: { class: 'file-prose outline-none', spellcheck: 'false', 'aria-label': 'Document' },
-      handleClick: (view, _pos, event) => {
-        const link = (event.target as HTMLElement).closest('a')
-        if (!link || !isPlainClick(event)) return false
-        openLink(view, link)
-        return true
+      handleDOMEvents: {
+        // Opening a link can hide this document, and the browser follows a
+        // link that is no longer editable, so the click itself is taken.
+        click: (view, event) => {
+          const link = (event.target as HTMLElement).closest('a')
+          if (!link || !isPlainClick(event)) return false
+          event.preventDefault()
+          openLink(view, link)
+          return true
+        },
       },
     },
     onUpdate: ({ editor }) => touch(editor),
