@@ -1,5 +1,6 @@
-Changes since v0.0.282:
+Changes since v0.0.283:
 
-- A link in a document to another file, a PDF page or a spreadsheet cell opens it in its own tab. Before, the click could reload the window onto "Couldn't load this session".
-- Zoom can be connected with a public OAuth client: Jaz signs in through a local callback with PKCE, with no client secret, and the Zoom connection says what setup it still needs.
-- Phrases added to a tool activity row reveal with the same sweep as the row.
+- Word files (`.docx`) open in the side panel reader as they are laid out, read-only. A link to quoted words opens the document at those words, highlighted.
+- Disconnecting an Antigravity account finishes promptly: sign-out completes before the settings refresh, and the account's processes stay supervised.
+- Zoom's production sign-in is relayed through the HTTPS callback.
+- An agent's modes, models and commands are kept as one row per thread and replaced on change. Before, every update added a full copy; the older copies are removed in the background.
