@@ -91,29 +91,34 @@ test('the transcript shows one written answer while spoken wording remains avail
   }
 })
 
-test('an agent action shows its outcome once and only the trailing running row spins', () => {
+test('agent-only activity stays under one parent disclosure with a truthful outcome', () => {
   const [call] = codexAgentCalls
   for (const [status, label] of [
     ['completed', 'Created an agent'],
     ['failed', 'Failed to create an agent'],
     ['in_progress', 'Creating an agent'],
   ]) {
-    const html = renderToStaticMarkup(createElement(ActivityBlock, {
-      entries: [
-        tool({ id: 'command', tool_name: 'exec_command', status: 'in_progress' }),
-        tool({ ...call, status }),
-      ],
-      active: true,
-    }))
-    expect(html).toContain(`>${label}<`)
-    expect(html).not.toContain('>failed<')
-    expect(html.match(/animate-spin/g) ?? []).toHaveLength(status === 'in_progress' ? 1 : 0)
+    for (const count of [1, 3]) {
+      const entries = Array.from({ length: count }, (_, index) => tool({ ...call, id: `agent-${index}`, status }))
+      const props = { entries, active: true }
+      const html = renderToStaticMarkup(createElement(ActivityBlock, props))
+      expect(html).toContain(count === 1 ? 'Worked with an agent' : 'Worked with agents')
+      expect(html).toContain('aria-expanded="false"')
+      expect(html.match(/<button\b/g)).toHaveLength(1)
+      expect(html).not.toContain(`>${label}<`)
+      expect(html.match(/animate-spin/g) ?? []).toHaveLength(status === 'in_progress' ? 1 : 0)
+      if (status === 'failed') expect(html).toContain(`${count} failed`)
+      const expanded = renderToStaticMarkup(createElement(ActivityBlock, { ...props, findActive: true }))
+      expect(expanded).toContain('aria-expanded="true"')
+      expect(expanded.split(`>${label}<`)).toHaveLength(count + 1)
+      expect(expanded.match(/aria-expanded="false"/g)).toHaveLength(count)
+    }
   }
 })
 
-test('the production transcript gives each agent action its own row between regular tool groups', () => {
+test('the production transcript nests agent actions with regular tools in chronological order', () => {
   const [collaboration, activity] = codexAgentCalls
-  const html = renderToStaticMarkup(createElement(Transcript, {
+  const props = {
     messages: [],
     events: [{
       session_id: 'thread',
@@ -133,17 +138,18 @@ test('the production transcript gives each agent action its own row between regu
     }],
     sessionId: 'thread',
     working: true,
-  }))
-
-  expect(html.match(/Created an agent/g)).toHaveLength(2)
-  expect(html.match(/lucide-bot/g)).toHaveLength(4)
+  }
+  const html = renderToStaticMarkup(createElement(Transcript, props))
+  expect(html).toContain('Ran a command, worked with agents, read a file')
+  expect(html).not.toContain('Created an agent')
   expect(html.match(/animate-spin/g)).toHaveLength(1)
-  const ordered = ['Ran a command', 'Created an agent', 'Resumed an agent', 'Messaged an agent', 'Read a file']
-    .map((value) => html.indexOf(value))
+  const expanded = renderToStaticMarkup(createElement(Transcript, { ...props, findActive: true }))
+  expect(expanded.match(/Created an agent/g)).toHaveLength(2)
+  const ordered = ['>Command<', 'Created an agent', 'Resumed an agent', 'Messaged an agent', '>Read<']
+    .map((value) => expanded.indexOf(value))
   expect(ordered.every((index) => index >= 0)).toBe(true)
   expect(ordered).toEqual([...ordered].sort((a, b) => a - b))
-  expect(html).not.toContain('Find the current weather')
-  expect(html).not.toContain('Used tools')
+  expect(expanded).not.toContain('Find the current weather')
 })
 
 test('expanding transcript activity never nests another agent completion row', () => {

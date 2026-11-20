@@ -1,4 +1,5 @@
 import {
+  Bot,
   CircleEllipsis,
   FilePenLine,
   FolderOpen,
@@ -37,6 +38,7 @@ function toolRunIcon(categories: ToolCategory[]): LucideIcon {
   if (categories.includes('web_fetch') || categories.includes('web_search')) return Globe
   if (categories.includes('search')) return Search
   if (categories.includes('image')) return Image
+  if (categories.includes('agent')) return Bot
   return CircleEllipsis
 }
 
@@ -125,8 +127,6 @@ export const ActivityBlock = memo(function ActivityBlock({
     let row: ReactElement
     if (entry.kind === 'thought') {
       row = <ThinkingBlock key={entry.key} text={entry.text} pending={rowActive} findActive={findActive} />
-    } else if (toolCallCategory(entry.call) === 'agent') {
-      row = <ToolCallDetail key={entry.key} call={entry.call} active={rowActive} reveal={revealTools?.has(entry.key)} />
     } else if (inlineDiffs && hasInlineDiff(entry.call)) {
       row = <EditDiffBlock key={entry.key} call={entry.call} />
     } else if (inlineShell && hasInlineShellCommand(entry.call)) {
