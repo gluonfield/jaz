@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -29,6 +30,9 @@ func (m *Manager) AuthorizeWithHook(ctx context.Context, server mcpconfig.Server
 }
 
 func (m *Manager) authorize(ctx context.Context, server mcpconfig.Server, opts mcpconfig.AuthorizeOptions, onAuthorized AuthorizationHook) mcpconfig.ServerStatus {
+	if m.ctx.Err() != nil {
+		return mcpconfig.ServerStatus{Status: "error", Error: "MCP manager is closed", CheckedAt: time.Now().UTC()}
+	}
 	if server.Transport == mcpconfig.TransportStdio {
 		return mcpconfig.ServerStatus{Status: "error", Error: "Local stdio servers do not use OAuth sign-in", CheckedAt: time.Now().UTC()}
 	}
@@ -53,12 +57,14 @@ func (m *Manager) authorize(ctx context.Context, server mcpconfig.Server, opts m
 		started: started,
 		pending: pending,
 	}
-	flowCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	flowCtx, cancel := context.WithCancel(m.ctx)
 	pending.cancel = cancel
 	tokenID := server.TokenID()
 	m.authMu.Lock()
-	if m.authFlows == nil {
-		m.authFlows = make(map[string]*authorizationPending)
+	if err := cmp.Or(ctx.Err(), flowCtx.Err()); err != nil {
+		m.authMu.Unlock()
+		cancel()
+		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
 	}
 	if active := m.authFlows[tokenID]; active != nil {
 		if !opts.ReplacePending || !active.claimCallback() {
@@ -250,9 +256,6 @@ func (p *authorizationPending) accept(ctx context.Context, response mcpconfig.Au
 func (m *Manager) registerAuthorizationState(state string, pending *authorizationPending) error {
 	m.authMu.Lock()
 	defer m.authMu.Unlock()
-	if m.authStates == nil {
-		m.authStates = make(map[string]*authorizationPending)
-	}
 	if _, exists := m.authStates[state]; exists {
 		return errors.New("authorization state is already pending")
 	}
