@@ -152,9 +152,18 @@ export async function exerciseToolLabelReveal(): Promise<void> {
     })
     render([...quiet, inline, agent], 'reopened')
     const [agentRow] = sweeping()
-    if (sweeping().length !== 1 || agentRow?.textContent !== 'Creating an agent' ||
+    if (sweeping().length !== 1 || agentRow?.textContent !== 'Worked with an agent' ||
         !agentRow.querySelector('.lucide-bot') || !agentRow.querySelector('.animate-spin')) {
-      throw new Error('The standalone agent did not reveal its icon, label and spinner together')
+      throw new Error('The agent activity group did not reveal its icon, summary and spinner together')
+    }
+    const group = agentRow.closest('button')!
+    if (group.getAttribute('aria-expanded') !== 'false' || host.textContent?.includes('Creating an agent')) {
+      throw new Error('The agent action escaped its collapsed parent activity')
+    }
+    flushSync(() => group.click())
+    const action = [...host.querySelectorAll('button')].find((button) => button.textContent === 'Creating an agent')
+    if (group.getAttribute('aria-expanded') !== 'true' || !action?.querySelector('.animate-spin')) {
+      throw new Error('Expanding parent activity did not reveal the running agent action')
     }
   } finally {
     root.unmount()

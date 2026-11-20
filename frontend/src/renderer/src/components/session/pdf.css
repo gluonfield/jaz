@@ -1,5 +1,6 @@
 .pdf-file-view .pdfViewer {
   --scale-factor: 1;
+  --pdf-selection: color-mix(in srgb, var(--color-primary) 30%, transparent);
 }
 
 .pdf-file-view .page {
@@ -28,11 +29,18 @@
   height: 100%;
 }
 
+/* Annotations are drawn on the page; their interactive layer is not shown. */
+.pdf-file-view .annotationLayer {
+  display: none;
+}
+
 .pdf-file-view .textLayer {
   position: absolute;
   inset: 0;
   overflow: clip;
   line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
   text-align: initial;
   text-size-adjust: none;
   transform-origin: 0 0;
@@ -52,13 +60,60 @@
 
 .pdf-file-view .textLayer > :not(.markedContent),
 .pdf-file-view .markedContent span:not(.markedContent) {
+  z-index: 1;
   font-size: calc(var(--text-scale-factor) * var(--font-height, 0));
   transform: rotate(var(--rotate, 0deg)) scaleX(var(--scale-x, 1)) scale(var(--min-font-size-inv));
 }
 
 .pdf-file-view .markedContent { display: contents; }
-.pdf-file-view .textLayer .endOfContent { display: none; }
-.pdf-file-view .textLayer ::selection { background: var(--color-primary-soft); }
+
+/* The page is drawn on the canvas; the text layer only carries selection, so
+ * its own glyphs, set in a stand-in font, must never show. */
+.pdf-file-view .textLayer ::selection {
+  background: var(--pdf-selection);
+  color: transparent;
+}
+
+/* pdf.js draws the selection as one shape over the canvas where it can, so
+ * overlapping runs of text do not darken twice. */
+.pdf-file-view .textLayer.selectionRendering ::selection,
+.pdf-file-view .textLayer br::selection { background: transparent; }
+
+.pdf-file-view .canvasWrapper .selection {
+  position: absolute;
+  inset: 0;
+  background: var(--pdf-selection);
+  pointer-events: none;
+}
+
+.pdf-file-view .canvasWrapper .selection svg { display: block; }
+
+/* pdf.js stretches this over the page while a selection is dragged, so the
+ * selection does not jump to the end of the page between two lines. */
+.pdf-file-view .textLayer .endOfContent {
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.pdf-file-view .textLayer.selecting .endOfContent { top: 0; }
+
+.pdf-file-view .textLayer .highlight {
+  margin: -1px;
+  padding: 1px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--color-accent) 30%, transparent);
+}
+
+.pdf-file-view .textLayer .highlight.appended { position: initial; }
+
+/* The margin keeps the match pdf.js scrolls to clear of the find bar. */
+.pdf-file-view .textLayer .highlight.selected {
+  background: color-mix(in oklab, var(--color-accent) 70%, transparent);
+  scroll-margin-top: 64px;
+}
 
 ::highlight(pdf-location) {
   background: color-mix(in oklab, var(--color-accent) 45%, transparent);

@@ -251,17 +251,17 @@ func keepsACPTextStreamOpen(text Event, event Event) bool {
 	if text.ACP == nil || event.SessionID != text.SessionID {
 		return false
 	}
-	if event.ACP != nil && event.ACP.ID == text.ACP.ID {
-		if event.Type == "acp_tool" {
-			return true
-		}
-		if event.Type == "acp" {
-			return acpStatusKeepsTextStreamOpen(event.ACP)
-		}
+	switch event.Type {
+	case TypeAgentSession, TypeAgentTask:
+		return true
+	case TypeProviderSubagent:
+		return event.ProviderSubagent != nil && event.ProviderSubagent.ParentID == text.ACP.ID
+	case "acp_tool":
+		return event.ACP != nil && event.ACP.ID == text.ACP.ID
+	case "acp":
+		return event.ACP != nil && event.ACP.ID == text.ACP.ID && acpStatusKeepsTextStreamOpen(event.ACP)
 	}
-	return event.Type == TypeProviderSubagent &&
-		event.ProviderSubagent != nil &&
-		event.ProviderSubagent.ParentID == text.ACP.ID
+	return false
 }
 
 func acpStatusKeepsTextStreamOpen(acp *ACPEvent) bool {

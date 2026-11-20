@@ -5,7 +5,7 @@ import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/ses
 import { DocumentEditor, DocumentHeader, isEditableDocument } from '@/components/document/DocumentEditor'
 import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { ApiError } from '@/lib/api/client'
-import { healthQuery, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sessions'
+import { healthQuery, sessionFileBytes, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sessions'
 import { useFileLocation } from '@/lib/hooks/useFileLocation'
 import { useRefetchAfterWork } from '@/lib/hooks/useRefetchAfterWork'
 import type { HealthResponse } from '@/lib/api/types'
@@ -35,7 +35,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
 }) {
   const filePath = fileRef?.path ?? ''
   const pdf = isPDFPath(filePath)
-  const pdfSource = useCallback(() => sessionFileRawUrl(sessionId, filePath), [sessionId, filePath])
+  const loadPDF = useCallback((signal: AbortSignal) => sessionFileBytes(sessionId, filePath, signal), [sessionId, filePath])
   const spreadsheet = isSpreadsheetPath(filePath)
   const markdown = isMarkdownPath(filePath)
   const image = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico)(?:[?#].*)?$/i.test(filePath)
@@ -102,7 +102,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           <ImageFileView key={`${sessionId}:${filePath}`} url={sessionFileRawUrl(sessionId, filePath)} name={filePath.split(/[\\/]/).at(-1) ?? 'Image'} />
         ) : pdf ? (
           <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading PDF…</p>}>
-            <PDFFileView url={pdfSource} location={fileRef?.location} visible={visible} />
+            <PDFFileView load={loadPDF} location={fileRef?.location} visible={visible} />
           </Suspense>
         ) : spreadsheet ? (
           <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading spreadsheet…</p>}>

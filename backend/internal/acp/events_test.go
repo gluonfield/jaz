@@ -502,6 +502,37 @@ func TestACPTranscriptChunksWithoutMessageIDDoNotCrossToolBarrier(t *testing.T) 
 	}
 }
 
+func TestACPTranscriptChunksWithoutMessageIDCrossSessionState(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "main", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = sessionevents.New()
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session", State: StateRunning}}
+	job.startTurn(CompletionInline, false, false)
+	manager.jobsByID[session.ID] = job
+
+	manager.queueACPMessage(job, "Hi")
+	manager.publishAgentSession(job)
+	manager.queueACPMessage(job, " there")
+	manager.publishBackgroundTask(job, sessionevents.AgentTask{ID: "task"})
+	manager.queueACPMessage(job, ". What do you need?")
+	manager.withACPTranscriptBarrier(job.eventView(), nil)
+
+	events, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 || events[2].Content != "Hi there. What do you need?" {
+		t.Fatalf("events = %#v", events)
+	}
+}
+
 func TestACPTranscriptUpstreamMessageIDDefinesTextRun(t *testing.T) {
 	first := textRunID("message-1")
 	same := textRunID("message-1")

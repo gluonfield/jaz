@@ -20,7 +20,7 @@ import {
   clearBrowserAnnotationCapture,
   isBrowserAnnotationCancelled,
 } from './browserAnnotationCapture'
-import { PreviewFindBar } from './PreviewFindBar'
+import { FindBar } from './FindBar'
 import { SidePanelShell } from './SidePanelShell'
 import {
   isPreviewWebviewPending,
@@ -366,7 +366,7 @@ export function PreviewPanel({
       ) : null}
       <div className="relative min-h-0 flex-1 bg-bg">
         <div ref={cursorLayer} hidden={!visible} aria-hidden="true" className="pointer-events-none absolute inset-0 z-20 overflow-hidden" />
-        <PreviewFindBar find={find} />
+        <FindBar find={find} />
         {resolvedSourceUrl && canUseWebview ? (
           <webview
             ref={bindWebview}

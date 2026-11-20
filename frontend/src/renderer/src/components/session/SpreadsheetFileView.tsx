@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import SpreadsheetGrid from '@/components/session/SpreadsheetGrid'
-import { sessionFileRawUrl } from '@/lib/api/sessions'
-import { readAPIResponse } from '@/lib/api/response'
+import { sessionFileBytes } from '@/lib/api/sessions'
 import { keys } from '@/lib/query/keys'
 import { readSpreadsheet } from '@/lib/spreadsheet'
 
@@ -16,11 +15,7 @@ export default function SpreadsheetFileView({ sessionId, path, visible, initialS
   const [selected, setSelected] = useState(initialSheet ?? '')
   const file = useQuery({
     queryKey: [...keys.sessionFile(sessionId, path), 'spreadsheet'],
-    queryFn: async ({ signal }) => {
-      const response = await fetch(sessionFileRawUrl(sessionId, path), { signal })
-      if (!response.ok) await readAPIResponse(response)
-      return readSpreadsheet(await response.arrayBuffer())
-    },
+    queryFn: async ({ signal }) => readSpreadsheet(await sessionFileBytes(sessionId, path, signal)),
     enabled: visible,
     staleTime: 15_000,
   })

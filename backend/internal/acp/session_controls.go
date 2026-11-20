@@ -136,7 +136,7 @@ func (m *Manager) publishAgentSession(job *jobState) {
 	job.mu.RLock()
 	state := job.agentSession
 	job.mu.RUnlock()
-	m.publishOrderedACPEvents(job.eventView(), sessionevents.Event{
+	m.recordAndPublishDirect(sessionevents.Event{
 		SessionID: job.ID, Type: sessionevents.TypeAgentSession, AgentSession: &state,
 		ProjectionKey: "agent_session", ProjectionOp: sessionevents.ProjectionReplace,
 	})

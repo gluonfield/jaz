@@ -113,6 +113,15 @@ export async function createSessionFile(sessionId: string, path: string, content
   if (!response.ok) throw new ApiError(response.status, `could not create ${path}`)
 }
 
+// sessionFileBytes reads a file with the connection's own credentials. A
+// reader that fetches uses it; sessionFileRawUrl is for an element that loads
+// its own address and so needs the short-lived ticket in it.
+export async function sessionFileBytes(sessionId: string, path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  const response = await apiFetch(sessionFilePath(sessionId, path), { signal })
+  if (!response.ok) await readAPIResponse(response)
+  return response.arrayBuffer()
+}
+
 export function sessionFileRawUrl(sessionId: string, path: string): string {
   return apiEmbeddedGetUrl(sessionFilePath(sessionId, path))
 }

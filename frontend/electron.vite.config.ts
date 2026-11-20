@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
+import { pdfjsData } from './vite.pdfjs'
 import { defineTelemetryEnv } from './vite.telemetry'
 
 export default defineConfig(({ mode }) => ({
@@ -30,6 +31,7 @@ export default defineConfig(({ mode }) => ({
       }),
       react(),
       tailwindcss(),
+      pdfjsData(),
     ],
     server: {
       port: Number(process.env.ELECTRON_RENDERER_PORT ?? 5180),

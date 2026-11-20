@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import { pdfjsData } from './vite.pdfjs'
 import { defineTelemetryEnv } from './vite.telemetry'
 
 export default defineConfig(({ mode }) => ({
@@ -22,6 +23,7 @@ export default defineConfig(({ mode }) => ({
     }),
     react(),
     tailwindcss(),
+    pdfjsData(),
   ],
   build: {
     outDir: resolve('dist-web'),
