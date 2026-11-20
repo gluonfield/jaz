@@ -460,21 +460,21 @@
     color: var(--color-ink-2);
   }
 }
+/* The underline, not the colour, marks a link: with no tint the primary
+ * colour is the ink colour. */
 .chat-prose-link {
   color: var(--color-primary);
   cursor: pointer;
-  text-decoration-line: none;
-  text-decoration-style: dotted;
-  text-decoration-thickness: 1px;
+  text-decoration: underline 1px color-mix(in oklab, currentColor 40%, transparent);
   text-underline-offset: 0.18em;
-  transition-property: color;
+  transition-property: color, text-decoration-color;
   transition-duration: 160ms;
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 .chat-prose-link:hover,
 .chat-prose-link:focus-visible {
   color: var(--color-primary-strong);
-  text-decoration-line: underline;
+  text-decoration-color: currentColor;
 }
 .chat-prose-link-icon {
   display: inline-block;
