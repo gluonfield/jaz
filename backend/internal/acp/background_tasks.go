@@ -82,7 +82,7 @@ func (m *Manager) applyBackgroundTask(job *jobState, raw json.RawMessage) bool {
 }
 
 func (m *Manager) publishBackgroundTask(job *jobState, task sessionevents.AgentTask) {
-	m.publishOrderedACPEvents(job.eventView(), sessionevents.Event{
+	m.recordAndPublishDirect(sessionevents.Event{
 		SessionID: job.ID, Type: sessionevents.TypeAgentTask, AgentTask: &task,
 		ProjectionKey: "agent_task:" + task.ID, ProjectionOp: sessionevents.ProjectionReplace,
 	})
