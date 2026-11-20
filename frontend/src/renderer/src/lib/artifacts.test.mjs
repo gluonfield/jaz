@@ -22,3 +22,12 @@ test("a plugin's view starts with its data and is not treated as a canvas card",
   expect(buildArtifactDocument({ title: 'status', code: '<p>status</p>', loadingMessages: [] }, '', { data: {}, agentState: 'asking' })).toContain("window.agentState = 'asking'")
   expect(html).not.toContain('jaz:canvas-wheel')
 })
+
+test("a plugin's view gets what it saved for the thread only where a save is kept", () => {
+  const input = { title: 'status', code: '<p>status</p>', loadingMessages: [] }
+  const html = buildArtifactDocument(input, '', { data: {}, viewState: { answers: [[3, '</script>']] } })
+  expect(html).toContain('window.viewState = {"answers":[[3,"\\u003c/script>"]]}')
+  expect(html.match(/<\/script>/g)).toHaveLength(1)
+  expect(buildArtifactDocument(input, '', { data: {}, viewState: null })).toContain('window.viewState = null')
+  expect(buildArtifactDocument(input, '', { data: {} })).not.toContain('setViewState')
+})

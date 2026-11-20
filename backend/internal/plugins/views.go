@@ -2,8 +2,16 @@ package plugins
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
+
+	"github.com/wins/jaz/backend/internal/runtimefiles"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -17,6 +25,7 @@ type ViewService struct {
 	plugins   *Store
 	sessions  storage.SessionOverviewReader
 	presenter ViewPresenter
+	states    string
 }
 
 type ViewRequest struct {
@@ -26,8 +35,8 @@ type ViewRequest struct {
 	Title     string
 }
 
-func NewViewService(sessions storage.SessionOverviewReader, presenter ViewPresenter, plugins *Store) *ViewService {
-	return &ViewService{plugins: plugins, sessions: sessions, presenter: presenter}
+func NewViewService(sessions storage.SessionOverviewReader, presenter ViewPresenter, plugins *Store, layout runtimefiles.Layout) *ViewService {
+	return &ViewService{plugins: plugins, sessions: sessions, presenter: presenter, states: layout.ViewStates}
 }
 
 func (s *ViewService) Open(ctx context.Context, session string, request ViewRequest) (sessionevents.PluginView, error) {
@@ -36,32 +45,80 @@ func (s *ViewService) Open(ctx context.Context, session string, request ViewRequ
 	if !name.MatchString(request.Name) || request.Title == "" {
 		return sessionevents.PluginView{}, fmt.Errorf("%w: a plain view name and title are required", ErrInvalid)
 	}
-	view, err := s.sessions.LoadSessionOverview(ctx, session)
+	thread, latest, err := s.shown(ctx, session, request.Reference, request.File)
 	if err != nil {
 		return sessionevents.PluginView{}, err
 	}
-	latest := sessionevents.LatestPluginViews(view.PresentationEvents)
-	for _, caller := range latest {
-		if caller.Reference != request.Reference || caller.File != request.File {
-			continue
-		}
-		plugin, _, ok := strings.Cut(caller.Reference, "/")
-		if !ok || !filename.MatchString(caller.File) {
-			return sessionevents.PluginView{}, fmt.Errorf("%w: caller has no owned file-following view", ErrInvalid)
-		}
-		reference := plugin + "/" + request.Name
-		html, err := s.plugins.View(reference)
-		if err != nil {
-			return sessionevents.PluginView{}, err
-		}
-		for _, shown := range latest {
-			if shown.Reference == reference && shown.File == caller.File && shown.WidgetCode == html {
-				return shown, nil
-			}
-		}
-		target := sessionevents.PluginView{Reference: reference, Title: request.Title, WidgetCode: html, File: caller.File}
-		_, err = s.presenter.Present(view.SessionID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &target})
-		return target, err
+	plugin, _, _ := strings.Cut(request.Reference, "/")
+	reference := plugin + "/" + request.Name
+	html, err := s.plugins.View(reference)
+	if err != nil {
+		return sessionevents.PluginView{}, err
 	}
-	return sessionevents.PluginView{}, fmt.Errorf("%w: caller view is not shown in this thread", ErrNotFound)
+	for _, shown := range latest {
+		if shown.Reference == reference && shown.File == request.File && shown.WidgetCode == html {
+			return shown, nil
+		}
+	}
+	target := sessionevents.PluginView{Reference: reference, Title: request.Title, WidgetCode: html, File: request.File}
+	_, err = s.presenter.Present(thread, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &target})
+	return target, err
+}
+
+// shown returns the thread's id and latest views when the file-following view
+// named is one of them.
+func (s *ViewService) shown(ctx context.Context, session, reference, file string) (string, []sessionevents.PluginView, error) {
+	plugin, view, _ := strings.Cut(reference, "/")
+	if !name.MatchString(plugin) || !name.MatchString(view) || !filename.MatchString(file) {
+		return "", nil, fmt.Errorf("%w: not an owned file-following view", ErrInvalid)
+	}
+	thread, err := s.sessions.LoadSessionOverview(ctx, session)
+	if err != nil {
+		return "", nil, err
+	}
+	latest := sessionevents.LatestPluginViews(thread.PresentationEvents)
+	if !slices.ContainsFunc(latest, func(shown sessionevents.PluginView) bool {
+		return shown.Reference == reference && shown.File == file
+	}) {
+		return "", nil, fmt.Errorf("%w: view is not shown in this thread", ErrNotFound)
+	}
+	return thread.SessionID, latest, nil
+}
+
+// State returns what the view last saved for this thread: its own JSON, kept
+// in one file that each save replaces. A view that saved nothing gets null.
+func (s *ViewService) State(ctx context.Context, session, reference, file string) (json.RawMessage, error) {
+	thread, _, err := s.shown(ctx, session, reference, file)
+	if err != nil {
+		return nil, err
+	}
+	state, err := os.ReadFile(filepath.Join(s.states, thread, reference, file))
+	if errors.Is(err, fs.ErrNotExist) {
+		return json.RawMessage("null"), nil
+	}
+	return state, err
+}
+
+func (s *ViewService) SaveState(ctx context.Context, session, reference, file string, state json.RawMessage) error {
+	if !json.Valid(state) {
+		return fmt.Errorf("%w: view state is not JSON", ErrInvalid)
+	}
+	thread, _, err := s.shown(ctx, session, reference, file)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(s.states, thread, reference)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(dir, "."+file+"-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temp.Name())
+	_, err = temp.Write(state)
+	if err = errors.Join(err, temp.Close()); err != nil {
+		return err
+	}
+	return os.Rename(temp.Name(), filepath.Join(dir, file))
 }

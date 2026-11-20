@@ -116,16 +116,31 @@ const canvasBridgeScript = `
 // a question to the user is open in the chat.
 export type AgentState = 'idle' | 'working' | 'asking'
 
+function inlineJSON(value: unknown): string {
+  return JSON.stringify(value ?? null).replace(/[<\u2028\u2029]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)
+}
+
+// A view in a thread keeps one JSON value of its own, such as answers the
+// person has not sent yet, which is there again when the view next opens.
+function viewStateScript(state: unknown): string {
+  return `
+window.viewState = ${inlineJSON(state)}
+window.setViewState = (value) => {
+  window.viewState = value
+  parent.postMessage({ type: 'jaz:artifact-view-state', state: value }, '*')
+}
+`
+}
+
 // A view draws `data` and hears of later changes, and of changes in what the
 // thread's agent is doing. A card on the canvas also saves its data on its
 // item, where the user's undo or the agent can change it.
 function dataScript(data: unknown, agentState: AgentState = 'idle'): string {
-  const saved = JSON.stringify(data ?? null).replace(/[<\u2028\u2029]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)
   return `
 (() => {
   const listeners = new Set()
   const watchers = new Set()
-  window.data = ${saved}
+  window.data = ${inlineJSON(data)}
   window.agentState = '${agentState}'
   window.onAgentState = (listener) => {
     watchers.add(listener)
@@ -256,10 +271,11 @@ export function buildArtifactThemeCSS(darkOverride?: boolean): string {
 export function buildArtifactDocument(
   input: ArtifactInput,
   theme: string,
-  opts: { measureLayout?: boolean; canvas?: boolean; data?: unknown; agentState?: AgentState } = {},
+  opts: { measureLayout?: boolean; canvas?: boolean; data?: unknown; agentState?: AgentState; viewState?: unknown } = {},
 ): string {
   const data = opts.canvas || opts.data !== undefined ? dataScript(opts.data, opts.agentState) : ''
-  const bridge = bridgeScript + (opts.measureLayout ? widgetBridgeScript : '') + (opts.canvas ? canvasBridgeScript : '') + data
+  const viewState = opts.viewState !== undefined ? viewStateScript(opts.viewState) : ''
+  const bridge = bridgeScript + (opts.measureLayout ? widgetBridgeScript : '') + (opts.canvas ? canvasBridgeScript : '') + data + viewState
   if (opts.canvas) {
     theme += canvasCSS
   }

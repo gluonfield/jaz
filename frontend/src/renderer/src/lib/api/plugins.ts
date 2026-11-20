@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
-import { apiFetch, del, get, post } from '@/lib/api/client'
+import { apiFetch, del, get, post, put } from '@/lib/api/client'
 import { readAPIResponse } from '@/lib/api/response'
 import type { PluginView } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
@@ -61,4 +61,25 @@ export function updatePlugin(name: string): Promise<Installed> {
 
 export function openPluginView(session: string, input: { reference: string; file: string; name: string; title: string }): Promise<PluginView> {
   return post<PluginView>(`/v1/sessions/${encodeURIComponent(session)}/plugin-views`, input)
+}
+
+type ShownView = { reference: string; file: string }
+
+const viewStatePath = (session: string, view: ShownView) =>
+  `/v1/sessions/${session}/plugin-views/state?${new URLSearchParams(view)}`
+
+// What a view saved for this thread with setViewState. It is read once each
+// time the view opens, so nothing cached stands in for the saved file. After
+// a failed read the view opens unable to save, so it cannot replace a file it
+// never saw; a server without this endpoint behaves the same way.
+export const pluginViewStateQuery = (session: string, view: ShownView) => queryOptions({
+  queryKey: keys.pluginViewState(session, view.reference, view.file),
+  queryFn: () => get<unknown>(viewStatePath(session, view)),
+  staleTime: Infinity,
+  gcTime: 0,
+  retry: false,
+})
+
+export function savePluginViewState(session: string, view: ShownView, state: unknown): Promise<void> {
+  return put<void>(viewStatePath(session, view), state ?? null)
 }

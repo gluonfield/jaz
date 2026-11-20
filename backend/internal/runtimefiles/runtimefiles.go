@@ -8,10 +8,12 @@ import (
 )
 
 type Layout struct {
-	Root             string
-	Sessions         string
-	Chats            string
-	Canvases         string
+	Root     string
+	Sessions string
+	Chats    string
+	Canvases string
+	// ViewStates holds what each plugin view saved for a thread.
+	ViewStates       string
 	Workspaces       string
 	DefaultWorkspace string
 	// Bots holds each bot's own permanent directory, named after its id.
@@ -35,6 +37,7 @@ func New(root string) Layout {
 		Sessions:          filepath.Join(root, "sessions"),
 		Chats:             filepath.Join(root, "chats"),
 		Canvases:          filepath.Join(root, "canvases"),
+		ViewStates:        filepath.Join(root, "view-state"),
 		Workspaces:        filepath.Join(root, "workspaces"),
 		DefaultWorkspace:  filepath.Join(root, "workspaces", "default"),
 		Bots:              filepath.Join(root, "bots"),

@@ -15,16 +15,18 @@ function toolError(result?: string): string {
   }
 }
 
-export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, result, pending = false, data = artifact?.data, agentState, onSendPrompt, onOpenFile, onOpenView }: {
+export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, result, pending = false, data = artifact?.data, agentState, viewState, onSendPrompt, onOpenFile, onOpenView, onViewState }: {
   artifact?: ArtifactEvent
   args?: string
   result?: string
   pending?: boolean
   data?: unknown
   agentState?: AgentState
+  viewState?: unknown
   onSendPrompt?: (text: string) => void
   onOpenFile?: (href: string) => boolean
   onOpenView?: (name: string, title: string) => void
+  onViewState?: (state: unknown) => void
 }) {
   const files = useFileLinks()
   const openLink = useCallback((href: string) => {
@@ -42,5 +44,5 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
   if (!input) {
     return <div className="rounded-card border border-border bg-surface px-3 py-2 text-sm text-ink-2">Could not render artifact: invalid visualise_show_widget input.</div>
   }
-  return <ArtifactFrame input={input} data={data} agentState={agentState} pending={pending} executionError={artifactErrorForDisplay(toolError(result))} onSendPrompt={onSendPrompt} onOpenLink={openLink} onOpenView={onOpenView} />
+  return <ArtifactFrame input={input} data={data} agentState={agentState} viewState={viewState} pending={pending} executionError={artifactErrorForDisplay(toolError(result))} onSendPrompt={onSendPrompt} onOpenLink={openLink} onOpenView={onOpenView} onViewState={onViewState} />
 })

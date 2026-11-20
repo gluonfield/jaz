@@ -36,7 +36,7 @@ func TestOpeningViewSavesOnlyChangedLatestHTML(t *testing.T) {
 	if _, err := presenter.Present(thread.ID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &caller}); err != nil {
 		t.Fatal(err)
 	}
-	service := NewViewService(store, presenter, packages)
+	service := NewViewService(store, presenter, packages, layout)
 	request := ViewRequest{Reference: caller.Reference, File: caller.File, Name: "quiz", Title: "Quiz"}
 	open := func(html string, count int) sessionevents.PluginView {
 		t.Helper()

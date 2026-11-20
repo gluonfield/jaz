@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -166,9 +167,9 @@ func TestOpenViewKeepsTheSavedCallerPluginFileAndThread(t *testing.T) {
 	if _, err := presenter.Present(thread.ID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &caller}); err != nil {
 		t.Fatal(err)
 	}
-	handler := NewViewHandler(plugins.NewViewService(sessions, presenter, packages))
+	handler := NewViewHandler(plugins.NewViewService(sessions, presenter, packages, layout))
 	mux := http.NewServeMux()
-	mux.Handle("POST /v1/sessions/{session}/plugin-views", handler)
+	mux.HandleFunc("POST /v1/sessions/{session}/plugin-views", handler.Open)
 	call := func(session, reference, file, name string) *httptest.ResponseRecorder {
 		body, _ := json.Marshal(map[string]string{"reference": reference, "file": file, "name": name, "title": "Quiz"})
 		response := httptest.NewRecorder()
@@ -216,5 +217,93 @@ func TestOpenViewKeepsTheSavedCallerPluginFileAndThread(t *testing.T) {
 	}
 	if response := call(thread.ID, "", legacy.File, "quiz"); response.Code != http.StatusBadRequest {
 		t.Fatalf("ownerless view = %d: %s", response.Code, response.Body)
+	}
+}
+
+func TestViewStateIsOneReplacedFilePerShownViewAndThread(t *testing.T) {
+	layout := runtimefiles.New(t.TempDir())
+	sessions, err := sqlitestore.New(layout.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sessions.Close()
+	thread, err := sessions.CreateSession(storage.CreateSession{Slug: "answering"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := sessions.CreateSession(storage.CreateSession{Slug: "elsewhere"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	presenter := &visualize.Service{Store: sessions, Sessions: sessions, Events: sessionevents.New()}
+	shown := sessionevents.PluginView{Reference: "example/status", File: "status.json", Title: "Status", WidgetCode: "<p>Status</p>"}
+	if _, err := presenter.Present(thread.ID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &shown}); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewViewHandler(plugins.NewViewService(sessions, presenter, plugins.New(layout), layout))
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/sessions/{session}/plugin-views/state", handler.State)
+	mux.HandleFunc("PUT /v1/sessions/{session}/plugin-views/state", handler.SaveState)
+	call := func(method, session, reference, file, body string) *httptest.ResponseRecorder {
+		response := httptest.NewRecorder()
+		target := "/v1/sessions/" + session + "/plugin-views/state?reference=" + url.QueryEscape(reference) + "&file=" + url.QueryEscape(file)
+		mux.ServeHTTP(response, httptest.NewRequest(method, target, strings.NewReader(body)))
+		return response
+	}
+	state := func() string {
+		response := call(http.MethodGet, thread.ID, shown.Reference, shown.File, "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("state = %d: %s", response.Code, response.Body)
+		}
+		return strings.TrimSpace(response.Body.String())
+	}
+	if got := state(); got != "null" {
+		t.Fatalf("state before any save = %s", got)
+	}
+	for _, saved := range []string{`{"answers":[[3,"Accept"]]}`, `{"answers":[[3,"Accept"],[7,"Deviate"]]}`} {
+		if response := call(http.MethodPut, thread.ID, shown.Reference, shown.File, saved); response.Code != http.StatusNoContent {
+			t.Fatalf("save = %d: %s", response.Code, response.Body)
+		}
+		if got := state(); got != saved {
+			t.Fatalf("state = %s, want %s", got, saved)
+		}
+	}
+	var files []string
+	if err := filepath.WalkDir(layout.ViewStates, func(path string, entry os.DirEntry, err error) error {
+		if err == nil && !entry.IsDir() {
+			files = append(files, path)
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(layout.ViewStates, thread.ID, "example", "status", "status.json"); len(files) != 1 || files[0] != want {
+		t.Fatalf("two saves left %v, want only %s", files, want)
+	}
+	for name, response := range map[string]*httptest.ResponseRecorder{
+		"another thread reads":  call(http.MethodGet, other.ID, shown.Reference, shown.File, ""),
+		"another thread saves":  call(http.MethodPut, other.ID, shown.Reference, shown.File, `1`),
+		"a view never shown":    call(http.MethodPut, thread.ID, "example/quiz", shown.File, `1`),
+		"a file never followed": call(http.MethodPut, thread.ID, shown.Reference, "other.json", `1`),
+		"a thread that is gone": call(http.MethodGet, "missing-thread", shown.Reference, shown.File, ""),
+	} {
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("%s = %d: %s", name, response.Code, response.Body)
+		}
+	}
+	for name, response := range map[string]*httptest.ResponseRecorder{
+		"a path as the view":    call(http.MethodPut, thread.ID, "../../status", shown.File, `1`),
+		"a path as the file":    call(http.MethodPut, thread.ID, shown.Reference, "../status.json", `1`),
+		"text that is not JSON": call(http.MethodPut, thread.ID, shown.Reference, shown.File, `{"answers":`),
+	} {
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("%s = %d: %s", name, response.Code, response.Body)
+		}
+	}
+	if response := call(http.MethodPut, thread.ID, shown.Reference, shown.File, `"`+strings.Repeat("a", maxViewStateBytes)+`"`); response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized state = %d: %s", response.Code, response.Body)
+	}
+	if got := state(); got != `{"answers":[[3,"Accept"],[7,"Deviate"]]}` {
+		t.Fatalf("refused saves changed the state to %s", got)
 	}
 }

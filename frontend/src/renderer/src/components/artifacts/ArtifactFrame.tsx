@@ -12,6 +12,7 @@ interface ArtifactMessage {
   href?: string
   name?: string
   title?: string
+  state?: unknown
 }
 
 const MIN_HEIGHT = 180
@@ -21,24 +22,27 @@ function clampHeight(height: number): number {
   return Math.max(MIN_HEIGHT, Math.ceil(height))
 }
 
-export function ArtifactFrame({ input, data, agentState, pending = false, executionError = '', onSendPrompt, onOpenLink, onOpenView }: {
+export function ArtifactFrame({ input, data, agentState, viewState, pending = false, executionError = '', onSendPrompt, onOpenLink, onOpenView, onViewState }: {
   input: ArtifactInput
   data?: unknown
   agentState?: AgentState
+  viewState?: unknown
   pending?: boolean
   executionError?: string
   onSendPrompt?: (text: string, files: File[]) => void
   onOpenLink?: (href: string) => boolean
   onOpenView?: (name: string, title: string) => void
+  onViewState?: (state: unknown) => void
 }) {
   const theme = useArtifactThemeCSS()
   const frameRef = useRef<HTMLIFrameElement>(null)
+  const savedViewState = useRef(viewState)
   const [height, setHeight] = useState(280)
   const [error, setError] = useState('')
   const [built] = useState({ data, agentState })
   const doc = useMemo(() => {
     if (executionError) return ''
-    return buildArtifactDocument(input, theme, built)
+    return buildArtifactDocument(input, theme, { ...built, viewState: savedViewState.current })
   }, [built, executionError, input, theme])
   const sendData = useCallback(() => {
     const frame = frameRef.current?.contentWindow
@@ -63,11 +67,15 @@ export function ArtifactFrame({ input, data, agentState, pending = false, execut
       }
       if (message?.type === 'jaz:artifact-link' && message.href && !onOpenLink?.(message.href)) window.open(message.href, '_blank', 'noopener,noreferrer')
       if (message?.type === 'jaz:artifact-open-view' && typeof message.name === 'string' && typeof message.title === 'string') onOpenView?.(message.name, message.title)
+      if (message?.type === 'jaz:artifact-view-state' && onViewState) {
+        savedViewState.current = message.state ?? null
+        onViewState(savedViewState.current)
+      }
       if (message?.type === 'jaz:artifact-send-prompt' && message.text?.trim()) onSendPrompt?.(message.text.trim(), message.files?.filter((file): file is File => file instanceof File) ?? [])
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [onOpenLink, onSendPrompt, onOpenView])
+  }, [onOpenLink, onSendPrompt, onOpenView, onViewState])
 
   const displayError = executionError || error
 
