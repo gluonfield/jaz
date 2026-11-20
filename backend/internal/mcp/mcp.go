@@ -79,7 +79,7 @@ type Manager struct {
 
 	authMu     sync.Mutex
 	authStates map[string]*authorizationPending
-	authFlows  map[string]context.CancelFunc
+	authFlows  map[string]*authorizationPending
 	broker     oauthbroker.Broker
 	oauthGuard integrationoauth.RefreshGuard
 
@@ -414,8 +414,8 @@ func (m *Manager) builtinToolName(server mcpconfig.Server, remote string, used m
 func (m *Manager) Close() {
 	m.cancel()
 	m.authMu.Lock()
-	for _, cancel := range m.authFlows {
-		cancel()
+	for _, pending := range m.authFlows {
+		pending.cancel()
 	}
 	m.authMu.Unlock()
 	m.refreshGate <- struct{}{}

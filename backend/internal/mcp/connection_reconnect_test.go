@@ -25,9 +25,9 @@ import (
 
 type reconnectInventory struct {
 	*sqlitestore.Store
-	server    mcpconfig.Server
-	unrelated mcpconfig.Server
-	fail      *atomic.Bool
+	server     mcpconfig.Server
+	unrelated  mcpconfig.Server
+	beforeSave func(context.Context)
 }
 
 func (s reconnectInventory) ListMCPServers() ([]mcpconfig.Server, error) {
@@ -41,8 +41,8 @@ func (s reconnectInventory) ListMCPServers() ([]mcpconfig.Server, error) {
 }
 
 func (s reconnectInventory) SaveConnection(ctx context.Context, connection integrations.Connection) error {
-	if s.fail != nil {
-		s.fail.Store(true)
+	if s.beforeSave != nil {
+		s.beforeSave(ctx)
 	}
 	return s.Store.SaveConnection(ctx, connection)
 }
@@ -52,10 +52,12 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 		name        string
 		warmed      bool
 		unavailable bool
+		retry       bool
 	}{
 		{name: "restores-tools"},
 		{name: "warmed-existing-client", warmed: true},
 		{name: "target-failure", unavailable: true},
+		{name: "replaces-abandoned-browser", retry: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
@@ -104,6 +106,17 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 			}
 			defer store.Close()
 			inventory := reconnectInventory{Store: store, server: mcpconfig.Server{ID: id, Name: plugin.Name, URL: plugin.RemoteMCP.URL, Enabled: true}, unrelated: mcpconfig.Server{ID: "unrelated", URL: other.URL, Enabled: true}}
+			saving := make(chan struct{})
+			saveAllowed := make(chan struct{})
+			if test.retry {
+				inventory.beforeSave = func(ctx context.Context) {
+					close(saving)
+					select {
+					case <-saveAllowed:
+					case <-ctx.Done():
+					}
+				}
+			}
 			if err := store.SaveConnection(ctx, integrations.Connection{ID: id, Provider: plugin.ID, AccountID: plugin.RemoteMCP.URL}); err != nil {
 				t.Fatal(err)
 			}
@@ -142,11 +155,44 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 			}
 			before := unrelatedRequests.Load()
 			if test.unavailable {
-				inventory.fail = &fail
+				inventory.beforeSave = func(context.Context) { fail.Store(true) }
 			}
-			start, err := connections.NewMCPConnectionConnector(inventory, manager).Connect(ctx, plugin, mcpconfig.OAuthConfig{}, mcpconfig.AuthorizeOptions{RedirectURL: "http://127.0.0.1:5599/callback"})
+			connector := connections.NewMCPConnectionConnector(inventory, manager)
+			opts := mcpconfig.AuthorizeOptions{RedirectURL: "http://127.0.0.1:5599/callback"}
+			start, err := connector.Connect(ctx, plugin, mcpconfig.OAuthConfig{}, opts)
 			if err != nil {
 				t.Fatal(err)
+			}
+			handler := (&server.Server{MCP: manager}).Handler()
+			respond := func(authURL, code string) *httptest.ResponseRecorder {
+				callback := httptest.NewRecorder()
+				query := url.Values{"state": {authorizationStateFromURL(authURL)}, "code": {code}}
+				handler.ServeHTTP(callback, httptest.NewRequest(http.MethodGet, mcpconfig.OAuthCallbackPath+"?"+query.Encode(), nil).WithContext(ctx))
+				return callback
+			}
+			if test.retry {
+				manager.authMu.Lock()
+				oldAttempt := manager.authFlows[inventory.server.TokenID()]
+				manager.authMu.Unlock()
+				replacement, err := connector.Connect(ctx, plugin, mcpconfig.OAuthConfig{}, opts)
+				if err != nil || authorizationStateFromURL(start.AuthURL) == authorizationStateFromURL(replacement.AuthURL) {
+					t.Fatalf("retry did not start a fresh sign-in: %v", err)
+				}
+				select {
+				case <-oldAttempt.done:
+				case <-ctx.Done():
+					t.Fatal("abandoned OAuth attempt did not finish")
+				}
+				if conflict := manager.Authorize(ctx, inventory.server, opts); !strings.Contains(conflict.Error, "already in progress") {
+					t.Fatalf("old attempt cleanup cleared replacement: %+v", conflict)
+				}
+				if late := respond(start.AuthURL, "late-code"); late.Code != http.StatusBadRequest {
+					t.Fatalf("abandoned OAuth callback accepted: status = %d", late.Code)
+				}
+				if grant, ok, err := store.LoadToken(ctx, inventory.server.TokenID()); err != nil || !ok || grant.AccessToken != old.AccessToken {
+					t.Fatal("abandoned callback changed the previous grant")
+				}
+				start = replacement
 			}
 			authorizationURL, err := url.Parse(start.AuthURL)
 			if err != nil {
@@ -155,9 +201,26 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 			if authorizationURL.Query().Get("client_id") != "dynamic-client-id" {
 				t.Fatal("sign-in retained the old OAuth client")
 			}
-			callback := httptest.NewRecorder()
-			query := url.Values{"state": {authorizationURL.Query().Get("state")}, "code": {"approved-code"}}
-			(&server.Server{MCP: manager}).Handler().ServeHTTP(callback, httptest.NewRequest(http.MethodGet, mcpconfig.OAuthCallbackPath+"?"+query.Encode(), nil))
+			var callback *httptest.ResponseRecorder
+			if test.retry {
+				done := make(chan *httptest.ResponseRecorder, 1)
+				go func() {
+					done <- respond(start.AuthURL, "approved-code")
+				}()
+				select {
+				case <-saving:
+				case <-ctx.Done():
+					t.Fatal("replacement callback did not reach connection save")
+				}
+				_, err := connector.Connect(ctx, plugin, mcpconfig.OAuthConfig{}, opts)
+				close(saveAllowed)
+				if err == nil || !strings.Contains(err.Error(), "already in progress") {
+					t.Fatalf("retry accepted after consent: %v", err)
+				}
+				callback = <-done
+			} else {
+				callback = respond(start.AuthURL, "approved-code")
+			}
 			if unrelatedRequests.Load() != before {
 				t.Fatal("sign-in reconciled an unrelated server")
 			}

@@ -329,6 +329,29 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			if status.AuthURL == "" {
 				t.Fatalf("sign-in = %+v", status)
 			}
+			if test.publicBroker {
+				mu.Lock()
+				oldCallback := returnURL
+				mu.Unlock()
+				oldState := authorizationStateFromURL(status.AuthURL)
+				options.ReplacePending = true
+				status = manager.Authorize(ctx, server, options)
+				if status.AuthURL == "" || oldState == authorizationStateFromURL(status.AuthURL) {
+					t.Fatal("brokered public sign-in did not replace its pending callback")
+				}
+				query := url.Values{"state": {oldState}, "code": {"late-code"}}
+				request, err := http.NewRequestWithContext(ctx, http.MethodGet, oldCallback+"?"+query.Encode(), nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if response, err := http.DefaultClient.Do(request); err == nil {
+					response.Body.Close()
+					if response.StatusCode != http.StatusBadRequest {
+						t.Fatalf("superseded loopback callback accepted: status = %d", response.StatusCode)
+					}
+				}
+				options.ReplacePending = false
+			}
 			authURL, _ := url.Parse(status.AuthURL)
 			if test.public {
 				callbackURL := authURL.Query().Get("redirect_uri")
@@ -423,7 +446,7 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			if test.public && (relayStarts > 1 || (relayStarts == 1) != test.publicBroker) {
+			if test.public && (test.publicBroker && relayStarts != 2 || !test.publicBroker && relayStarts != 0) {
 				t.Fatalf("unexpected redirect relay starts for public OAuth: %d", relayStarts)
 			}
 			expectedRegistrations := 0

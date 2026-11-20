@@ -33,6 +33,7 @@ func (c *MCPConnectionConnector) Connect(ctx context.Context, plugin integration
 		return OAuthStart{}, err
 	}
 	server.OAuth = client
+	opts.ReplacePending = true
 	status := c.authorizer.AuthorizeWithHook(ctx, server, opts, func(ctx context.Context) error {
 		return c.store.SaveConnection(ctx, connection)
 	})

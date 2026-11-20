@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
@@ -53,29 +54,39 @@ func (m *Manager) authorize(ctx context.Context, server mcpconfig.Server, opts m
 		pending: pending,
 	}
 	flowCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	pending.cancel = cancel
+	tokenID := server.TokenID()
 	m.authMu.Lock()
 	if m.authFlows == nil {
-		m.authFlows = make(map[string]context.CancelFunc)
+		m.authFlows = make(map[string]*authorizationPending)
 	}
-	if _, exists := m.authFlows[server.TokenID()]; exists {
-		m.authMu.Unlock()
-		cancel()
-		return mcpconfig.ServerStatus{Status: "error", Error: "Sign-in is already in progress for this server", CheckedAt: time.Now().UTC()}
+	if active := m.authFlows[tokenID]; active != nil {
+		if !opts.ReplacePending || !active.claimCallback() {
+			m.authMu.Unlock()
+			cancel()
+			return mcpconfig.ServerStatus{Status: "error", Error: "Sign-in is already in progress for this server", CheckedAt: time.Now().UTC()}
+		}
+		active.cancel()
 	}
-	m.authFlows[server.TokenID()] = cancel
+	m.authFlows[tokenID] = pending
 	m.authMu.Unlock()
 	go func() {
 		defer cancel()
 		status := receiver.authorize(flowCtx, server, redirectURL, onAuthorized)
-		m.setServerStatus(server.ID, status)
 		m.authMu.Lock()
-		delete(m.authFlows, server.TokenID())
+		if m.authFlows[tokenID] == pending {
+			m.setServerStatus(server.ID, status)
+			delete(m.authFlows, tokenID)
+		}
 		m.authMu.Unlock()
 		pending.complete(status)
 	}()
 
 	select {
 	case start := <-started:
+		if err := flowCtx.Err(); err != nil {
+			return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
+		}
 		return mcpconfig.ServerStatus{Status: "needs_auth", Error: "Sign in required", AuthURL: start, CheckedAt: time.Now().UTC()}
 	case <-pending.done:
 		return pending.status
@@ -136,17 +147,19 @@ func (m *Manager) OAuthRedirectURL(localCallback string) string {
 }
 
 type callbackReceiver struct {
-	manager *Manager
-	started chan<- string
-	pending *authorizationPending
+	manager  *Manager
+	started  chan<- string
+	pending  *authorizationPending
 	loopback net.Listener
 }
 
 type authorizationPending struct {
-	result chan mcpconfig.AuthorizationResponse
-	done   chan struct{}
-	status mcpconfig.ServerStatus
-	ctx    context.Context
+	result  chan mcpconfig.AuthorizationResponse
+	done    chan struct{}
+	status  mcpconfig.ServerStatus
+	ctx     context.Context
+	cancel  context.CancelFunc
+	claimed atomic.Bool
 }
 
 func newAuthorizationPending() *authorizationPending {
@@ -159,6 +172,10 @@ func newAuthorizationPending() *authorizationPending {
 func (p *authorizationPending) complete(status mcpconfig.ServerStatus) {
 	p.status = status
 	close(p.done)
+}
+
+func (p *authorizationPending) claimCallback() bool {
+	return p.claimed.CompareAndSwap(false, true)
 }
 
 func (r *callbackReceiver) authorize(ctx context.Context, server mcpconfig.Server, redirectURL string, onAuthorized AuthorizationHook) mcpconfig.ServerStatus {
@@ -213,11 +230,8 @@ func (m *Manager) CompleteAuthorization(ctx context.Context, response mcpconfig.
 }
 
 func (p *authorizationPending) accept(ctx context.Context, response mcpconfig.AuthorizationResponse) error {
-	select {
-	case p.result <- response:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	// The callback claim allows one response, even if the browser closes before exchange completes.
+	p.result <- response
 	select {
 	case <-p.done:
 		status := p.status
@@ -260,7 +274,7 @@ func (m *Manager) takeAuthorizationState(state string) (*authorizationPending, b
 	pending, ok := m.authStates[state]
 	if ok {
 		delete(m.authStates, state)
-		if pending.ctx.Err() != nil {
+		if pending.ctx.Err() != nil || !pending.claimCallback() {
 			return nil, false
 		}
 	}
