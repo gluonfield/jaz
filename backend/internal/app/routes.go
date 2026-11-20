@@ -194,14 +194,15 @@ func appendConnectionRoutes(routes server.Routes, service *connections.Service, 
 	if service == nil {
 		return routes
 	}
-	handler := connectionsapi.NewPluginHandler(service, mcp)
+	callbackBaseURL := oauthCallbackBaseURL(cfg)
+	handler := connectionsapi.NewPluginHandler(service, mcp, callbackBaseURL)
 	routes = append(routes,
 		server.Route{Pattern: "GET /v1/connections/plugins", Handler: httpHandlerFunc(handler.List)},
 		server.Route{Pattern: "GET /v1/connections/plugins/{id}", Handler: httpHandlerFunc(handler.Get)},
 		server.Route{Pattern: "DELETE /v1/connections/accounts/{id}", Handler: httpHandlerFunc(handler.Disconnect)},
 	)
 	if connect != nil || oauth != nil || qr != nil {
-		connectHandler := connectionsapi.NewConnectHandler(connect, oauth, qr, mcp, oauthCallbackBaseURL(cfg))
+		connectHandler := connectionsapi.NewConnectHandler(connect, oauth, qr, mcp, callbackBaseURL)
 		if connect != nil {
 			routes = append(routes, server.Route{Pattern: "POST /v1/connections/plugins/{id}/connect", Handler: httpHandlerFunc(connectHandler.Start)})
 		}

@@ -90,7 +90,7 @@ func TestCallbackReceiverSurfacesAuthURLAndCompletesFromCallback(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for authorization completion")
 	}
-	if _, ok := manager.takeAuthorizationState("state-1", nil); ok {
+	if _, ok := manager.takeAuthorizationState("state-1"); ok {
 		t.Fatal("authorization state was not cleaned up")
 	}
 }

@@ -27,7 +27,7 @@ type Catalog struct {
 }
 
 func NewCatalog(clients map[string]mcpconfig.OAuthConfig) *Catalog {
-	plugins := []integrations.Plugin{
+	catalog := &Catalog{clients: clients, plugins: []integrations.Plugin{
 		calendar.Plugin(),
 		deployink.Plugin(),
 		drive.Plugin(),
@@ -39,22 +39,30 @@ func NewCatalog(clients map[string]mcpconfig.OAuthConfig) *Catalog {
 		telegram.Plugin(),
 		whatsapp.Plugin(),
 		zoom.Plugin(),
-	}
-	for i, plugin := range plugins {
+	}}
+	for i, plugin := range catalog.plugins {
 		if !mcpConnectionPlugin(plugin) || !plugin.RemoteMCP.OAuthSecrets {
 			continue
 		}
-		client := clients[cmp.Or(plugin.Provider.ID, plugin.ID)]
+		client := catalog.MCPOAuthClient(plugin)
 		if !client.UsesLoopback() && (client.ClientID == "" || strings.TrimSpace(os.Getenv(client.ClientSecretEnvVar)) == "") {
-			plugins[i].Implementation.Status = "setup_required"
-			plugins[i].Implementation.Reason = fmt.Sprintf("%s requires a registered OAuth app. Configure a public client ID for local sign-in or ask your Jaz administrator to configure its credentials.", plugin.Name)
+			catalog.plugins[i].Implementation.Status = "setup_required"
+			catalog.plugins[i].Implementation.Reason = fmt.Sprintf("%s requires a registered OAuth app. Configure a public client ID for local sign-in or ask your Jaz administrator to configure its credentials.", plugin.Name)
 		}
 	}
-	return &Catalog{plugins: plugins, clients: clients}
+	return catalog
 }
 
-func (c *Catalog) MCPOAuthClient(provider string) mcpconfig.OAuthConfig {
-	return c.clients[provider]
+func (c *Catalog) MCPOAuthClient(plugin integrations.Plugin) mcpconfig.OAuthConfig {
+	return c.clients[cmp.Or(plugin.Provider.ID, plugin.ID)]
+}
+
+func (c *Catalog) forSignIn(plugin integrations.Plugin, loopbackAllowed bool) integrations.Plugin {
+	if !loopbackAllowed && plugin.Available() && mcpConnectionPlugin(plugin) && c.MCPOAuthClient(plugin).UsesLoopback() {
+		plugin.Implementation.Status = "local_sign_in_required"
+		plugin.Implementation.Reason = fmt.Sprintf("Sign in to %s from the device running the local Jaz backend.", plugin.Name)
+	}
+	return plugin
 }
 
 func (c *Catalog) ListPlugins() []integrations.Plugin {

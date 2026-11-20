@@ -113,7 +113,7 @@ func (r connectionMCPServerReader) connectionBackedServers(ctx context.Context, 
 				URL:       url,
 				Enabled:   true,
 				Source:    mcpconfig.SourceConnection,
-				OAuth:     r.catalog.MCPOAuthClient(providerID),
+				OAuth:     r.catalog.MCPOAuthClient(plugin),
 			})
 			continue
 		}

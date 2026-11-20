@@ -2,42 +2,38 @@ package mcp
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"net"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 )
 
-func (r *callbackReceiver) redirectURL(ctx context.Context, callbackURL string) (string, error) {
-	if !r.pending.loopback {
-		return callbackURL, nil
-	}
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		return "", fmt.Errorf("listen for local OAuth callback: %w", err)
-	}
-	address := listener.Addr().String()
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+mcpconfig.OAuthCallbackPath, func(w http.ResponseWriter, req *http.Request) {
-		if req.Host != address || req.Method != http.MethodGet {
+func (r *callbackReceiver) serveLoopback(ctx context.Context, state string) {
+	address := r.loopback.Addr().String()
+	var received atomic.Bool
+	server := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Host != address || req.Method != http.MethodGet || req.URL.Path != mcpconfig.OAuthCallbackPath {
 			http.NotFound(w, req)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		q := req.URL.Query()
+		if q.Get("state") != state || ctx.Err() != nil || !received.CompareAndSwap(false, true) {
+			http.Error(w, "Invalid or expired authorization state", http.StatusBadRequest)
+			return
+		}
+		_ = r.loopback.Close()
 		response := mcpconfig.AuthorizationResponse{State: q.Get("state"), Code: q.Get("code"), Issuer: q.Get("iss"), Error: q.Get("error")}
-		if err := r.manager.completeAuthorization(req.Context(), response, r.pending); err != nil {
+		if err := r.pending.accept(req.Context(), response); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = io.WriteString(w, `<!doctype html><html lang="en"><title>Connected to Jaz</title><p>Connected. You can close this tab and return to Jaz.</p></html>`)
-	})
-	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	})}
 	context.AfterFunc(ctx, func() {
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -46,7 +42,6 @@ func (r *callbackReceiver) redirectURL(ctx context.Context, callbackURL string) 
 		}
 	})
 	go func() {
-		_ = server.Serve(listener)
+		_ = server.Serve(r.loopback)
 	}()
-	return "http://" + address + mcpconfig.OAuthCallbackPath, nil
 }

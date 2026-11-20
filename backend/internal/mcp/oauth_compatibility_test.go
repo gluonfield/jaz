@@ -220,6 +220,13 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 				switch r.Form.Get("grant_type") {
 				case "authorization_code":
 					exchanges++
+					if test.public {
+						callback, _ := url.Parse(authorizationRedirect)
+						if conn, err := net.DialTimeout("tcp4", callback.Host, time.Second); err == nil {
+							conn.Close()
+							t.Error("loopback callback was still listening during token exchange")
+						}
+					}
 					if r.Form.Get("redirect_uri") != authorizationRedirect || id != authorizationClient || r.Form.Get("code") != issuedCode || oauth2.S256ChallengeFromVerifier(r.Form.Get("code_verifier")) != challenge || r.Form.Get("resource") != provider.URL+"/mcp" {
 						t.Errorf("token request did not match authorization: %v", r.Form)
 						http.Error(w, "invalid_grant", http.StatusBadRequest)
@@ -303,6 +310,18 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 				if err := manager.CompleteAuthorization(ctx, mcpconfig.AuthorizationResponse{State: authURL.Query().Get("state"), Code: "wrong-callback"}); err == nil {
 					t.Fatal("shared callback accepted the loopback state")
 				}
+				bad, err := http.NewRequestWithContext(ctx, http.MethodGet, directCallback.String()+"?state=wrong-state&code=wrong-code", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				response, err := http.DefaultClient.Do(bad)
+				if err != nil {
+					t.Fatal(err)
+				}
+				response.Body.Close()
+				if response.StatusCode != http.StatusBadRequest {
+					t.Fatalf("loopback callback accepted wrong state: status = %d", response.StatusCode)
+				}
 			}
 			if duplicate := manager.Authorize(ctx, server, options); !strings.Contains(duplicate.Error, "already in progress") {
 				t.Fatalf("overlapping sign-in = %+v", duplicate)
@@ -336,20 +355,6 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			res.Body.Close()
 			if res.StatusCode != http.StatusOK || manager.Status(server.ID).Status != "connected" {
 				t.Fatalf("callback status=%d connection=%+v", res.StatusCode, manager.Status(server.ID))
-			}
-			if test.public {
-				directCallback, _ := url.Parse(registeredRedirect)
-				for {
-					conn, err := (&net.Dialer{}).DialContext(ctx, "tcp4", directCallback.Host)
-					if ctx.Err() != nil {
-						t.Fatal("loopback callback stayed open after consent")
-					}
-					if err != nil {
-						break
-					}
-					conn.Close()
-					time.Sleep(10 * time.Millisecond)
-				}
 			}
 			authURL, _ = url.Parse(status.AuthURL)
 			if err := manager.CompleteAuthorization(ctx, mcpconfig.AuthorizationResponse{State: authURL.Query().Get("state"), Code: "replayed-code", Error: ""}); err == nil {

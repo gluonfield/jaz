@@ -1,7 +1,6 @@
 package connections
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -44,6 +43,7 @@ func (s *ConnectService) Start(ctx context.Context, pluginID string, opts StartO
 	if !ok {
 		return ConnectResult{}, fmt.Errorf("connection plugin %q is not available", pluginID)
 	}
+	plugin = s.catalog.forSignIn(plugin, opts.MCP.LoopbackAllowed)
 	authKind := plugin.PrimaryAuthKind()
 	if authKind == "" {
 		return ConnectResult{}, fmt.Errorf("connection plugin %q has no sign-in method", pluginID)
@@ -89,7 +89,7 @@ func (s *ConnectService) Start(ctx context.Context, pluginID string, opts StartO
 		if s.mcpConnection == nil {
 			return ConnectResult{}, fmt.Errorf("connection plugin %q does not support MCP-backed sign-in here", pluginID)
 		}
-		client := s.catalog.MCPOAuthClient(cmp.Or(plugin.Provider.ID, plugin.ID))
+		client := s.catalog.MCPOAuthClient(plugin)
 		start, err := s.mcpConnection.Connect(ctx, plugin, client, opts.MCP)
 		if err != nil {
 			return ConnectResult{}, err
