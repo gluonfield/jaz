@@ -287,7 +287,11 @@ func (s *Store) applySessionEventCompactionPlan(ctx context.Context, plan *sessi
 			previous, previousErr := q.GetSessionEventByCoalesceKey(ctx, eventdb.GetSessionEventByCoalesceKeyParams{
 				ThreadID: plan.id, CoalesceKey: mutation.key,
 			})
-			if previousErr == nil {
+			if previousErr == nil && previous.Seq > mutation.seq {
+				// A later row already holds this key, so this page's rows are stale.
+				mutation.deletes = append(mutation.deletes, sessionEventDelete{seq: mutation.seq, bytes: mutation.latestSize})
+				mutation.snapshot = nil
+			} else if previousErr == nil {
 				previousBytes = sessionEventFieldSize(previous.Content, previous.Acp, previous.Plan, previous.Permission)
 				removePrevious = previous.Seq != mutation.seq
 			} else if !errors.Is(previousErr, sql.ErrNoRows) {

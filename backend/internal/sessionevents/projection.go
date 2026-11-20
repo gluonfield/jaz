@@ -326,6 +326,9 @@ func StorageCoalesceKey(event Event) string {
 	if NeedsProviderSubagentSnapshot(event) {
 		return event.ProjectionKey
 	}
+	if event.Type == TypeAgentSession {
+		return TypeAgentSession
+	}
 	if event.Type == "acp_tool" && event.ACP != nil && event.ACP.ID != "" && len(event.ACP.ToolCalls) > 0 && event.ACP.ToolCalls[0].ID != "" {
 		return "acp_tool:" + event.ACP.ID + ":" + event.ACP.ToolCalls[0].ID
 	}

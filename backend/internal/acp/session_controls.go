@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
@@ -133,9 +134,14 @@ func translateConfigOptions(raw json.RawMessage) []sessionevents.AgentConfigOpti
 }
 
 func (m *Manager) publishAgentSession(job *jobState) {
-	job.mu.RLock()
+	job.mu.Lock()
 	state := job.agentSession
-	job.mu.RUnlock()
+	unchanged := reflect.DeepEqual(state, job.publishedSession)
+	job.publishedSession = state
+	job.mu.Unlock()
+	if unchanged {
+		return
+	}
 	m.recordAndPublishDirect(sessionevents.Event{
 		SessionID: job.ID, Type: sessionevents.TypeAgentSession, AgentSession: &state,
 		ProjectionKey: "agent_session", ProjectionOp: sessionevents.ProjectionReplace,
