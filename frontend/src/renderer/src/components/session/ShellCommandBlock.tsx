@@ -1,7 +1,7 @@
 import { LoaderCircle } from 'lucide-react'
 import { memo } from 'react'
 import type { ACPToolCall } from '@/lib/api/types'
-import { ToolActivityLabel } from '@/components/session/ToolActivityLabel'
+import { ToolActivityReveal } from '@/components/session/ToolActivityReveal'
 import { isRunningToolStatus, toolCallCategory, toolCallPresentation } from './toolPresentation'
 import { normalized } from './TranscriptUtils'
 
@@ -37,7 +37,7 @@ export const ShellCommandBlock = memo(function ShellCommandBlock({
   return (
     <div className="w-full overflow-hidden rounded-card border border-border">
       <div className="bg-surface px-2.5 py-1.5">
-        <div className="flex items-start gap-2">
+        <ToolActivityReveal reveal={reveal && !command.includes('\n')} wide className="flex items-start gap-2">
           <span className="mt-px shrink-0 font-mono text-[12px] leading-relaxed text-ink-3 select-none" aria-hidden>
             $
           </span>
@@ -45,7 +45,7 @@ export const ShellCommandBlock = memo(function ShellCommandBlock({
             title={command || undefined}
             className="min-w-0 flex-1 overflow-x-auto font-mono text-[12px] leading-relaxed whitespace-pre text-ink select-text"
           >
-            <ToolActivityLabel text={command || '(command)'} reveal={reveal && !command.includes('\n')} className="block" />
+            {command || '(command)'}
           </pre>
           {running ? (
             <LoaderCircle className="mt-0.5 size-3 shrink-0 animate-spin text-running" aria-hidden />
@@ -58,7 +58,7 @@ export const ShellCommandBlock = memo(function ShellCommandBlock({
           ) : failed ? (
             <span className="mt-px shrink-0 text-[11px] text-danger">failed</span>
           ) : null}
-        </div>
+        </ToolActivityReveal>
         {description ? <p className="mt-1 pl-3.5 text-[11px] text-ink-3">{description}</p> : null}
       </div>
       {output ? (

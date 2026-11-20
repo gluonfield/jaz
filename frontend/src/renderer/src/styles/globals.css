@@ -759,35 +759,46 @@ img.chat-prose-link-icon {
   color: var(--color-ink-3);
 }
 
-@property --tool-label-edge {
+@property --tool-row-edge {
   syntax: '<length-percentage>';
   inherits: true;
   initial-value: 100%;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  :root:not(.jaz-no-effects) .tool-label-revealing > span {
-    mask-image: linear-gradient(to right, #000 calc(var(--tool-label-edge) - 6px), transparent var(--tool-label-edge));
+  :root:not(.jaz-no-effects) .tool-row-revealing > :first-child {
+    mask-image: linear-gradient(to right, #000 calc(var(--tool-row-edge) - 8px), transparent var(--tool-row-edge));
   }
 
-  :root:not(.jaz-no-effects) .tool-label-revealing::after {
+  :root:not(.jaz-no-effects) .tool-row-revealing::after {
     content: '';
     position: absolute;
     top: 50%;
-    left: min(calc(100% - 1px), var(--tool-label-edge));
-    width: 1px;
-    height: 1em;
+    left: min(calc(100% - 2px), var(--tool-row-edge));
+    width: 2px;
+    height: 13px;
     border-radius: 1px;
-    background: var(--color-ink-2);
+    background: var(--color-ink);
     transform: translateY(-50%);
     pointer-events: none;
-    animation: tool-label-caret 500ms both;
+    animation: tool-row-caret var(--tool-row-duration) both;
+  }
+
+  :root:not(.jaz-no-effects) .tool-row-revealing.tool-row-crossing-gap::after {
+    animation-name: tool-row-caret-gap;
   }
 }
 
-@keyframes tool-label-caret {
+@keyframes tool-row-caret {
   0%, 100% { opacity: 0; }
-  12%, 74% { opacity: 0.85; }
+  12%, 83% { opacity: 0.98; }
+}
+
+@keyframes tool-row-caret-gap {
+  0%, 100% { opacity: 0; }
+  12%, 67% { opacity: 0.98; }
+  76.5% { opacity: 0.22; }
+  86% { opacity: 0.82; }
 }
 
 html,

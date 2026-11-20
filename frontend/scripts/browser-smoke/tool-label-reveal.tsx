@@ -33,7 +33,11 @@ export async function exerciseToolLabelReveal(): Promise<void> {
       </StrictMode>,
     ))
   }
-  const sweeping = () => [...host.querySelectorAll<HTMLElement>('.tool-label-revealing')]
+  const sweeping = () => [...host.querySelectorAll<HTMLElement>('.tool-row-revealing')]
+  const sweepOn = (row: HTMLElement) => row.getAnimations().find((animation) => !(animation instanceof CSSAnimation))
+  const caretOn = (row: HTMLElement) => row.getAnimations({ subtree: true }).find((animation) =>
+    animation.effect instanceof KeyframeEffect && animation.effect.pseudoElement === '::after',
+  )
   const expectStill = (description: string) => {
     if (sweeping().length) throw new Error(`A tool label swept during ${description}`)
   }
@@ -53,26 +57,28 @@ export async function exerciseToolLabelReveal(): Promise<void> {
     const history = [saved, thought(4), first, second]
     render(history)
     const [label] = sweeping()
-    const animations = label?.getAnimations({ subtree: true }) ?? []
-    const sweep = animations.find((animation) => !(animation instanceof CSSAnimation))
-    const caret = animations.find((animation) => animation instanceof CSSAnimation)
-    if (sweeping().length !== 1 || label?.textContent !== 'Ran commands' || !sweep || !caret) {
+    const sweep = label && sweepOn(label)
+    const caret = label && caretOn(label)
+    const content = label?.firstElementChild
+    const spinner = content?.querySelector('.animate-spin')
+    if (sweeping().length !== 1 || label?.textContent !== 'Ran commands' || !sweep || !caret ||
+        !content?.querySelector('.lucide-square-terminal') || !content.querySelector('.lucide-chevron-right') || !spinner?.getAnimations().length) {
       throw new Error('A grouped arrival did not start exactly one heading sweep')
     }
     sweep.pause()
-    sweep.currentTime = 70
+    sweep.currentTime = 140
     const start = parseFloat(getComputedStyle(label, '::after').left)
     const row = label.closest('button')!.getBoundingClientRect()
-    sweep.currentTime = 205
+    sweep.currentTime = 280
     const middle = parseFloat(getComputedStyle(label, '::after').left)
-    sweep.currentTime = 340
+    sweep.currentTime = 420
     const late = parseFloat(getComputedStyle(label, '::after').left)
     if (!(middle - start > late - middle && late > middle)) {
       throw new Error('The caret did not ease toward the end of the label')
     }
-    sweep.currentTime = 205
+    sweep.currentTime = 280
     caret.pause()
-    caret.currentTime = 205
+    caret.currentTime = 280
     if (Number(getComputedStyle(label, '::after').opacity) < 0.5 || getComputedStyle(label.firstElementChild!).maskImage === 'none') {
       throw new Error('The moving caret and text mask were not both visible')
     }
@@ -113,12 +119,42 @@ export async function exerciseToolLabelReveal(): Promise<void> {
     expectStill('Effects off')
 
     setAppearance({ effects: true, inlineShellCommands: true })
+    const inline = command(13, 'inline')
+    render([...quiet, inline], 'reopened')
+    const [shell] = sweeping()
+    const shellSweep = shell && sweepOn(shell)
+    const shellCaret = shell && caretOn(shell)
+    const shellSpinner = shell?.querySelector('.animate-spin')
+    if (!shellSweep || !shellCaret || !shellSpinner || !shell.textContent?.startsWith('$git status --short')) {
+      throw new Error('The inline command did not reveal its prompt and status as one line')
+    }
+    const duration = Number(shellSweep.effect?.getComputedTiming().duration)
+    shellSweep.pause()
+    shellCaret.pause()
+    shellSweep.currentTime = duration * .76
+    shellCaret.currentTime = duration * .76
+    const shellOrigin = shell.getBoundingClientRect().left
+    const tail = shellSpinner.getBoundingClientRect()
+    const crossing = getComputedStyle(shell, '::after')
+    const crossingX = parseFloat(crossing.left)
+    if (shellOrigin + crossingX >= tail.left || Number(crossing.opacity) >= .4) {
+      throw new Error(`The caret did not dim before reaching the far-right spinner: ${crossing.opacity} at ${crossingX}px of ${tail.left - shellOrigin}px over ${duration}ms`)
+    }
+    shellSweep.currentTime = duration * .98
+    if (shellOrigin + parseFloat(getComputedStyle(shell, '::after').left) < tail.right - 2) {
+      throw new Error('The sweep stopped before the far-right spinner')
+    }
+    shellSweep.finish()
+    await nextFrame()
+    await nextFrame()
     const agent = event(14, 'acp_tool', {
       tool_calls: [{ id: 'agent', tool_name: 'codex.spawnAgent', status: 'running' }],
     })
-    render([...quiet, command(13, 'inline'), agent], 'reopened')
-    if (sweeping().map((element) => element.textContent).join() !== 'git status --short,Creating an agent') {
-      throw new Error('New inline command and agent rows did not each sweep their label once')
+    render([...quiet, inline, agent], 'reopened')
+    const [agentRow] = sweeping()
+    if (sweeping().length !== 1 || agentRow?.textContent !== 'Creating an agent' ||
+        !agentRow.querySelector('.lucide-bot') || !agentRow.querySelector('.animate-spin')) {
+      throw new Error('The standalone agent did not reveal its icon, label and spinner together')
     }
   } finally {
     root.unmount()

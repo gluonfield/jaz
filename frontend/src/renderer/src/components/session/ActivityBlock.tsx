@@ -18,7 +18,7 @@ import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
 import { ToolCallDetail } from './ToolCallContent'
-import { ToolActivityLabel } from '@/components/session/ToolActivityLabel'
+import { ToolActivityReveal } from '@/components/session/ToolActivityReveal'
 import {
   hasToolCallDetail,
   isRunningToolStatus,
@@ -63,12 +63,17 @@ const ActivityToolDisclosure = memo(function ActivityToolDisclosure({
         label={(
           <span className="flex min-w-0 items-center gap-2">
             <Icon className="size-3.5 shrink-0" aria-hidden />
-            <ToolActivityLabel text={toolRunLabel(calls)} reveal={reveal} />
+            <span className="truncate">{toolRunLabel(calls)}</span>
           </span>
         )}
         open={effectiveOpen}
         disabled={!expandable}
         onClick={() => setOpen((value) => !value)}
+        wrapContent={(content) => (
+          <ToolActivityReveal reveal={reveal} className="flex min-w-0 items-center gap-1.5">
+            {content}
+          </ToolActivityReveal>
+        )}
         accessory={active && calls.some((call) => isRunningToolStatus(call.status)) ? (
           <LoaderCircle className="size-3 animate-spin text-running" aria-hidden />
         ) : undefined}

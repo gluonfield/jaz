@@ -15,7 +15,7 @@ import {
 import { memo, useState } from 'react'
 import { Collapse } from '@/components/ui/Collapse'
 import { Favicon } from '@/components/ui/Favicon'
-import { ToolActivityLabel } from '@/components/session/ToolActivityLabel'
+import { ToolActivityReveal } from '@/components/session/ToolActivityReveal'
 import type { ACPToolCall } from '@/lib/api/types'
 import {
   isRunningToolStatus,
@@ -131,27 +131,27 @@ export const ToolCallDetail = memo(function ToolCallDetail({
         onClick={() => setOpen((value) => !value)}
         className="group flex min-h-8 w-full min-w-0 items-center gap-1.5 rounded-control text-left transition-colors duration-150 enabled:hover:text-ink disabled:cursor-default"
       >
-        <span className="relative z-[1] flex size-5 shrink-0 items-center justify-center rounded-full bg-bg text-ink-3">
-          <Icon size={12} aria-hidden />
-        </span>
-        <ToolActivityLabel
-          text={presentation.label}
-          reveal={reveal}
-          className={`block min-w-0 truncate text-[13px] ${failed && !presentation.meta ? 'text-danger' : 'text-ink-2'}`}
-        />
-        {expandable ? (
-          <ChevronRight
-            size={12}
-            className={`shrink-0 text-ink-3 transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
-            aria-hidden
-          />
-        ) : null}
-        {presentation.meta ? (
-          <span className={`shrink-0 text-[11.5px] tabular-nums ${failed ? 'text-danger' : 'text-ink-3'}`}>
-            {presentation.meta}
+        <ToolActivityReveal reveal={reveal} className="flex min-w-0 items-center gap-1.5">
+          <span className="relative z-[1] flex size-5 shrink-0 items-center justify-center rounded-full bg-bg text-ink-3">
+            <Icon size={12} aria-hidden />
           </span>
-        ) : null}
-        {running ? <LoaderCircle className="size-3 shrink-0 animate-spin text-running" aria-hidden /> : null}
+          <span className={`min-w-0 truncate text-[13px] ${failed && !presentation.meta ? 'text-danger' : 'text-ink-2'}`}>
+            {presentation.label}
+          </span>
+          {expandable ? (
+            <ChevronRight
+              size={12}
+              className={`shrink-0 text-ink-3 transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
+              aria-hidden
+            />
+          ) : null}
+          {presentation.meta ? (
+            <span className={`shrink-0 text-[11.5px] tabular-nums ${failed ? 'text-danger' : 'text-ink-3'}`}>
+              {presentation.meta}
+            </span>
+          ) : null}
+          {running ? <LoaderCircle className="size-3 shrink-0 animate-spin text-running" aria-hidden /> : null}
+        </ToolActivityReveal>
       </button>
       <Collapse open={open && expandable} className="w-full">
         <HumanToolPreview call={call} category={presentation.category} preview={presentation.preview} />
