@@ -116,8 +116,8 @@ export function DocumentEditor({
     editorProps: {
       attributes: { class: 'file-prose outline-none', spellcheck: 'false', 'aria-label': 'Document' },
       handleDOMEvents: {
-        // Opening a link can hide this document, and the browser follows a
-        // link that is no longer editable, so the click itself is taken.
+        // Opening a file hides this document, and the browser follows a link
+        // that is no longer editable, so the click is cancelled here.
         click: (view, event) => {
           const link = (event.target as HTMLElement).closest('a')
           if (!link || !isPlainClick(event)) return false

@@ -48,14 +48,9 @@ export async function exerciseMarkdownDocuments() {
   document.body.append(host)
   const root = createRoot(host)
   let opens = 0
-  let linked: FileReference | null = null
-  let closeLinked = () => {}
+  let linked: FileReference | undefined
   function View() {
     const [file, setFile] = useState<FileReference | null>(null)
-    // As in the side panel, a linked file opens in a tab of its own and this one is hidden.
-    const [other, setOther] = useState<FileReference | null>(null)
-    linked = other
-    closeLinked = () => setOther(null)
     return <QueryClientProvider client={client}>
       <div className="flex h-full flex-col gap-4 p-4">
         <div className="min-h-0 flex-1 overflow-auto" data-document-chat>
@@ -64,12 +59,12 @@ export async function exerciseMarkdownDocuments() {
             setFile(next)
           }}><MessageMarkdown text={path} /></FileReaderLinkProvider>
         </div>
-        {file ? <div className="h-[55%] min-h-0 border border-border" data-document-reader hidden={Boolean(other)}>
+        {file ? <div className="h-[55%] min-h-0 border border-border" data-document-reader>
           <SidePanelCloseGuard value={(guard) => {
             closeGuard = guard
             return () => { closeGuard = undefined }
           }}>
-            <FileReaderPanel sessionId="documents" fileRef={file} visible onOpenFile={(next) => next.path === path ? setFile(next) : setOther(next)} onClose={() => setFile(null)} />
+            <FileReaderPanel sessionId="documents" fileRef={file} visible onOpenFile={(next) => { linked = next }} onClose={() => setFile(null)} />
           </SidePanelCloseGuard>
         </div> : null}
       </div>
@@ -273,20 +268,21 @@ export async function exerciseMarkdownDocuments() {
         await until(() => Math.abs(heading.getBoundingClientRect().top - scroll.getBoundingClientRect().top) < 48)
         if (location.href !== url || client.getQueryCache().getAll().length !== queries || opens !== opened) throw new Error('Contents navigation changed the document or thread')
       }
-      // A link to another file hides this document before the click has ended.
-      // The app lays out in between, after which the browser follows a hidden link.
-      const layout = () => void document.body.offsetHeight
-      window.addEventListener('click', layout, true)
+      // The side panel opens a linked file in another tab and hides this one, and
+      // the browser follows a hidden link, so the editor has to cancel the click.
+      let followed = false
+      const lastWord = (event: MouseEvent) => {
+        followed = !event.defaultPrevented
+        event.preventDefault()
+      }
+      window.addEventListener('click', lastWord)
       const fileLink = [...reader.querySelectorAll('a[href]')].find((node) => node.getAttribute('href') === 'other-route.md') ?? null
       fileLink?.scrollIntoView({ block: 'center' })
       await new Promise(requestAnimationFrame)
       await click(fileLink)
       await until(() => linked?.path === '/workspace/reports/other-route.md')
-      await new Promise((resolve) => setTimeout(resolve, 200))
-      window.removeEventListener('click', layout, true)
-      if (location.href !== url) throw new Error('A file link navigated the window')
-      closeLinked()
-      await until(() => !reader.hidden)
+      window.removeEventListener('click', lastWord)
+      if (followed) throw new Error('A file link was left for the browser to follow')
       if (saves.length !== saved) throw new Error('Reading a document saved it')
       if (width === 1200) await edit(reader)
       if (reader.scrollWidth > reader.clientWidth || document.documentElement.scrollWidth > innerWidth) throw new Error('Document reader overflows its viewport')
