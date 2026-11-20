@@ -38,6 +38,7 @@ type Header struct {
 type OAuthConfig struct {
 	UseAppScopes       bool   `json:"use_app_scopes,omitempty"`
 	ClientID           string `json:"client_id,omitempty"`
+	PublicClientID     string `json:"-"`
 	ClientSecretEnvVar string `json:"client_secret_env_var,omitempty"`
 	Issuer             string `json:"issuer,omitempty"`
 }
@@ -156,7 +157,8 @@ func Declare(store Store, raw string) error {
 }
 
 type AuthorizeOptions struct {
-	RedirectURL string
+	RedirectURL     string
+	LoopbackAllowed bool
 }
 
 type ServerReader interface {
@@ -285,9 +287,10 @@ func validateStdio(input ServerInput) (ServerInput, error) {
 
 func NormalizeOAuth(oauth OAuthConfig) OAuthConfig {
 	oauth.ClientID = strings.TrimSpace(oauth.ClientID)
+	oauth.PublicClientID = strings.TrimSpace(oauth.PublicClientID)
 	oauth.ClientSecretEnvVar = strings.TrimSpace(oauth.ClientSecretEnvVar)
 	oauth.Issuer = strings.TrimSpace(oauth.Issuer)
-	if oauth.ClientID == "" && oauth.ClientSecretEnvVar == "" && oauth.Issuer == "" {
+	if oauth.ClientID == "" && oauth.PublicClientID == "" && oauth.ClientSecretEnvVar == "" && oauth.Issuer == "" {
 		return OAuthConfig{}
 	}
 	return oauth

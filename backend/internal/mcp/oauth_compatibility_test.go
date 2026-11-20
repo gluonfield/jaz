@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -80,17 +81,21 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 	for _, test := range []struct {
 		name        string
 		static      bool
+		public      bool
 		broker      bool
 		cimd        bool
 		secret      bool
 		oidc        bool
 		formToken   bool
 		cancelFirst bool
+		rejectTools bool
 	}{
 		{name: "preregistered desktop and browser", static: true, broker: true, cimd: true, oidc: true},
 		{name: "preregistered direct callback", static: true},
 		{name: "cancelled preregistered retry", static: true, broker: true, cancelFirst: true},
 		{name: "preregistered confidential", static: true, broker: true, secret: true},
+		{name: "preregistered public loopback", static: true, broker: true, public: true},
+		{name: "public grant rejected by tool discovery", static: true, public: true, rejectTools: true},
 		{name: "advertised CIMD", broker: true, cimd: true},
 		{name: "form encoded token endpoint", static: true, broker: true, formToken: true},
 		{name: "supported DCR"},
@@ -154,6 +159,7 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 					"registration_endpoint":                 provider.URL + "/register",
 					"response_types_supported":              []string{"code"},
 					"code_challenge_methods_supported":      []string{"S256"},
+					"token_endpoint_auth_methods_supported": []string{"client_secret_basic"},
 					"client_id_metadata_document_supported": test.cimd,
 				})
 			})
@@ -195,6 +201,11 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 				mu.Lock()
 				defer mu.Unlock()
 				id := r.Form.Get("client_id")
+				if test.public && (r.Header.Get("Authorization") != "" || r.Form.Has("client_secret")) {
+					t.Error("public client sent confidential credentials")
+					http.Error(w, "invalid_client", http.StatusUnauthorized)
+					return
+				}
 				if test.secret {
 					basicID, secret, ok := r.BasicAuth()
 					if !ok || secret != "registered-secret" {
@@ -211,6 +222,13 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 				switch r.Form.Get("grant_type") {
 				case "authorization_code":
 					exchanges++
+					if test.public {
+						callback, _ := url.Parse(authorizationRedirect)
+						if conn, err := net.DialTimeout("tcp4", callback.Host, time.Second); err == nil {
+							conn.Close()
+							t.Error("loopback callback was still listening during token exchange")
+						}
+					}
 					if r.Form.Get("redirect_uri") != authorizationRedirect || id != authorizationClient || r.Form.Get("code") != issuedCode || oauth2.S256ChallengeFromVerifier(r.Form.Get("code_verifier")) != challenge || r.Form.Get("resource") != provider.URL+"/mcp" {
 						t.Errorf("token request did not match authorization: %v", r.Form)
 						http.Error(w, "invalid_grant", http.StatusBadRequest)
@@ -238,10 +256,29 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 					http.Error(w, "sign in required", http.StatusUnauthorized)
 					return
 				}
+				if test.rejectTools && r.Method == http.MethodPost {
+					body, err := io.ReadAll(r.Body)
+					r.Body.Close()
+					var message struct{ Method string }
+					if err != nil || json.Unmarshal(body, &message) != nil {
+						t.Error("could not read MCP method")
+						http.Error(w, "invalid request", http.StatusBadRequest)
+						return
+					}
+					if message.Method == "tools/list" {
+						http.Error(w, "grant refused", http.StatusForbidden)
+						return
+					}
+					r.Body = io.NopCloser(strings.NewReader(string(body)))
+				}
 				remote.ServeHTTP(w, r)
 			})
 			server := mcpconfig.Server{ID: "compatibility", URL: provider.URL + "/mcp", Enabled: true}
-			if test.static {
+			if test.public {
+				server.OAuth.PublicClientID = clientID
+				server.OAuth.ClientSecretEnvVar = "MCP_UNUSED_SECRET"
+				t.Setenv(server.OAuth.ClientSecretEnvVar, "must-not-send")
+			} else if test.static {
 				server.OAuth.ClientID = clientID
 			}
 			if test.secret {
@@ -268,9 +305,40 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			}
 			mu.Unlock()
 			options := mcpconfig.AuthorizeOptions{RedirectURL: localCallback}
+			if test.public {
+				if remote := manager.Authorize(ctx, server, options); !strings.Contains(remote.Error, "requires a local Jaz backend") {
+					t.Fatalf("public sign-in from a remote request = %+v", remote)
+				}
+				options.LoopbackAllowed = true
+			}
 			status := manager.Authorize(ctx, server, options)
 			if status.AuthURL == "" {
 				t.Fatalf("sign-in = %+v", status)
+			}
+			authURL, _ := url.Parse(status.AuthURL)
+			if test.public {
+				directCallback, err := url.Parse(authURL.Query().Get("redirect_uri"))
+				if err != nil || directCallback.Scheme != "http" || directCallback.Hostname() != "127.0.0.1" || directCallback.Port() == "" || directCallback.Path != mcpconfig.OAuthCallbackPath || directCallback.String() == localCallback {
+					t.Fatalf("public sign-in callback = %q, %v", directCallback, err)
+				}
+				mu.Lock()
+				registeredRedirect = directCallback.String()
+				mu.Unlock()
+				if err := manager.CompleteAuthorization(ctx, mcpconfig.AuthorizationResponse{State: authURL.Query().Get("state"), Code: "wrong-callback"}); err == nil {
+					t.Fatal("shared callback accepted the loopback state")
+				}
+				bad, err := http.NewRequestWithContext(ctx, http.MethodGet, directCallback.String()+"?state=wrong-state&code=wrong-code", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				response, err := http.DefaultClient.Do(bad)
+				if err != nil {
+					t.Fatal(err)
+				}
+				response.Body.Close()
+				if response.StatusCode != http.StatusBadRequest {
+					t.Fatalf("loopback callback accepted wrong state: status = %d", response.StatusCode)
+				}
 			}
 			if duplicate := manager.Authorize(ctx, server, options); !strings.Contains(duplicate.Error, "already in progress") {
 				t.Fatalf("overlapping sign-in = %+v", duplicate)
@@ -301,11 +369,19 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if test.rejectTools {
+				body, err := io.ReadAll(res.Body)
+				res.Body.Close()
+				if res.StatusCode != http.StatusBadRequest || err != nil || !strings.Contains(string(body), "MCP server rejected the new OAuth grant") {
+					t.Fatalf("rejected grant callback = %d %s, %v", res.StatusCode, body, err)
+				}
+				return
+			}
 			res.Body.Close()
 			if res.StatusCode != http.StatusOK || manager.Status(server.ID).Status != "connected" {
 				t.Fatalf("callback status=%d connection=%+v", res.StatusCode, manager.Status(server.ID))
 			}
-			authURL, _ := url.Parse(status.AuthURL)
+			authURL, _ = url.Parse(status.AuthURL)
 			if err := manager.CompleteAuthorization(ctx, mcpconfig.AuthorizationResponse{State: authURL.Query().Get("state"), Code: "replayed-code", Error: ""}); err == nil {
 				t.Fatal("accepted replayed callback")
 			}
@@ -315,6 +391,9 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			}
 			token.Expiry = time.Now().Add(-time.Hour)
 			store.SaveToken(ctx, server.TokenID(), token)
+			if test.public {
+				server.OAuth.ClientID = "new-confidential-client"
+			}
 			source, err := newOAuthHandler(server, store, provider.Client(), nil).TokenSource(ctx)
 			if err != nil {
 				t.Fatal(err)
@@ -325,6 +404,9 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			}
 			mu.Lock()
 			defer mu.Unlock()
+			if test.public && returnURL != "" {
+				t.Fatal("public sign-in contacted the redirect broker")
+			}
 			expectedRegistrations := 0
 			if !test.static && !test.cimd {
 				expectedRegistrations = 1

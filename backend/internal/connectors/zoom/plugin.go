@@ -12,7 +12,7 @@ func Plugin() integrations.Plugin {
 		Examples:       []string{"Find the recording of my last customer meeting", "Summarise the action items from yesterday’s Zoom calls"},
 		Provider:       integrations.Provider{ID: ProviderID, Name: "Zoom"},
 		Category:       "meetings",
-		Icon:           integrations.PluginIcon{Kind: integrations.PluginIconKindInitials, Value: "Z"},
+		Icon:           integrations.PluginIcon{Kind: integrations.PluginIconKindAsset, Value: ProviderID},
 		Auth:           []integrations.AuthOption{{Kind: integrations.AuthKindMCPConnection}},
 		Capabilities:   []integrations.Capability{integrations.CapabilityAct, integrations.CapabilityMCP},
 		RemoteMCP:      &integrations.RemoteMCP{URL: "https://mcp.zoom.us/mcp/zoom/streamable", Status: "available", OAuthSecrets: true},

@@ -77,6 +77,13 @@ func ClientBaseURL(config Config) string {
 	return u.String()
 }
 
+func (config Config) PublicBaseURL() string {
+	if strings.TrimSpace(config.PublicURL) == "" {
+		return ""
+	}
+	return ClientBaseURL(config)
+}
+
 func localURL(addr, path string) string {
 	host := strings.TrimSpace(addr)
 	if strings.HasPrefix(host, ":") {

@@ -65,6 +65,7 @@ export function AvailablePluginRow({
   onOpen: () => void
   onConnect: () => void
 }) {
+  const description = plugin.implementation.reason ?? plugin.description
   return (
     <div className="flex items-center gap-3 rounded-card px-3 py-2 transition-colors duration-150 hover:bg-surface">
       <button
@@ -75,9 +76,9 @@ export function AvailablePluginRow({
         <PluginIcon plugin={plugin} compact />
         <span className="min-w-0">
           <span className="block truncate text-[13px] font-medium text-ink">{plugin.name}</span>
-          {plugin.description ? (
-            <span className="block truncate text-[12px] leading-5 text-ink-3" title={plugin.description}>
-              {plugin.description}
+          {description ? (
+            <span className="block truncate text-[12px] leading-5 text-ink-3" title={description}>
+              {description}
             </span>
           ) : null}
         </span>

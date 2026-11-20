@@ -7,7 +7,7 @@ import (
 )
 
 func TestCatalogIncludesGmail(t *testing.T) {
-	catalog := NewCatalog()
+	catalog := NewCatalog(nil)
 	for _, id := range []string{"deployink", "gmail", "google_calendar", "slack", "telegram", "whatsapp"} {
 		plugin, ok := catalog.Plugin(id)
 		if !ok || plugin.ID != id {

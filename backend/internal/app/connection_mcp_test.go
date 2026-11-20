@@ -42,7 +42,7 @@ func (f fakeConnectionTokenStore) SaveToken(_ context.Context, id string, token 
 }
 
 func connectionReader(store fakeConnectionTokenStore) connectionMCPServerReader {
-	return connectionMCPServerReader{store: store, catalog: connections.NewCatalog()}
+	return connectionMCPServerReader{store: store, catalog: connections.NewCatalog(nil)}
 }
 
 func TestConnectionMCPServerReaderInjectsTokenBackedSlack(t *testing.T) {
@@ -172,7 +172,7 @@ func TestZoomConnectionRetainsClientAndManualServers(t *testing.T) {
 		connections: map[string][]integrations.Connection{"zoom": {{ID: "zoom:account", Provider: "zoom", AccountName: "Zoom"}}},
 	})
 	client := mcpconfig.OAuthConfig{ClientID: "registered-client", ClientSecretEnvVar: "ZOOM_TEST_SECRET", UseAppScopes: true}
-	reader.clients = map[string]mcpconfig.OAuthConfig{"zoom": client}
+	reader.catalog = connections.NewCatalog(map[string]mcpconfig.OAuthConfig{"zoom": client})
 	servers, err := reader.ListMCPServers()
 	if err != nil {
 		t.Fatal(err)

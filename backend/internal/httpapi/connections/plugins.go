@@ -7,19 +7,21 @@ import (
 
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/httpapi"
+	mcpapi "github.com/wins/jaz/backend/internal/httpapi/mcp"
 )
 
 type PluginHandler struct {
 	Service *connections.Service
 	MCP     MCPRefresher
+	callbackBaseURL string
 }
 
-func NewPluginHandler(service *connections.Service, mcp MCPRefresher) PluginHandler {
-	return PluginHandler{Service: service, MCP: mcp}
+func NewPluginHandler(service *connections.Service, mcp MCPRefresher, callbackBaseURL string) PluginHandler {
+	return PluginHandler{Service: service, MCP: mcp, callbackBaseURL: callbackBaseURL}
 }
 
 func (h PluginHandler) List(w http.ResponseWriter, r *http.Request) {
-	plugins, err := h.Service.ListPlugins(r.Context())
+	plugins, err := h.Service.ListPlugins(r.Context(), mcpapi.AuthorizeOptions(r, h.callbackBaseURL).LoopbackAllowed)
 	if err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, err)
 		return
@@ -29,7 +31,7 @@ func (h PluginHandler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h PluginHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(r.PathValue("id"))
-	plugin, ok, err := h.Service.Plugin(r.Context(), id)
+	plugin, ok, err := h.Service.Plugin(r.Context(), id, mcpapi.AuthorizeOptions(r, h.callbackBaseURL).LoopbackAllowed)
 	if err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, err)
 		return

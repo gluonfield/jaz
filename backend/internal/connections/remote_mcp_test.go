@@ -76,7 +76,7 @@ func TestRemoteMCPConnectorReportsConnectionFromMCPServer(t *testing.T) {
 	}}}
 	service := NewService(catalog, &serviceStore{}, NewRemoteMCPConnector(store))
 
-	plugin, ok, err := service.Plugin(context.Background(), plugin.ID)
+	plugin, ok, err := service.Plugin(context.Background(), plugin.ID, false)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
 	}
@@ -100,7 +100,7 @@ func TestRemoteMCPConnectorReportsDisabledServerAsNotConnected(t *testing.T) {
 	}}}
 	service := NewService(catalog, &serviceStore{}, NewRemoteMCPConnector(store))
 
-	plugin, ok, err := service.Plugin(context.Background(), plugin.ID)
+	plugin, ok, err := service.Plugin(context.Background(), plugin.ID, false)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
 	}

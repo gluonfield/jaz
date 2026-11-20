@@ -1,6 +1,9 @@
 package connections
 
 import (
+	"cmp"
+	"fmt"
+	"os"
 	"slices"
 	"strings"
 
@@ -14,15 +17,17 @@ import (
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/internal/connectors/zoom"
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 type Catalog struct {
 	plugins []integrations.Plugin
+	clients map[string]mcpconfig.OAuthConfig
 }
 
-func NewCatalog() *Catalog {
-	return &Catalog{plugins: []integrations.Plugin{
+func NewCatalog(clients map[string]mcpconfig.OAuthConfig) *Catalog {
+	return &Catalog{clients: clients, plugins: []integrations.Plugin{
 		calendar.Plugin(),
 		deployink.Plugin(),
 		drive.Plugin(),
@@ -35,6 +40,28 @@ func NewCatalog() *Catalog {
 		whatsapp.Plugin(),
 		zoom.Plugin(),
 	}}
+}
+
+func (c *Catalog) MCPOAuthClient(plugin integrations.Plugin) mcpconfig.OAuthConfig {
+	return c.clients[cmp.Or(plugin.Provider.ID, plugin.ID)]
+}
+
+func (c *Catalog) forSignIn(plugin integrations.Plugin, loopbackAllowed bool) integrations.Plugin {
+	if !plugin.Available() || !mcpConnectionPlugin(plugin) {
+		return plugin
+	}
+	client := c.MCPOAuthClient(plugin)
+	switch {
+	case client.UsesLoopback():
+		if !loopbackAllowed {
+			plugin.Implementation.Status = "local_sign_in_required"
+			plugin.Implementation.Reason = fmt.Sprintf("Sign in to %s from the device running the local Jaz backend.", plugin.Name)
+		}
+	case plugin.RemoteMCP.OAuthSecrets && (client.ClientID == "" || strings.TrimSpace(os.Getenv(client.ClientSecretEnvVar)) == ""):
+		plugin.Implementation.Status = "setup_required"
+		plugin.Implementation.Reason = fmt.Sprintf("%s requires a registered OAuth app. Configure a public client ID for local sign-in or ask your Jaz administrator to configure its credentials.", plugin.Name)
+	}
+	return plugin
 }
 
 func (c *Catalog) ListPlugins() []integrations.Plugin {

@@ -65,6 +65,9 @@ function Hero({
               {plugin.description}
             </p>
           ) : null}
+          {plugin.implementation.reason ? (
+            <p className="mt-1.5 max-w-[58ch] text-[14px] leading-6 text-ink-2">{plugin.implementation.reason}</p>
+          ) : null}
         </div>
         <ConnectButton plugin={plugin} connecting={connecting} onConnect={onConnect} />
       </div>

@@ -10,12 +10,13 @@ import (
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 func TestServiceReportsGmailConnectionState(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{}, nil)
-	plugin, ok, err := service.Plugin(context.Background(), gmailconnector.ProviderID)
+	service := NewService(NewCatalog(nil), &serviceStore{}, nil)
+	plugin, ok, err := service.Plugin(context.Background(), gmailconnector.ProviderID, false)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
 	}
@@ -25,7 +26,7 @@ func TestServiceReportsGmailConnectionState(t *testing.T) {
 }
 
 func TestServiceReturnsSavedGmailAccounts(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{
+	service := NewService(NewCatalog(nil), &serviceStore{
 		connections: []integrations.Connection{{
 			ID:          gmailconnector.OAuthConnectionID,
 			Provider:    gmailconnector.ProviderID,
@@ -35,7 +36,7 @@ func TestServiceReturnsSavedGmailAccounts(t *testing.T) {
 			Scopes:      []string{gmailconnector.ScopeModify},
 		}},
 	}, nil)
-	plugin, ok, err := service.Plugin(context.Background(), gmailconnector.ProviderID)
+	plugin, ok, err := service.Plugin(context.Background(), gmailconnector.ProviderID, false)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
 	}
@@ -48,7 +49,7 @@ func TestServiceReturnsSavedGmailAccounts(t *testing.T) {
 }
 
 func TestServiceAddsAgentRelevantPaths(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{
+	service := NewService(NewCatalog(nil), &serviceStore{
 		connections: []integrations.Connection{{
 			ID:        "telegram:personal",
 			Provider:  telegram.ProviderID,
@@ -104,7 +105,8 @@ func TestServiceAddsAgentRelevantPaths(t *testing.T) {
 }
 
 func TestServiceOffersOnlyUnconnectedProvidersToAgents(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{
+	catalog := NewCatalog(map[string]mcpconfig.OAuthConfig{"zoom": {PublicClientID: "registered-public"}})
+	service := NewService(catalog, &serviceStore{
 		connections: []integrations.Connection{{ID: gmailconnector.OAuthConnectionID, Provider: gmailconnector.ProviderID, AccountID: "augustinas@example.com"}},
 	}, nil)
 	connections, err := service.AgentConnections(context.Background())
@@ -123,11 +125,14 @@ func TestServiceOffersOnlyUnconnectedProvidersToAgents(t *testing.T) {
 	if _, ok := offered[gmailconnector.ProviderID]; ok {
 		t.Fatalf("connected Gmail is offered: %#v", connections)
 	}
+	if _, ok := offered["zoom"]; ok {
+		t.Fatalf("local-only Zoom is offered without a local client: %#v", connections)
+	}
 }
 
 func TestServiceLeavesChatPluginConnectabilityInCatalog(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{}, nil)
-	plugin, ok, err := service.Plugin(context.Background(), whatsapp.ProviderID)
+	service := NewService(NewCatalog(nil), &serviceStore{}, nil)
+	plugin, ok, err := service.Plugin(context.Background(), whatsapp.ProviderID, false)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
 	}
@@ -137,8 +142,8 @@ func TestServiceLeavesChatPluginConnectabilityInCatalog(t *testing.T) {
 }
 
 func TestServiceListsChatSessionPluginsInCatalog(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{}, nil)
-	plugins, err := service.ListPlugins(context.Background())
+	service := NewService(NewCatalog(nil), &serviceStore{}, nil)
+	plugins, err := service.ListPlugins(context.Background(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,14 +169,14 @@ func TestServiceDoesNotRewriteSessionPluginStatus(t *testing.T) {
 	}}}
 	service := NewService(catalog, &serviceStore{}, nil)
 
-	plugin, ok, err := service.Plugin(context.Background(), "matrix")
+	plugin, ok, err := service.Plugin(context.Background(), "matrix", false)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
 	}
 	if plugin.Implementation.Status != "available" {
 		t.Fatalf("implementation = %#v", plugin.Implementation)
 	}
-	plugins, err := service.ListPlugins(context.Background())
+	plugins, err := service.ListPlugins(context.Background(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +194,7 @@ func TestServiceDisconnectAccount(t *testing.T) {
 		}},
 	}
 	disconnecter := &fakeSessionDisconnecter{provider: gmailconnector.ProviderID}
-	service := NewService(NewCatalog(), &store, nil, disconnecter)
+	service := NewService(NewCatalog(nil), &store, nil, disconnecter)
 	result, err := service.DisconnectAccount(context.Background(), " gmail:personal ")
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +221,7 @@ func TestServiceDisconnectConnectionBackedMCPRefreshesTools(t *testing.T) {
 			Alias:    "acme",
 		}},
 	}
-	service := NewService(NewCatalog(), &store, nil)
+	service := NewService(NewCatalog(nil), &store, nil)
 
 	result, err := service.DisconnectAccount(context.Background(), "slack:acme-u1")
 	if err != nil {
@@ -237,7 +242,7 @@ func TestServiceDisconnectCleanupSurvivesCanceledRequest(t *testing.T) {
 	disconnecter := &fakeSessionDisconnecter{provider: telegram.ProviderID}
 	ctx, cancel := context.WithCancel(context.Background())
 	store.afterDelete = cancel
-	service := NewService(NewCatalog(), &store, nil, disconnecter)
+	service := NewService(NewCatalog(nil), &store, nil, disconnecter)
 
 	if _, err := service.DisconnectAccount(ctx, "telegram:personal"); err != nil {
 		t.Fatal(err)

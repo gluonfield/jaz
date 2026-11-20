@@ -52,11 +52,11 @@ func NewService(catalog *Catalog, store Store, remoteMCP *RemoteMCPConnector, di
 	return service
 }
 
-func (s *Service) ListPlugins(ctx context.Context) ([]integrations.Plugin, error) {
+func (s *Service) ListPlugins(ctx context.Context, loopbackAllowed bool) ([]integrations.Plugin, error) {
 	plugins := s.catalog.ListPlugins()
 	out := make([]integrations.Plugin, 0, len(plugins))
 	for i := range plugins {
-		plugin, err := s.withConnection(ctx, plugins[i])
+		plugin, err := s.withConnection(ctx, s.catalog.forSignIn(plugins[i], loopbackAllowed))
 		if err != nil {
 			return nil, err
 		}
@@ -65,12 +65,12 @@ func (s *Service) ListPlugins(ctx context.Context) ([]integrations.Plugin, error
 	return out, nil
 }
 
-func (s *Service) Plugin(ctx context.Context, id string) (integrations.Plugin, bool, error) {
+func (s *Service) Plugin(ctx context.Context, id string, loopbackAllowed bool) (integrations.Plugin, bool, error) {
 	plugin, ok := s.catalog.Plugin(id)
 	if !ok {
 		return integrations.Plugin{}, false, nil
 	}
-	plugin, err := s.withConnection(ctx, plugin)
+	plugin, err := s.withConnection(ctx, s.catalog.forSignIn(plugin, loopbackAllowed))
 	return plugin, true, err
 }
 
@@ -116,7 +116,7 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) (DisconnectR
 // AgentConnections lists every connected account, and one entry without an
 // account for each available provider that has none, so agents can offer it.
 func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, error) {
-	plugins, err := s.ListPlugins(ctx)
+	plugins, err := s.ListPlugins(ctx, false)
 	if err != nil {
 		return nil, err
 	}

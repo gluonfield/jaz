@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 )
@@ -121,7 +122,7 @@ func (s *Server) saveRuntimeKeyUpdates(updates map[string]string) error {
 }
 
 func (s *Server) providerKeySetupAllowed(r *http.Request) bool {
-	return strings.TrimSpace(s.AuthKey) != "" || loopbackRequest(r)
+	return strings.TrimSpace(s.AuthKey) != "" || httpapi.LoopbackRequest(r)
 }
 
 func (s *Server) providerKeyConfigured(id string) bool {

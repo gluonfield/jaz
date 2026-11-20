@@ -81,6 +81,7 @@ type PluginIcon struct {
 type Implementation struct {
 	Status string `json:"status"`
 	Owner  string `json:"owner"`
+	Reason string `json:"reason,omitempty"`
 }
 
 type AuthOption struct {
