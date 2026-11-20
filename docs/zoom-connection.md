@@ -6,6 +6,8 @@ Zoom requires manual OAuth client registration for custom MCP clients. Create a 
 
 ## Local desktop
 
+Open Connections on the device running the local Jaz backend. A remote Jaz client shows **Local Sign In Required** for a public client.
+
 1. Enable **Use Public Client OAuth** in the Zoom app’s credentials. Register `http://127.0.0.1:5299/v1/mcp/oauth/callback` for the public client. Zoom allows any loopback port for this registered path.
 2. Set `JAZ_ZOOM_OAUTH_PUBLIC_CLIENT_ID` in the local Jaz backend’s environment to the public client ID. Restart Jaz, select Zoom → Connect, and approve Zoom’s consent screen.
 

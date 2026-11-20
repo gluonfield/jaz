@@ -8,11 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wins/jaz/backend/internal/httpapi"
 	mcpapi "github.com/wins/jaz/backend/internal/httpapi/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpsession"
-	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -48,7 +46,7 @@ func (s *Server) handleListMCPServers(w http.ResponseWriter, r *http.Request) {
 	for _, server := range servers {
 		out = append(out, s.mcpServerView(server))
 	}
-	redirectURL := mcpOAuthOptions(r, s.ServerConfig).RedirectURL
+	redirectURL := mcpapi.AuthorizeOptions(r, s.ServerConfig.PublicBaseURL()).RedirectURL
 	if runtime, ok := s.MCP.(interface{ OAuthRedirectURL(string) string }); ok {
 		redirectURL = runtime.OAuthRedirectURL(redirectURL)
 	}
@@ -184,7 +182,7 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 		// by the request context (cancelled if the client disconnects).
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 		defer cancel()
-		writeJSON(w, http.StatusOK, s.MCP.Authorize(ctx, server, mcpOAuthOptions(r, s.ServerConfig)))
+		writeJSON(w, http.StatusOK, s.MCP.Authorize(ctx, server, mcpapi.AuthorizeOptions(r, s.ServerConfig.PublicBaseURL())))
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 	}
@@ -207,14 +205,6 @@ func (s *Server) handleMCPOAuthCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeMCPOAuthCallbackHTML(w, http.StatusOK, "Connected", "You can close this tab and return to Jaz.", true)
-}
-
-func mcpOAuthOptions(r *http.Request, cfg serverconfig.Config) mcpconfig.AuthorizeOptions {
-	base := ""
-	if strings.TrimSpace(cfg.PublicURL) != "" {
-		base = serverconfig.ClientBaseURL(cfg)
-	}
-	return mcpapi.AuthorizeOptions(r, base)
 }
 
 func writeMCPOAuthCallbackHTML(w http.ResponseWriter, status int, title, message string, autoClose bool) {

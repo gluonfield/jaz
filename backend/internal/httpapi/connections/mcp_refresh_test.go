@@ -2,8 +2,10 @@ package connections
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -47,7 +49,7 @@ func TestPluginDisconnectRefreshesMCPWhenConnectionBackedMCPChanges(t *testing.T
 		AccountName: deployink.ProviderName,
 	}}
 	service := core.NewService(core.NewCatalog(nil), &store, nil)
-	handler := NewPluginHandler(service, refresher)
+	handler := NewPluginHandler(service, refresher, "")
 	req := httptest.NewRequest(http.MethodDelete, "/v1/connections/accounts/deployink:mcp-deployink-com", nil)
 	req.SetPathValue("id", "deployink:mcp-deployink-com")
 	res := httptest.NewRecorder()
@@ -58,6 +60,63 @@ func TestPluginDisconnectRefreshesMCPWhenConnectionBackedMCPChanges(t *testing.T
 		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 	}
 	refresher.wait(t)
+}
+
+func TestZoomPublicSignInUsesSameAvailabilityAsCatalogue(t *testing.T) {
+	catalog := core.NewCatalog(map[string]mcpconfig.OAuthConfig{"zoom": {PublicClientID: "registered-public"}})
+	store := &connectionStore{connection: integrations.Connection{ID: "zoom:account", Provider: "zoom"}}
+	service := core.NewService(catalog, store, nil)
+	for _, test := range []struct {
+		name       string
+		peer       string
+		forwarded  string
+		publicURL  string
+		canConnect bool
+	}{
+		{name: "direct local", peer: "127.0.0.1:1234", canConnect: true},
+		{name: "remote", peer: "192.0.2.1:1234"},
+		{name: "forwarded", peer: "127.0.0.1:1234", forwarded: "client.example"},
+		{name: "public backend", peer: "127.0.0.1:1234", publicURL: "https://jaz.example"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			authorizer := &mcpConnectionAuthorizer{authURL: "https://zoom.us/oauth/authorize"}
+			connectService := core.NewConnectService(catalog, nil, nil, nil, core.NewMCPConnectionConnector(store, authorizer))
+			plugins := NewPluginHandler(service, nil, test.publicURL)
+			connect := NewConnectHandler(connectService, nil, nil, nil, test.publicURL)
+			request := func(method, path string, handler http.HandlerFunc) *httptest.ResponseRecorder {
+				req := httptest.NewRequest(method, "http://127.0.0.1:5299/v1/connections/plugins"+path, nil)
+				req.RemoteAddr = test.peer
+				req.Header.Set("X-Forwarded-Host", test.forwarded)
+				req.SetPathValue("id", "zoom")
+				res := httptest.NewRecorder()
+				handler.ServeHTTP(res, req)
+				return res
+			}
+			var listing struct {
+				Plugins []integrations.Plugin `json:"plugins"`
+			}
+			listed := request(http.MethodGet, "", plugins.List)
+			if err := json.Unmarshal(listed.Body.Bytes(), &listing); err != nil || listed.Code != http.StatusOK {
+				t.Fatalf("catalogue response = %d, %v", listed.Code, err)
+			}
+			var detail integrations.Plugin
+			details := request(http.MethodGet, "/zoom", plugins.Get)
+			if err := json.Unmarshal(details.Body.Bytes(), &detail); err != nil || details.Code != http.StatusOK || detail.Connection == nil || detail.Connection.Status != integrations.PluginConnectionStatusConnected {
+				t.Fatalf("Zoom detail = %d, %v", details.Code, err)
+			}
+			zoom := slices.IndexFunc(listing.Plugins, func(plugin integrations.Plugin) bool { return plugin.ID == "zoom" })
+			if zoom < 0 || listing.Plugins[zoom].Implementation != detail.Implementation {
+				t.Fatal("Zoom list and detail availability differ")
+			}
+			start := request(http.MethodPost, "/zoom/connect", connect.Start)
+			if detail.Available() != test.canConnect || (start.Code == http.StatusOK) != test.canConnect || (authorizer.onAuthorized != nil) != test.canConnect {
+				t.Fatalf("Zoom availability = %v, start status = %d", detail.Implementation, start.Code)
+			}
+			if !test.canConnect && (start.Code != http.StatusBadRequest || detail.Implementation.Reason == "" || !strings.Contains(start.Body.String(), detail.Implementation.Reason)) {
+				t.Fatalf("Zoom start did not return its unavailable reason: %d %s", start.Code, start.Body.String())
+			}
+		})
+	}
 }
 
 type testMCPRefresher struct {

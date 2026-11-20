@@ -116,7 +116,7 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) (DisconnectR
 // AgentConnections lists every connected account, and one entry without an
 // account for each available provider that has none, so agents can offer it.
 func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, error) {
-	plugins, err := s.ListPlugins(ctx, true)
+	plugins, err := s.ListPlugins(ctx, false)
 	if err != nil {
 		return nil, err
 	}

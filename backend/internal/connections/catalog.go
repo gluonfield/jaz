@@ -27,7 +27,7 @@ type Catalog struct {
 }
 
 func NewCatalog(clients map[string]mcpconfig.OAuthConfig) *Catalog {
-	catalog := &Catalog{clients: clients, plugins: []integrations.Plugin{
+	return &Catalog{clients: clients, plugins: []integrations.Plugin{
 		calendar.Plugin(),
 		deployink.Plugin(),
 		drive.Plugin(),
@@ -40,17 +40,6 @@ func NewCatalog(clients map[string]mcpconfig.OAuthConfig) *Catalog {
 		whatsapp.Plugin(),
 		zoom.Plugin(),
 	}}
-	for i, plugin := range catalog.plugins {
-		if !mcpConnectionPlugin(plugin) || !plugin.RemoteMCP.OAuthSecrets {
-			continue
-		}
-		client := catalog.MCPOAuthClient(plugin)
-		if !client.UsesLoopback() && (client.ClientID == "" || strings.TrimSpace(os.Getenv(client.ClientSecretEnvVar)) == "") {
-			catalog.plugins[i].Implementation.Status = "setup_required"
-			catalog.plugins[i].Implementation.Reason = fmt.Sprintf("%s requires a registered OAuth app. Configure a public client ID for local sign-in or ask your Jaz administrator to configure its credentials.", plugin.Name)
-		}
-	}
-	return catalog
 }
 
 func (c *Catalog) MCPOAuthClient(plugin integrations.Plugin) mcpconfig.OAuthConfig {
@@ -58,9 +47,19 @@ func (c *Catalog) MCPOAuthClient(plugin integrations.Plugin) mcpconfig.OAuthConf
 }
 
 func (c *Catalog) forSignIn(plugin integrations.Plugin, loopbackAllowed bool) integrations.Plugin {
-	if !loopbackAllowed && plugin.Available() && mcpConnectionPlugin(plugin) && c.MCPOAuthClient(plugin).UsesLoopback() {
-		plugin.Implementation.Status = "local_sign_in_required"
-		plugin.Implementation.Reason = fmt.Sprintf("Sign in to %s from the device running the local Jaz backend.", plugin.Name)
+	if !plugin.Available() || !mcpConnectionPlugin(plugin) {
+		return plugin
+	}
+	client := c.MCPOAuthClient(plugin)
+	switch {
+	case client.UsesLoopback():
+		if !loopbackAllowed {
+			plugin.Implementation.Status = "local_sign_in_required"
+			plugin.Implementation.Reason = fmt.Sprintf("Sign in to %s from the device running the local Jaz backend.", plugin.Name)
+		}
+	case plugin.RemoteMCP.OAuthSecrets && (client.ClientID == "" || strings.TrimSpace(os.Getenv(client.ClientSecretEnvVar)) == ""):
+		plugin.Implementation.Status = "setup_required"
+		plugin.Implementation.Reason = fmt.Sprintf("%s requires a registered OAuth app. Configure a public client ID for local sign-in or ask your Jaz administrator to configure its credentials.", plugin.Name)
 	}
 	return plugin
 }

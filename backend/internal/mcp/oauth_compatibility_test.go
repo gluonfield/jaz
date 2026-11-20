@@ -88,12 +88,14 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 		oidc        bool
 		formToken   bool
 		cancelFirst bool
+		rejectTools bool
 	}{
 		{name: "preregistered desktop and browser", static: true, broker: true, cimd: true, oidc: true},
 		{name: "preregistered direct callback", static: true},
 		{name: "cancelled preregistered retry", static: true, broker: true, cancelFirst: true},
 		{name: "preregistered confidential", static: true, broker: true, secret: true},
 		{name: "preregistered public loopback", static: true, broker: true, public: true},
+		{name: "public grant rejected by tool discovery", static: true, public: true, rejectTools: true},
 		{name: "advertised CIMD", broker: true, cimd: true},
 		{name: "form encoded token endpoint", static: true, broker: true, formToken: true},
 		{name: "supported DCR"},
@@ -254,6 +256,21 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 					http.Error(w, "sign in required", http.StatusUnauthorized)
 					return
 				}
+				if test.rejectTools && r.Method == http.MethodPost {
+					body, err := io.ReadAll(r.Body)
+					r.Body.Close()
+					var message struct{ Method string }
+					if err != nil || json.Unmarshal(body, &message) != nil {
+						t.Error("could not read MCP method")
+						http.Error(w, "invalid request", http.StatusBadRequest)
+						return
+					}
+					if message.Method == "tools/list" {
+						http.Error(w, "grant refused", http.StatusForbidden)
+						return
+					}
+					r.Body = io.NopCloser(strings.NewReader(string(body)))
+				}
 				remote.ServeHTTP(w, r)
 			})
 			server := mcpconfig.Server{ID: "compatibility", URL: provider.URL + "/mcp", Enabled: true}
@@ -352,6 +369,14 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if test.rejectTools {
+				body, err := io.ReadAll(res.Body)
+				res.Body.Close()
+				if res.StatusCode != http.StatusBadRequest || err != nil || !strings.Contains(string(body), "MCP server rejected the new OAuth grant") {
+					t.Fatalf("rejected grant callback = %d %s, %v", res.StatusCode, body, err)
+				}
+				return
+			}
 			res.Body.Close()
 			if res.StatusCode != http.StatusOK || manager.Status(server.ID).Status != "connected" {
 				t.Fatalf("callback status=%d connection=%+v", res.StatusCode, manager.Status(server.ID))
@@ -366,6 +391,9 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			}
 			token.Expiry = time.Now().Add(-time.Hour)
 			store.SaveToken(ctx, server.TokenID(), token)
+			if test.public {
+				server.OAuth.ClientID = "new-confidential-client"
+			}
 			source, err := newOAuthHandler(server, store, provider.Client(), nil).TokenSource(ctx)
 			if err != nil {
 				t.Fatal(err)

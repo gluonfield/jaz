@@ -173,12 +173,12 @@ func TestZoomConnectionRequiresDeploymentClient(t *testing.T) {
 	authorizer := &fakeMCPConnectionAuthorizer{authURL: "https://zoom.us/oauth/authorize"}
 	store := &mcpConnectionStore{}
 	connector := NewMCPConnectionConnector(store, authorizer)
-	client := mcpconfig.OAuthConfig{ClientID: "registered-client", ClientSecretEnvVar: "ZOOM_TEST_SECRET", UseAppScopes: true}
+	client := mcpconfig.OAuthConfig{ClientID: "registered-client", PublicClientID: "registered-public", ClientSecretEnvVar: "ZOOM_TEST_SECRET", UseAppScopes: true}
 	clients := map[string]mcpconfig.OAuthConfig{"zoom": client}
 	t.Setenv(client.ClientSecretEnvVar, "")
 	for _, config := range []map[string]mcpconfig.OAuthConfig{nil, clients} {
 		catalog := NewCatalog(config)
-		plugin, ok, err := NewService(catalog, &serviceStore{}, nil).Plugin(ctx, "zoom")
+		plugin, ok, err := NewService(catalog, &serviceStore{}, nil).Plugin(ctx, "zoom", false)
 		if err != nil || !ok || plugin.Available() || plugin.Implementation.Reason == "" {
 			t.Fatalf("unconfigured Zoom plugin = %#v, %v, %v", plugin, ok, err)
 		}
@@ -193,7 +193,7 @@ func TestZoomConnectionRequiresDeploymentClient(t *testing.T) {
 
 	t.Setenv(client.ClientSecretEnvVar, "registered-secret")
 	catalog := NewCatalog(clients)
-	plugin, ok, err := NewService(catalog, &serviceStore{}, nil).Plugin(ctx, "zoom")
+	plugin, ok, err := NewService(catalog, &serviceStore{}, nil).Plugin(ctx, "zoom", false)
 	if err != nil || !ok || !plugin.Available() || plugin.Implementation.Reason != "" {
 		t.Fatalf("configured Zoom plugin = %#v, %v, %v", plugin, ok, err)
 	}
@@ -214,7 +214,7 @@ func TestZoomConnectionRequiresDeploymentClient(t *testing.T) {
 
 	t.Setenv(client.ClientSecretEnvVar, "")
 	accounts := NewService(NewCatalog(clients), &serviceStore{connections: store.connections}, nil)
-	plugin, ok, err = accounts.Plugin(ctx, "zoom")
+	plugin, ok, err = accounts.Plugin(ctx, "zoom", false)
 	if err != nil || !ok || plugin.Available() || plugin.Connection == nil || plugin.Connection.Status != integrations.PluginConnectionStatusConnected || len(plugin.Connection.Accounts) != 1 {
 		t.Fatalf("saved Zoom account after configuration was lost = %#v, %v, %v", plugin, ok, err)
 	}

@@ -120,6 +120,9 @@ func (h *oauthHandler) Authorize(ctx context.Context, req *http.Request, resp *h
 		h.markAuthorizationRequired()
 		return errNeedsAuthorization
 	}
+	if h.didAuthorize() {
+		return errors.New("MCP server rejected the new OAuth grant")
+	}
 
 	tok, err := h.runAuthorization(ctx, resp)
 	if err != nil {
@@ -353,6 +356,9 @@ func (h *oauthHandler) refreshClientConfig(_ context.Context, token integrationo
 		AuthStyle:    oauth2.AuthStyle(token.AuthStyle),
 		RedirectURL:  token.RedirectURL,
 		Scopes:       token.Scopes,
+	}
+	if token.ClientID != "" && token.ClientID == h.oauth.PublicClientID && token.ClientID != h.oauth.ClientID {
+		return config, nil
 	}
 	if id := h.oauth.StaticClientID(); id != "" {
 		if token.ClientID != "" && token.ClientID != id {

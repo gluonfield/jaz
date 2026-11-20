@@ -183,18 +183,11 @@ func usageRoutes(usage usagecore.Service) server.Routes {
 	}
 }
 
-func oauthCallbackBaseURL(cfg serverconfig.Config) string {
-	if strings.TrimSpace(cfg.PublicURL) == "" {
-		return ""
-	}
-	return serverconfig.ClientBaseURL(cfg)
-}
-
 func appendConnectionRoutes(routes server.Routes, service *connections.Service, connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService, mcp connectionsapi.MCPRefresher, cfg serverconfig.Config) server.Routes {
 	if service == nil {
 		return routes
 	}
-	callbackBaseURL := oauthCallbackBaseURL(cfg)
+	callbackBaseURL := cfg.PublicBaseURL()
 	handler := connectionsapi.NewPluginHandler(service, mcp, callbackBaseURL)
 	routes = append(routes,
 		server.Route{Pattern: "GET /v1/connections/plugins", Handler: httpHandlerFunc(handler.List)},
