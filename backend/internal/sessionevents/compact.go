@@ -251,6 +251,9 @@ func keepsACPTextStreamOpen(text Event, event Event) bool {
 	if text.ACP == nil || event.SessionID != text.SessionID {
 		return false
 	}
+	if event.Type == TypeAgentSession || event.Type == TypeAgentTask {
+		return true
+	}
 	if event.ACP != nil && event.ACP.ID == text.ACP.ID {
 		if event.Type == "acp_tool" {
 			return true

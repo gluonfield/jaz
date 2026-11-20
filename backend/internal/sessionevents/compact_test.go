@@ -367,6 +367,23 @@ func TestCompactTranscriptDoesNotSplitWordsAcrossCoalescedToolGap(t *testing.T) 
 	}
 }
 
+func TestCompactTranscriptDoesNotSplitMessagesAcrossSessionState(t *testing.T) {
+	for _, state := range []Event{
+		{Seq: 2, SessionID: "thread", Type: TypeAgentSession, AgentSession: &AgentSession{}, At: compactAt(2)},
+		{Seq: 2, SessionID: "thread", Type: TypeAgentTask, AgentTask: &AgentTask{ID: "task"}, At: compactAt(2)},
+	} {
+		got := CompactTranscript([]Event{
+			compactACPTextRun(1, TypeACPMessage, "Hi there", "message:m1", compactACPState("thread", "running")),
+			state,
+			compactACPTextRun(3, TypeACPMessage, ". What do you need?", "message:m1", compactACPState("thread", "idle")),
+		})
+
+		if len(got) != 2 || got[0].Type != state.Type || got[1].Content != "Hi there. What do you need?" {
+			t.Fatalf("%s split the message: %#v", state.Type, got)
+		}
+	}
+}
+
 func TestCompactTranscriptKeepsTaskSurfaceAsTextBoundary(t *testing.T) {
 	planACP := compactACPState("thread", "running")
 	planACP.Plan = []PlanEntry{{Content: "Inspect files", Status: "completed"}}
