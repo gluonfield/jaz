@@ -7,7 +7,7 @@ import { Bubble } from '@/components/session/Bubble'
 import { ACPEventHeader } from './ACPEventHeader'
 import { PresentedContent } from './PresentedContent'
 import { AssistantMarkdown } from './AssistantMarkdown'
-import { MCPAppFrame } from '@/components/apps/MCPAppFrame'
+import { MCPAppResult } from '@/components/apps/MCPAppResult'
 import { SessionErrorNotice, type SessionErrorAction } from './SessionErrorNotice'
 import { SystemEventRow } from './SystemEventRow'
 import { TaskChecklist } from './TaskChecklist'
@@ -56,7 +56,7 @@ export const LiveEvent = memo(function LiveEvent({
       ) : null}
       {event.acp?.thought ? <ThinkingBlock text={event.acp.thought} findActive={findActive} /> : null}
       {artifact ? <PresentedContent presentation={artifact} onSendPrompt={onArtifactPrompt} /> : null}
-      {mcpApp ? <MCPAppFrame app={mcpApp} call={mcpApp} inline active /> : null}
+      {mcpApp ? <MCPAppResult app={mcpApp} /> : null}
       {event.content && !artifact ? (
         <AssistantMarkdown text={event.content} createdAt={event.at} showCopy={showCopy} />
       ) : null}
