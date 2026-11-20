@@ -1,8 +1,3 @@
-Changes since v0.0.277:
+Changes since v0.0.279:
 
-- Plugin pages can hand the files a person picked to the new-thread composer together with the prompt text.
-- Adds a managed Zoom connection and normalizes managed MCP OAuth configuration when it loads.
-- Antigravity sign-in offers Google Account and Google Cloud project sign-in. Live Google Cloud sign-in and billing remain unverified.
-- Shows a Tab keycap after a composer suggestion.
-- Adds custom composer glow colours to appearance settings.
-- Renders agent activity as a single transcript row with simpler failure labels, and reveals new tool labels with an eased sweep.
+- A plugin's view in a thread can keep its own state, such as answers picked but not yet sent, and finds it again when the thread is reopened. Each view of a thread has one small file on the Jaz server.
