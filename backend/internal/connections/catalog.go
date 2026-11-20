@@ -45,9 +45,9 @@ func NewCatalog(clients map[string]mcpconfig.OAuthConfig) *Catalog {
 			continue
 		}
 		client := clients[cmp.Or(plugin.Provider.ID, plugin.ID)]
-		if client.ClientID == "" || strings.TrimSpace(os.Getenv(client.ClientSecretEnvVar)) == "" {
+		if !client.UsesLoopback() && (client.ClientID == "" || strings.TrimSpace(os.Getenv(client.ClientSecretEnvVar)) == "") {
 			plugins[i].Implementation.Status = "setup_required"
-			plugins[i].Implementation.Reason = fmt.Sprintf("%s requires a registered OAuth app. Ask your Jaz administrator to configure its client ID and secret.", plugin.Name)
+			plugins[i].Implementation.Reason = fmt.Sprintf("%s requires a registered OAuth app. Configure a public client ID for local sign-in or ask your Jaz administrator to configure its credentials.", plugin.Name)
 		}
 	}
 	return &Catalog{plugins: plugins, clients: clients}

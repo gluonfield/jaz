@@ -95,7 +95,7 @@ func TestConnectServiceStartsDeployinkAsConnectionBackedMCP(t *testing.T) {
 	service := NewConnectService(NewCatalog(nil), nil, nil, nil, NewMCPConnectionConnector(store, authorizer))
 
 	result, err := service.Start(context.Background(), deployink.ProviderID, StartOptions{
-		MCPRedirectURL: "https://jaz.example.com/v1/mcp/oauth/callback",
+		MCP: mcpconfig.AuthorizeOptions{RedirectURL: "https://jaz.example.com/v1/mcp/oauth/callback"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -198,7 +198,7 @@ func TestZoomConnectionRequiresDeploymentClient(t *testing.T) {
 		t.Fatalf("configured Zoom plugin = %#v, %v, %v", plugin, ok, err)
 	}
 	service := NewConnectService(catalog, nil, nil, nil, connector)
-	result, err := service.Start(ctx, "zoom", StartOptions{MCPRedirectURL: "https://jaz.example/callback"})
+	result, err := service.Start(ctx, "zoom", StartOptions{MCP: mcpconfig.AuthorizeOptions{RedirectURL: "https://jaz.example/callback"}})
 	if err != nil {
 		t.Fatal(err)
 	}

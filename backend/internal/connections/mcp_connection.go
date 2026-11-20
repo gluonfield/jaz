@@ -27,15 +27,13 @@ func NewMCPConnectionConnector(store MCPConnectionStore, authorizer MCPConnectio
 	return &MCPConnectionConnector{store: store, authorizer: authorizer}
 }
 
-func (c *MCPConnectionConnector) Connect(ctx context.Context, plugin integrations.Plugin, client mcpconfig.OAuthConfig, redirectURL string) (OAuthStart, error) {
+func (c *MCPConnectionConnector) Connect(ctx context.Context, plugin integrations.Plugin, client mcpconfig.OAuthConfig, opts mcpconfig.AuthorizeOptions) (OAuthStart, error) {
 	connection, server, err := mcpConnectionSpec(plugin)
 	if err != nil {
 		return OAuthStart{}, err
 	}
 	server.OAuth = client
-	status := c.authorizer.AuthorizeWithHook(ctx, server, mcpconfig.AuthorizeOptions{
-		RedirectURL: redirectURL,
-	}, func(ctx context.Context) error {
+	status := c.authorizer.AuthorizeWithHook(ctx, server, opts, func(ctx context.Context) error {
 		return c.store.SaveConnection(ctx, connection)
 	})
 	if status.AuthURL != "" {

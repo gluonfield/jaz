@@ -279,7 +279,7 @@ func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, chall
 }
 
 func (h *oauthHandler) authorizationClientConfig(ctx context.Context, asm *oauthex.AuthServerMeta) (oauthClientConfig, error) {
-	if h.oauth.ClientID != "" {
+	if id := h.oauth.StaticClientID(); id != "" {
 		if h.oauth.Issuer != "" && h.oauth.Issuer != asm.Issuer {
 			return oauthClientConfig{}, errors.New("configured OAuth client issuer does not match the server's authorization server; update the OAuth client settings")
 		}
@@ -287,18 +287,10 @@ func (h *oauthHandler) authorizationClientConfig(ctx context.Context, asm *oauth
 		if err != nil {
 			return oauthClientConfig{}, err
 		}
-		if ok && saved.Issuer != "" && saved.Issuer != asm.Issuer && saved.ClientID == h.oauth.ClientID {
+		if ok && saved.Issuer != "" && saved.Issuer != asm.Issuer && saved.ClientID == id {
 			return oauthClientConfig{}, errors.New("authorization server changed; register a client with the new issuer and update the OAuth client settings")
 		}
-		clientSecret, err := h.staticClientSecret()
-		if err != nil {
-			return oauthClientConfig{}, err
-		}
-		authStyle := oauth2.AuthStyleInParams
-		if clientSecret != "" {
-			authStyle = oauth2.AuthStyleAutoDetect
-		}
-		return oauthClientConfig{clientID: h.oauth.ClientID, clientSecret: clientSecret, authStyle: authStyle, static: true, useBroker: h.broker.URL != ""}, nil
+		return h.staticClientConfig(id)
 	}
 	if asm.ClientIDMetadataDocumentSupported && h.broker.URL != "" {
 		return oauthClientConfig{clientID: h.broker.ClientMetadataURL(), authStyle: oauth2.AuthStyleInParams, useBroker: true}, nil
@@ -352,27 +344,8 @@ func (h *oauthHandler) clientSetupError(reason string) error {
 	return fmt.Errorf("%s; register an OAuth client with callback %s and S256 PKCE, then configure an OAuth client ID in Settings → MCP → Edit → Advanced → OAuth (set a client secret environment variable only if required)", reason, h.broker.RedirectURL(h.redirectURL))
 }
 
-func (h *oauthHandler) refreshClientConfig(ctx context.Context, token integrationoauth.Token) (integrationoauth.ClientConfig, error) {
-	if h.oauth.ClientID != "" {
-		clientSecret, err := h.staticClientSecret()
-		if err != nil {
-			return integrationoauth.ClientConfig{}, err
-		}
-		authStyle := oauth2.AuthStyleInParams
-		if clientSecret != "" {
-			authStyle = oauth2.AuthStyleAutoDetect
-		}
-		return integrationoauth.ClientConfig{
-			ClientID:     h.oauth.ClientID,
-			ClientSecret: clientSecret,
-			AuthURL:      token.AuthURL,
-			TokenURL:     token.TokenURL,
-			AuthStyle:    authStyle,
-			RedirectURL:  token.RedirectURL,
-			Scopes:       token.Scopes,
-		}, nil
-	}
-	return integrationoauth.ClientConfig{
+func (h *oauthHandler) refreshClientConfig(_ context.Context, token integrationoauth.Token) (integrationoauth.ClientConfig, error) {
+	config := integrationoauth.ClientConfig{
 		ClientID:     token.ClientID,
 		ClientSecret: token.ClientSecret,
 		AuthURL:      token.AuthURL,
@@ -380,18 +353,36 @@ func (h *oauthHandler) refreshClientConfig(ctx context.Context, token integratio
 		AuthStyle:    oauth2.AuthStyle(token.AuthStyle),
 		RedirectURL:  token.RedirectURL,
 		Scopes:       token.Scopes,
-	}, nil
+	}
+	if id := h.oauth.StaticClientID(); id != "" {
+		if token.ClientID != "" && token.ClientID != id {
+			return integrationoauth.ClientConfig{}, errors.New("OAuth client changed; sign in again")
+		}
+		client, err := h.staticClientConfig(id)
+		if err != nil {
+			return integrationoauth.ClientConfig{}, err
+		}
+		config.ClientID = client.clientID
+		config.ClientSecret = client.clientSecret
+		config.AuthStyle = client.authStyle
+	}
+	return config, nil
 }
 
-func (h *oauthHandler) staticClientSecret() (string, error) {
-	if h.oauth.ClientSecretEnvVar == "" {
-		return "", nil
+func (h *oauthHandler) staticClientConfig(id string) (oauthClientConfig, error) {
+	client := oauthClientConfig{clientID: id, authStyle: oauth2.AuthStyleInParams, static: true}
+	if h.oauth.UsesLoopback() {
+		return client, nil
 	}
-	clientSecret := os.Getenv(h.oauth.ClientSecretEnvVar)
-	if clientSecret == "" {
-		return "", fmt.Errorf("environment variable %s is not set", h.oauth.ClientSecretEnvVar)
+	client.useBroker = h.broker.URL != ""
+	if env := h.oauth.ClientSecretEnvVar; env != "" {
+		client.clientSecret = os.Getenv(env)
+		if client.clientSecret == "" {
+			return oauthClientConfig{}, fmt.Errorf("environment variable %s is not set", env)
+		}
+		client.authStyle = oauth2.AuthStyleAutoDetect
 	}
-	return clientSecret, nil
+	return client, nil
 }
 
 func dynamicClientSecret(client oauthClientConfig) string {

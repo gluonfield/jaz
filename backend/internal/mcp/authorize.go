@@ -36,12 +36,17 @@ func (m *Manager) authorize(ctx context.Context, server mcpconfig.Server, opts m
 	if m.tokens == nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: "token store is not configured", CheckedAt: time.Now().UTC()}
 	}
+	loopback := server.OAuth.UsesLoopback()
+	if loopback && !opts.LoopbackAllowed {
+		return mcpconfig.ServerStatus{Status: "error", Error: "Public OAuth sign-in requires a local Jaz backend on this device", CheckedAt: time.Now().UTC()}
+	}
 	redirectURL := strings.TrimSpace(opts.RedirectURL)
-	if redirectURL == "" {
+	if redirectURL == "" && !loopback {
 		return mcpconfig.ServerStatus{Status: "error", Error: "OAuth redirect URL is not configured", CheckedAt: time.Now().UTC()}
 	}
 	started := make(chan string, 1)
 	pending := newAuthorizationPending()
+	pending.loopback = loopback
 	receiver := &callbackReceiver{
 		manager: m,
 		started: started,
@@ -61,7 +66,13 @@ func (m *Manager) authorize(ctx context.Context, server mcpconfig.Server, opts m
 	m.authMu.Unlock()
 	go func() {
 		defer cancel()
-		status := m.runAuthorize(flowCtx, server, redirectURL, receiver.fetch, onAuthorized)
+		var status mcpconfig.ServerStatus
+		callbackURL, err := receiver.redirectURL(flowCtx, redirectURL)
+		if err != nil {
+			status = mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
+		} else {
+			status = m.runAuthorize(flowCtx, server, callbackURL, receiver.fetch, onAuthorized)
+		}
 		m.setServerStatus(server.ID, status)
 		m.authMu.Lock()
 		delete(m.authFlows, server.TokenID())
@@ -137,10 +148,11 @@ type callbackReceiver struct {
 }
 
 type authorizationPending struct {
-	result chan mcpconfig.AuthorizationResponse
-	done   chan struct{}
-	status mcpconfig.ServerStatus
-	ctx    context.Context
+	result   chan mcpconfig.AuthorizationResponse
+	done     chan struct{}
+	status   mcpconfig.ServerStatus
+	ctx      context.Context
+	loopback bool
 }
 
 func newAuthorizationPending() *authorizationPending {
@@ -179,10 +191,14 @@ func (r *callbackReceiver) fetch(ctx context.Context, authURL string) (mcpconfig
 }
 
 func (m *Manager) CompleteAuthorization(ctx context.Context, response mcpconfig.AuthorizationResponse) error {
+	return m.completeAuthorization(ctx, response, nil)
+}
+
+func (m *Manager) completeAuthorization(ctx context.Context, response mcpconfig.AuthorizationResponse, loopback *authorizationPending) error {
 	if response.State == "" {
 		return errors.New("authorization state is required")
 	}
-	pending, ok := m.takeAuthorizationState(response.State)
+	pending, ok := m.takeAuthorizationState(response.State, loopback)
 	if !ok {
 		return errors.New("authorization state expired or was not started by Jaz")
 	}
@@ -227,11 +243,14 @@ func (m *Manager) unregisterAuthorizationState(state string, pending *authorizat
 	}
 }
 
-func (m *Manager) takeAuthorizationState(state string) (*authorizationPending, bool) {
+func (m *Manager) takeAuthorizationState(state string, loopback *authorizationPending) (*authorizationPending, bool) {
 	m.authMu.Lock()
 	defer m.authMu.Unlock()
 	pending, ok := m.authStates[state]
 	if ok {
+		if pending.loopback && pending != loopback || !pending.loopback && loopback != nil {
+			return nil, false
+		}
 		delete(m.authStates, state)
 		if pending.ctx.Err() != nil {
 			return nil, false

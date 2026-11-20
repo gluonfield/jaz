@@ -185,7 +185,8 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 		defer cancel()
 		writeJSON(w, http.StatusOK, s.MCP.Authorize(ctx, server, mcpconfig.AuthorizeOptions{
-			RedirectURL: mcpOAuthCallbackURL(r, s.ServerConfig),
+			RedirectURL:     mcpOAuthCallbackURL(r, s.ServerConfig),
+			LoopbackAllowed: strings.TrimSpace(s.ServerConfig.PublicURL) == "" && httpapi.TrustedLocalRequest(r),
 		}))
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))

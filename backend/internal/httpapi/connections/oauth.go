@@ -39,7 +39,10 @@ func NewConnectHandler(connect *connections.ConnectService, oauth *connections.O
 func (h ConnectHandler) Start(w http.ResponseWriter, r *http.Request) {
 	result, err := h.Connect.Start(r.Context(), r.PathValue("id"), connections.StartOptions{
 		OAuthRedirectURL: h.callbackURL(r),
-		MCPRedirectURL:   h.mcpCallbackURL(r),
+		MCP: mcpconfig.AuthorizeOptions{
+			RedirectURL:     h.mcpCallbackURL(r),
+			LoopbackAllowed: h.CallbackBaseURL == "" && httpapi.TrustedLocalRequest(r),
+		},
 	})
 	if err != nil {
 		if errors.Is(err, connections.ErrQRProviderUnavailable) {

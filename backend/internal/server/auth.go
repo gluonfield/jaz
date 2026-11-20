@@ -5,9 +5,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/deviceauth"
@@ -51,7 +49,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 			}
 		}
 		if subtle.ConstantTimeCompare([]byte(token), []byte(key)) == 1 {
-			if s.Devices == nil || (trustedLocalRequest(r) && (rootKeyAllowed(r) || s.rootKeyHasFullAccess())) {
+			if s.Devices == nil || (httpapi.TrustedLocalRequest(r) && (rootKeyAllowed(r) || s.rootKeyHasFullAccess())) {
 				principal := deviceauth.Principal{Kind: deviceauth.PrincipalRoot}
 				next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, principal)))
 				return
@@ -93,22 +91,6 @@ func (s *Server) rootKeyHasFullAccess() bool {
 
 func rootKeyAllowed(r *http.Request) bool {
 	return r.URL.Path == "/v1/devices" || strings.HasPrefix(r.URL.Path, "/v1/devices/") || internalMCPRequest(r)
-}
-
-func trustedLocalRequest(r *http.Request) bool {
-	if !loopbackRequest(r) {
-		return false
-	}
-	host := (&url.URL{Host: r.Host}).Hostname()
-	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
-		return false
-	}
-	for _, name := range []string{"Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "CF-Connecting-IP"} {
-		if r.Header.Get(name) != "" {
-			return false
-		}
-	}
-	return true
 }
 
 func (s *Server) serveDevice(w http.ResponseWriter, r *http.Request, principal deviceauth.Principal, next http.Handler) {
@@ -204,17 +186,8 @@ func bearerToken(header string) string {
 func internalMCPRequest(r *http.Request) bool {
 	switch r.URL.Path {
 	case serverconfig.JazToolsMCPPath, serverconfig.JazToolsMCPCompatPath, serverconfig.JazmemMCPPath, serverconfig.MCPProxyPath:
-		return loopbackRequest(r)
+		return httpapi.LoopbackRequest(r)
 	default:
 		return false
 	}
-}
-
-func loopbackRequest(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }

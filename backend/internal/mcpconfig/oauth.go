@@ -1,6 +1,16 @@
 package mcpconfig
 
+import "cmp"
+
 const OAuthCallbackPath = "/v1/mcp/oauth/callback"
+
+func (c OAuthConfig) StaticClientID() string {
+	return cmp.Or(c.ClientID, c.PublicClientID)
+}
+
+func (c OAuthConfig) UsesLoopback() bool {
+	return c.ClientID == "" && c.PublicClientID != ""
+}
 
 type AuthorizationResponse struct {
 	Code   string

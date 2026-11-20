@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
@@ -23,7 +24,7 @@ type ConnectResult struct {
 
 type StartOptions struct {
 	OAuthRedirectURL string
-	MCPRedirectURL   string
+	MCP              mcpconfig.AuthorizeOptions
 }
 
 type ConnectService struct {
@@ -89,7 +90,7 @@ func (s *ConnectService) Start(ctx context.Context, pluginID string, opts StartO
 			return ConnectResult{}, fmt.Errorf("connection plugin %q does not support MCP-backed sign-in here", pluginID)
 		}
 		client := s.catalog.MCPOAuthClient(cmp.Or(plugin.Provider.ID, plugin.ID))
-		start, err := s.mcpConnection.Connect(ctx, plugin, client, opts.MCPRedirectURL)
+		start, err := s.mcpConnection.Connect(ctx, plugin, client, opts.MCP)
 		if err != nil {
 			return ConnectResult{}, err
 		}

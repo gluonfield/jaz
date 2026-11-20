@@ -1060,7 +1060,7 @@ func TestMCPAuthorizeClientsUsePublicCallbackAndReturnAuthURL(t *testing.T) {
 			if res.Code != http.StatusOK {
 				t.Fatalf("authorize status = %d, body = %s", res.Code, res.Body.String())
 			}
-			if runtime.options.RedirectURL != "https://jaz.example.com/v1/mcp/oauth/callback" {
+			if runtime.options.RedirectURL != "https://jaz.example.com/v1/mcp/oauth/callback" || runtime.options.LoopbackAllowed {
 				t.Fatalf("authorize options = %#v", runtime.options)
 			}
 			var got struct {
