@@ -40,6 +40,7 @@ import { exerciseCanvasFormat } from './canvas-format'
 import { exerciseCanvasPages } from './canvas-pages'
 import { exerciseImages } from './images'
 import { exerciseMarkdownDocuments } from './markdown-documents'
+import { exerciseWordDocuments } from './word-documents'
 import { exerciseMarkdownArtifacts } from './markdown-artifacts'
 import { exerciseBrowserAppearance } from './appearance'
 import { exerciseAddressBar } from './address-bar'
@@ -151,6 +152,12 @@ function Fixture() {
         await browser.call({ method: 'Jaz.open', params: { url: `${location.origin}/target` } })
         await exerciseBrowserIdentity(evaluate)
         window.smoke.result({ ok: true, checks: ['native Chromium identity for app resources, side-browser navigation, fetch, page, worker and client hints; no app referrer or page globals; annotation submission/cancellation without Jaz branding; external canvas links omit referrers'] })
+        return
+      }
+      if (suite === 'word-documents') {
+        progress('Word document links and read-only reader')
+        await exerciseWordDocuments()
+        window.smoke.result({ ok: true, checks: ['Word highlights split runs and a line break in a table cell, relocates within the same frame, clears an absent quote, blocks document HTML and remote content, and downloads the original bytes'] })
         return
       }
       if (!suite || suite === 'markdown-documents') {

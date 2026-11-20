@@ -1,4 +1,4 @@
-import { Copy, PencilRuler, FileSpreadsheet, FileText, FolderGit2, Globe, LayoutDashboard, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
+import { Copy, PencilRuler, FileSpreadsheet, FileText, FileType, FolderGit2, Globe, LayoutDashboard, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, Reorder } from 'motion/react'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
@@ -6,7 +6,7 @@ import { AppIcon } from '@/components/apps/AppIcon'
 import { IconButton } from '@/components/ui/IconButton'
 import { ContextMenu, MenuRow, Popover } from '@/components/ui/Popover'
 import { Favicon } from '@/components/ui/Favicon'
-import { isMarkdownPath, isSpreadsheetPath } from '@shared/fileReader'
+import { isMarkdownPath, isSpreadsheetPath, isWordPath } from '@shared/fileReader'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { useBrowserSessions } from '@/lib/browserSessions'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
@@ -22,9 +22,10 @@ const MENU_TYPES = {
 
 const TAB_TYPES = { ...MENU_TYPES, canvas: { label: 'Canvas', icon: PencilRuler } }
 
-function KindIcon({ kind }: { kind: keyof typeof TAB_TYPES }) {
-  const Icon = TAB_TYPES[kind].icon
-  return <Icon size={14} className="shrink-0 text-ink-3" aria-hidden />
+function KindIcon({ kind, path = '' }: { kind: keyof typeof TAB_TYPES; path?: string }) {
+  const spreadsheet = isSpreadsheetPath(path)
+  const Icon = spreadsheet ? FileSpreadsheet : isWordPath(path) ? FileType : TAB_TYPES[kind].icon
+  return <Icon size={14} className={`shrink-0 ${spreadsheet ? 'text-emerald-600 dark:text-emerald-400' : 'text-ink-3'}`} aria-hidden />
 }
 
 // The new-tab menu lists the built-in tabs, then the thread apps of connected
@@ -160,8 +161,7 @@ export function SidePanelTabs({ tabs, activeId, sideChatAvailable, onSelect, onR
                 {tab.kind === 'preview' ? <Favicon url={target?.displayUrl || ''} iconUrl={target?.favicon} />
                   : tab.kind === 'app' ? <span className="text-ink-3"><AppIcon app={tab.app} size={14} /></span>
                     : tab.kind === 'view' ? <LayoutDashboard size={14} className="shrink-0 text-ink-3" aria-hidden />
-                    : tab.kind === 'file' && tab.file && isSpreadsheetPath(tab.file.path) ? <FileSpreadsheet size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
-                      : <KindIcon kind={tab.kind} />}
+                      : <KindIcon kind={tab.kind} path={tab.kind === 'file' ? tab.file?.path : undefined} />}
                 <span className="truncate">{title}</span>
               </motion.button>
               <button type="button" aria-label={`Close ${title}`} title={`Close ${title}`} onPointerDownCapture={(event) => event.stopPropagation()} onClick={() => closeTabs([tab])} className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-lg pointer-coarse:size-10 text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink">

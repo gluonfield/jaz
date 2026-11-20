@@ -29,6 +29,10 @@ export function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown)(?:[?#].*)?$/i.test(path)
 }
 
+export function isWordPath(path: string): boolean {
+  return /\.docx(?:[?#].*)?$/i.test(path)
+}
+
 export function resolveFileLink(value: string, documentPath?: string): FileReference | null {
   const hash = value.indexOf('#')
   const fragment = hash < 0 ? '' : value.slice(hash + 1)

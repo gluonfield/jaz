@@ -3,7 +3,8 @@ import { AnnotationMode, getDocument, PDFWorker, type PDFDocumentLoadingTask, ty
 import { EventBus, PDFFindController, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs'
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
 import type { FileLocation } from '@shared/fileReader'
-import { pdfLocation, pdfTextRange } from '@/lib/pdfLocation'
+import { fileTextRange } from '@/lib/fileTextLocation'
+import { pdfLocation } from '@/lib/pdfLocation'
 import { Button } from '@/components/ui/Button'
 import { FindBar } from './FindBar'
 import { usePDFFind } from './usePDFFind'
@@ -106,7 +107,7 @@ export default function PDFFileView({ load, location, visible = true }: { load: 
       const layer = element?.querySelector<HTMLElement>('.textLayer')
       if (!layer) return
       clear()
-      range = pdfTextRange(layer, quote)
+      range = fileTextRange(layer, quote)
       if (!range) return
       const highlight = CSS.highlights.get('pdf-location') ?? new Highlight()
       highlight.add(range)

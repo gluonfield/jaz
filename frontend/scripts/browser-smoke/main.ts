@@ -50,6 +50,7 @@ app.setPath('userData', join(process.env.JAZ_BROWSER_SMOKE_DIR!, `profile-${proc
 app.commandLine.appendSwitch('host-resolver-rules', 'MAP linkedin.com 127.0.0.1, MAP www.linkedin.com 127.0.0.1')
 const timeout = Number(process.env.JAZ_BROWSER_SMOKE_TIMEOUT_MS || 30000)
 const googlePasskeys = process.env.JAZ_BROWSER_SMOKE_SUITE === 'google-passkeys'
+const wordDocuments = process.env.JAZ_BROWSER_SMOKE_SUITE === 'word-documents'
 const openedURLs: string[] = []
 const popupURLs: string[] = []
 const tabURLs: string[] = []
@@ -170,7 +171,7 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify(resourceRequests))
     return
   }
-  if (request.url === '/remote-chart.svg' || request.url === '/favicon.ico') {
+  if (request.url === '/remote-chart.svg' || request.url === '/word-remote-probe.svg' || request.url === '/favicon.ico') {
     resourceRequests[request.url] = request.headers
     response.setHeader('Content-Type', 'image/svg+xml')
     response.end('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><rect width="12" height="12" fill="blue"/></svg>')
@@ -322,7 +323,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     width: 1050,
     height: 850,
     show: false,
-    focusable: !googlePasskeys,
+    focusable: !googlePasskeys && !wordDocuments,
     webPreferences: {
       ...previewHostPreferences(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'preload.js')),
       offscreen: process.env.JAZ_BROWSER_SMOKE_SUITE === 'bot-chat',
@@ -369,7 +370,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     }
     return { contrast: max - min, inkPixels: Math.min(high, pixels.length / 4 - high), frames, paintedAt: at }
   })
-  if (!googlePasskeys) await exerciseClipboard(process.env.ELECTRON_RENDERER_URL)
+  if (!googlePasskeys && !wordDocuments) await exerciseClipboard(process.env.ELECTRON_RENDERER_URL)
   attachPreviewWebviews(window.webContents, join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js'))
   ipcMain.handle('smoke:password-store', async () => {
     const file = join(app.getPath('userData'), 'browser-passwords.enc')

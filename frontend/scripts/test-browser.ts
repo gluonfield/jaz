@@ -12,6 +12,7 @@ await mkdir(resolve('../runs'), { recursive: true })
 const output = await mkdtemp(resolve('../runs/browser-smoke-'))
 await mkdir(join(output, 'renderer'))
 await copyFile(resolve('scripts/browser-smoke/clipboard-guard.swift'), join(output, 'clipboard-guard.swift'))
+await copyFile(resolve('scripts/browser-smoke/fixtures/word-reader.docx'), join(output, 'word-reader.docx'))
 const workbook = utils.book_new()
 utils.book_append_sheet(workbook, utils.aoa_to_sheet([['Part', 'Cost'], ['Motor', 12.5]]), 'BOM')
 utils.book_append_sheet(workbook, utils.aoa_to_sheet([['Volume'], [500]]), 'Scenarios')
@@ -92,7 +93,7 @@ document.querySelector('button').addEventListener('click', (event) => {
 const electron = process.env.JAZ_ELECTRON_BINARY || createRequire(import.meta.url)('electron') as string
 console.log(`Browser smoke artifacts: ${output}`)
 const tests = process.argv.includes('--browser-close') ? 'TestDesktopElectron' : 'TestDesktopElectron|TestBotListElectron'
-const suite = ['browser-close', 'browser-identity', 'browser-startup', 'repo-status', 'claude-voice', 'connection-security', 'browser-visibility', 'chat-history', 'bot-chat', 'appearance', 'welcome', 'bots-live', 'bot-panel', 'model-picker', 'session-config', 'side-panel', 'address-bar', 'google-passkeys', 'linkedin', 'composer', 'tool-label-reveal', 'app-navigation', 'canvas', 'images', 'markdown-documents', 'layout'].find(name => process.argv.includes(`--${name}`))
+const suite = ['browser-close', 'browser-identity', 'browser-startup', 'repo-status', 'claude-voice', 'connection-security', 'browser-visibility', 'chat-history', 'bot-chat', 'appearance', 'welcome', 'bots-live', 'bot-panel', 'model-picker', 'session-config', 'side-panel', 'address-bar', 'google-passkeys', 'linkedin', 'composer', 'tool-label-reveal', 'app-navigation', 'canvas', 'images', 'markdown-documents', 'word-documents', 'layout'].find(name => process.argv.includes(`--${name}`))
 for (const run of suite ? [suite] : ['', 'google-passkeys']) {
   const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './internal/browsercontrol', './internal/acp', '-p=1', `-run=${tests}`, '-count=1', '-v'], {
     cwd: resolve('../backend'),

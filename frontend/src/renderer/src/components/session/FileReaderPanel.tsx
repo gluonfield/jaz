@@ -13,10 +13,11 @@ import { markdownDocumentTitle } from '@/lib/markdownDocuments'
 import { FileActions } from '@/components/session/FileActions'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
-import { isMarkdownPath, isSpreadsheetPath, resolveFileLink, type FileLocation, type FileReference } from '@shared/fileReader'
+import { isMarkdownPath, isSpreadsheetPath, isWordPath, resolveFileLink, type FileLocation, type FileReference } from '@shared/fileReader'
 
 const SpreadsheetFileView = lazy(() => import('@/components/session/SpreadsheetFileView'))
 const PDFFileView = lazy(() => import('@/components/session/PDFFileView'))
+const WordFileView = lazy(() => import('@/components/session/WordFileView'))
 
 export const FileReaderPanel = memo(function FileReaderPanel({
   sessionId,
@@ -35,12 +36,14 @@ export const FileReaderPanel = memo(function FileReaderPanel({
 }) {
   const filePath = fileRef?.path ?? ''
   const pdf = isPDFPath(filePath)
-  const loadPDF = useCallback((signal: AbortSignal) => sessionFileBytes(sessionId, filePath, signal), [sessionId, filePath])
+  const PagedFileView = pdf ? PDFFileView : isWordPath(filePath) ? WordFileView : null
+  const loadBytes = useCallback((signal: AbortSignal) => sessionFileBytes(sessionId, filePath, signal), [sessionId, filePath])
   const spreadsheet = isSpreadsheetPath(filePath)
+  const scrollsInternally = Boolean(PagedFileView || spreadsheet)
   const markdown = isMarkdownPath(filePath)
   const image = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico)(?:[?#].*)?$/i.test(filePath)
   // A document follows the agent while it writes, and once more when it stops.
-  const file = useQuery({ ...sessionFileQuery(sessionId, filePath), enabled: visible && Boolean(filePath) && !spreadsheet && !image && !pdf, refetchInterval: markdown && working ? 2000 : false })
+  const file = useQuery({ ...sessionFileQuery(sessionId, filePath), enabled: visible && Boolean(filePath) && !scrollsInternally && !image, refetchInterval: markdown && working ? 2000 : false })
   useRefetchAfterWork(markdown && working, file.refetch)
   const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) })
   const [draft, setDraft] = useState(filePath)
@@ -93,16 +96,16 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           {inputError}
         </p>
       ) : null}
-      <div className={`min-h-0 flex-1 bg-bg ${pdf || spreadsheet ? 'overflow-hidden' : 'scrollbar-quiet overflow-auto'}`}>
+      <div className={`min-h-0 flex-1 bg-bg ${scrollsInternally ? 'overflow-hidden' : 'scrollbar-quiet overflow-auto'}`}>
         {!filePath ? (
           <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-3">
             No file selected.
           </div>
         ) : image ? (
           <ImageFileView key={`${sessionId}:${filePath}`} url={sessionFileRawUrl(sessionId, filePath)} name={filePath.split(/[\\/]/).at(-1) ?? 'Image'} />
-        ) : pdf ? (
-          <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading PDF…</p>}>
-            <PDFFileView load={loadPDF} location={fileRef?.location} visible={visible} />
+        ) : PagedFileView ? (
+          <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading {pdf ? 'PDF' : 'Word document'}…</p>}>
+            <PagedFileView key={`${sessionId}:${filePath}`} load={loadBytes} location={fileRef?.location} visible={visible} />
           </Suspense>
         ) : spreadsheet ? (
           <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading spreadsheet…</p>}>
