@@ -157,7 +157,7 @@ function Fixture() {
       if (suite === 'word-documents') {
         progress('Word document links and read-only reader')
         await exerciseWordDocuments()
-        window.smoke.result({ ok: true, checks: ['Word highlights split runs and a line break in a table cell, relocates within the same frame, clears an absent quote, blocks document HTML and remote content, and downloads the original bytes'] })
+        window.smoke.result({ ok: true, checks: ['Word highlights split runs and a line break in a visible table cell, skips hidden text, matches Unicode case and literal punctuation, relocates within the same frame, clears an absent quote, blocks document HTML and remote content, and downloads the original bytes'] })
         return
       }
       if (!suite || suite === 'markdown-documents') {

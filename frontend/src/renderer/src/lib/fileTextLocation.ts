@@ -1,21 +1,17 @@
 export function fileTextMatch(text: string, quote: string): { start: number; end: number } | null {
-  const query = quote.replace(/\s+/g, ' ').trim().toLowerCase()
-  if (!query) return null
-  let normalized = ''
-  const offsets: number[] = []
-  for (let i = 0; i < text.length; i++) {
-    const char = /\s/.test(text[i]) ? ' ' : text[i].toLowerCase()
-    if (char === ' ' && (!normalized || normalized.endsWith(' '))) continue
-    normalized += char
-    for (let j = 0; j < char.length; j++) offsets.push(i)
-  }
-  const start = normalized.indexOf(query)
-  return start < 0 ? null : { start: offsets[start], end: offsets[start + query.length - 1] + 1 }
+  const words = quote.match(/\S+/g)
+  if (!words) return null
+  const pattern = words.map((word) => word.replace(/[$.*+?^{}()|[\]\\]/g, '\\$&')).join('\\s+')
+  const match = new RegExp(pattern, 'iu').exec(text)
+  return match && { start: match.index, end: match.index + match[0].length }
 }
 
 export function fileTextRange(root: HTMLElement, quote: string): Range | null {
   const document = root.ownerDocument
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+  const view = document.defaultView
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, (node) =>
+    node.nodeType === Node.ELEMENT_NODE && view?.getComputedStyle(node as Element).display === 'none'
+      ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT)
   const nodes: { node: Text; offset: number }[] = []
   let text = ''
   while (walker.nextNode()) {

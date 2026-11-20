@@ -9,7 +9,7 @@ import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
 export async function exerciseWordDocuments() {
   const path = 'word-reader.docx'
-  const opening = 'first opening clause applies'
+  const opening = 'κωδικος (A+) applies here'
   const table = 'EMERGENCY power   when required by code'
   const missing = 'absent quotation starts at the top'
   const host = document.createElement('div')
@@ -64,7 +64,7 @@ export async function exerciseWordDocuments() {
     }
     link.click()
     click(opening)
-    await until('The second quote did not replace the first', () => highlight()?.toString() === opening)
+    await until('The case-insensitive quote with literal punctuation did not replace the table match', () => highlight()?.toString() === 'ΚΩΔΙΚΟΣ (A+) applies here')
     if (frame()?.contentDocument !== document || document.querySelector('section.docx') !== page) throw new Error('The reader reloaded the same document')
     click(table)
     await until('The reader did not return to the table', () => (frame()?.contentWindow?.scrollY ?? 0) > 0)
