@@ -13,11 +13,13 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/wins/jaz/backend/internal/processenv"
+	"github.com/wins/jaz/backend/internal/subprocess"
 )
 
 const (
 	AntigravityGoogleAccount = "oauth-personal"
 	AntigravityCloudProject  = "oauth-business"
+	antigravityAccountGrace  = 250 * time.Millisecond
 )
 
 func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) ([]string, error) {
@@ -114,18 +116,23 @@ func withAntigravityAccountPeer(ctx context.Context, cfg AgentConfig, root, cwd 
 		defer stdout.Close()
 		stderr := newProcessStderrTail()
 		cmd.Stderr = stderr
+		process := subprocess.New(cmd)
 		cmd.Cancel = stdin.Close
-		cmd.WaitDelay = 250 * time.Millisecond
+		cmd.WaitDelay = antigravityAccountGrace
 		if err := cmd.Start(); err != nil {
 			return err
 		}
 		defer func() {
 			cancel()
 			_ = cmd.Wait()
+			_ = process.TerminateWithin(antigravityAccountGrace)
 			if detail, _ := stderr.snapshot(); err != nil && detail != "" {
 				err = fmt.Errorf("%w: %s", err, detail)
 			}
 		}()
+		if err := process.Started(); err != nil {
+			return err
+		}
 		conn = stdio.New(stdout, stdin)
 	}
 	peer := jsonrpc.NewPeer(conn, nil)

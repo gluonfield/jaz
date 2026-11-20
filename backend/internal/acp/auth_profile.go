@@ -497,17 +497,21 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 	return nil
 }
 
-func DisconnectAgentAuth(ctx context.Context, name string, cfg AgentConfig, root, storagePath string) error {
-	if instructions := agentManualDisconnect(name, cfg); instructions != "" {
-		return fmt.Errorf("%s", instructions)
-	}
+type ManualDisconnectError string
+
+func (err ManualDisconnectError) Error() string { return string(err) }
+
+func DisconnectAgentAuth(ctx context.Context, name string, cfg AgentConfig, root string, providers map[string]modelprovider.ModelProviderConfig) error {
 	switch CanonicalAgentName(name) {
 	case AgentAntigravity:
 		return disconnectAntigravityAuth(ctx, cfg, root)
 	case AgentMuse:
 		return disconnectMuseAuth(ctx, cfg, root)
+	case AgentCopilot:
+		return ManualDisconnectError(agentManualDisconnect(name, cfg))
 	default:
-		return RemoveOwnedCredential(name, storagePath, root)
+		auth := ProbeAgentAuthWithProviders(name, cfg, root, nil, providers)
+		return RemoveOwnedCredential(name, auth.StoragePath, root)
 	}
 }
 

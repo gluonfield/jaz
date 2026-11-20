@@ -40,6 +40,17 @@ acp)
     if IFS= read -r logout; then
         case "$logout" in *'"method":"logout"'*) ;; *) exit 8 ;; esac
         rm "$HOME/personal-sign-in" || exit 9
+        (
+            trap 'touch "$HOME/logout-worker-stopped"
+                exit 0' TERM
+            touch "$HOME/logout-worker-ready"
+            while [ ! -f "$HOME/release-refresh" ]; do
+                sleep 0.02
+            done
+        ) </dev/null >/dev/null 2>&1 &
+        while [ ! -f "$HOME/logout-worker-ready" ]; do
+            sleep 0.02
+        done
         printf '{"jsonrpc":"2.0","id":2,"result":{}}\n'
     fi
     ;;
@@ -202,6 +213,9 @@ esac
 	}()
 	defer mark("release-refresh")
 	waitFor("refreshing")
+	if _, err := os.Stat(filepath.Join(home, "logout-worker-stopped")); err != nil {
+		t.Fatalf("disconnect did not clean up the native process group: %v", err)
+	}
 	if probes, err := os.ReadFile(filepath.Join(home, "signed-in-probes")); err != nil || len(probes) != 1 {
 		t.Fatalf("disconnect probed prior authentication: %q, %v", probes, err)
 	}

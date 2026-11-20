@@ -25,7 +25,7 @@ func (p *Supervisor) Started() error {
 	return nil
 }
 
-func (p *Supervisor) Terminate() error {
+func (p *Supervisor) TerminateWithin(grace time.Duration) error {
 	if p.cmd.Process == nil {
 		return nil
 	}
@@ -36,7 +36,7 @@ func (p *Supervisor) Terminate() error {
 		}
 		return err
 	}
-	for deadline := time.Now().Add(terminateGrace); time.Now().Before(deadline); {
+	for deadline := time.Now().Add(grace); time.Now().Before(deadline); {
 		if groupGone(group) {
 			return nil
 		}

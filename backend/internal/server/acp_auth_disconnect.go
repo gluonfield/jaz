@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -46,17 +47,12 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	var storagePath string
-	if agent != acp.AgentAntigravity {
-		auth := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
-		if auth.ManualDisconnect != "" {
-			writeError(w, http.StatusConflict, fmt.Errorf("%s", auth.ManualDisconnect))
-			return
+	if err := acp.DisconnectAgentAuth(r.Context(), agent, cfg, s.runtimeRoot(), s.modelProviders()); err != nil {
+		status := http.StatusInternalServerError
+		if _, ok := errors.AsType[acp.ManualDisconnectError](err); ok {
+			status = http.StatusConflict
 		}
-		storagePath = auth.StoragePath
-	}
-	if err := acp.DisconnectAgentAuth(r.Context(), agent, cfg, s.runtimeRoot(), storagePath); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+		writeError(w, status, err)
 		return
 	}
 

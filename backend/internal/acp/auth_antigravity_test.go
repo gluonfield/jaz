@@ -44,7 +44,10 @@ func TestAntigravityDisconnectUsesNativeLogout(t *testing.T) {
 			root := t.TempDir()
 			t.Setenv("HOME", root)
 			requestsPath := filepath.Join(root, "requests.jsonl")
-			credential := filepath.Join(root, "legacy-token")
+			credential := filepath.Join(root, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+			if err := os.MkdirAll(filepath.Dir(credential), 0o700); err != nil {
+				t.Fatal(err)
+			}
 			if err := os.WriteFile(credential, []byte("provider-owned"), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -64,7 +67,7 @@ func TestAntigravityDisconnectUsesNativeLogout(t *testing.T) {
 				cfg.Args = nil
 				cfg.LoginBinDir = bin
 			}
-			err := acp.DisconnectAgentAuth(t.Context(), acp.AgentAntigravity, cfg, root, credential)
+			err := acp.DisconnectAgentAuth(t.Context(), acp.AgentAntigravity, cfg, root, nil)
 			wantMethods := []string{"initialize", "logout"}
 			switch test.logout {
 			case "":
