@@ -283,13 +283,16 @@ func (s *Store) applySessionEventCompactionPlan(ctx context.Context, plan *sessi
 		mutation := &plan.mutations[next]
 		previousBytes := 0
 		removePrevious := false
+		// A later row already holds this key, so this page's rows for it go.
+		stale := false
 		if mutation.snapshot != nil && mutation.key != "" {
 			previous, previousErr := q.GetSessionEventByCoalesceKey(ctx, eventdb.GetSessionEventByCoalesceKeyParams{
 				ThreadID: plan.id, CoalesceKey: mutation.key,
 			})
 			if previousErr == nil {
 				previousBytes = sessionEventFieldSize(previous.Content, previous.Acp, previous.Plan, previous.Permission)
-				removePrevious = previous.Seq != mutation.seq
+				removePrevious = previous.Seq < mutation.seq
+				stale = previous.Seq > mutation.seq
 			} else if !errors.Is(previousErr, sql.ErrNoRows) {
 				return SessionEventCompaction{ThreadID: plan.id}, true, previousErr
 			}
@@ -302,6 +305,9 @@ func (s *Store) applySessionEventCompactionPlan(ctx context.Context, plan *sessi
 		for i, item := range mutation.deletes {
 			seqs[i] = item.seq
 			writeBytes += item.bytes
+		}
+		if stale {
+			seqs = append(seqs, mutation.seq)
 		}
 		if writeBytes > eventCompactionBatchBytes {
 			skipped, skipErr := q.SkipSessionEventCompaction(ctx, eventdb.SkipSessionEventCompactionParams{
@@ -321,17 +327,12 @@ func (s *Store) applySessionEventCompactionPlan(ctx context.Context, plan *sessi
 		if bytes+writeBytes > eventCompactionBatchBytes {
 			break
 		}
-		if mutation.snapshot != nil && mutation.key != "" {
-			_, err = q.DeleteSessionEventByCoalesceKey(ctx, eventdb.DeleteSessionEventByCoalesceKeyParams{
-				ThreadID: plan.id, CoalesceKey: mutation.key,
-			})
-		}
-		if err == nil && len(seqs) > 0 {
+		if len(seqs) > 0 {
 			err = q.DeleteSessionEvents(ctx, eventdb.DeleteSessionEventsParams{ThreadID: plan.id, Seqs: seqs})
 		}
-		if err == nil && mutation.snapshot != nil {
-			err = insertSessionEvent(ctx, q, *mutation.snapshot, mutation.key)
-		} else if err == nil {
+		switch {
+		case err != nil || stale:
+		case mutation.snapshot == nil:
 			err = q.SetSessionEventProjection(ctx, eventdb.SetSessionEventProjectionParams{
 				CoalesceKey:   mutation.key,
 				ProjectionKey: mutation.projectionKey,
@@ -339,6 +340,15 @@ func (s *Store) applySessionEventCompactionPlan(ctx context.Context, plan *sessi
 				ThreadID:      plan.id,
 				Seq:           mutation.seq,
 			})
+		default:
+			if mutation.key != "" {
+				_, err = q.DeleteSessionEventByCoalesceKey(ctx, eventdb.DeleteSessionEventByCoalesceKeyParams{
+					ThreadID: plan.id, CoalesceKey: mutation.key,
+				})
+			}
+			if err == nil {
+				err = insertSessionEvent(ctx, q, *mutation.snapshot, mutation.key)
+			}
 		}
 		if err != nil {
 			return SessionEventCompaction{ThreadID: plan.id}, true, err

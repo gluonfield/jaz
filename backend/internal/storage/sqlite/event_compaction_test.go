@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -591,5 +592,68 @@ func TestSessionEventCompactionBoundsTextSnapshots(t *testing.T) {
 	}
 	if len(projected[0].Content) != chunks*len(chunk) {
 		t.Fatalf("projected text = %d bytes", len(projected[0].Content))
+	}
+}
+
+func TestAgentSessionEventsKeepOnlyTheLatest(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "legacy-agent-session"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSession(storage.CreateSession{Slug: "no-agent-session"}); err != nil {
+		t.Fatal(err)
+	}
+	for seq := 1; seq <= eventCompactionPageRows+1; seq++ {
+		if _, err := store.db.Exec(`
+			INSERT INTO session_events (thread_id, seq, type, content, created_at_ms, coalesce_key)
+			VALUES (?, ?, 'agent_session', '{"commands":[{"name":"old"}]}', ?, '')`,
+			session.ID, seq, seq,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw, err := sqliteMigrations.ReadFile("migrations/0089_coalesce_agent_session_events.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(strings.SplitN(string(raw), "-- +goose Down", 2)[0]); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"new", "newest"} {
+		if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+			Type: sessionevents.TypeAgentSession, AgentSession: &sessionevents.AgentSession{Commands: []sessionevents.AgentCommand{{Name: name}}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for {
+		result, err := store.CompactNextSessionEvents(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.ThreadID == "" {
+			break
+		}
+		if result.ThreadID != session.ID {
+			t.Fatalf("compacted %s, want only %s", result.ThreadID, session.ID)
+		}
+	}
+	events, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, event := range events {
+		if event.AgentSession != nil {
+			names = append(names, event.AgentSession.Commands[0].Name)
+		}
+	}
+	if !slices.Equal(names, []string{"newest"}) {
+		t.Fatalf("agent session events = %v, want only the newest", names)
 	}
 }

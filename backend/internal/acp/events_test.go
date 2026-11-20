@@ -515,6 +515,7 @@ func TestACPTranscriptChunksWithoutMessageIDCrossSessionState(t *testing.T) {
 	manager.Events = sessionevents.New()
 	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session", State: StateRunning}}
 	job.startTurn(CompletionInline, false, false)
+	job.agentSession.Notices = []string{"signed in"}
 	manager.jobsByID[session.ID] = job
 
 	manager.queueACPMessage(job, "Hi")
@@ -529,6 +530,32 @@ func TestACPTranscriptChunksWithoutMessageIDCrossSessionState(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(events) != 3 || events[2].Content != "Hi there. What do you need?" {
+		t.Fatalf("events = %#v", events)
+	}
+}
+
+func TestAgentSessionIsPublishedOnlyWhenItChanges(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "main", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentClaude, ACPSession: "acp-session"}}
+	commands := json.RawMessage(`{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"review"}]}`)
+
+	manager.applySessionControls(job, commands)
+	manager.applySessionControls(job, commands)
+	manager.applySessionControls(job, json.RawMessage(`{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"review"},{"name":"init"}]}`))
+
+	events, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 || len(events[0].AgentSession.Commands) != 1 || len(events[1].AgentSession.Commands) != 2 {
 		t.Fatalf("events = %#v", events)
 	}
 }

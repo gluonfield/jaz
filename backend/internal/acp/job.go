@@ -114,6 +114,7 @@ type jobState struct {
 	sendMu                 sync.Mutex
 	turnMu                 sync.Mutex
 	agentSession           sessionevents.AgentSession
+	publishedSession       sessionevents.AgentSession
 	suggestedPrompt        string
 	promptWrapped          bool
 	backgroundTasks        map[string]sessionevents.AgentTask
