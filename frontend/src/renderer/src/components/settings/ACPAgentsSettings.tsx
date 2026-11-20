@@ -559,7 +559,7 @@ function AgentAuthPanel({
     return (
       <AntigravitySignIn
         active={active}
-        disabled={disabled}
+        disabled={disabled || disconnecting}
         running={running}
         loginJob={loginJob}
         onPersonal={onStartLogin}

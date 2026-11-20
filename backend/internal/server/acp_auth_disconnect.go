@@ -46,12 +46,16 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	auth := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
-	if auth.ManualDisconnect != "" {
-		writeError(w, http.StatusConflict, fmt.Errorf("%s", auth.ManualDisconnect))
-		return
+	var storagePath string
+	if agent != acp.AgentAntigravity {
+		auth := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
+		if auth.ManualDisconnect != "" {
+			writeError(w, http.StatusConflict, fmt.Errorf("%s", auth.ManualDisconnect))
+			return
+		}
+		storagePath = auth.StoragePath
 	}
-	if err := acp.DisconnectAgentAuth(r.Context(), agent, cfg, s.runtimeRoot(), auth.StoragePath); err != nil {
+	if err := acp.DisconnectAgentAuth(r.Context(), agent, cfg, s.runtimeRoot(), storagePath); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -73,6 +77,7 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	release()
 	response := s.agentSettingsResponse(defaults)
 	if agent == acp.AgentMuse && response.ACPAuth[agent].Authenticated && response.ACPAuth[agent].AuthKind != acp.AuthKindNone {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("Muse is signed in through META_API_KEY; remove the environment variable to disconnect"))

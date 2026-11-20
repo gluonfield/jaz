@@ -397,17 +397,12 @@ func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]st
 	return status
 }
 
-// agy keeps its OAuth in the OS keyring, not a readable file, so the only
-// reliable auth check is running `agy models`. A single settings load or save
-// probes every agent — and antigravity twice per probe (env build + resolve) —
-// so cache the result briefly to collapse those into one subprocess.
-//
-// Only the authenticated result is cached: a signed-in probe is the slow one
-// (~1s), while a signed-out probe is cheap (~0.3s) and must stay fresh so the
-// post-login verification sees the just-written credential instead of a stale no.
+// agy keeps its OAuth in the OS keyring. Cache successful `agy models` probes
+// briefly, and keep signed-out probes fresh for post-login verification.
 var antigravityAuthCache = struct {
 	sync.Mutex
 	authedUntil map[string]time.Time
+	generation  uint64
 }{authedUntil: map[string]time.Time{}}
 
 const antigravityAuthTTL = 30 * time.Second
@@ -422,6 +417,7 @@ func antigravityCLIAuthenticated(env map[string]string) bool {
 	key := cmd.Path + "\x00" + env["HOME"]
 	antigravityAuthCache.Lock()
 	fresh := time.Now().Before(antigravityAuthCache.authedUntil[key])
+	generation := antigravityAuthCache.generation
 	antigravityAuthCache.Unlock()
 	if fresh {
 		return true
@@ -430,8 +426,11 @@ func antigravityCLIAuthenticated(env map[string]string) bool {
 		return false
 	}
 	antigravityAuthCache.Lock()
+	defer antigravityAuthCache.Unlock()
+	if generation != antigravityAuthCache.generation {
+		return false
+	}
 	antigravityAuthCache.authedUntil[key] = time.Now().Add(antigravityAuthTTL)
-	antigravityAuthCache.Unlock()
 	return true
 }
 
@@ -439,6 +438,7 @@ func antigravityCLIAuthenticated(env map[string]string) bool {
 // reflected on the next probe instead of lingering until the TTL expires.
 func invalidateAntigravityAuthCache() {
 	antigravityAuthCache.Lock()
+	antigravityAuthCache.generation++
 	clear(antigravityAuthCache.authedUntil)
 	antigravityAuthCache.Unlock()
 }

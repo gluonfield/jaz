@@ -18,6 +18,17 @@ func ProbeReadiness(name string, cfg AgentConfig, root string, env map[string]st
 }
 
 func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env map[string]string, providers map[string]provider.ModelProviderConfig) Readiness {
+	return probeReadiness(name, cfg, root, env, providers, func() AgentAuthStatus {
+		return ProbeAgentAuthWithProviders(name, cfg, root, env, providers)
+	})
+}
+
+func ProbeAuthAndReadinessWithProviders(name string, cfg AgentConfig, root string, env map[string]string, providers map[string]provider.ModelProviderConfig) (AgentAuthStatus, Readiness) {
+	auth := ProbeAgentAuthWithProviders(name, cfg, root, env, providers)
+	return auth, probeReadiness(name, cfg, root, env, providers, func() AgentAuthStatus { return auth })
+}
+
+func probeReadiness(name string, cfg AgentConfig, root string, env map[string]string, providers map[string]provider.ModelProviderConfig, probeAuth func() AgentAuthStatus) Readiness {
 	name = CanonicalAgentName(name)
 	if cfg.Local {
 		return Readiness{Available: true}
@@ -35,7 +46,7 @@ func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env 
 		}
 	}
 	if strings.TrimSpace(cfg.ManagedAdapter) != "" {
-		auth := ProbeAgentAuthWithProviders(name, cfg, root, env, providers)
+		auth := probeAuth()
 		if !auth.Authenticated {
 			return Readiness{Reason: auth.Reason}
 		}
@@ -54,7 +65,7 @@ func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env 
 		return Readiness{Reason: err.Error()}
 	}
 	probeEnv := NewManager(nil, Config{Root: root, Env: env, Providers: providers}, nil).probeEnv(name, cfg)
-	auth := ProbeAgentAuthWithProviders(name, cfg, root, env, providers)
+	auth := probeAuth()
 	switch name {
 	case AgentCodex:
 		if !auth.Authenticated {

@@ -32,7 +32,7 @@ func (s *Server) claimACPAuth(agent string) (func(), error) {
 	if !s.antigravityLoginMu.TryLock() {
 		return nil, errAntigravityAuthBusy
 	}
-	return s.antigravityLoginMu.Unlock, nil
+	return sync.OnceFunc(s.antigravityLoginMu.Unlock), nil
 }
 
 type acpAuthLoginRequest struct {

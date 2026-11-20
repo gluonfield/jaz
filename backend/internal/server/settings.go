@@ -172,8 +172,7 @@ func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[
 			out[name] = acpAuthStatusResponse{Reason: err.Error()}
 			continue
 		}
-		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
-		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
+		auth, readiness := acp.ProbeAuthAndReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		status := newACPAuthStatusResponse(auth, readiness)
 		status.ManagedAdapter = s.managedAdapterStatus(cfg)
 		status.ManagedTool = s.managedToolStatus(cfg.ManagedTool, cfg.Env)
