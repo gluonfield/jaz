@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { FileReaderPanel } from '@/components/session/FileReaderPanel'
 import { FileReaderLinkProvider, MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
 import { getThemePref, setThemePref } from '@/lib/theme'
 import type { FileReference } from '@shared/fileReader'
@@ -13,7 +14,7 @@ export async function exerciseMarkdownArtifacts() {
   const size = { width: innerWidth, height: innerHeight }
   const path = '/workspace/report.md'
   const code = `<!doctype html><html><head><style>body{margin:0;color:var(--color-ink);font-family:var(--font-sans)}#panel{height:160px;padding:12px}button{margin:4px;padding:12px;color:inherit;background:var(--color-surface);border:1px solid var(--color-border)}</style></head><body>
-<div id="panel"><button id="advance">Advance</button><output>0</output><button id="ask">Ask Jaz</button><button id="fail">Show error</button></div>
+<div id="panel"><button id="advance">Advance</button><output>0</output><button id="ask">Ask Jaz</button><button id="record">Open record</button><button id="fail">Show error</button></div>
 <script>
 let count = 0;
 const report = () => requestAnimationFrame(() => {
@@ -31,10 +32,11 @@ const report = () => requestAnimationFrame(() => {
 });
 document.getElementById('advance').onclick = () => {
   document.querySelector('output').textContent = String(++count);
-  document.getElementById('panel').style.height = '360px';
+  document.getElementById('panel').style.height = count % 2 ? '360px' : '160px';
   report();
 };
 document.getElementById('ask').onclick = () => sendPrompt('Explain this comparison');
+document.getElementById('record').onclick = () => openLink('https://crm.example.com/lightning/r/Account/1/view');
 document.getElementById('fail').onclick = () => {
   throw new Error('Expected artifact error');
 };
@@ -93,6 +95,7 @@ report();
     await point(Math.round(rect.x + probe!.buttons[id].x), Math.round(rect.y + probe!.buttons[id].y))
   }
   const theme = getThemePref()
+  const closeBrowserTabs = clientRuntime.onOpenPreviewURL?.(() => {})
   try {
     await window.smoke.resize(1000, 844)
     setThemePref('dark')
@@ -107,6 +110,16 @@ report();
     if (prompts.length) throw new Error('Artifact accepted a message from outside its frame')
     await button('advance')
     await until(() => probe?.count === 1 && parseInt(frame()?.style.height ?? '') >= 360)
+    await button('advance')
+    await until(() => probe?.count === 2 && parseInt(frame()?.style.height ?? '') < 360)
+    await button('record')
+    const record = 'https://crm.example.com/lightning/r/Account/1/view'
+    let tabs: string[] = []
+    await until(() => {
+      void window.smoke.tabURLs().then((urls) => { tabs = urls })
+      return tabs.includes(record)
+    })
+    if ((await window.smoke.openedURLs()).includes(record)) throw new Error('A web link in an artifact left for the external browser')
     await button('ask')
     await until(() => prompts.length === 1)
     if (prompts[0] !== 'Explain this comparison') throw new Error('Artifact prompt bypassed the provided host callback')
@@ -126,6 +139,7 @@ report();
     host.remove()
     client.clear()
     window.removeEventListener('message', receive)
+    closeBrowserTabs?.()
     setThemePref(theme)
     await window.smoke.resize(size.width, size.height)
   }
