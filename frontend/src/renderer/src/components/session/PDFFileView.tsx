@@ -9,7 +9,7 @@ import './pdf.css'
 
 type DocumentView = { viewer: PDFViewer; document: PDFDocumentProxy; events: EventBus }
 
-export default function PDFFileView({ url, location, visible = true }: { url: string | (() => string); location?: FileLocation; visible?: boolean }) {
+export default function PDFFileView({ load, location, visible = true }: { load: (signal: AbortSignal) => Promise<ArrayBuffer>; location?: FileLocation; visible?: boolean }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [view, setView] = useState<DocumentView | null>(null)
   const [error, setError] = useState('')
@@ -43,9 +43,7 @@ export default function PDFFileView({ url, location, visible = true }: { url: st
     setTarget(null)
     applied.current = null
     void (async () => {
-      const response = await fetch(typeof url === 'function' ? url() : url, { signal: abort.signal })
-      if (!response.ok) throw new Error(`Couldn’t open PDF (${response.status}).`)
-      const data = new Uint8Array(await response.arrayBuffer())
+      const data = new Uint8Array(await load(abort.signal))
       if (abort.signal.aborted) return
       task = getDocument({ data, worker })
       const document = await task.promise
@@ -64,7 +62,7 @@ export default function PDFFileView({ url, location, visible = true }: { url: st
       if (task) void task.destroy().finally(closeWorker)
       else closeWorker()
     }
-  }, [container, url, attempt])
+  }, [container, load, attempt])
 
   useEffect(() => {
     if (!view) return
