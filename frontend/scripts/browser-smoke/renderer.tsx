@@ -128,7 +128,7 @@ function Fixture() {
         progress('new tool label reveals')
         await exerciseToolLabelReveal()
         if (suite === 'tool-label-reveal') {
-          window.smoke.result({ ok: true, checks: ['new tool rows sweep once through icons, text, spinners and chevrons, with stable layout, still history, Reduce Motion and Effects off'] })
+          window.smoke.result({ ok: true, checks: ['new tool rows and appended group phrases sweep once, with stable layout, still history, Reduce Motion and Effects off'] })
           return
         }
       }

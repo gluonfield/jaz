@@ -10,7 +10,7 @@ import {
   SquareTerminal,
   type LucideIcon,
 } from 'lucide-react'
-import { memo, useState, type ReactElement } from 'react'
+import { memo, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { Collapse } from '@/components/ui/Collapse'
 import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
 import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
@@ -46,15 +46,29 @@ const ActivityToolDisclosure = memo(function ActivityToolDisclosure({
   entries,
   active = false,
   findActive = false,
-  reveal = false,
+  revealTools,
 }: {
   entries: ToolEntry[]
   active?: boolean
   findActive?: boolean
-  reveal?: boolean
+  revealTools?: ReadonlySet<string>
 }) {
   const [open, setOpen] = useState(false)
   const calls = entries.map((entry) => entry.call)
+  const label = toolRunLabel(calls)
+  const labelRef = useRef<HTMLSpanElement>(null)
+  const previous = useRef<{ entries: ToolEntry[]; label: string }>(null)
+  const last = previous.current
+  const append = revealTools && last && entries.length > last.entries.length &&
+    label.startsWith(`${last.label}, `) &&
+    last.entries.every((entry, index) => entry.key === entries[index].key) &&
+    entries.slice(last.entries.length).every((entry) => revealTools.has(entry.key))
+    ? { labelRef, from: last.label.length }
+    : undefined
+  useLayoutEffect(() => {
+    previous.current = { entries, label }
+  }, [entries, label])
+
   const details = entries.filter((entry) => hasToolCallDetail(entry.call))
   const expandable = details.length > 0
   const effectiveOpen = expandable && (open || findActive)
@@ -65,14 +79,20 @@ const ActivityToolDisclosure = memo(function ActivityToolDisclosure({
         label={(
           <span className="flex min-w-0 items-center gap-2">
             <Icon className="size-3.5 shrink-0" aria-hidden />
-            <span className="truncate">{toolRunLabel(calls)}</span>
+            <span ref={labelRef} className="relative min-w-0">
+              <span className="block truncate">{label}</span>
+            </span>
           </span>
         )}
         open={effectiveOpen}
         disabled={!expandable}
         onClick={() => setOpen((value) => !value)}
         wrapContent={(content) => (
-          <ToolActivityReveal reveal={reveal} className="flex min-w-0 items-center gap-1.5">
+          <ToolActivityReveal
+            reveal={revealTools && entries.every((entry) => revealTools.has(entry.key))}
+            append={append}
+            className="flex min-w-0 items-center gap-1.5"
+          >
             {content}
           </ToolActivityReveal>
         )}
@@ -116,7 +136,7 @@ export const ActivityBlock = memo(function ActivityBlock({
         entries={tools}
         active={rowActive}
         findActive={findActive}
-        reveal={revealTools && tools.every((entry) => revealTools.has(entry.key))}
+        revealTools={revealTools}
       />,
     )
     tools = []

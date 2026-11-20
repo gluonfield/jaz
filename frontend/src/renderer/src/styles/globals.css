@@ -767,7 +767,7 @@ img.chat-prose-link-icon {
 
 @media (prefers-reduced-motion: no-preference) {
   :root:not(.jaz-no-effects) .tool-row-revealing > :first-child {
-    mask-image: linear-gradient(to right, #000 calc(var(--tool-row-edge) - 8px), transparent var(--tool-row-edge));
+    mask-image: linear-gradient(to right, #000 max(var(--tool-row-prefix, -8px), calc(var(--tool-row-edge) - 8px)), transparent var(--tool-row-edge));
   }
 
   :root:not(.jaz-no-effects) .tool-row-revealing::after {

@@ -165,6 +165,65 @@ export async function exerciseToolLabelReveal(): Promise<void> {
     if (group.getAttribute('aria-expanded') !== 'true' || !action?.querySelector('.animate-spin')) {
       throw new Error('Expanding parent activity did not reveal the running agent action')
     }
+
+    setAppearance({ inlineShellCommands: false })
+    const reads = [15, 16].map((seq) => event(seq, 'acp_tool', {
+      tool_calls: [{ id: `read-${seq}`, tool_name: 'read', status: 'completed' }],
+    }))
+    const extended = [...reads, command(17, 'append-first'), command(18, 'append-second')]
+    render([], 'extend')
+    render(reads, 'extend')
+    const [reading] = sweeping()
+    const arrival = reading && sweepOn(reading)
+    const heading = reading?.closest('button')
+    if (!arrival || !heading || heading.textContent !== 'Read files') {
+      throw new Error('The initial reading heading did not sweep')
+    }
+    arrival.pause()
+    arrival.currentTime = 140
+
+    render(extended, 'extend')
+    const [suffix] = sweeping()
+    const suffixSweep = suffix && sweepOn(suffix)
+    const suffixCaret = suffix && caretOn(suffix)
+    if (sweeping().length !== 1 || heading !== suffix?.closest('button') ||
+        suffix.textContent !== 'Read files, ran commands' || !suffixSweep || !suffixCaret ||
+        reading.getAnimations().includes(arrival) || getComputedStyle(reading.firstElementChild!).maskImage !== 'none' ||
+        suffix.querySelector('svg') ||
+        !heading.querySelector('.lucide-chevron-right') || !heading.querySelector('.animate-spin')) {
+      throw new Error('The extended group did not sweep only its label, preserving the heading and icons')
+    }
+    const prefix = document.createRange()
+    prefix.setStart(suffix.firstElementChild!.firstChild!, 0)
+    prefix.setEnd(suffix.firstElementChild!.firstChild!, 'Read files'.length)
+    const base = suffix.getBoundingClientRect().left
+    const prefixEnd = prefix.getBoundingClientRect().right - base
+    suffixSweep.pause()
+    suffixCaret.pause()
+    suffixSweep.currentTime = 0
+    const suffixStart = parseFloat(getComputedStyle(suffix, '::after').left)
+    const initialMask = getComputedStyle(suffix.firstElementChild!).maskImage
+    suffixSweep.currentTime = 160
+    suffixCaret.currentTime = 160
+    const suffixMiddle = parseFloat(getComputedStyle(suffix, '::after').left)
+    if (Math.abs(suffixStart - prefixEnd) > 1 || initialMask === 'none' || suffixMiddle <= suffixStart) {
+      throw new Error('The caret did not continue from the previously visible phrase')
+    }
+    await nextFrame()
+    await window.smoke.capture('tool-label-suffix-mid-sweep')
+    suffixSweep.finish()
+    await nextFrame()
+    await nextFrame()
+    render([...extended, command(19, 'append-second', 'failed')], 'extend')
+    expectStill('an existing call gaining a failure count')
+
+    render(reads, 'narrow')
+    expectStill('the initial narrow heading')
+    const narrowHeading = [...host.querySelectorAll('button')].find((button) => button.textContent === 'Read files')
+    if (!narrowHeading) throw new Error('Missing heading for the narrow layout check')
+    narrowHeading.style.maxWidth = '72px'
+    render(extended, 'narrow')
+    expectStill('an extension outside the visible heading')
   } finally {
     root.unmount()
     client.clear()
