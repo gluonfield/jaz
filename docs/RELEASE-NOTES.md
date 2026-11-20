@@ -1,7 +1,5 @@
-Changes since v0.0.281:
+Changes since v0.0.282:
 
-- PDFs in the side panel draw as they should: standard fonts that are not embedded, JPEG 2000 and JBIG2 images, colour profiles and annotations. Cmd+F searches the document with a match count, and selecting text no longer paints over the page.
-- Links in documents and chat messages are underlined, so a link is visible without hovering over it.
-- Spreadsheets and PDFs open however long the thread has been open, instead of failing with "device token is missing or invalid" after a minute.
-- An agent message no longer splits into two blocks when a session or background-task update arrives in the middle of it.
-- A child agent's actions are folded into the parent's tool activity.
+- A link in a document to another file, a PDF page or a spreadsheet cell opens it in its own tab. Before, the click could reload the window onto "Couldn't load this session".
+- Zoom can be connected with a public OAuth client: Jaz signs in through a local callback with PKCE, with no client secret, and the Zoom connection says what setup it still needs.
+- Phrases added to a tool activity row reveal with the same sweep as the row.
