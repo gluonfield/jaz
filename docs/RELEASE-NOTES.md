@@ -1,3 +1,3 @@
-Changes since v0.0.279:
+Changes since v0.0.280:
 
-- A plugin's view in a thread can keep its own state, such as answers picked but not yet sent, and finds it again when the thread is reopened. Each view of a thread has one small file on the Jaz server.
+- New tool activity rows reveal with one sweep across the icon, label, spinner and disclosure arrow. Existing history stays still, and Reduced Motion and Effects off are respected.
