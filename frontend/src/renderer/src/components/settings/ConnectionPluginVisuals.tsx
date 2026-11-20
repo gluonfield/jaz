@@ -7,6 +7,7 @@ import ink from '@/assets/integrations/ink.png'
 import slack from '@/assets/integrations/slack.svg'
 import telegram from '@/assets/integrations/telegram.svg'
 import whatsapp from '@/assets/integrations/whatsapp.svg'
+import zoom from '@/assets/integrations/zoom.png'
 import type { IntegrationPlugin } from '@/lib/api/types'
 
 const pluginGlyphs: Record<string, LucideIcon> = { tasks: CircleCheck, crm: Users }
@@ -20,6 +21,7 @@ const pluginAssetUrls: Record<string, string> = {
   slack,
   telegram,
   whatsapp,
+  zoom,
 }
 
 export function PluginIcon({ plugin, compact = false }: { plugin: IntegrationPlugin; compact?: boolean }) {

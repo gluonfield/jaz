@@ -247,7 +247,7 @@ func TestNewRoutesIncludesBrowserSettingsRoutes(t *testing.T) {
 }
 
 func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
-	catalog := connections.NewCatalog()
+	catalog := connections.NewCatalog(nil)
 	oauth := connections.NewOAuthService(fakeConnectionOAuthStore{}, connections.OAuthConfig{})
 	qr := connections.NewQRService()
 	routes := NewRoutes(routeDeps{
@@ -284,7 +284,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 }
 
 func TestNewRoutesKeepsConnectionStartRoutesIndependent(t *testing.T) {
-	catalog := connections.NewCatalog()
+	catalog := connections.NewCatalog(nil)
 	oauth := connections.NewOAuthService(fakeConnectionOAuthStore{}, connections.OAuthConfig{})
 	routes := NewRoutes(routeDeps{
 		Usage:           usagecore.NewService(fakeUsageStore{}),

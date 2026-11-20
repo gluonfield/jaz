@@ -33,6 +33,7 @@ import (
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -177,7 +178,8 @@ func newLogger() *log.Logger {
 type config struct {
 	fx.Out
 
-	Jaz app.Config
+	Jaz        app.Config
+	MCPClients map[string]mcpconfig.OAuthConfig
 }
 
 func loadConfig() (config, error) {
@@ -185,7 +187,7 @@ func loadConfig() (config, error) {
 	if err != nil {
 		return config{}, err
 	}
-	return config{Jaz: loaded.Jaz}, nil
+	return config{Jaz: loaded.Jaz, MCPClients: loaded.Jaz.Connections.MCP}, nil
 }
 
 func parseServeConfig(args serveArgs) (serverconfig.Config, error) {

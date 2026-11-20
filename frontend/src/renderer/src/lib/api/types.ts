@@ -316,6 +316,7 @@ export interface IntegrationSkill {
 export interface IntegrationImplementation {
   status: string
   owner: string
+  reason?: string
 }
 
 export interface IntegrationConnectionAccount {

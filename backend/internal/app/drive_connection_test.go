@@ -86,7 +86,7 @@ func TestDriveConnectionSignInRefreshAndDisconnect(t *testing.T) {
 		http.DefaultTransport = baseTransport
 	})
 
-	catalog := connections.NewCatalog()
+	catalog := connections.NewCatalog(nil)
 	oauth := NewConnectionOAuthService(store, Config{Connections: ConnectionsConfig{
 		Drive: GoogleConnectionConfig{OAuthClientID: "drive-client", OAuthClientSecret: "drive-secret"},
 	}}, oauthbroker.Broker{})

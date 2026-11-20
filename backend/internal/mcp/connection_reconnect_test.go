@@ -144,7 +144,7 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 			if test.unavailable {
 				inventory.fail = &fail
 			}
-			start, err := connections.NewMCPConnectionConnector(inventory, manager, nil).Connect(ctx, plugin, "http://127.0.0.1:5599/callback")
+			start, err := connections.NewMCPConnectionConnector(inventory, manager).Connect(ctx, plugin, mcpconfig.OAuthConfig{}, "http://127.0.0.1:5599/callback")
 			if err != nil {
 				t.Fatal(err)
 			}

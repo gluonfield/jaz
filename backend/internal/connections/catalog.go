@@ -1,6 +1,9 @@
 package connections
 
 import (
+	"cmp"
+	"fmt"
+	"os"
 	"slices"
 	"strings"
 
@@ -14,15 +17,17 @@ import (
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/internal/connectors/zoom"
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 type Catalog struct {
 	plugins []integrations.Plugin
+	clients map[string]mcpconfig.OAuthConfig
 }
 
-func NewCatalog() *Catalog {
-	return &Catalog{plugins: []integrations.Plugin{
+func NewCatalog(clients map[string]mcpconfig.OAuthConfig) *Catalog {
+	plugins := []integrations.Plugin{
 		calendar.Plugin(),
 		deployink.Plugin(),
 		drive.Plugin(),
@@ -34,7 +39,22 @@ func NewCatalog() *Catalog {
 		telegram.Plugin(),
 		whatsapp.Plugin(),
 		zoom.Plugin(),
-	}}
+	}
+	for i, plugin := range plugins {
+		if !mcpConnectionPlugin(plugin) || !plugin.RemoteMCP.OAuthSecrets {
+			continue
+		}
+		client := clients[cmp.Or(plugin.Provider.ID, plugin.ID)]
+		if client.ClientID == "" || strings.TrimSpace(os.Getenv(client.ClientSecretEnvVar)) == "" {
+			plugins[i].Implementation.Status = "setup_required"
+			plugins[i].Implementation.Reason = fmt.Sprintf("%s requires a registered OAuth app. Ask your Jaz administrator to configure its client ID and secret.", plugin.Name)
+		}
+	}
+	return &Catalog{plugins: plugins, clients: clients}
+}
+
+func (c *Catalog) MCPOAuthClient(provider string) mcpconfig.OAuthConfig {
+	return c.clients[provider]
 }
 
 func (c *Catalog) ListPlugins() []integrations.Plugin {

@@ -43,8 +43,8 @@ func DeclareMCPServers(cfg Config, store *sqlitestore.Store) error {
 	return mcpconfig.Declare(store, cfg.MCPServers)
 }
 
-func NewMCPManager(cfg Config, installed *plugins.Store, store *sqlitestore.Store, catalog *connections.Catalog, registry *tools.Registry, jaz *jaztools.Service, events *sessionevents.Bus, broker oauthbroker.Broker, logger *log.Logger) *mcpruntime.Manager {
-	reader := connectionMCPServerReader{store: store, catalog: catalog, plugins: installed, clients: cfg.Connections.MCP}
+func NewMCPManager(installed *plugins.Store, store *sqlitestore.Store, catalog *connections.Catalog, registry *tools.Registry, jaz *jaztools.Service, events *sessionevents.Bus, broker oauthbroker.Broker, logger *log.Logger) *mcpruntime.Manager {
+	reader := connectionMCPServerReader{store: store, catalog: catalog, plugins: installed}
 	return mcpruntime.NewManager(reader, store, registry, logger,
 		mcpruntime.WithBuiltinServerProvider(jaztools.ServerConfig(jaz.URL()), jaz.Server),
 		mcpruntime.WithSessionEvents(store, events),
@@ -61,7 +61,6 @@ type connectionMCPServerReader struct {
 	plugins mcpconfig.ServerReader
 	store   connectionTokenStore
 	catalog *connections.Catalog
-	clients map[string]mcpconfig.OAuthConfig
 }
 
 func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) {
@@ -114,7 +113,7 @@ func (r connectionMCPServerReader) connectionBackedServers(ctx context.Context, 
 				URL:       url,
 				Enabled:   true,
 				Source:    mcpconfig.SourceConnection,
-				OAuth:     r.clients[providerID],
+				OAuth:     r.catalog.MCPOAuthClient(providerID),
 			})
 			continue
 		}

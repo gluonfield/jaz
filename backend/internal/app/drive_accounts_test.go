@@ -51,7 +51,7 @@ func TestExistingPersonalAndWorkspaceDriveAccountsRetainSeparateTools(t *testing
 	t.Cleanup(func() {
 		http.DefaultTransport = base
 	})
-	reader := connectionMCPServerReader{store: store, catalog: connections.NewCatalog()}
+	reader := connectionMCPServerReader{store: store, catalog: connections.NewCatalog(nil)}
 	manager := mcpruntime.NewManager(reader, store, tools.NewRegistry(), log.New(io.Discard))
 	manager.Refresh(ctx)
 	manager.Close()
@@ -80,7 +80,7 @@ func TestExistingPersonalAndWorkspaceDriveAccountsRetainSeparateTools(t *testing
 			t.Fatalf("%s search lost its account: %s, %v", alias, data, err)
 		}
 	}
-	service := connections.NewService(connections.NewCatalog(), store, nil)
+	service := connections.NewService(connections.NewCatalog(nil), store, nil)
 	if _, err := service.DisconnectAccount(ctx, "google_drive:personal"); err != nil {
 		t.Fatal(err)
 	}

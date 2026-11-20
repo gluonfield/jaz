@@ -1,7 +1,9 @@
 package connections
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/wins/jaz/backend/pkg/integrations"
@@ -45,11 +47,14 @@ func (s *ConnectService) Start(ctx context.Context, pluginID string, opts StartO
 	if authKind == "" {
 		return ConnectResult{}, fmt.Errorf("connection plugin %q has no sign-in method", pluginID)
 	}
+	if !plugin.Available() && authKind != integrations.AuthKindSession {
+		if plugin.Implementation.Reason != "" {
+			return ConnectResult{}, errors.New(plugin.Implementation.Reason)
+		}
+		return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
+	}
 	switch authKind {
 	case integrations.AuthKindOAuth:
-		if !plugin.Available() {
-			return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
-		}
 		if s.oauth == nil {
 			return ConnectResult{}, fmt.Errorf("connection plugin %q does not support OAuth here", pluginID)
 		}
@@ -71,9 +76,6 @@ func (s *ConnectService) Start(ctx context.Context, pluginID string, opts StartO
 		}
 		return ConnectResult{Start: ConnectStart{Type: "qr", QR: &start}}, nil
 	case integrations.AuthKindRemoteMCP:
-		if !plugin.Available() {
-			return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
-		}
 		if s.remoteMCP == nil {
 			return ConnectResult{}, fmt.Errorf("connection plugin %q does not support remote MCP here", pluginID)
 		}
@@ -83,21 +85,16 @@ func (s *ConnectService) Start(ctx context.Context, pluginID string, opts StartO
 		}
 		return ConnectResult{Start: ConnectStart{Type: "mcp", MCP: &start}, MCPServersChanged: true}, nil
 	case integrations.AuthKindMCPConnection:
-		if !plugin.Available() {
-			return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
-		}
 		if s.mcpConnection == nil {
 			return ConnectResult{}, fmt.Errorf("connection plugin %q does not support MCP-backed sign-in here", pluginID)
 		}
-		start, err := s.mcpConnection.Connect(ctx, plugin, opts.MCPRedirectURL)
+		client := s.catalog.MCPOAuthClient(cmp.Or(plugin.Provider.ID, plugin.ID))
+		start, err := s.mcpConnection.Connect(ctx, plugin, client, opts.MCPRedirectURL)
 		if err != nil {
 			return ConnectResult{}, err
 		}
 		return ConnectResult{Start: ConnectStart{Type: "oauth", AuthURL: start.AuthURL}}, nil
 	default:
-		if !plugin.Available() {
-			return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
-		}
 		return ConnectResult{}, fmt.Errorf("connection plugin %q uses unsupported sign-in method %q", pluginID, authKind)
 	}
 }
