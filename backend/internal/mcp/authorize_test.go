@@ -18,6 +18,87 @@ import (
 	"golang.org/x/oauth2"
 )
 
+func TestInteractiveOAuthUsesManagerLifetime(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		shutdown bool
+	}{
+		{name: "HTTP requests end before sign-in"},
+		{name: "manager shutdown ends sign-in", shutdown: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			provider := mockAuthServer(t, nil)
+			remote := newEchoHandler()
+			var remoteRequests atomic.Int32
+			provider.Config.Handler.(*http.ServeMux).HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
+				remoteRequests.Add(1)
+				if r.Header.Get("Authorization") != "Bearer access-token-123" {
+					http.Error(w, "sign in required", http.StatusUnauthorized)
+					return
+				}
+				remote.ServeHTTP(w, r)
+			})
+			server := mcpconfig.Server{ID: "lifetime", URL: provider.URL + "/mcp", Enabled: true}
+			store := newMemTokenStore()
+			manager := NewManager(&testStore{servers: []mcpconfig.Server{server}}, store, tools.NewRegistry(), log.New(io.Discard))
+			defer manager.Close()
+			opts := mcpconfig.AuthorizeOptions{RedirectURL: "http://127.0.0.1:5599/callback"}
+			request, finishRequest := context.WithCancel(ctx)
+			start := manager.Authorize(request, server, opts)
+			finishRequest()
+			if start.AuthURL == "" {
+				t.Fatalf("authorization did not reach the browser: %+v", start)
+			}
+			manager.authMu.Lock()
+			attempt := manager.authFlows[server.TokenID()]
+			manager.authMu.Unlock()
+			if attempt == nil {
+				t.Fatal("sign-in ended with its initiating HTTP request")
+			}
+			response := mcpconfig.AuthorizationResponse{State: authorizationStateFromURL(start.AuthURL), Code: "approved-code"}
+			if test.shutdown {
+				manager.Close()
+			} else {
+				opts.ReplacePending = true
+				if retry := manager.Authorize(request, server, opts); retry.Status != "error" || retry.AuthURL != "" {
+					t.Fatalf("canceled request started a replacement attempt: %+v", retry)
+				}
+				if err := manager.CompleteAuthorization(request, response); err != nil && !errors.Is(err, context.Canceled) {
+					t.Fatalf("callback rejected after HTTP disconnect: %v", err)
+				}
+			}
+			select {
+			case <-attempt.done:
+			case <-ctx.Done():
+				t.Fatal("authorization attempt did not finish")
+			}
+			_, saved, err := store.LoadToken(ctx, server.TokenID())
+			if err != nil || saved == test.shutdown {
+				t.Fatalf("authorization grant saved = %t, error = %v", saved, err)
+			}
+			status := manager.Status(server.ID)
+			if !test.shutdown {
+				if status.Status != "connected" || status.ToolCount != 1 {
+					t.Fatalf("sign-in did not complete after browser disconnect: %+v", status)
+				}
+				return
+			}
+			if status.Status != "" {
+				t.Fatalf("authorization restored status after manager shutdown: %+v", status)
+			}
+			if err := manager.CompleteAuthorization(ctx, response); err == nil {
+				t.Fatal("stale callback accepted after manager shutdown")
+			}
+			before := remoteRequests.Load()
+			if retry := manager.Authorize(ctx, server, opts); retry.Status != "error" || retry.AuthURL != "" || remoteRequests.Load() != before {
+				t.Fatalf("manager dispatched authorization after shutdown: %+v", retry)
+			}
+		})
+	}
+}
+
 func TestSignInStartsFreshAndKeepsCredentialsUntilApproval(t *testing.T) {
 	for _, test := range []struct {
 		name         string

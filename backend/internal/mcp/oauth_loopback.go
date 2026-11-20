@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"sync/atomic"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/mcpconfig"
@@ -12,7 +11,6 @@ import (
 
 func (r *callbackReceiver) serveLoopback(ctx context.Context, state string) {
 	address := r.loopback.Addr().String()
-	var received atomic.Bool
 	server := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Host != address || req.Method != http.MethodGet || req.URL.Path != mcpconfig.OAuthCallbackPath {
 			http.NotFound(w, req)
@@ -21,7 +19,7 @@ func (r *callbackReceiver) serveLoopback(ctx context.Context, state string) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		q := req.URL.Query()
-		if q.Get("state") != state || ctx.Err() != nil || !received.CompareAndSwap(false, true) {
+		if q.Get("state") != state || ctx.Err() != nil || !r.pending.claimCallback() {
 			http.Error(w, "Invalid or expired authorization state", http.StatusBadRequest)
 			return
 		}

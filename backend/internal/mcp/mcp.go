@@ -79,7 +79,7 @@ type Manager struct {
 
 	authMu     sync.Mutex
 	authStates map[string]*authorizationPending
-	authFlows  map[string]context.CancelFunc
+	authFlows  map[string]*authorizationPending
 	broker     oauthbroker.Broker
 	oauthGuard integrationoauth.RefreshGuard
 
@@ -98,8 +98,7 @@ type tokenStore interface {
 
 type Option func(*Manager)
 
-// WithOAuthBroker lets sign-in use the broker's client metadata document with
-// authorization servers that support one.
+// WithOAuthBroker configures the callback relay and hosted client metadata document.
 func WithOAuthBroker(broker oauthbroker.Broker) Option {
 	return func(m *Manager) {
 		m.broker = broker
@@ -184,6 +183,7 @@ func NewManager(store mcpconfig.ServerReader, tokens tokenStore, registry *tools
 		statuses:     make(map[string]mcpconfig.ServerStatus),
 		refreshGate:  make(chan struct{}, 1),
 		authStates:   make(map[string]*authorizationPending),
+		authFlows:    make(map[string]*authorizationPending),
 		proxyCatalog: make(map[string]remoteTool),
 		refreshed:    make(chan struct{}),
 		proxy:        mcpsdk.NewServer(&mcpsdk.Implementation{Name: ProxyServerName, Version: "0.1.0"}, &mcpsdk.ServerOptions{Capabilities: &mcpsdk.ServerCapabilities{Tools: &mcpsdk.ToolCapabilities{ListChanged: true}}}),
@@ -413,11 +413,6 @@ func (m *Manager) builtinToolName(server mcpconfig.Server, remote string, used m
 
 func (m *Manager) Close() {
 	m.cancel()
-	m.authMu.Lock()
-	for _, cancel := range m.authFlows {
-		cancel()
-	}
-	m.authMu.Unlock()
 	m.refreshGate <- struct{}{}
 	defer func() { <-m.refreshGate }()
 	m.mu.Lock()
@@ -455,10 +450,9 @@ func (m *Manager) setServerStatus(id string, status mcpconfig.ServerStatus) {
 		return
 	}
 	m.mu.Lock()
-	if m.statuses == nil {
-		m.statuses = make(map[string]mcpconfig.ServerStatus)
+	if m.ctx.Err() == nil {
+		m.statuses[id] = status
 	}
-	m.statuses[id] = status
 	m.mu.Unlock()
 }
 

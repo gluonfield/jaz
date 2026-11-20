@@ -1,5 +1,5 @@
 import { memo, useMemo, useState, type RefObject } from 'react'
-import { MCPAppFrame } from '@/components/apps/MCPAppFrame'
+import { MCPAppResult } from '@/components/apps/MCPAppResult'
 import { PresentedContent } from '@/components/session/PresentedContent'
 import { MessageActions } from '@/components/session/MessageActions'
 import { MessageAttachments } from '@/components/session/MessageAttachments'
@@ -97,7 +97,7 @@ export function ChatLog({
             ) : entry.kind === 'activity' ? (
               <SystemEventRow event={entry.event} onOpen={entry.event.loop_created ? onOpenRoutines : undefined} />
             ) : entry.kind === 'app' ? (
-              <MCPAppFrame app={entry.app} call={entry.app} inline active />
+              <MCPAppResult app={entry.app} />
             ) : entry.kind === 'artifact' ? (
               entry.event.artifact ? <PresentedContent presentation={entry.event.artifact} onSendPrompt={onSendPrompt} /> : null
             ) : entry.kind === 'question' ? (

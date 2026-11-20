@@ -160,6 +160,7 @@ func Declare(store Store, raw string) error {
 type AuthorizeOptions struct {
 	RedirectURL     string
 	LoopbackAllowed bool
+	ReplacePending  bool
 }
 
 type ServerReader interface {
