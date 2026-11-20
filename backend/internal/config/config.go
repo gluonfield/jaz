@@ -85,6 +85,7 @@ func Init() error {
 	_ = viper.BindEnv("jaz.connections.drive.oauthclientsecret", "JAZ_GOOGLE_DRIVE_OAUTH_CLIENT_SECRET")
 	_ = viper.BindEnv("jaz.connections.mcp.zoom.clientid", "JAZ_ZOOM_OAUTH_CLIENT_ID")
 	_ = viper.BindEnv("jaz.connections.mcp.zoom.publicclientid", "JAZ_ZOOM_OAUTH_PUBLIC_CLIENT_ID")
+	_ = viper.BindEnv("jaz.connections.mcp.zoom.publicclientusebroker", "JAZ_ZOOM_OAUTH_PUBLIC_CLIENT_USE_BROKER")
 	_ = viper.BindEnv("jaz.connections.mcp.zoom.clientsecretenvvar", "JAZ_ZOOM_OAUTH_CLIENT_SECRET_ENV_VAR")
 	viper.SetDefault("jaz.connections.mcp.zoom.clientsecretenvvar", "JAZ_ZOOM_OAUTH_CLIENT_SECRET")
 	viper.SetDefault("jaz.connections.mcp.zoom.issuer", "https://zoom.us")

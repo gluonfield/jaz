@@ -37,6 +37,9 @@ func (b Broker) ClientMetadataURL() string {
 // Relay returns the redirect URI and broker-signed state with which the
 // authorization response reaches returnURL.
 func (b Broker) Relay(ctx context.Context, returnURL string) (redirectURL, state string, err error) {
+	if b.URL == "" {
+		return "", "", errors.New("OAuth redirect broker is not configured")
+	}
 	body, err := json.Marshal(map[string]string{"return_url": returnURL})
 	if err != nil {
 		return "", "", err

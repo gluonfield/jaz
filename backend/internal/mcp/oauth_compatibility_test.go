@@ -79,22 +79,24 @@ func TestOAuthRegistrationFailureExplainsSetup(t *testing.T) {
 
 func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 	for _, test := range []struct {
-		name        string
-		static      bool
-		public      bool
-		broker      bool
-		cimd        bool
-		secret      bool
-		oidc        bool
-		formToken   bool
-		cancelFirst bool
-		rejectTools bool
+		name         string
+		static       bool
+		public       bool
+		publicBroker bool
+		broker       bool
+		cimd         bool
+		secret       bool
+		oidc         bool
+		formToken    bool
+		cancelFirst  bool
+		rejectTools  bool
 	}{
 		{name: "preregistered desktop and browser", static: true, broker: true, cimd: true, oidc: true},
 		{name: "preregistered direct callback", static: true},
 		{name: "cancelled preregistered retry", static: true, broker: true, cancelFirst: true},
 		{name: "preregistered confidential", static: true, broker: true, secret: true},
 		{name: "preregistered public loopback", static: true, broker: true, public: true},
+		{name: "preregistered public relay", static: true, broker: true, public: true, publicBroker: true},
 		{name: "public grant rejected by tool discovery", static: true, public: true, rejectTools: true},
 		{name: "advertised CIMD", broker: true, cimd: true},
 		{name: "form encoded token endpoint", static: true, broker: true, formToken: true},
@@ -107,14 +109,21 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			var mu sync.Mutex
 			var returnURL, state, registeredRedirect, challenge, issuedCode string
 			var authorizationRedirect, authorizationClient string
-			var registrations, exchanges, refreshes int
+			var registrations, exchanges, refreshes, relayStarts int
 			broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/oauth/start" {
 					var input struct {
 						ReturnURL string `json:"return_url"`
 					}
-					json.NewDecoder(r.Body).Decode(&input)
+					decoder := json.NewDecoder(r.Body)
+					decoder.DisallowUnknownFields()
+					if err := decoder.Decode(&input); err != nil || r.Header.Get("Authorization") != "" {
+						t.Error("redirect relay received unexpected start fields or credentials")
+						http.Error(w, "invalid broker request", http.StatusBadRequest)
+						return
+					}
 					mu.Lock()
+					relayStarts++
 					returnURL = input.ReturnURL
 					state, _ = randomState()
 					signedState := state
@@ -223,7 +232,11 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 				case "authorization_code":
 					exchanges++
 					if test.public {
-						callback, _ := url.Parse(authorizationRedirect)
+						callbackURL := authorizationRedirect
+						if test.publicBroker {
+							callbackURL = returnURL
+						}
+						callback, _ := url.Parse(callbackURL)
 						if conn, err := net.DialTimeout("tcp4", callback.Host, time.Second); err == nil {
 							conn.Close()
 							t.Error("loopback callback was still listening during token exchange")
@@ -276,6 +289,7 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			server := mcpconfig.Server{ID: "compatibility", URL: provider.URL + "/mcp", Enabled: true}
 			if test.public {
 				server.OAuth.PublicClientID = clientID
+				server.OAuth.PublicClientUseBroker = test.publicBroker
 				server.OAuth.ClientSecretEnvVar = "MCP_UNUSED_SECRET"
 				t.Setenv(server.OAuth.ClientSecretEnvVar, "must-not-send")
 			} else if test.static {
@@ -317,13 +331,18 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			}
 			authURL, _ := url.Parse(status.AuthURL)
 			if test.public {
-				directCallback, err := url.Parse(authURL.Query().Get("redirect_uri"))
+				callbackURL := authURL.Query().Get("redirect_uri")
+				mu.Lock()
+				if test.publicBroker {
+					callbackURL = returnURL
+				} else {
+					registeredRedirect = callbackURL
+				}
+				mu.Unlock()
+				directCallback, err := url.Parse(callbackURL)
 				if err != nil || directCallback.Scheme != "http" || directCallback.Hostname() != "127.0.0.1" || directCallback.Port() == "" || directCallback.Path != mcpconfig.OAuthCallbackPath || directCallback.String() == localCallback {
 					t.Fatalf("public sign-in callback = %q, %v", directCallback, err)
 				}
-				mu.Lock()
-				registeredRedirect = directCallback.String()
-				mu.Unlock()
 				if err := manager.CompleteAuthorization(ctx, mcpconfig.AuthorizationResponse{State: authURL.Query().Get("state"), Code: "wrong-callback"}); err == nil {
 					t.Fatal("shared callback accepted the loopback state")
 				}
@@ -404,8 +423,8 @@ func TestOAuthCallbackAndRefreshCompatibility(t *testing.T) {
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			if test.public && returnURL != "" {
-				t.Fatal("public sign-in contacted the redirect broker")
+			if test.public && (relayStarts > 1 || (relayStarts == 1) != test.publicBroker) {
+				t.Fatalf("unexpected redirect relay starts for public OAuth: %d", relayStarts)
 			}
 			expectedRegistrations := 0
 			if !test.static && !test.cimd {

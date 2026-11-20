@@ -378,6 +378,7 @@ func (h *oauthHandler) refreshClientConfig(_ context.Context, token integrationo
 func (h *oauthHandler) staticClientConfig(id string) (oauthClientConfig, error) {
 	client := oauthClientConfig{clientID: id, authStyle: oauth2.AuthStyleInParams, static: true}
 	if h.oauth.UsesLoopback() {
+		client.useBroker = h.oauth.PublicClientUseBroker
 		return client, nil
 	}
 	client.useBroker = h.broker.URL != ""

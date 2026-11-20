@@ -151,12 +151,13 @@ func TestLoadZoomMCPClientFromEnvironment(t *testing.T) {
 	t.Cleanup(viper.Reset)
 	t.Setenv("JAZ_ZOOM_OAUTH_CLIENT_ID", " registered-client ")
 	t.Setenv("JAZ_ZOOM_OAUTH_PUBLIC_CLIENT_ID", " public-client ")
+	t.Setenv("JAZ_ZOOM_OAUTH_PUBLIC_CLIENT_USE_BROKER", "true")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	zoom := cfg.Jaz.Connections.MCP["zoom"]
-	if zoom.ClientID != "registered-client" || zoom.PublicClientID != "public-client" || zoom.ClientSecretEnvVar != "JAZ_ZOOM_OAUTH_CLIENT_SECRET" || !zoom.UseAppScopes {
+	if zoom.ClientID != "registered-client" || zoom.PublicClientID != "public-client" || !zoom.PublicClientUseBroker || zoom.ClientSecretEnvVar != "JAZ_ZOOM_OAUTH_CLIENT_SECRET" || !zoom.UseAppScopes {
 		t.Fatalf("Zoom client = %#v", zoom)
 	}
 }
