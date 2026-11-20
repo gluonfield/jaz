@@ -144,7 +144,7 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 	case AgentOpenCode:
 		return resolveOpenCodeAuth(auth, cfg, root, env, providers)
 	case AgentAntigravity:
-		return resolveAntigravityAuth(auth, root, env)
+		return antigravityAuthStatus(auth, (auth.Mode == AuthModeAuto || auth.Mode == AuthModeExistingCLI) && antigravityCLIAuthenticated(env))
 	case AgentMuse:
 		return resolveMuseAuth(root, env)
 	case AgentCopilot:
@@ -369,7 +369,7 @@ func resolveOpenCodeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env
 	return status
 }
 
-func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]string) resolvedAgentAuth {
+func antigravityAuthStatus(auth AgentAuthConfig, authenticated bool) resolvedAgentAuth {
 	mode := auth.Mode
 	if mode == "" {
 		mode = AuthModeAuto
@@ -380,11 +380,7 @@ func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]st
 		StoragePath: filepath.Join(cliPath, "antigravity-oauth-token"),
 		Source:      mode,
 	}
-	cliAuthenticated := false
-	if mode == AuthModeAuto || mode == AuthModeExistingCLI {
-		cliAuthenticated = antigravityCLIAuthenticated(env)
-	}
-	if cliAuthenticated {
+	if authenticated {
 		status.Config = AgentAuthConfig{Mode: AuthModeExistingCLI, Path: cliPath}
 		status.Source = AuthModeExistingCLI
 		status.markAuthenticated("agy_models", AuthKindOAuth)
@@ -397,17 +393,12 @@ func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]st
 	return status
 }
 
-// agy keeps its OAuth in the OS keyring, not a readable file, so the only
-// reliable auth check is running `agy models`. A single settings load or save
-// probes every agent — and antigravity twice per probe (env build + resolve) —
-// so cache the result briefly to collapse those into one subprocess.
-//
-// Only the authenticated result is cached: a signed-in probe is the slow one
-// (~1s), while a signed-out probe is cheap (~0.3s) and must stay fresh so the
-// post-login verification sees the just-written credential instead of a stale no.
+// agy keeps its OAuth in the OS keyring. Cache successful `agy models` probes
+// briefly, and keep signed-out probes fresh for post-login verification.
 var antigravityAuthCache = struct {
 	sync.Mutex
 	authedUntil map[string]time.Time
+	generation  uint64
 }{authedUntil: map[string]time.Time{}}
 
 const antigravityAuthTTL = 30 * time.Second
@@ -422,6 +413,7 @@ func antigravityCLIAuthenticated(env map[string]string) bool {
 	key := cmd.Path + "\x00" + env["HOME"]
 	antigravityAuthCache.Lock()
 	fresh := time.Now().Before(antigravityAuthCache.authedUntil[key])
+	generation := antigravityAuthCache.generation
 	antigravityAuthCache.Unlock()
 	if fresh {
 		return true
@@ -430,8 +422,11 @@ func antigravityCLIAuthenticated(env map[string]string) bool {
 		return false
 	}
 	antigravityAuthCache.Lock()
+	defer antigravityAuthCache.Unlock()
+	if generation != antigravityAuthCache.generation {
+		return false
+	}
 	antigravityAuthCache.authedUntil[key] = time.Now().Add(antigravityAuthTTL)
-	antigravityAuthCache.Unlock()
 	return true
 }
 
@@ -439,6 +434,7 @@ func antigravityCLIAuthenticated(env map[string]string) bool {
 // reflected on the next probe instead of lingering until the TTL expires.
 func invalidateAntigravityAuthCache() {
 	antigravityAuthCache.Lock()
+	antigravityAuthCache.generation++
 	clear(antigravityAuthCache.authedUntil)
 	antigravityAuthCache.Unlock()
 }
@@ -497,17 +493,21 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 	return nil
 }
 
-func DisconnectAgentAuth(ctx context.Context, name string, cfg AgentConfig, root, storagePath string) error {
-	if instructions := agentManualDisconnect(name, cfg); instructions != "" {
-		return fmt.Errorf("%s", instructions)
-	}
+type ManualDisconnectError string
+
+func (err ManualDisconnectError) Error() string { return string(err) }
+
+func DisconnectAgentAuth(ctx context.Context, name string, cfg AgentConfig, root string, providers map[string]modelprovider.ModelProviderConfig) error {
 	switch CanonicalAgentName(name) {
 	case AgentAntigravity:
 		return disconnectAntigravityAuth(ctx, cfg, root)
 	case AgentMuse:
 		return disconnectMuseAuth(ctx, cfg, root)
+	case AgentCopilot:
+		return ManualDisconnectError(agentManualDisconnect(name, cfg))
 	default:
-		return RemoveOwnedCredential(name, storagePath, root)
+		auth := ProbeAgentAuthWithProviders(name, cfg, root, nil, providers)
+		return RemoveOwnedCredential(name, auth.StoragePath, root)
 	}
 }
 

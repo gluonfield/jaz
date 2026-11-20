@@ -63,7 +63,7 @@ func TestCopilotNativeLoginAndModelDiscovery(t *testing.T) {
 	if !strings.Contains(status.ManualDisconnect, shellQuote(invocation.Executable)) {
 		t.Fatalf("native sign-out guidance omits installed executable: %q", status.ManualDisconnect)
 	}
-	if err := DisconnectAgentAuth(t.Context(), AgentCopilot, cfg, root, ""); err == nil || err.Error() != status.ManualDisconnect {
+	if err := DisconnectAgentAuth(t.Context(), AgentCopilot, cfg, root, nil); err == nil || err.Error() != status.ManualDisconnect {
 		t.Fatalf("shared native login should require native sign-out: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "signed-in")); err != nil {

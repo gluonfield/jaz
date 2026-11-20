@@ -107,14 +107,12 @@ func TestDisconnectACPAuthRemovesJazOwnedCredentialAndKey(t *testing.T) {
 		t.Fatalf("api key not removed from runtime env")
 	}
 
-	var got struct {
-		ACPAuth map[string]acpAuthStatusResponse `json:"acp_auth"`
-	}
+	var got acpDisconnectResponse
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.ACPAuth[acp.AgentClaude].Authenticated {
-		t.Fatalf("still authenticated after disconnect: %#v", got.ACPAuth)
+	if got.Auth.Authenticated {
+		t.Fatalf("still authenticated after disconnect: %#v", got.Auth)
 	}
 }
 
@@ -248,21 +246,18 @@ func TestDisconnectACPAuthStopsAutoFallbackToGlobalClaudeConfig(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 
-	var got struct {
-		ACP     map[string]agentsettings.ACPAgentDefaults `json:"acp"`
-		ACPAuth map[string]acpAuthStatusResponse          `json:"acp_auth"`
-	}
+	var got acpDisconnectResponse
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	claudeAuth := got.ACPAuth[acp.AgentClaude]
+	claudeAuth := got.Auth
 	if claudeAuth.Authenticated || claudeAuth.AuthMode != acp.AuthModeJazProfile {
 		t.Fatalf("disconnect status = %#v, want unauthenticated Jaz profile", claudeAuth)
 	}
 	if _, err := os.Stat(globalCred); err != nil {
 		t.Fatalf("global ~/.claude config was deleted: %v", err)
 	}
-	claude := got.ACP[acp.AgentClaude]
+	claude := got.Settings
 	if claude.Enabled || claude.Auth.Mode != acp.AuthModeJazProfile {
 		t.Fatalf("stored claude settings = %#v, want disabled Jaz profile", claude)
 	}

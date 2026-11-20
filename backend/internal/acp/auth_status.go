@@ -60,7 +60,11 @@ func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env 
 	}
 	probeEnv := NewManager(nil, Config{Root: root, Env: env, Providers: providers}, nil).probeEnv(name, cfg)
 	resolved := resolveAgentAuthWithProviders(name, cfg, root, probeEnv, providers)
-	status := agentLoginCommand(name, root, resolved.Config, loginBinDirs(cfg), probeEnv)
+	return agentAuthStatus(name, cfg, root, probeEnv, resolved)
+}
+
+func agentAuthStatus(name string, cfg AgentConfig, root string, env map[string]string, resolved resolvedAgentAuth) AgentAuthStatus {
+	status := agentLoginCommand(name, root, resolved.Config, loginBinDirs(cfg), env)
 	status.ManualDisconnect = agentManualDisconnect(name, cfg)
 	status.RefreshOwner = RefreshOwnerAgentCLI
 	status.StoragePath = resolved.StoragePath

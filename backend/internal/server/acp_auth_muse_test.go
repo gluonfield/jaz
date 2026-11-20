@@ -41,13 +41,11 @@ func TestDisconnectMuseAllowsNativeKeylessEndpoint(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("disconnect status = %d, body = %s", res.Code, res.Body.String())
 	}
-	var got struct {
-		ACPAuth map[string]acpAuthStatusResponse `json:"acp_auth"`
-	}
+	var got acpDisconnectResponse
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	auth := got.ACPAuth[acp.AgentMuse]
+	auth := got.Auth
 	if !auth.Authenticated || auth.AuthKind != acp.AuthKindNone {
 		t.Fatalf("native keyless endpoint became unavailable after logout: %#v", auth)
 	}

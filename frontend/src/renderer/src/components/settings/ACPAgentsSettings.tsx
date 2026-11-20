@@ -86,7 +86,7 @@ function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
 }
 
 export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => void }) {
-  const { settings, draft, setDraft, save, dirty } = useAgentSettingsDraft('agent settings')
+  const { settings, draft, setDraft, applyDisconnect, save, dirty } = useAgentSettingsDraft('agent settings')
   // This screen owns extra mutations (sign-in, disconnect) beyond the shared save.
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -123,10 +123,9 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
 
   const disconnect = useMutation({
     mutationFn: (agent: string) => disconnectACPAuth(agent),
-    onSuccess: (settings, agent) => {
+    onSuccess: async (result, agent) => {
       forgetLoginJob(agent)
-      setDraft(cloneAgentSettings(settings))
-      queryClient.setQueryData<AgentSettingsData>(keys.agentSettings, settings)
+      await applyDisconnect(agent, result)
       toast(`Disconnected ${authProviderLabel(agent)}`)
     },
     onSettled: () => {
@@ -168,7 +167,7 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
       saving={save.isPending}
       onSave={() => draft && save.mutate(normalizeACPAgentsEnabled(draft))}
     >
-      {settings.isError ? (
+      {settings.isLoadingError ? (
         <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
       ) : settings.isPending || !draft ? (
         <SkeletonRows count={3} />
@@ -559,7 +558,7 @@ function AgentAuthPanel({
     return (
       <AntigravitySignIn
         active={active}
-        disabled={disabled}
+        disabled={disabled || disconnecting}
         running={running}
         loginJob={loginJob}
         onPersonal={onStartLogin}

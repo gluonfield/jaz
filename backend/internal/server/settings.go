@@ -165,21 +165,26 @@ func (s *Server) modelProviderConfigured(id string) bool {
 }
 
 func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[string]acpAuthStatusResponse {
-	out := make(map[string]acpAuthStatusResponse, len(s.allACPAgentNames()))
-	for _, name := range s.allACPAgentNames() {
+	names := s.allACPAgentNames()
+	providers := s.modelProviders()
+	out := make(map[string]acpAuthStatusResponse, len(names))
+	for _, name := range names {
 		cfg, _, err := s.acpProbeConfig(name, defaults)
 		if err != nil {
 			out[name] = acpAuthStatusResponse{Reason: err.Error()}
 			continue
 		}
-		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
-		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
-		status := newACPAuthStatusResponse(auth, readiness)
-		status.ManagedAdapter = s.managedAdapterStatus(cfg)
-		status.ManagedTool = s.managedToolStatus(cfg.ManagedTool, cfg.Env)
-		out[name] = status
+		auth, readiness := acp.ProbeAuthAndReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, providers)
+		out[name] = s.acpAuthStatus(cfg, auth, readiness)
 	}
 	return out
+}
+
+func (s *Server) acpAuthStatus(cfg acp.AgentConfig, auth acp.AgentAuthStatus, readiness acp.Readiness) acpAuthStatusResponse {
+	status := newACPAuthStatusResponse(auth, readiness)
+	status.ManagedAdapter = s.managedAdapterStatus(cfg)
+	status.ManagedTool = s.managedToolStatus(cfg.ManagedTool, cfg.Env)
+	return status
 }
 
 func (s *Server) acpOptions(catalog acp.AgentCatalog, agentNames []string, providers []settingsModelProvider, defaults agentsettings.AgentDefaults) map[string]agentOptionResponse {

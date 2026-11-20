@@ -79,7 +79,7 @@ func TestMuseNativeAccountLoginAndDisconnect(t *testing.T) {
 	if status := ProbeAgentAuth(AgentMuse, cfg, root, nil); !status.Authenticated || status.AuthKind != AuthKindOAuth {
 		t.Fatalf("native login was not available to the runtime: %#v", status)
 	}
-	if err := DisconnectAgentAuth(t.Context(), AgentMuse, cfg, root, ""); err != nil {
+	if err := DisconnectAgentAuth(t.Context(), AgentMuse, cfg, root, nil); err != nil {
 		t.Fatal(err)
 	}
 	if status := ProbeAgentAuth(AgentMuse, cfg, root, nil); status.Authenticated {

@@ -80,6 +80,7 @@ func (s *Server) handleAntigravityCloudLogin(w http.ResponseWriter, r *http.Requ
 				msg.Err = err.Error()
 			}
 		}
+		release()
 		return msg
 	})
 }

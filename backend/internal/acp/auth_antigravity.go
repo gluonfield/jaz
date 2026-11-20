@@ -13,11 +13,13 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/wins/jaz/backend/internal/processenv"
+	"github.com/wins/jaz/backend/internal/subprocess"
 )
 
 const (
 	AntigravityGoogleAccount = "oauth-personal"
 	AntigravityCloudProject  = "oauth-business"
+	antigravityAccountGrace  = 250 * time.Millisecond
 )
 
 func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) ([]string, error) {
@@ -33,28 +35,107 @@ func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) 
 	if err := PrepareAgentLoginInvocation(AgentAntigravity, cfg.Auth, root, invocation); err != nil {
 		return nil, err
 	}
+	cfg.useCommandLaunch(invocation.Executable, []string{"acp", "--disable-telemetry"})
+	var methods []string
+	err := withAntigravityAccountPeer(ctx, cfg, root, invocation.Cwd, func(_ *jsonrpc.Peer, init acpschema.InitializeResponse) error {
+		var advertised []agentAuthMethod
+		for _, raw := range init.AuthMethods {
+			var method agentAuthMethod
+			if err := json.Unmarshal(raw, &method); err != nil {
+				return err
+			}
+			advertised = append(advertised, method)
+		}
+		for _, id := range []string{AntigravityGoogleAccount, AntigravityCloudProject} {
+			if slices.ContainsFunc(advertised, func(method agentAuthMethod) bool {
+				return string(method.ID) == id && method.Type != "terminal"
+			}) {
+				methods = append(methods, id)
+			}
+		}
+		return nil
+	})
+	return methods, err
+}
+
+func disconnectAntigravityAuth(ctx context.Context, cfg AgentConfig, root string) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	err := withAntigravityAccountPeer(ctx, cfg, root, "", func(peer *jsonrpc.Peer, init acpschema.InitializeResponse) error {
+		caps := init.AgentCapabilities
+		if caps == nil || caps.Auth == nil || caps.Auth.Logout == nil {
+			return fmt.Errorf("Antigravity does not advertise native sign out support")
+		}
+		if _, err := peer.Call(ctx, acpschema.AgentMethodLogout, acpschema.LogoutRequest{}); err != nil {
+			return fmt.Errorf("Antigravity sign out: %w", err)
+		}
+		return nil
+	})
+	if err == nil {
+		invalidateAntigravityAuthCache()
+	}
+	return err
+}
+
+func withAntigravityAccountPeer(ctx context.Context, cfg AgentConfig, root, cwd string, run func(*jsonrpc.Peer, acpschema.InitializeResponse) error) (err error) {
 	manager := NewManager(nil, Config{Root: root}, nil)
 	defer manager.Close()
-	cmd := exec.CommandContext(ctx, invocation.Executable, "acp", "--disable-telemetry")
-	cmd.Env = processenv.List(manager.probeEnv(AgentAntigravity, cfg))
-	cmd.Dir = invocation.Cwd
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
+	env := manager.probeEnv(AgentAntigravity, cfg)
+	if cfg.ManagedAdapter != "" {
+		command, err := antigravityExecutable(env["PATH"])
+		if err != nil {
+			return err
+		}
+		cfg.useCommandLaunch(command, cfg.ManagedAdapterArgs)
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
-		return nil, err
+	var conn jsonrpc.MessageConn
+	if cfg.URL != "" {
+		remote, _, err := manager.openConn(ctx, AgentAntigravity, cfg, env, cwd, "")
+		if err != nil {
+			return err
+		}
+		conn = remote
+		defer conn.Close()
+	} else {
+		processCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		command, args := launchCommand(cfg.Command, cfg.Args)
+		addCommandDirToPath(env, command)
+		cmd := exec.CommandContext(processCtx, command, args...)
+		cmd.Env = processenv.List(env)
+		cmd.Dir = cwd
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			return err
+		}
+		defer stdin.Close()
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return err
+		}
+		defer stdout.Close()
+		stderr := newProcessStderrTail()
+		cmd.Stderr = stderr
+		process := subprocess.New(cmd)
+		cmd.Cancel = stdin.Close
+		cmd.WaitDelay = antigravityAccountGrace
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		defer func() {
+			cancel()
+			_ = cmd.Wait()
+			_ = process.TerminateWithin(antigravityAccountGrace)
+			if detail, _ := stderr.snapshot(); err != nil && detail != "" {
+				err = fmt.Errorf("%w: %s", err, detail)
+			}
+		}()
+		if err := process.Started(); err != nil {
+			return err
+		}
+		conn = stdio.New(stdout, stdin)
 	}
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	defer func() {
-		cancel()
-		_ = cmd.Wait()
-	}()
-	peer := jsonrpc.NewPeer(stdio.New(stdout, stdin), nil)
+	peer := jsonrpc.NewPeer(conn, nil)
 	go func() {
 		_ = peer.Serve(ctx)
 	}()
@@ -63,57 +144,14 @@ func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) 
 		ClientInfo:      &acpschema.Implementation{Name: "jaz", Title: "Jaz"},
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var initialized struct {
-		ProtocolVersion acpschema.ProtocolVersion `json:"protocolVersion"`
-		AuthMethods     []agentAuthMethod         `json:"authMethods"`
-	}
+	var initialized acpschema.InitializeResponse
 	if err := json.Unmarshal(raw, &initialized); err != nil {
-		return nil, err
+		return err
 	}
 	if initialized.ProtocolVersion != acpschema.ProtocolVersionNumber {
-		return nil, fmt.Errorf("unsupported ACP protocol version %d", initialized.ProtocolVersion)
+		return fmt.Errorf("unsupported ACP protocol version %d", initialized.ProtocolVersion)
 	}
-	var methods []string
-	for _, id := range []string{AntigravityGoogleAccount, AntigravityCloudProject} {
-		if slices.ContainsFunc(initialized.AuthMethods, func(method agentAuthMethod) bool {
-			return string(method.ID) == id && method.Type != "terminal"
-		}) {
-			methods = append(methods, id)
-		}
-	}
-	return methods, nil
-}
-
-func disconnectAntigravityAuth(ctx context.Context, cfg AgentConfig, root string) error {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	if cfg.ManagedAdapter != "" {
-		command, err := antigravityExecutable(loginBinDirs(cfg))
-		if err != nil {
-			return err
-		}
-		cfg.useCommandLaunch(command, cfg.ManagedAdapterArgs)
-	}
-	manager := NewManager(nil, Config{Root: root}, nil)
-	defer manager.Close()
-	conn, err := manager.connect(ctx, AgentAntigravity, cfg, "", "", "", nil)
-	if err != nil {
-		return err
-	}
-	defer conn.close()
-	var initialized acpschema.InitializeResponse
-	if err := json.Unmarshal(conn.initRaw, &initialized); err != nil {
-		return err
-	}
-	capabilities := initialized.AgentCapabilities
-	if capabilities == nil || capabilities.Auth == nil || capabilities.Auth.Logout == nil {
-		return fmt.Errorf("Antigravity does not advertise native sign out support")
-	}
-	if _, err := conn.peer.Call(ctx, acpschema.AgentMethodLogout, acpschema.LogoutRequest{}); err != nil {
-		return fmt.Errorf("Antigravity sign out: %w", conn.withProcessStderr(err))
-	}
-	invalidateAntigravityAuthCache()
-	return nil
+	return run(peer, initialized)
 }

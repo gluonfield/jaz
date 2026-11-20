@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -53,7 +54,7 @@ func (p *Supervisor) Started() error {
 	return nil
 }
 
-func (p *Supervisor) Terminate() error {
+func (p *Supervisor) TerminateWithin(_ time.Duration) error {
 	p.mu.Lock()
 	job := p.job
 	p.job = 0

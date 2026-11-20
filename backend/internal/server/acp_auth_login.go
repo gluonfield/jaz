@@ -32,7 +32,7 @@ func (s *Server) claimACPAuth(agent string) (func(), error) {
 	if !s.antigravityLoginMu.TryLock() {
 		return nil, errAntigravityAuthBusy
 	}
-	return s.antigravityLoginMu.Unlock, nil
+	return sync.OnceFunc(s.antigravityLoginMu.Unlock), nil
 }
 
 type acpAuthLoginRequest struct {
@@ -228,6 +228,7 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 			// "Error: authentication failed or timed out") is the real story.
 			err = errors.New(last)
 		}
+		release()
 		job.finish(err, cmdCtx.Err())
 	}()
 	return job, nil

@@ -4,8 +4,9 @@ import { useEffect, useReducer } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
+import { applyACPDisconnect } from '@/lib/agentSettings'
 import { agentSettingsQuery, updateAgentSettings } from '@/lib/api/settings'
-import type { AgentSettings as AgentSettingsData } from '@/lib/api/types'
+import type { ACPDisconnectResult, AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { agentSettingsDraft, agentSettingsDraftDirty } from '@/lib/agentSettingsDraft'
 
@@ -16,6 +17,13 @@ export function useAgentSettingsDraft(label: string) {
   const [state, dispatch] = useReducer(agentSettingsDraft, null)
   const draft = state ? { ...state.server, ...state.input } : null
   const setDraft = (settings: AgentSettingsData) => dispatch({ type: 'edit', settings })
+  const applyDisconnect = async (agent: string, result: ACPDisconnectResult) => {
+    await queryClient.cancelQueries({ queryKey: keys.agentSettings })
+    dispatch({ type: 'disconnect', agent, result })
+    queryClient.setQueryData<AgentSettingsData>(keys.agentSettings, (current) =>
+      current && applyACPDisconnect(current, agent, result),
+    )
+  }
 
   useEffect(() => {
     if (settings.data) dispatch({ type: 'refresh', settings: settings.data })
@@ -23,7 +31,8 @@ export function useAgentSettingsDraft(label: string) {
 
   const save = useMutation({
     mutationFn: (input: AgentSettingsData) => updateAgentSettings(input),
-    onSuccess: (saved) => {
+    onSuccess: async (saved) => {
+      await queryClient.cancelQueries({ queryKey: keys.agentSettings })
       dispatch({ type: 'reset', settings: saved })
       queryClient.setQueryData(keys.agentSettings, saved)
       toast(`Saved ${label}`)
@@ -36,7 +45,7 @@ export function useAgentSettingsDraft(label: string) {
     },
   })
 
-  return { settings, draft, setDraft, save, dirty: agentSettingsDraftDirty(state) }
+  return { settings, draft, setDraft, applyDisconnect, save, dirty: agentSettingsDraftDirty(state) }
 }
 
 // The chrome both agent-settings screens share: heading, optional save action, body slot.

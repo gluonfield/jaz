@@ -20,3 +20,7 @@ func New(cmd *exec.Cmd) *Supervisor {
 	cmd.WaitDelay = terminateGrace + stdioDrain
 	return process
 }
+
+func (p *Supervisor) Terminate() error {
+	return p.TerminateWithin(terminateGrace)
+}

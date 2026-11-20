@@ -44,3 +44,42 @@ test('live metadata refreshes preserve edits and reverting clears dirty state', 
   expect(agentSettingsDraftDirty(draft)).toBe(false)
   expect(draft.input.acp.muse.enabled).toBe(true)
 })
+
+test('disconnect applies the confirmed auth state without clearing draft edits', () => {
+  const server = {
+    agents: ['antigravity', 'muse'],
+    acp: {
+      antigravity: { enabled: true, model: 'saved-model', auth: { mode: 'existing_cli' } },
+      muse: { enabled: true },
+    },
+    acp_auth: { antigravity: { authenticated: true } },
+    providers: [],
+  }
+  let draft = agentSettingsDraft(null, { type: 'refresh', settings: server })
+  draft = agentSettingsDraft(draft, {
+    type: 'edit',
+    settings: {
+      ...server,
+      acp: { ...server.acp, antigravity: { ...server.acp.antigravity, model: 'edited-model' } },
+      acp_keys: { muse: 'draft-key' },
+    },
+  })
+  draft = agentSettingsDraft(draft, {
+    type: 'disconnect',
+    agent: 'antigravity',
+    result: {
+      settings: { ...server.acp.antigravity, enabled: false, auth: { mode: 'auto' } },
+      auth: { authenticated: false },
+    },
+  })
+  draft = agentSettingsDraft(draft, {
+    type: 'refresh',
+    settings: { ...draft.server, acp_auth: { ...draft.server.acp_auth, muse: { authenticated: true } } },
+  })
+  expect(draft.server.acp_auth.antigravity.authenticated).toBe(false)
+  expect(draft.server.acp_auth.muse.authenticated).toBe(true)
+  expect(draft.input.acp.antigravity.enabled).toBe(false)
+  expect(draft.input.acp.antigravity.auth.mode).toBe('auto')
+  expect(draft.input.acp.antigravity.model).toBe('edited-model')
+  expect(draft.input.acp_keys.muse).toBe('draft-key')
+})
