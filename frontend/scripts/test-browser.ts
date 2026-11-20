@@ -19,6 +19,9 @@ utils.book_append_sheet(workbook, utils.aoa_to_sheet([['Volume'], [500]]), 'Scen
 for (const bookType of ['xlsx', 'xls'] as const) {
   await writeFile(join(output, 'workbook.' + bookType), write(workbook, { type: 'buffer', bookType }))
 }
+const rewritten = utils.book_new()
+utils.book_append_sheet(rewritten, utils.aoa_to_sheet([['Part', 'Cost'], ['Gearbox', 40]]), 'BOM')
+await writeFile(join(output, 'workbook-rewritten.xlsx'), write(rewritten, { type: 'buffer', bookType: 'xlsx' }))
 await writeFile(join(output, 'bom.csv'), 'Part,Code,Note\r\n"Motor, large",00123,"line one\nline two"')
 await writeFile(join(output, 'report.html'), `<!doctype html><title>Local report</title><link rel="icon" href="report-icon.svg"><link rel="stylesheet" href="report.css"><script src="report.js" defer></script><h1>Actuator report</h1><a target="_blank" href="bom.csv">BOM CSV</a><a target="_blank" href="workbook.xlsx">Excel workbook</a><a target="_blank" href="workbook.xls">Legacy Excel</a><a target="_blank" href="./calculator:one.html?volume=500#costs">Calculator</a><a target="_blank" href="https://example.com/">External source</a><output></output>`)
 await writeFile(join(output, 'report-icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#087e8b"/><path d="M7 25 16 6l9 19h-5l-4-9-4 9Z" fill="white"/></svg>')

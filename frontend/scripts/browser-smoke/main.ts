@@ -128,6 +128,12 @@ const server = createServer(async (request, response) => {
     response.end()
     return
   }
+  if (request.method === 'POST' && request.url === '/workbook-fixture') {
+    await writeFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'workbook.xlsx'), await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'workbook-rewritten.xlsx')))
+    response.writeHead(204)
+    response.end()
+    return
+  }
   if (request.method === 'POST' && request.url === '/generated-image-fixture') {
     await writeFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'generated.png'), await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'icon-1024.png')))
     response.writeHead(204)

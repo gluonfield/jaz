@@ -42,9 +42,10 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   const scrollsInternally = Boolean(PagedFileView || spreadsheet)
   const markdown = isMarkdownPath(filePath)
   const image = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico)(?:[?#].*)?$/i.test(filePath)
-  // A document follows the agent while it writes, and once more when it stops.
-  const file = useQuery({ ...sessionFileQuery(sessionId, filePath), enabled: visible && Boolean(filePath) && !scrollsInternally && !image, refetchInterval: markdown && working ? 2000 : false })
-  useRefetchAfterWork(markdown && working, file.refetch)
+  // A document or a spreadsheet follows the agent while it writes, and once more when it stops.
+  const follows = (markdown || spreadsheet) && working
+  const file = useQuery({ ...sessionFileQuery(sessionId, filePath), enabled: visible && Boolean(filePath) && !PagedFileView && !image, refetchInterval: follows ? 2000 : false })
+  useRefetchAfterWork(follows, file.refetch)
   const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) })
   const [draft, setDraft] = useState(filePath)
   const [inputError, setInputError] = useState('')
@@ -107,9 +108,9 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading {pdf ? 'PDF' : 'Word document'}…</p>}>
             <PagedFileView key={`${sessionId}:${filePath}`} load={loadBytes} location={fileRef?.location} visible={visible} />
           </Suspense>
-        ) : spreadsheet ? (
+        ) : spreadsheet && !file.isPending ? (
           <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading spreadsheet…</p>}>
-            <SpreadsheetFileView key={`${filePath}:${fileRef?.location?.sheet ?? ''}:${fileRef?.location?.range ?? ''}`} sessionId={sessionId} path={filePath} visible={visible} initialSheet={fileRef?.location?.sheet} initialSelection={fileRef?.location?.range} />
+            <SpreadsheetFileView key={`${filePath}:${fileRef?.location?.sheet ?? ''}:${fileRef?.location?.range ?? ''}`} sessionId={sessionId} path={filePath} version={file.data?.version} visible={visible} initialSheet={fileRef?.location?.sheet} initialSelection={fileRef?.location?.range} />
           </Suspense>
         ) : file.isPending ? (
           <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">

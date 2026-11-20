@@ -1,23 +1,26 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import SpreadsheetGrid from '@/components/session/SpreadsheetGrid'
 import { sessionFileBytes } from '@/lib/api/sessions'
 import { keys } from '@/lib/query/keys'
 import { readSpreadsheet } from '@/lib/spreadsheet'
 
-export default function SpreadsheetFileView({ sessionId, path, visible, initialSheet, initialSelection }: {
+export default function SpreadsheetFileView({ sessionId, path, version, visible, initialSheet, initialSelection }: {
   sessionId: string
   path: string
+  version?: string
   visible: boolean
   initialSheet?: string
   initialSelection?: string
 }) {
   const [selected, setSelected] = useState(initialSheet ?? '')
   const file = useQuery({
-    queryKey: [...keys.sessionFile(sessionId, path), 'spreadsheet'],
+    // A new version of the file is read in place: the workbook on screen stays until the new one is ready.
+    queryKey: [...keys.sessionFile(sessionId, path), 'spreadsheet', version],
     queryFn: async ({ signal }) => readSpreadsheet(await sessionFileBytes(sessionId, path, signal)),
     enabled: visible,
     staleTime: 15_000,
+    placeholderData: keepPreviousData,
   })
   if (file.isPending) return <p className="p-3 text-[12px] text-ink-3">Loading spreadsheet…</p>
   if (file.isError) return <p className="p-3 text-[12px] text-danger">Couldn&apos;t open the file: {file.error.message}</p>

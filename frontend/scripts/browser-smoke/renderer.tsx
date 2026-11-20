@@ -40,6 +40,7 @@ import { exerciseCanvasFormat } from './canvas-format'
 import { exerciseCanvasPages } from './canvas-pages'
 import { exerciseImages } from './images'
 import { exerciseMarkdownDocuments } from './markdown-documents'
+import { exerciseSpreadsheetReload } from './spreadsheet-reload'
 import { exerciseWordDocuments } from './word-documents'
 import { exerciseMarkdownArtifacts } from './markdown-artifacts'
 import { exerciseBrowserAppearance } from './appearance'
@@ -157,7 +158,9 @@ function Fixture() {
       if (suite === 'word-documents') {
         progress('Word document links and read-only reader')
         await exerciseWordDocuments()
-        window.smoke.result({ ok: true, checks: ['Word highlights split runs and a line break in a visible table cell, skips hidden text, matches Unicode case and literal punctuation, relocates within the same frame, clears an absent quote, blocks document HTML and remote content, and downloads the original bytes'] })
+        progress('Open spreadsheet follows the file')
+        await exerciseSpreadsheetReload()
+        window.smoke.result({ ok: true, checks: ['Word highlights split runs and a line break in a visible table cell, skips hidden text, matches Unicode case and literal punctuation, relocates within the same frame, clears an absent quote, blocks document HTML and remote content, and downloads the original bytes', 'an open spreadsheet shows the rewritten file in the same grid while the agent works'] })
         return
       }
       if (!suite || suite === 'markdown-documents') {
