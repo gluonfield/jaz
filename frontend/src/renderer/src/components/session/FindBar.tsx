@@ -1,8 +1,19 @@
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react'
+import type { RefObject } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
-import type { PreviewFindControls } from './usePreviewFindControls'
 
-export function PreviewFindBar({ find }: { find: PreviewFindControls }) {
+export type FindControls = {
+  active: number
+  close: () => void
+  findAgain: (forward: boolean) => void
+  inputRef: RefObject<HTMLInputElement | null>
+  matches: number
+  open: boolean
+  query: string
+  setQuery: (query: string) => void
+}
+
+export function FindBar({ find }: { find: FindControls }) {
   if (!find.open) return null
 
   return (

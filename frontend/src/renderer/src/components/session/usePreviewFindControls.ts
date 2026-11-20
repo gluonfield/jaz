@@ -120,5 +120,3 @@ export function usePreviewFindControls({
     setQuery,
   }
 }
-
-export type PreviewFindControls = ReturnType<typeof usePreviewFindControls>
