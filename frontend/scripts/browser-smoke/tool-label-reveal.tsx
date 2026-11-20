@@ -129,6 +129,7 @@ export async function exerciseToolLabelReveal(): Promise<void> {
       throw new Error('The inline command did not reveal its prompt and status as one line')
     }
     const duration = Number(shellSweep.effect?.getComputedTiming().duration)
+    if (duration !== 740) throw new Error('The inline sweep with a wide gap lost its timing')
     shellSweep.pause()
     shellCaret.pause()
     shellSweep.currentTime = duration * .76
@@ -179,6 +180,7 @@ export async function exerciseToolLabelReveal(): Promise<void> {
     if (!arrival || !heading || heading.textContent !== 'Read files') {
       throw new Error('The initial reading heading did not sweep')
     }
+    const arrivalDuration = arrival.effect?.getComputedTiming().duration
     arrival.pause()
     arrival.currentTime = 140
 
@@ -193,6 +195,9 @@ export async function exerciseToolLabelReveal(): Promise<void> {
         !heading.querySelector('.lucide-chevron-right') || !heading.querySelector('.animate-spin')) {
       throw new Error('The extended group did not sweep only its label, preserving the heading and icons')
     }
+    if (arrivalDuration !== 630 || suffixSweep.effect?.getComputedTiming().duration !== arrivalDuration) {
+      throw new Error('The appended phrase sweep did not match the original row timing')
+    }
     const prefix = document.createRange()
     prefix.setStart(suffix.firstElementChild!.firstChild!, 0)
     prefix.setEnd(suffix.firstElementChild!.firstChild!, 'Read files'.length)
@@ -203,8 +208,8 @@ export async function exerciseToolLabelReveal(): Promise<void> {
     suffixSweep.currentTime = 0
     const suffixStart = parseFloat(getComputedStyle(suffix, '::after').left)
     const initialMask = getComputedStyle(suffix.firstElementChild!).maskImage
-    suffixSweep.currentTime = 160
-    suffixCaret.currentTime = 160
+    suffixSweep.currentTime = arrivalDuration * .36
+    suffixCaret.currentTime = arrivalDuration * .36
     const suffixMiddle = parseFloat(getComputedStyle(suffix, '::after').left)
     if (Math.abs(suffixStart - prefixEnd) > 1 || initialMask === 'none' || suffixMiddle <= suffixStart) {
       throw new Error('The caret did not continue from the previously visible phrase')

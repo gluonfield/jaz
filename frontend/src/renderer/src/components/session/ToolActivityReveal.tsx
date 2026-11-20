@@ -3,15 +3,15 @@ import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } fro
 const easing = 'cubic-bezier(.43, .15, .27, 1)'
 const end = { '--tool-row-edge': 'calc(100% + 8px)' }
 
-type Sweep = { frames: Keyframe[]; duration: number; gap?: boolean; prefix?: string }
+type Sweep = { frames: Keyframe[]; gap?: boolean; prefix?: string }
 
 function rowSweep(content: Element, wide: boolean): Sweep {
   const begin = { '--tool-row-edge': '0%' }
   const command = wide ? content.querySelector('pre') : null
-  if (!command) return { frames: [begin, end], duration: 630 }
+  if (!command) return { frames: [begin, end] }
 
   const bounds = content.getBoundingClientRect()
-  if (!bounds.width) return { frames: [begin, end], duration: 630 }
+  if (!bounds.width) return { frames: [begin, end] }
   const range = document.createRange()
   range.selectNodeContents(command)
   const commandEnd = Math.min(range.getBoundingClientRect().right, command.getBoundingClientRect().right)
@@ -19,7 +19,7 @@ function rowSweep(content: Element, wide: boolean): Sweep {
   const status = tail === command ? undefined : tail?.getBoundingClientRect()
   const edgeAt = (x: number) => `${100 * (x - bounds.left) / bounds.width}%`
   const finish = { '--tool-row-edge': `calc(${edgeAt(status?.right ?? commandEnd)} + 8px)` }
-  if (!status || status.left - commandEnd <= 80) return { frames: [begin, finish], duration: 630 }
+  if (!status || status.left - commandEnd <= 80) return { frames: [begin, finish] }
 
   return {
     frames: [
@@ -28,7 +28,6 @@ function rowSweep(content: Element, wide: boolean): Sweep {
       { '--tool-row-edge': `calc(${edgeAt(status.left)} - 8px)`, offset: .86, easing },
       finish,
     ],
-    duration: 740,
     gap: true,
   }
 }
@@ -44,7 +43,7 @@ function labelSweep(label: HTMLSpanElement, from: number): Sweep | undefined {
   if (offset >= bounds.width - 8) return
 
   const prefix = `${offset}px`
-  return { frames: [{ '--tool-row-edge': prefix }, end], duration: 440, prefix }
+  return { frames: [{ '--tool-row-edge': prefix }, end], prefix }
 }
 
 function playSweep(row: HTMLElement, measure: () => Sweep | undefined) {
@@ -53,7 +52,8 @@ function playSweep(row: HTMLElement, measure: () => Sweep | undefined) {
   const sweep = measure()
   if (!sweep) return
 
-  const { frames, duration, gap = false, prefix } = sweep
+  const { frames, gap = false, prefix } = sweep
+  const duration = gap ? 740 : 630
   if (prefix) row.style.setProperty('--tool-row-prefix', prefix)
   row.style.setProperty('--tool-row-duration', `${duration}ms`)
   row.classList.add('tool-row-revealing')
