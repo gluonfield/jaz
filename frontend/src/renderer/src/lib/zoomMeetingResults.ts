@@ -2,23 +2,26 @@ import { z } from 'zod'
 import type { MCPAppEvent } from '@/lib/api/types'
 
 const meetingList = z.looseObject({ meetings: z.array(z.unknown()) })
+const displayText = z.string().catch('')
+const participantLink = z.string().transform((value, ctx) => {
+  const url = URL.parse(value)
+  if (url && url.protocol === 'https:' && !url.username && !url.password && !url.port
+    && /(^|\.)zoom\.(us|com)$/.test(url.hostname) && /^\/j\/\d+\/?$/.test(url.pathname)) {
+    return url.href
+  }
+  ctx.addIssue({ code: 'custom', message: 'Expected a Zoom participant URL' })
+  return z.NEVER
+})
 const upcomingMeeting = z.object({
   meeting_category: z.literal('scheduled_upcoming'),
-  topic: z.string(),
-  schedule_start_time: z.string().optional(),
-  schedule_end_time: z.string().optional(),
-  host_name: z.string().optional(),
-  join_url: z.string(),
+  topic: displayText,
+  schedule_start_time: displayText,
+  schedule_end_time: displayText,
+  host_name: displayText,
+  join_url: participantLink,
 })
 
 type ZoomJoinableMeeting = z.infer<typeof upcomingMeeting>
-
-function participantLink(value: string): URL | undefined {
-  const url = URL.parse(value)
-  if (!url || url.protocol !== 'https:' || url.username || url.password || url.port) return
-  const zoomHost = /(^|\.)zoom\.(us|com)$/.test(url.hostname)
-  if (zoomHost && /^\/j\/\d+\/?$/.test(url.pathname)) return url
-}
 
 export function zoomMeetingResults(app: MCPAppEvent) {
   const { result } = app
@@ -29,10 +32,9 @@ export function zoomMeetingResults(app: MCPAppEvent) {
   const joinable: ZoomJoinableMeeting[] = []
   const otherMeetings: unknown[] = []
   for (const row of list.data.meetings) {
-    const meeting = upcomingMeeting.safeParse(row).data
-    const url = meeting && participantLink(meeting.join_url)
-    if (meeting && url) {
-      joinable.push({ ...meeting, join_url: url.href })
+    const meeting = upcomingMeeting.safeParse(row)
+    if (meeting.success) {
+      joinable.push(meeting.data)
     } else {
       otherMeetings.push(row)
     }

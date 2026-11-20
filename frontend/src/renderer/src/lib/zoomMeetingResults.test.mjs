@@ -7,6 +7,7 @@ const scheduled = {
   topic: 'Design review',
   schedule_start_time: '2027-03-15T09:00:00Z',
   schedule_end_time: '2027-03-15T09:40:00Z',
+  host_name: 'Meeting host',
   join_url: participant,
 }
 const history = {
@@ -32,6 +33,27 @@ test('scheduled meeting links preserve the passcode and history stays in the pro
   expect(view.joinable).toEqual([scheduled])
   expect(view.providerResult.structuredContent).toEqual({ from_server: true, meetings: [history] })
   expect(app.result.structuredContent.meetings).toEqual([scheduled, history])
+})
+
+test('missing display details do not disable a valid join link', () => {
+  const row = Object.freeze({
+    meeting_category: 'scheduled_upcoming',
+    join_url: participant,
+    host_name: null,
+    schedule_start_time: 0,
+  })
+  const app = searchResult([history, row])
+  const view = zoomMeetingResults(app)
+  expect(view.joinable).toEqual([{
+    meeting_category: 'scheduled_upcoming',
+    join_url: participant,
+    topic: '',
+    host_name: '',
+    schedule_start_time: '',
+    schedule_end_time: '',
+  }])
+  expect(view.providerResult.structuredContent.meetings).toEqual([history])
+  expect(app.result.structuredContent.meetings).toEqual([history, row])
 })
 
 test('the Zoom meeting card leaves host links, missing links, and other providers to their existing views', () => {
