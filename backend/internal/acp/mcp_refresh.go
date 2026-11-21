@@ -58,6 +58,17 @@ func supportedMCPRefresh(raw json.RawMessage, policy string) string {
 	return ""
 }
 
+// Codex keeps a loaded thread's tool catalog through reloads and tool-list
+// notifications, so only a relaunch that resumes the thread reads the new one.
+func (m *Manager) retireStaleCodexCatalog(job *jobState, process *agentProcess) {
+	if job.ACPAgent != AgentCodex || process.mcpRefresh != "" || process.mcpDeferred || !fullMCPPolicy(process.mcpPolicy) || process.mcpRevision == m.mcpRevision() {
+		return
+	}
+	if !m.subagentsRunning(job) && !m.hasLivePermissionWaiter(job.ID) {
+		job.retire()
+	}
+}
+
 func (m *Manager) refreshMCPBeforeTurn(ctx context.Context, job *jobState) error {
 	m.mu.RLock()
 	process := m.processes[job.ID]
