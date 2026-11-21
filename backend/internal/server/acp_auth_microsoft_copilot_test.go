@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	m365copilotapi "github.com/wins/jaz/backend/internal/httpapi/m365copilot"
@@ -139,6 +140,7 @@ func TestMicrosoftCopilotOAuthSettingsCallbackAndDisconnect(t *testing.T) {
 		if done.Status != "running" {
 			break
 		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	if done.Status != "succeeded" {
 		t.Fatalf("login job = %#v, want succeeded", done)
