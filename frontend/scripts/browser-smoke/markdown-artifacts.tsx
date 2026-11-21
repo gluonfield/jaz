@@ -28,7 +28,7 @@ const report = () => requestAnimationFrame(() => {
     const rect = button.getBoundingClientRect();
     return [button.id, { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }];
   }));
-  parent.postMessage({ type: 'fixture:markdown-artifact', count, isolated, scheme: getComputedStyle(document.documentElement).colorScheme, csp: document.head.querySelector('meta[http-equiv]')?.httpEquiv.toLowerCase() === ['content', 'security', 'policy'].join('-'), buttons }, '*');
+  parent.postMessage({ type: 'fixture:markdown-artifact', count, height: document.documentElement.offsetHeight, isolated, scheme: getComputedStyle(document.documentElement).colorScheme, csp: document.head.querySelector('meta[http-equiv]')?.httpEquiv.toLowerCase() === ['content', 'security', 'policy'].join('-'), buttons }, '*');
 });
 document.getElementById('advance').onclick = () => {
   document.querySelector('output').textContent = String(++count);
@@ -68,8 +68,9 @@ report();
       </MarkdownArtifactContext>
     </QueryClientProvider>
   }
-  type Probe = { count: number; isolated: boolean; scheme: string; csp: boolean; buttons: Record<string, { x: number; y: number }> }
+  type Probe = { count: number; height: number; isolated: boolean; scheme: string; csp: boolean; buttons: Record<string, { x: number; y: number }> }
   let probe: Probe | undefined
+  let target: { id: string; x: number; y: number } | undefined
   const frame = () => host.querySelector<HTMLIFrameElement>('[data-artifact-reader] iframe')
   const receive = (event: MessageEvent) => {
     if (event.source === frame()?.contentWindow && event.data?.type === 'fixture:markdown-artifact') probe = event.data
@@ -78,7 +79,10 @@ report();
   const until = async (check: () => boolean) => {
     const deadline = Date.now() + 5000
     while (!check()) {
-      if (Date.now() > deadline) throw new Error('Markdown artifact check: ' + check.toString())
+      if (Date.now() > deadline) {
+        await window.smoke.capture('markdown-artifact-failure')
+        throw new Error('Markdown artifact check: ' + check.toString() + ' ' + JSON.stringify({ probe, frame: frame()?.getBoundingClientRect(), height: frame()?.style.height, target, hit: target && document.elementFromPoint(target.x, target.y)?.tagName }))
+      }
       await new Promise((resolve) => setTimeout(resolve, 20))
     }
   }
@@ -89,10 +93,17 @@ report();
   }
   const button = async (id: string) => {
     const current = frame()!
-    current.scrollIntoView({ block: 'start' })
-    await new Promise(requestAnimationFrame)
+    await until(() => current.clientHeight === probe?.height)
+    current.scrollIntoView({ block: 'center', behavior: 'instant' })
+    // Submit the resized, scrolled iframe to the compositor before routing input.
+    await window.smoke.capture('markdown-artifact-input')
     const rect = current.getBoundingClientRect()
-    await point(Math.round(rect.x + probe!.buttons[id].x), Math.round(rect.y + probe!.buttons[id].y))
+    const x = Math.round(rect.x + probe!.buttons[id].x)
+    const y = Math.round(rect.y + probe!.buttons[id].y)
+    target = { id, x, y }
+    const hit = document.elementFromPoint(x, y)
+    if (hit !== current) throw new Error('Markdown artifact target is obscured: ' + JSON.stringify({ id, x, y, rect, probe, hit: hit?.outerHTML.slice(0, 300) }))
+    await point(x, y)
   }
   const theme = getThemePref()
   const closeBrowserTabs = clientRuntime.onOpenPreviewURL?.(() => {})
