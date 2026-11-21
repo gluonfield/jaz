@@ -83,8 +83,7 @@ export async function exerciseImages() {
       reader.querySelector<HTMLButtonElement>('[aria-label="File actions"]')!.click()
       await until(() => Boolean(document.querySelector('[role="menu"][aria-label="File actions"]')))
       const menu = document.querySelector('[role="menu"][aria-label="File actions"]')!
-      const folder = [...menu.querySelectorAll<HTMLButtonElement>('button')].find((node) => node.textContent === 'Open folder')!
-      if (!folder.disabled || !folder.parentElement?.title.includes('this machine')) throw new Error('A browser without native file access offers Open folder')
+      if (menu.textContent?.includes('Open folder')) throw new Error('A browser without native file access offers Open folder')
       if (label === 'PNG file') {
         await new Promise((resolve) => setTimeout(resolve, 180))
         await window.smoke.capture('image-file-tab')
