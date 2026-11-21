@@ -12,7 +12,8 @@ import (
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 )
 
-func TestAntigravityDiscoveryReadsNativeCatalogWithoutChangingSavedChoice(t *testing.T) {
+func fakeAntigravityCLI(t *testing.T) string {
+	t.Helper()
 	root := t.TempDir()
 	binary, err := os.Executable()
 	if err != nil {
@@ -25,6 +26,32 @@ func TestAntigravityDiscoveryReadsNativeCatalogWithoutChangingSavedChoice(t *tes
 	if err := os.Link(binary, filepath.Join(root, name)); err != nil {
 		t.Fatal(err)
 	}
+	return root
+}
+
+func TestManagedAntigravityNeverUpdatesItself(t *testing.T) {
+	for _, managed := range []bool{true, false} {
+		root := fakeAntigravityCLI(t)
+		if err := os.WriteFile(filepath.Join(root, "models"), []byte("native-a\tNative A\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg := AgentConfig{LoginBinDir: root, Env: map[string]string{"JAZ_TEST_AGY_MODELS": root}}
+		if managed {
+			cfg.ManagedAdapter = AgentAntigravity
+		}
+		manager := &Manager{agents: AgentCatalog{AgentAntigravity: cfg}, cfg: Config{ModelCatalog: modelcatalog.NewService(nil)}}
+		if _, err := manager.DiscoverModels(t.Context(), AgentAntigravity); err != nil {
+			t.Fatal(err)
+		}
+		_, err := os.Stat(filepath.Join(root, "self-updated"))
+		if updated := err == nil; updated == managed {
+			t.Fatalf("managed %v: agy updated itself %v", managed, updated)
+		}
+	}
+}
+
+func TestAntigravityDiscoveryReadsNativeCatalogWithoutChangingSavedChoice(t *testing.T) {
+	root := fakeAntigravityCLI(t)
 	path := filepath.Join(root, "models")
 	write := func(text string) {
 		t.Helper()
@@ -81,6 +108,11 @@ func TestAntigravityDiscoveryReadsNativeCatalogWithoutChangingSavedChoice(t *tes
 func runFakeAntigravityModels(root string) int {
 	if len(os.Args) != 2 || os.Args[1] != "models" {
 		return 2
+	}
+	if os.Getenv("AGY_CLI_DISABLE_AUTO_UPDATE") != "true" {
+		if err := os.WriteFile(filepath.Join(root, "self-updated"), nil, 0o600); err != nil {
+			return 4
+		}
 	}
 	data, err := os.ReadFile(filepath.Join(root, "models"))
 	if err != nil {

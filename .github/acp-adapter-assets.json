@@ -56,7 +56,7 @@
     },
     "antigravity": {
       "repo": "google-antigravity/antigravity-cli",
-      "tag": "1.5.9",
+      "tag": "1.5.14",
       "assets": {
         "darwin-arm64": {
           "name": "agy_cli_mac_arm64.tar.gz",

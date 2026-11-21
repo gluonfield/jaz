@@ -443,6 +443,11 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"NO_PROXY",
 		)
 		addPathDirsToPath(env, loginBinDirs(agent))
+		// agy replaces its own executable during CLI commands such as `models`,
+		// which would carry Jaz's pinned copy past its pin.
+		if agent.ManagedAdapter != "" {
+			env["AGY_CLI_DISABLE_AUTO_UPDATE"] = "true"
+		}
 	}
 	if prepare {
 		if spec, ok := resolveAgentAPIKeySpec(name); ok {
