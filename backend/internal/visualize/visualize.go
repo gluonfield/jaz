@@ -19,6 +19,7 @@ const (
 	ShowWidgetMCPToolName = "visualise_show_widget"
 	ShowCanvasMCPToolName = "visualise_show_canvas"
 	ReadMeDescription     = "Loads visual guidance before creating an artifact. Use the canvas module to discover this thread's editable canvas file, its format, and how to present it. Other modules cover SVG and HTML inline artifacts. Call silently before the first visual artifact in a turn."
+	ShowWidgetDescription = "Shows visual content inline beside your text response: SVG graphics, diagrams, charts, or interactive HTML widgets. Use for flowcharts, architecture and data-flow diagrams, timelines, comparisons of figures, dashboards, calculators, mockups, illustrations, or any answer a picture explains better than text. Takes a finished SVG, HTML fragment, or self-contained HTML document; never a placeholder. Call visualise_read_me before your first call."
 
 	MaxWidgetCodeBytes = 5 << 20
 )
@@ -105,7 +106,7 @@ func (t *Service) AddShowWidgetTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ShowWidgetMCPToolName,
 		Title:       "Show inline artifact",
-		Description: "Renders a finished SVG, HTML fragment, or full self-contained HTML document inline in the Jaz transcript. Do not use for placeholder or plumbing-demo widgets.",
+		Description: ShowWidgetDescription,
 		InputSchema: showWidgetInputSchema(),
 	}, t.ShowWidget)
 }

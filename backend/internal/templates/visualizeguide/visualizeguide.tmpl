@@ -68,7 +68,9 @@ Output streams token-by-token. Structure code so useful content appears early.
 - **Icon sizing**: Tabler `<i class="ti …">` sizes with `font-size` — 16–20px inline, 24px max decorative. For one-off inline SVG icons, set `width`/`height` explicitly (same limits).
 - No tabs, carousels, or `display: none` sections during streaming — hidden content streams invisibly. Show all content stacked vertically. (Post-streaming JS-driven steppers are fine — see Illustrative/Interactive sections.)
 - No nested scrolling — auto-fit height.
-- Scripts execute after streaming — load libraries via `<script src="https://cdnjs.cloudflare.com/ajax/libs/...">` (UMD globals), then use the global in a plain `<script>` that follows.
+- **Fullscreen / expand buttons**: there is no fullscreen. Never call any element's `requestFullscreen()`, never call `document.exitFullscreen()`, and never key state on `document.fullscreenElement` (the API is dead inside the widget iframe and `fullscreenElement` stays null forever, so a label or branch keyed on it is permanently stuck), never call display-mode host APIs, and never fake fullscreen by restyling your container to viewport size — all of these produce dead or broken controls on at least one platform. If the user asks for a fullscreen or expand button, implement an expanded-layout toggle instead: a synchronous CSS class flip on in-flow content with explicit px sizes (taller chart, roomier controls), updating the button label in the same handler — no async, no awaits, symmetric enter/exit. Mutate the existing elements' classes and text; never rebuild the control's DOM with innerHTML (replacement silently drops event listeners and leaves a dead button). The host resizes to fit your content automatically.
+- **Validate input in interactive widgets.** Any widget that collects user input before acting on it (quiz answers, text boxes, form fields) must check that input in its submit handler: if a required field is empty or invalid, show a clear inline error next to the control (13px `color: var(--color-text-danger)` text, e.g. "Enter an answer first") and stop — do not advance to the next step, reveal the answer, or otherwise proceed until the input is valid. Clear the error as soon as the user edits the field.
+- Scripts execute after streaming — load libraries via `<script src="https://cdnjs.cloudflare.com/ajax/libs/...">` (UMD globals), then use the global in a plain `<script>` that follows. The library `<script src>` tag must come BEFORE any inline script that uses its global — never call a library from code that appears above its `<script src>` tag.
 - **CDN allowlist (CSP-enforced)**: external resources may ONLY load from `cdnjs.cloudflare.com`, `esm.sh`, `cdn.jsdelivr.net`, `unpkg.com`, `fonts.googleapis.com`, `fonts.gstatic.com`. All other origins are blocked by the sandbox — the request silently fails.
 
 ### CSS Variables
@@ -802,7 +804,110 @@ d3.json('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json').then(us => {
     .attr('fill', d => color(values[d.properties.name] ?? 0));
 });
 </script>
-```{{end}}{{if .Art}}
+```
+
+## Data visualization — the design layer
+
+Color comes LAST. Most bad charts pick colors first. The procedure:
+
+1. **Pick the form** from the table below — and sometimes the right form is
+   not a chart.
+2. **Assign color by its job** — categorical, sequential, diverging, or status.
+   Never cycled; never a rainbow.
+3. **Apply the mark specs** below — thin marks, surface gaps, recessive axes.
+4. **Add a legend** for ≥2 series and direct labels for ≤4; a single series
+   needs no legend (the title names it).
+5. **Add hover** — crosshair+tooltip on line/area, per-mark tooltip on bar/dot.
+6. **Render and look.** Check label collisions, overflow, dark mode.
+
+### Choosing a form
+
+| The data is… | Use | Not |
+|---|---|---|
+| A single current value (+ maybe a trend) | **Stat tile** — value + delta + sparkline | A one-bar bar chart |
+| A handful of headline numbers | **KPI row** of stat tiles | A grouped bar chart |
+| A single ratio against a limit | **Meter** (same-ramp track) | A 2-slice pie |
+| More than ~7 classes that all matter | A **table** (or table + chart) | More colors |
+
+If a chart is right, the data's job picks the type:
+
+| Job | Form | Color job |
+|---|---|---|
+| Compare magnitude | bar / column; heatmap for a grid | sequential (one hue) |
+| Trend over time | line; area for a single series | sequential or 1 categorical |
+| Tell distinct series apart | grouped/stacked bar, multi-line | categorical |
+| One series is the point, rest context | **emphasis** — highlight one, gray the rest | 1 hue + gray |
+| Above/below a baseline; Δ to target | diverging bar or line vs baseline | diverging |
+| Part-to-whole | stacked bar (horizontal for long names) | categorical |
+| Before → after per item | dumbbell | 1 hue, 2 shades |
+
+**Sequential is the safe default.** Categorical has a cost — it can bury the
+one point that matters. If the story is "this one went up," that's emphasis
+(one hue + gray), not categorical. Never solve "too many series" with more
+hues: past 8, fold into "Other" or use small multiples.
+
+### Categorical palette (fixed order, never cycled)
+
+The 9th series is never a generated hue — it folds into "Other" or small
+multiples. Canvas can't resolve CSS vars, so use these hex values directly in
+Chart.js datasets. For HTML/SVG legends, wrap them in a token:
+`background: var(--series-N, <hex>)`.
+
+| Slot | Hue | Light | Dark |
+|------|-----|-------|------|
+| 1 | blue | #2a78d6 | #3987e5 |
+| 2 | orange | #eb6834 | #d95926 |
+| 3 | aqua | #1baf7a | #199e70 |
+| 4 | yellow | #eda100 | #c98500 |
+| 5 | magenta | #e87ba4 | #d55181 |
+| 6 | green | #008300 | #0ca30c |
+| 7 | violet | #6250d6 | #9085e9 |
+| 8 | red | #e34948 | #e66767 |
+
+**Sequential** (magnitude — heatmap, choropleth): one hue, light→dark. Default
+blue. **Diverging** (polarity — delta, above/below): blue ↔ red with a neutral
+gray midpoint (light #f0efec / dark #383835) — never a hue at the midpoint.
+
+**Status** (state — good/warning/serious/critical): #0ca30c / #fab219 /
+#ec835a / #d03b3b. Never in one chart with the series colors: in dark mode slot 6
+is the same green as good. Always paired with an icon + label, never color alone.
+
+### Chart chrome
+
+Use the host CSS variables for everything around the marks. Canvas cannot resolve variables, so read them once:
+`getComputedStyle(document.documentElement).getPropertyValue('--color-text-tertiary')`.
+
+| Role | Variable |
+|---|---|
+| Chart surface | `var(--color-background-primary)` |
+| Primary ink (values, title) | `var(--color-text-primary)` |
+| Secondary ink (legend, sub) | `var(--color-text-secondary)` |
+| Muted (axis ticks, labels, gridlines) | `var(--color-text-tertiary)` |
+| Hairline border | `var(--color-border-tertiary)` |
+
+**Text wears text variables, never the series color** — values, axis labels, and
+legend text stay in primary/secondary/muted ink; a small colored square beside
+the text carries identity.
+
+### Mark specs
+
+- **Bar/column**: ≤24px thick, 4px rounded data-end, square at baseline.
+- **Line**: 2px stroke, round join/cap.
+- **End-dot / marker**: ≥8px, filled with series color, 2px surface-color ring.
+- **Area fill**: series hue at ~10% opacity.
+- **Gridlines**: one-step-off-surface gray, 1px, recessive. No vertical
+  gridlines on a time axis.
+- **Surface gap**: 2px surface-color gap between touching marks (stacked
+  segments, adjacent bars). Never a stroke around a mark.
+
+### Non-negotiables
+
+- **One y-axis.** Never a dual-axis chart. Two scales → two charts or indexed.
+- **Color follows the entity, never its rank.** Filtering must not repaint.
+- **Assign categorical hues in the fixed palette order.**
+- **Sequential = one hue. Diverging = two hues + gray midpoint.** No rainbow.
+- **Hero number** (stat tile): one figure in `var(--font-serif)` ≥48px, tabular + lining numerals. Everything else stays sans with
+  tabular figures.{{end}}{{if .Art}}
 
 ## Art and illustration
 *"Draw me a sunset" / "Create a geometric pattern"*

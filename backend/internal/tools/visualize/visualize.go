@@ -48,7 +48,7 @@ func moduleNames(value any) []string {
 func (ShowWidgetTool) Definition() tools.Definition {
 	return tools.Function(
 		visualizesvc.ShowWidgetMCPToolName,
-		"Renders a finished inline SVG, HTML fragment, or bundled HTML document in the Jaz transcript. Call the artifact guidance tool first in the turn; do not use for placeholder or plumbing-demo widgets.",
+		visualizesvc.ShowWidgetDescription,
 		false,
 		visualizesvc.ShowWidgetInputSchema(),
 	)
