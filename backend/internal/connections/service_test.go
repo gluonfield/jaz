@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
@@ -297,4 +298,28 @@ func (d *fakeSessionDisconnecter) Disconnect(ctx context.Context, connection int
 	d.connection = connection
 	d.ctxErr = ctx.Err()
 	return nil
+}
+
+func TestConnectionsSearchReturnsAccountsAndConnectLinks(t *testing.T) {
+	service := NewService(NewCatalog(nil), &serviceStore{
+		connections: []integrations.Connection{{ID: gmailconnector.OAuthConnectionID, Provider: gmailconnector.ProviderID, AccountID: "augustinas@example.com"}},
+	}, nil)
+	search := func(query string) []SearchResult {
+		t.Helper()
+		_, out, err := service.search(context.Background(), nil, SearchInput{Query: query})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out.Connections
+	}
+	if got := search("SLACK"); len(got) != 1 || got[0].Name != "Slack" || len(got[0].Accounts) != 0 || got[0].ConnectLink != "jaz://connect/"+slackconnector.ProviderID {
+		t.Fatalf("slack search = %#v", got)
+	}
+	gmail := search("gmail")
+	if len(gmail) != 1 || len(gmail[0].Accounts) != 1 || !strings.Contains(gmail[0].Accounts[0], "augustinas@example.com") {
+		t.Fatalf("gmail search = %#v", gmail)
+	}
+	if got := search("no-such-service"); len(got) != 0 {
+		t.Fatalf("unknown search = %#v", got)
+	}
 }

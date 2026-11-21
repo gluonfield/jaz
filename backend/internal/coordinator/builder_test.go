@@ -250,7 +250,7 @@ func TestBuilderSkipsConnectionsWhenMemoryDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(prompt, "## connections") || strings.Contains(prompt, "sources/chat/whatsapp") {
+	if strings.Contains(prompt, "Connected accounts") || strings.Contains(prompt, "sources/chat/whatsapp") {
 		t.Fatalf("disabled memory must omit memory-backed connection hints:\n%s", prompt)
 	}
 }

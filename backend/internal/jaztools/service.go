@@ -74,6 +74,7 @@ type Service struct {
 	gmailTools      *connections.GmailMCPTools
 	whatsAppTools   *connections.WhatsAppMCPTools
 	telegramTools   *connections.TelegramMCPTools
+	connections     *connections.Service
 	visualizeTools  *visualize.Service
 	pluginTools     *plugins.MCPTools
 	widgetPublisher *widgets.SessionPublisher
@@ -140,6 +141,7 @@ func New(
 	gmailTools *connections.GmailMCPTools,
 	whatsAppTools *connections.WhatsAppMCPTools,
 	telegramTools *connections.TelegramMCPTools,
+	connectionService *connections.Service,
 	installed *plugins.Store,
 	visualizeTools *visualize.Service,
 ) *Service {
@@ -149,6 +151,7 @@ func New(
 		gmailTools:      gmailTools,
 		whatsAppTools:   whatsAppTools,
 		telegramTools:   telegramTools,
+		connections:     connectionService,
 		visualizeTools:  visualizeTools,
 		pluginTools:     &plugins.MCPTools{Plugins: installed, Presenter: visualizeTools},
 		goalTools:       newGoalTools(events, sessions, usage),
@@ -282,6 +285,7 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 	s.gmailTools.AddTo(server)
 	s.whatsAppTools.AddTo(server)
 	s.telegramTools.AddTo(server)
+	s.connections.AddSearchTo(server)
 	switch surface {
 	case widgetSurface:
 		s.visualizeTools.AddReadMeTo(server)

@@ -96,9 +96,12 @@ Current working directory: {{ .Cwd }}
 Device: {{ .Device }}
 
 {{ end }}
-{{ define "connections" }}{{ if . }}
+{{ define "connections" }}
 
 ## connections
+
+`connections_search` finds any service Jaz can connect to and returns its connected accounts and connect link.
+{{- if . }}
 
 Connected accounts and their agent-relevant memory paths:
 Use the available memory search tool first. `memory_page` entries are directly readable with the available get-page tool; `memory_prefix` entries identify materialized source-page roots to search before reading exact returned pages.

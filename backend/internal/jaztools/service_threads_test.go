@@ -89,6 +89,7 @@ func TestThreadToolsCreateDiscoverAndRead(t *testing.T) {
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
+		connections.NewService(connections.NewCatalog(nil), store, nil),
 		plugins.New(runtimefiles.New(t.TempDir())),
 		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)

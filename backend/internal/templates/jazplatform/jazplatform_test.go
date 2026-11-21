@@ -207,15 +207,12 @@ func TestRenderStandaloneModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"## connections", "available memory search tool", "WhatsApp: personal", "`sources/chat/whatsapp/447700900123/contacts.md` (memory_page)", "Clean contacts."} {
+	for _, want := range []string{"## connections", "`connections_search`", "available memory search tool", "WhatsApp: personal", "`sources/chat/whatsapp/447700900123/contacts.md` (memory_page)", "Clean contacts."} {
 		if !strings.Contains(connectionsPrompt, want) {
 			t.Fatalf("connections prompt missing %q:\n%s", want, connectionsPrompt)
 		}
 	}
-	if strings.Contains(connectionsPrompt, "connect link") {
-		t.Fatalf("connected-only prompt explains connect links:\n%s", connectionsPrompt)
-	}
-	if empty, err := RenderConnections(nil); err != nil || empty != "" {
+	if empty, err := RenderConnections(nil); err != nil || !strings.Contains(empty, "`connections_search`") || strings.Contains(empty, "Connected accounts") {
 		t.Fatalf("empty connections = %q err=%v", empty, err)
 	}
 
