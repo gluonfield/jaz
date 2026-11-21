@@ -1,3 +1,4 @@
-Changes since v0.0.293:
+Changes since v0.0.294:
 
-- Antigravity bots use compact discovery for Jaz-managed tools when their agent process next starts or resumes, keeping task and thread tools discoverable. Running sessions are left unchanged, and native conversation history is preserved.
+- The bot sidebar leads with tasks. A task opens in place, without a modal, showing its work threads, question, owner and request.
+- Bot Activity lists work threads, routine runs and memory updates, one line each with its state. Messages between bots stay in the bot's thread instead of the sidebar.
