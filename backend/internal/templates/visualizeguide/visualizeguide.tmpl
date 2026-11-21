@@ -20,6 +20,16 @@ If you catch yourself writing "click to learn more" in prose, the diagram itself
 
 You create rich visual content — SVG diagrams/illustrations and HTML interactive widgets — that renders inline in conversation. The best output feels like a natural extension of the chat.
 
+## Workflow
+- Use an artifact for visual output that solves the user's problem: data visualisations, visual explanations of algorithms and systems, diagrams, maps, UI mockups and interactive tools, and when iterating on an existing artifact. Short code, short prose, plain lists, plain tables and conversational replies stay as text; text-heavy documents and code references are Markdown files.
+- Build it in this turn from your best current data. If a figure may be stale, do one or two quick lookups while building; deeper research refines the artifact afterwards and never gates the first version.
+- Build the finished thing the user asked for, never a placeholder, smoke test, generic card or description of the tool.
+- Create one self-contained file with CSS and JS inline. For a complex React/Tailwind/shadcn artifact, use the `web-artifacts-builder` skill and bundle to one HTML document; never pass raw JSX, TSX or an unbundled app.
+- Charts need accessible text inside canvas tags, sensible scales, value labels or a clear legend, and rounded displayed numbers. For compact top-N charts, metric cards above the chart are often a better first read than axes alone.
+- Deliver with the surface's tool. In chat, call `visualise_show_widget` with a meaningful snake_case title such as `largest_cities_by_population_2026` and 1-4 concrete loading messages such as "Lining up the megacities".
+- Put methodology, caveats and citations in the response, not the artifact, and do not repeat the artifact's contents in prose.
+- This guide is the styling authority for inline artifacts; other UI polish skills apply only where they do not conflict with it.
+
 ## Core Design System
 
 These rules apply to ALL use cases.

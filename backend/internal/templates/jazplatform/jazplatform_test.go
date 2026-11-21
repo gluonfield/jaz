@@ -66,9 +66,6 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 				Kind:        connections.AgentPathKindMemoryPrefix,
 				Explanation: "Materialized chat days.",
 			}},
-		}, {
-			PluginID:     "slack",
-			ProviderName: "Slack",
 		}},
 		Skills: "skills-block",
 	})
@@ -84,16 +81,14 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"/tmp/jaz: runtime state",
 		"/tmp/jaz/AGENTS.md, /tmp/jaz/SOUL.md: prompt files rendered below when present.",
 		"/tmp/jaz/workspaces/default/.worktrees: ACP worktrees.",
-		"The prompt files are writable persistent state, not read-only context",
+		"`AGENTS.md` and `SOUL.md` are persistent files you may edit",
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
 		"## connections",
-		"Connected accounts, agent-relevant memory paths, and providers available to connect",
-		"write its connect link alone on its own line",
+		"Connected accounts and their agent-relevant memory paths",
 		"Telegram: personal (42)",
 		"`sources/chat/telegram/42/contacts.md` (memory_page)",
 		"`sources/chat/telegram/42/conversations/` (memory_prefix)",
-		"- Slack: not connected, jaz://connect/slack\n",
 		"## Jaz threads",
 		"one of: `codex`, `claude`",
 		"## Browser tools",
@@ -103,9 +98,8 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"unless the user explicitly requests it or an existing repository test requires it",
 		"check `browser_status` and report the blocker",
 		"## Artifacts and visualisation",
-		"Artifact usage criteria:",
 		"Always call `visualise_read_me` before the first artifact",
-		"Few-shot trace:",
+		"Deliver with `visualise_show_widget`",
 		"skills-block",
 		"## memory",
 		"broad context from the user's past behavior",
@@ -113,9 +107,6 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"available memory search tool",
 		"Capture as you go",
 		"current size is 20/5,000 characters",
-		"Core memory paths:",
-		"`sources/`: cleaned source pages; `sources/email/`, `sources/chat/`, and `sources/agent/` split provider and agent material.",
-		"`dreams/runs/` stores run output and `dreams/review/` stores review queues.",
 		"## memory/LONG_TERM.md\n\n- Goal: $5m.",
 		"## memory/SHORT_TERM.md\n\n- Focus: jaz memory.",
 		"## memory/daily/2026-06-11.md\n\n- shipped templates",
@@ -127,28 +118,15 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"these govern behavior on the Jaz platform",
 		"Launching background work is not delivery",
 		"Requests to build or change Jaz, a project, a generated document or its prompts belong in that project's files",
-		"revise it in place instead of appending a near-duplicate",
+		"revise an existing entry in place instead of appending a near-duplicate",
 		"`AGENTS.md` contains the user's standing rules. Write when the user states a durable instruction",
 		"`SOUL.md` is the assistant's identity file; Jaz has no separate `IDENTITY.md`",
 		"Use `create_thread` only when",
 		"Merely discussing or reviewing one of these agent harnesses does not authorize a separate session",
 		"Omit model overrides unless the user asks for a specific model",
 		"Generic requests to use subagents, parallelize, or spawn child agents stay with the active agent's native collaboration tools",
-		"Use Markdown documents for prose and code references",
 		"a Markdown file path on its own paragraph renders as a document preview card",
-		"Do not use artifacts for short code answers of 20 lines or fewer",
-		"plain lists, plain tables, enumerated content",
-		"Create single-file artifacts unless the user asks otherwise",
-		"do not gate the artifact on research completing",
-		"Pass `platform:\"mobile\"` when `Device: Mobile`; otherwise pass `platform:\"desktop\"`.",
-		"Call `visualise_show_widget` with a meaningful snake_case title",
-		"meaningful snake_case title",
-		"Text-heavy document, code reference, or reusable prose",
-		"Stacking millions into bars",
-		"When to visualise:",
-		"prefer an inline artifact over plain text",
-		"Never pass raw JSX, TSX, or an unbundled app to the visualise tool",
-		"`visualise_read_me` is the visual styling authority",
+		"Make one whenever a picture explains the answer better than text",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("artifact policy missing %q:\n%s", want, prompt)
@@ -245,7 +223,7 @@ func TestRenderStandaloneModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"## memory", "Core memory paths:", "current size is 7/5,000 characters", "## memory/LONG_TERM.md\n\n- long", "## memory/SHORT_TERM.md\n\n- short"} {
+	for _, want := range []string{"## memory", "current size is 7/5,000 characters", "## memory/LONG_TERM.md\n\n- long", "## memory/SHORT_TERM.md\n\n- short"} {
 		if !strings.Contains(memory, want) {
 			t.Fatalf("memory prompt missing %q:\n%s", want, memory)
 		}
@@ -271,7 +249,7 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 		"list_agent_options",
 		"## Artifacts and visualisation",
 		"Always call `visualise_read_me` before the first artifact",
-		"Finish with the output contract for the current surface",
+		"Deliver with `visualise_publish_widget`",
 		"Launching background work is not delivery",
 	} {
 		if !strings.Contains(prompt, want) {
@@ -281,7 +259,6 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 	for _, reject := range []string{
 		"visualise_show_widget",
 		"## Board Widget Runtime",
-		"Few-shot trace:",
 	} {
 		if strings.Contains(prompt, reject) {
 			t.Fatalf("widget surface base prompt must leave output details to the loop extension; found %q:\n%s", reject, prompt)

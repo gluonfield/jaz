@@ -44,7 +44,6 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"## Browser tools",
 		"Jaz has an integrated browser exposed through the Jaztools `browser_*` tools.",
 		"## Artifacts and visualisation",
-		"Few-shot trace:",
 		"## Skills",
 		"<name>deploy</name>",
 		"<description>ship &amp; verify</description>",
@@ -105,11 +104,8 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 			t.Fatalf("acp extension missing delegation guidance %q:\n%s", want, acp)
 		}
 	}
-	if !strings.Contains(acp, "prefer an inline artifact over plain text") ||
-		!strings.Contains(acp, "Use Markdown documents for prose and code references") ||
-		!strings.Contains(acp, "plain lists, plain tables, enumerated content") ||
-		!strings.Contains(acp, "visualise_show_widget") ||
-		!strings.Contains(acp, "Never pass raw JSX, TSX, or an unbundled app to the visualise tool") {
+	if !strings.Contains(acp, "Always call `visualise_read_me` before the first artifact") ||
+		!strings.Contains(acp, "visualise_show_widget") {
 		t.Fatalf("acp extension must carry the artifact policy:\n%s", acp)
 	}
 	for _, reject := range []string{"`visualize:", "visualize_", "`create_file`", "file-artifact tool", "coding-agent surface provides", "Claude-compatible"} {
@@ -133,7 +129,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"create_thread",
 		"## Artifacts and visualisation",
 		"visualise_read_me",
-		"Finish with the output contract for the current surface",
+		"Deliver with `visualise_publish_widget`",
 		"## memory/LONG_TERM.md",
 		"<name>deploy</name>",
 	} {

@@ -113,8 +113,7 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) (DisconnectR
 	return DisconnectResult{MCPServersChanged: usesConnectionMCP}, nil
 }
 
-// AgentConnections lists every connected account, and one entry without an
-// account for each available provider that has none, so agents can offer it.
+// AgentConnections lists every connected account.
 func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, error) {
 	plugins, err := s.ListPlugins(ctx, false)
 	if err != nil {
@@ -125,12 +124,9 @@ func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, erro
 		if plugin.Connection == nil {
 			continue
 		}
-		connection := AgentConnection{PluginID: plugin.ID, ProviderID: plugin.Provider.ID, ProviderName: plugin.Provider.Name}
+		connection := AgentConnection{ProviderID: plugin.Provider.ID, ProviderName: plugin.Provider.Name}
 		if connection.ProviderName == "" {
 			connection.ProviderName = plugin.Name
-		}
-		if len(plugin.Connection.Accounts) == 0 && plugin.Available() {
-			out = append(out, connection)
 		}
 		for _, account := range plugin.Connection.Accounts {
 			connection.Account = accountLabel(account)

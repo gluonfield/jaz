@@ -60,7 +60,7 @@ type SessionSource interface {
 
 type ReadMeInput struct {
 	Modules  []string `json:"modules,omitempty" jsonschema:"diagram, mockup, interactive, data_viz, art, chart, elicitation, canvas"`
-	Platform string   `json:"platform,omitempty"`
+	Platform string   `json:"platform,omitempty" jsonschema:"mobile when the prompt says Device: Mobile, otherwise desktop"`
 }
 
 type ShowWidgetInput struct {

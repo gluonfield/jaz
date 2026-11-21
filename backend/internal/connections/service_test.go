@@ -10,7 +10,6 @@ import (
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
-	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
@@ -104,29 +103,16 @@ func TestServiceAddsAgentRelevantPaths(t *testing.T) {
 	}
 }
 
-func TestServiceOffersOnlyUnconnectedProvidersToAgents(t *testing.T) {
-	catalog := NewCatalog(map[string]mcpconfig.OAuthConfig{"zoom": {PublicClientID: "registered-public"}})
-	service := NewService(catalog, &serviceStore{
+func TestServiceListsOnlyConnectedAccountsToAgents(t *testing.T) {
+	service := NewService(NewCatalog(nil), &serviceStore{
 		connections: []integrations.Connection{{ID: gmailconnector.OAuthConnectionID, Provider: gmailconnector.ProviderID, AccountID: "augustinas@example.com"}},
 	}, nil)
 	connections, err := service.AgentConnections(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	offered := map[string]AgentConnection{}
-	for _, connection := range connections {
-		if connection.Account == "" {
-			offered[connection.PluginID] = connection
-		}
-	}
-	if slack, ok := offered[slackconnector.ProviderID]; !ok || slack.ProviderName != "Slack" {
-		t.Fatalf("unconnected Slack is not offered: %#v", connections)
-	}
-	if _, ok := offered[gmailconnector.ProviderID]; ok {
-		t.Fatalf("connected Gmail is offered: %#v", connections)
-	}
-	if _, ok := offered["zoom"]; ok {
-		t.Fatalf("local-only Zoom is offered without a local client: %#v", connections)
+	if len(connections) != 1 || connections[0].ProviderID != gmailconnector.ProviderID || connections[0].Account == "" {
+		t.Fatalf("agent connections = %#v, want the one connected Gmail account", connections)
 	}
 }
 
