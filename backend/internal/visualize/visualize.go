@@ -61,7 +61,7 @@ type SessionSource interface {
 
 type ReadMeInput struct {
 	Modules  []string `json:"modules,omitempty" jsonschema:"diagram, mockup, interactive, data_viz, art, chart, elicitation, canvas"`
-	Platform string   `json:"platform,omitempty" jsonschema:"mobile when the prompt says Device: Mobile, otherwise desktop"`
+	Platform string   `json:"platform,omitempty"`
 }
 
 type ShowWidgetInput struct {
@@ -252,7 +252,7 @@ func ReadMeInputSchema() map[string]any {
 			},
 			"platform": map[string]any{
 				"type":        "string",
-				"description": "The client platform the widget will render on.",
+				"description": "The client platform the widget will render on: mobile when the prompt says Device: Mobile, otherwise desktop.",
 			},
 		},
 	}

@@ -8,10 +8,7 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-const (
-	ToolSearch       = "connections_search"
-	searchResultsMax = 20
-)
+const searchResultsMax = 20
 
 type SearchInput struct {
 	Query string `json:"query" jsonschema:"service name or what it does, such as slack or calendar"`
@@ -30,7 +27,7 @@ type SearchOutput struct {
 
 func (s *Service) AddSearchTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolSearch,
+		Name:        "connections_search",
 		Title:       "Search connections",
 		Description: "Search the services Jaz can connect to, such as email, chat, calendars and MCP apps. Each match lists its connected accounts and, when it can be connected, a connect link. Search before saying a service is unavailable. To offer a connection, write its connect link alone on its own line; Jaz renders it as a card the user clicks to connect.",
 	}, s.search)
