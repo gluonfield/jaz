@@ -123,10 +123,13 @@ func TestDeferredMCPDiscoveryPreservesAllowedConnections(t *testing.T) {
 		{AgentOpenCode, MCPServerPolicyBot, false, true},
 		{AgentOpenCode, MCPServerPolicyAll, false, false},
 		{AgentCodex, MCPServerPolicyBot, false, false},
+		{AgentAntigravity, MCPServerPolicyBot, false, true},
 		{AgentAntigravity, MCPServerPolicyAll, false, false},
+		{AgentAntigravity, MCPServerPolicyWidget, false, false},
 		{AgentAntigravity, MCPServerPolicyAll, true, true},
 		{AgentCodex, MCPServerPolicyAll, true, true},
 		{AgentOpenCode, MCPServerPolicyMemorySearchWorker, false, false},
+		{AgentAntigravity, MCPServerPolicyMemorySearchWorker, false, false},
 		{AgentAntigravity, MCPServerPolicyMemorySearchWorker, true, true},
 	} {
 		servers := m.mcpServersForAgent(t.Context(), capable, tc.policy, tc.agent, tc.optedIn)

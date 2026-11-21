@@ -1090,7 +1090,8 @@ func validateFakeProxyAndJaztools(rawServers []json.RawMessage) error {
 		servers[server.Name] = server
 	}
 	proxy, ok := servers["jaz_mcp"]
-	if !ok || proxy.Type != "http" || proxy.URL != "http://127.0.0.1:5299/mcp/proxy" {
+	proxyURL, _, _ := strings.Cut(proxy.URL, "?")
+	if !ok || proxy.Type != "http" || proxyURL != "http://127.0.0.1:5299/mcp/proxy" {
 		return fmt.Errorf("unexpected mcp proxy %#v", proxy)
 	}
 	if len(proxy.Headers) != 1 ||
@@ -1099,7 +1100,8 @@ func validateFakeProxyAndJaztools(rawServers []json.RawMessage) error {
 		return fmt.Errorf("proxy must expose only a resolved session header, got %#v", proxy.Headers)
 	}
 	jaz, ok := servers["jaztools"]
-	if !ok || jaz.Type != "http" || jaz.URL != "http://127.0.0.1:5299/mcp/jaztools" {
+	jazURL, _, _ := strings.Cut(jaz.URL, "?")
+	if !ok || jaz.Type != "http" || jazURL != "http://127.0.0.1:5299/mcp/jaztools" {
 		return fmt.Errorf("unexpected jaztools server %#v", jaz)
 	}
 	if len(jaz.Headers) != 1 ||

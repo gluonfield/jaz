@@ -32,7 +32,8 @@ func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessag
 	if init.AgentCapabilities.MCPCapabilities == nil || !init.AgentCapabilities.MCPCapabilities.HTTP {
 		return []json.RawMessage{}
 	}
-	deferred = deferred || (CanonicalAgentName(agent) == AgentOpenCode && policy == MCPServerPolicyBot)
+	agent = CanonicalAgentName(agent)
+	deferred = deferred || (policy == MCPServerPolicyBot && (agent == AgentOpenCode || agent == AgentAntigravity))
 	servers, err := enabledHTTPMCPServers(ctx, m.cfg.MCPStore, policy, deferred)
 	if err != nil {
 		m.log.Warn("load mcp servers for acp failed", "error", err)
