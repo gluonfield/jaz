@@ -26,7 +26,7 @@ export function DictationControls({
   const recording = phase === 'recording'
   return (
     <div className="flex h-10 items-center gap-2 [&>button]:relative [&>button]:after:absolute [&>button]:after:-inset-0.5" data-escape-surface>
-      <IconButton size="lg" aria-label="Cancel dictation" title="Cancel dictation (Escape)" onClick={dictation.cancel}>
+      <IconButton size="lg" aria-label="Cancel dictation" aria-keyshortcuts="Escape" title="Cancel dictation" onClick={dictation.cancel}>
         <X size={16} />
       </IconButton>
       <div className="flex min-w-0 flex-1 items-center justify-center" role="status" aria-live="polite">

@@ -572,6 +572,7 @@ export function ComposerCard({
             ) : !voiceActive || hasDraftContent ? (
               <SendButton
                 label={actionLabel}
+                shortcut={showVoiceButton ? undefined : 'Enter'}
                 disabled={showVoiceButton ? disabled || Boolean(dictation.phase) : submitDisabled}
                 onSend={() => (showVoiceButton ? onVoice?.() : void submit())}
                 onQueue={queue}

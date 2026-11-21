@@ -58,23 +58,17 @@ export function useRailSections() {
 }
 
 const TAB_CLASS =
-  'group relative grid size-9 place-items-center rounded-[10px] transition-[background-color,color,transform] duration-150 active:scale-[0.96] [&_svg]:size-[18px] [&_svg]:stroke-[1.75]'
+  'relative grid size-9 place-items-center rounded-[10px] transition-[background-color,color,transform] duration-150 active:scale-[0.96] [&_svg]:size-[18px] [&_svg]:stroke-[1.75]'
 
 const tabClass = (active: boolean) =>
   `${TAB_CLASS} ${active ? 'bg-list-active text-ink' : 'text-ink-2 hover:bg-list-hover hover:text-ink'}`
 
-// The rail is icon-only, so each tab names itself beside the icon on hover.
-function TabLabel({ children, shortcut }: { children: string; shortcut?: number }) {
-  return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute left-full top-1/2 z-tooltip ml-2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-surface-2 px-2 py-1 text-[12px] font-medium text-ink opacity-0 shadow-raised ring-1 ring-border/70 transition-opacity duration-100 group-hover:opacity-100 group-hover:delay-150 group-focus-visible:opacity-100"
-    >
-      {children}
-      {shortcut && shortcut <= 9 ? <kbd className="ml-2 font-sans text-ink-3">⌘{shortcut}</kbd> : null}
-    </span>
-  )
-}
+// The rail is icon-only, so each tab names itself in a tooltip beside the icon.
+const tabTip = (label: string, shortcut?: number) => ({
+  title: label,
+  'data-tooltip-side': 'right',
+  'aria-keyshortcuts': shortcut && shortcut <= 9 ? `Meta+${shortcut}` : undefined,
+})
 
 export function NavRail({
   tab,
@@ -118,12 +112,12 @@ export function NavRail({
       aria-label={section.path === '/bots' && botsUnread ? 'Bots (unread messages)' : section.label}
       onClick={section.path === '/bots' ? onOpenSidebar : undefined}
       className={tabClass(tab === section.path)}
+      {...tabTip(section.label, tab !== 'chat' ? index + 2 : undefined)}
     >
       {section.icon}
       {section.path === '/bots' && botsUnread && (
         <span aria-hidden className="absolute right-1 top-1 size-1.5 rounded-full bg-primary" />
       )}
-      <TabLabel shortcut={tab !== 'chat' ? index + 2 : undefined}>{section.label}</TabLabel>
     </Link>
   )
 
@@ -136,9 +130,9 @@ export function NavRail({
         aria-label="Chat"
         onClick={onOpenSidebar}
         className={tabClass(tab === 'chat')}
+        {...tabTip('Chat', tab !== 'chat' ? 1 : undefined)}
       >
         <MessageSquare aria-hidden />
-        <TabLabel shortcut={tab !== 'chat' ? 1 : undefined}>Chat</TabLabel>
       </Link>
       {sections.slice(0, SECTIONS.length).map(sectionTab)}
       {/* Connected apps sit below the built-in sections, with a way to add more. */}
@@ -149,9 +143,9 @@ export function NavRail({
         onClick={() => onOpenSettings('mcp')}
         aria-label="Connect an app"
         className={tabClass(false)}
+        {...tabTip('Connect an app')}
       >
         <Plus aria-hidden />
-        <TabLabel>Connect an app</TabLabel>
       </button>
       <button
         type="button"
@@ -159,9 +153,9 @@ export function NavRail({
         onClick={() => onOpenSettings()}
         aria-label="Settings"
         className={`${tabClass(tab === 'settings')} mt-auto`}
+        {...tabTip('Settings', tab !== 'chat' ? sections.length + 2 : undefined)}
       >
         <Settings aria-hidden />
-        <TabLabel shortcut={tab !== 'chat' ? sections.length + 2 : undefined}>Settings</TabLabel>
       </button>
     </nav>
   )

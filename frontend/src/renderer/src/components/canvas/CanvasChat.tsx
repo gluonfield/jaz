@@ -50,7 +50,7 @@ export function useCanvasChat(canvas: boolean, waiting: boolean, isMobile: boole
 export function CanvasChatToggle({ chat }: { chat: ReturnType<typeof useCanvasChat> }) {
   const label = chat.shown ? 'Hide chat' : 'Show chat'
   return (
-    <IconButton variant="ghost" size="md" aria-label={label} title={`${label} (⌘\\)`} onClick={chat.toggle}>
+    <IconButton variant="ghost" size="md" aria-label={label} aria-keyshortcuts={'Meta+\\'} title={label} onClick={chat.toggle}>
       <AnimatePresence initial={false}>
         <motion.span
           key={String(chat.shown)}

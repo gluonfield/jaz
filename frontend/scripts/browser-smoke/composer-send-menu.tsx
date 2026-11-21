@@ -2,9 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { ComposerCard } from '@/components/session/Composer'
 
-// While a turn runs, hovering send offers Send and Queue; the menu survives
-// the gap between button and menu, and each row reaches its own handler.
-// From the keyboard, Enter sends and Command-Enter queues.
+// While a turn runs, hovering send offers Send now and Queue; the menu
+// survives the gap between button and menu, and each row reaches its own
+// handler. From the keyboard, Enter sends and Command-Enter queues; holding
+// Command turns the button itself into Queue.
 export async function exerciseComposerSendMenu(): Promise<void> {
   const element = document.createElement('div')
   element.style.width = '560px'
@@ -59,7 +60,7 @@ export async function exerciseComposerSendMenu(): Promise<void> {
     pointer('pointerout', sendButton(), document.body)
 
     render(true)
-    for (const [label, text] of [['Queue', 'Queued follow-up'], ['Send', 'Steer now']]) {
+    for (const [label, text] of [['Queue', 'Queued follow-up'], ['Send now', 'Steer now']]) {
       await type(text)
       pointer('pointerover', sendButton(), document.body)
       await until(() => Boolean(row('Queue')))
@@ -99,6 +100,14 @@ export async function exerciseComposerSendMenu(): Promise<void> {
     row('Queue')!.click()
     await until(() => calls.join() === 'queue:Held follow-up')
     calls.length = 0
+
+    await type('Command-click follow-up')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Meta', metaKey: true }))
+    await until(() => Boolean(sendButton().querySelector('.lucide-list-end')))
+    sendButton().click()
+    await until(() => calls.join() === 'queue:Command-click follow-up')
+    calls.length = 0
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Meta' }))
 
     for (const [metaKey, expected] of [[true, 'queue'], [false, 'send']] as const) {
       await type('Keyboard follow-up')

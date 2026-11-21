@@ -574,6 +574,13 @@ img.chat-prose-link-icon {
   }
 }
 
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
 @keyframes jaz-slide {
   to {
     background-position: 300% 0;

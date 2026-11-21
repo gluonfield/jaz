@@ -44,7 +44,8 @@ export function TitlebarNavigation({
           type="button"
           aria-label={panelOpen ? 'Hide sidebar' : 'Show sidebar'}
           aria-expanded={panelOpen}
-          title={`${panelOpen ? 'Hide' : 'Show'} sidebar (⌘S)`}
+          aria-keyshortcuts="Meta+S"
+          title={panelOpen ? 'Hide sidebar' : 'Show sidebar'}
           onClick={onToggleSidebar}
           className={CONTROL_CLASS}
         >
@@ -64,7 +65,8 @@ export function TitlebarNavigation({
           <button
             type="button"
             aria-label="Go back"
-            title="Go back (⌘[)"
+            aria-keyshortcuts="Meta+["
+            title="Go back"
             disabled={!window.navigation.canGoBack}
             onClick={() => onNavigate('back')}
             className={CONTROL_CLASS}
@@ -74,7 +76,8 @@ export function TitlebarNavigation({
           <button
             type="button"
             aria-label="Go forward"
-            title="Go forward (⌘])"
+            aria-keyshortcuts="Meta+]"
+            title="Go forward"
             disabled={!window.navigation.canGoForward}
             onClick={() => onNavigate('forward')}
             className={CONTROL_CLASS}
@@ -84,7 +87,7 @@ export function TitlebarNavigation({
         </>
       )}
       {newChat && (
-        <Link to="/new" aria-label="New chat" title="New chat (⌘N)" className={CONTROL_CLASS}>
+        <Link to="/new" aria-label="New chat" aria-keyshortcuts="Meta+N" title="New chat" className={CONTROL_CLASS}>
           <NewChatIcon className="size-4 max-sm:size-[18px]" aria-hidden />
         </Link>
       )}

@@ -14,6 +14,7 @@ import { DesktopNotifications } from '@/components/notifications/DesktopNotifica
 import { VoiceOverlay } from '@/components/session/VoiceOverlay'
 import { PermissionGuide } from '@/components/settings/PermissionGuide'
 import { installFileDropGuard } from './components/ui/FileDrop'
+import { TooltipLayer } from '@/components/ui/Tooltip'
 import { installKeyboardFocus } from '@/lib/dom/keyboardFocus'
 import { clientRuntime } from './lib/clientRuntime'
 import { queryClient } from './lib/query/queryClient'
@@ -34,7 +35,10 @@ installKeyboardFocus()
 // returning users from the per-install distinct id.
 if (clientRuntime.windowKind === 'main') telemetry.appOpened()
 
-if (['launcher', 'voice', 'permission', 'island'].includes(clientRuntime.windowKind)) {
+// These windows are barely larger than their content, so they keep the
+// browser's tooltips, which may draw outside the window.
+const floating = ['launcher', 'voice', 'permission', 'island'].includes(clientRuntime.windowKind)
+if (floating) {
   document.documentElement.classList.add('launcher')
   // zoom 1 keeps drag coordinates 1:1 with screen pixels for region capture.
   document.documentElement.style.zoom = '1'
@@ -61,6 +65,7 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       {clientRuntime.windowKind === 'main' ? <DesktopNotifications /> : null}
       {surfaces[clientRuntime.windowKind] ?? <App router={router} />}
+      {floating ? null : <TooltipLayer />}
     </QueryClientProvider>
   </StrictMode>,
 )

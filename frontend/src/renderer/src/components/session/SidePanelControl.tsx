@@ -25,7 +25,8 @@ export function SidePanelControl({ open, mode, modes = ['tabs', 'overview'], ove
             type="button"
             aria-label={label}
             aria-pressed={active}
-            title={`${active ? 'Hide' : 'Open'} ${label} (${option === 'tabs' ? '⌘⇧S' : '⌘O'})`}
+            aria-keyshortcuts={option === 'tabs' ? 'Meta+Shift+S' : 'Meta+O'}
+            title={`${active ? 'Hide' : 'Open'} ${label}`}
             onClick={() => onToggle(option)}
             className={`flex h-7 cursor-pointer items-center justify-center rounded-lg px-[7px] text-xs pointer-coarse:h-10 pointer-coarse:min-w-10 font-medium whitespace-nowrap transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${active ? 'bg-surface text-ink' : 'text-ink-2 hover:bg-surface hover:text-ink'}`}
           >
