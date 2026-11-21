@@ -2,9 +2,6 @@ package server
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -89,45 +86,6 @@ func TestGeneratedSessionTitleSurvivesRuntimeTitlePush(t *testing.T) {
 	if loaded.Title != "Redirect State Fix" || !loaded.TitleLocked {
 		t.Fatalf("title/locked = %q/%v, want generated and locked", loaded.Title, loaded.TitleLocked)
 	}
-}
-
-func TestMessageStreamGeneratesTitleVisibleToUI(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	session, err := store.CreateSession(storage.CreateSession{
-		Slug:    "stream-title",
-		Runtime: storage.RuntimeACP,
-		RuntimeRef: &storage.RuntimeRef{
-			Type:  storage.RuntimeACP,
-			Agent: "codex",
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := &fakeACPManager{job: acp.Job{
-		ID:        session.ID,
-		Slug:      session.Slug,
-		State:     acp.StateIdle,
-		Assistant: "done",
-	}, utilityText: `{"title":"Stream Route Title"}`}
-	server := &Server{Store: store, ACP: manager}
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/messages:stream", strings.NewReader(`{"message":"Please repair generated thread names in the sidebar"}`))
-	req.Header.Set("Content-Type", "application/json")
-	res := httptest.NewRecorder()
-	server.Handler().ServeHTTP(res, req)
-
-	if res.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-	if manager.sent.Message != "Please repair generated thread names in the sidebar" {
-		t.Fatalf("send request = %#v", manager.sent)
-	}
-	waitForSessionTitle(t, store, session.ID, "Stream Route Title")
 }
 
 func TestStatusUpdatePreservesGeneratedTitle(t *testing.T) {

@@ -15,17 +15,17 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 			return Job{}, err
 		}
 	}
+	session, err := m.store.LoadSession(req.Session)
+	if err != nil {
+		return Job{}, err
+	}
+	req.Session = session.ID
+	// Card answers already hold the request lock through admission.
+	if req.questionAnswer == "" {
+		defer m.inputLocks.Lock(session.ID)()
+	}
 	receipt := inputReceipt(req)
 	if receipt.Type != "" {
-		session, err := m.store.LoadSession(req.Session)
-		if err != nil {
-			return Job{}, err
-		}
-		req.Session = session.ID
-		// Card answers already hold the request lock through admission.
-		if req.questionAnswer == "" {
-			defer m.inputLocks.Lock(session.ID)()
-		}
 		reader, ok := m.store.(storage.MessageRecordReader)
 		if !ok {
 			return Job{}, fmt.Errorf("identified input requires durable message records")
@@ -45,10 +45,6 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 		}
 	}
 	if m.ThreadStarted != nil {
-		session, err := m.store.LoadSession(req.Session)
-		if err != nil {
-			return Job{}, err
-		}
 		m.ThreadStarted(session, req.Message)
 	}
 	for {

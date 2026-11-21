@@ -21,13 +21,12 @@ func TestACPStreamFollowUpAdmission(t *testing.T) {
 		supported bool
 		steerErr  error
 		plan      bool
-		queued    int
+		failed    bool
 	}{
 		{name: "native steering", supported: true},
-		{name: "unsupported queues", queued: 1},
-		{name: "turn ended queues", supported: true, steerErr: acp.ErrSteeringUnsupported, queued: 1},
-		{name: "new plan queues", supported: true, plan: true, queued: 1},
-		{name: "rejection is not submitted twice", supported: true, steerErr: errors.New("provider rejected input")},
+		{name: "unsupported is not queued", failed: true},
+		{name: "new plan reaches admission", supported: true, plan: true},
+		{name: "rejection is not submitted twice", supported: true, steerErr: errors.New("provider rejected input"), failed: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, err := sqlitestore.New(t.TempDir())
@@ -57,21 +56,20 @@ func TestACPStreamFollowUpAdmission(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(loaded.QueuedMessages) != tc.queued || manager.cancelled || manager.sent.Message != "" {
+			if len(loaded.QueuedMessages) != 0 || manager.cancelled || manager.sent.Message != "" {
 				t.Fatalf("queue=%#v cancelled=%v sent=%#v", loaded.QueuedMessages, manager.cancelled, manager.sent)
 			}
-			failed := tc.steerErr != nil && !errors.Is(tc.steerErr, acp.ErrSteeringUnsupported)
-			if strings.Contains(res.Body.String(), `"type":"accepted"`) == failed {
+			if strings.Contains(res.Body.String(), `"type":"accepted"`) == tc.failed || strings.Contains(res.Body.String(), `"type":"error"`) != tc.failed {
 				t.Fatalf("unexpected acceptance: %s", res.Body.String())
 			}
-			if tc.supported && !tc.plan && (manager.steered.Message != "also check this" || len(manager.steered.Contexts) != 1) {
+			if tc.supported && (manager.steered.Message != "also check this" || len(manager.steered.Contexts) != 1 || manager.steered.PlanRequested != tc.plan || !manager.steered.FromUser) {
 				t.Fatalf("follow-up lost its payload: %#v", manager.steered)
 			}
 		})
 	}
 }
 
-func TestACPStreamQueuesPromptReservedByRunningTurn(t *testing.T) {
+func TestACPStreamStartsInputAfterReservedTurnEnds(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -104,21 +102,17 @@ func TestACPStreamQueuesPromptReservedByRunningTurn(t *testing.T) {
 		t.Fatalf("response = %d %s", res.Code, res.Body.String())
 	}
 	if !strings.Contains(res.Body.String(), `"type":"accepted"`) {
-		t.Fatalf("response did not acknowledge durable queueing: %s", res.Body.String())
+		t.Fatalf("response did not acknowledge input: %s", res.Body.String())
 	}
-	if manager.sent.Message != "" {
-		t.Fatalf("reserved turn was sent concurrently: %#v", manager.sent)
+	if manager.sent.Message != "also loader not visible" || !manager.sent.PlanRequested || len(manager.sent.Contexts) != 1 || manager.sent.Contexts[0].Text != "loader" {
+		t.Fatalf("input = %#v", manager.sent)
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.QueuedMessages) != 1 {
+	if len(loaded.QueuedMessages) != 0 {
 		t.Fatalf("queue = %#v", loaded.QueuedMessages)
-	}
-	queued := loaded.QueuedMessages[0]
-	if queued.Text != "also loader not visible" || !queued.PlanRequested || len(queued.Contexts) != 1 || queued.Contexts[0].Text != "loader" {
-		t.Fatalf("queued prompt = %#v", queued)
 	}
 }
 

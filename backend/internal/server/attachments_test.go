@@ -165,43 +165,51 @@ func TestAttachmentContentMissingFileReturnsNotFound(t *testing.T) {
 }
 
 func TestACPStreamResolvesAttachmentIDs(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	session, err := store.CreateSession(storage.CreateSession{
-		Slug:    "acp-attachments",
-		Runtime: storage.RuntimeACP,
-		RuntimeRef: &storage.RuntimeRef{
-			Type:      storage.RuntimeACP,
-			Agent:     "codex",
-			SessionID: "acp-session",
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	workspace := t.TempDir()
-	manager := &fakeACPManager{job: acp.Job{ID: session.ID, Slug: session.Slug, State: acp.StateIdle}}
-	handler := (&Server{Store: store, ACP: manager, Workspace: workspace}).Handler()
-	attachment := uploadTestAttachment(t, handler, session.ID, "note.txt", "hello")
-	metadata := readTestAttachmentMetadata(t, workspace, session.ID, attachment.ID)
+	for _, state := range []string{acp.StateIdle, acp.StateRunning} {
+		t.Run(state, func(t *testing.T) {
+			store, err := sqlitestore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			session, err := store.CreateSession(storage.CreateSession{
+				Slug:    "acp-attachments",
+				Runtime: storage.RuntimeACP,
+				RuntimeRef: &storage.RuntimeRef{
+					Type:      storage.RuntimeACP,
+					Agent:     "codex",
+					SessionID: "acp-session",
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			workspace := t.TempDir()
+			manager := &fakeACPManager{job: acp.Job{ID: session.ID, Slug: session.Slug, State: state}, steerSupported: true}
+			handler := (&Server{Store: store, ACP: manager, Workspace: workspace}).Handler()
+			attachment := uploadTestAttachment(t, handler, session.ID, "note.txt", "hello")
+			metadata := readTestAttachmentMetadata(t, workspace, session.ID, attachment.ID)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/messages:stream", strings.NewReader(`{"message":"read this","attachment_ids":["`+attachment.ID+`"]}`))
-	req.Header.Set("Content-Type", "application/json")
-	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, req)
+			req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/messages:stream", strings.NewReader(`{"message":"read this","attachment_ids":["`+attachment.ID+`"]}`))
+			req.Header.Set("Content-Type", "application/json")
+			res := httptest.NewRecorder()
+			handler.ServeHTTP(res, req)
 
-	if res.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-	if len(manager.sent.Attachments) != 1 {
-		t.Fatalf("attachments = %#v", manager.sent.Attachments)
-	}
-	got := manager.sent.Attachments[0]
-	if got.ID != attachment.ID || got.Name != "note.txt" || got.URI != "" || got.ServerPath != metadata.ServerPath {
-		t.Fatalf("send attachment = %#v, want server path %q", got, metadata.ServerPath)
+			if res.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+			}
+			sent := manager.sent
+			if state == acp.StateRunning {
+				sent = manager.steered
+			}
+			if len(sent.Attachments) != 1 {
+				t.Fatalf("attachments = %#v", sent.Attachments)
+			}
+			got := sent.Attachments[0]
+			if got.ID != attachment.ID || got.Name != "note.txt" || got.URI != "" || got.ServerPath != metadata.ServerPath {
+				t.Fatalf("send attachment = %#v, want server path %q", got, metadata.ServerPath)
+			}
+		})
 	}
 }
 

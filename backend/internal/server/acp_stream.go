@@ -56,31 +56,14 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		return
 	}
 
+	followUp := !turn.compact() && s.sessionRuntimeRunning(session)
 	var err error
-	turnTitle := turn.Message
 	if turn.compact() {
-		turnTitle = "Compact"
+		session, err = s.beginACPTurn(clientCtx, session, "Compact")
+	} else {
+		err = s.ensureManagedWorktree(clientCtx, session)
 	}
-	session, err = s.beginACPTurn(clientCtx, session, turnTitle)
 	if err != nil {
-		if !turn.compact() && errors.Is(err, errACPTurnRunning) {
-			err = acp.ErrSteeringUnsupported
-			if !turn.PlanRequested || session.Turn != nil && session.Turn.PlanRequested {
-				_, err = s.ACP.Steer(clientCtx, acp.SteerRequest{
-					Session: session.ID, Message: turn.Message, Contexts: turn.Contexts, FromUser: true,
-					Attachments: turn.Attachments, GoalRequested: turn.GoalRequested,
-				})
-			}
-			if errors.Is(err, acp.ErrSteeringUnsupported) {
-				err = s.queueACPStreamTurn(session.ID, turn)
-			}
-			if err == nil {
-				s.publishMessagesChanged(session.ID)
-				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamAccepted})
-				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
-				return
-			}
-		}
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 		return
@@ -92,12 +75,11 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	if turn.compact() {
 		job, err = s.ACP.Compact(startCtx, acp.CompactRequest{Session: session.ID})
 	} else {
-		job, err = s.ACP.Send(startCtx, acp.SendRequest{
+		job, err = s.ACP.Input(startCtx, acp.SendRequest{
 			Session:       session.ID,
 			Message:       turn.Message,
 			Contexts:      turn.Contexts,
 			Attachments:   turn.Attachments,
-			Completion:    acp.CompletionInline,
 			FromUser:      true,
 			PlanRequested: turn.PlanRequested,
 			GoalRequested: turn.GoalRequested,
@@ -107,13 +89,19 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	if err != nil {
 		sendErr := acpSendError(session, err)
 		s.logger().Error("acp send failed", "session", session.ID, "error", sendErr)
-		s.setSessionError(session, sendErr.Error())
+		if turn.compact() {
+			s.setSessionError(session, sendErr.Error())
+		}
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: sendErr.Error()})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 		return
 	}
 	s.publishMessagesChanged(session.ID)
 	writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamAccepted})
+	if followUp {
+		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
+		return
+	}
 
 	stream := acp.StreamViewFromJob(job)
 	emittedAssistant := 0
@@ -182,24 +170,6 @@ func (s *Server) beginACPTurn(ctx context.Context, session storage.Session, mess
 	s.TitleThread(session, message)
 	s.publishSessionChanged(session.ID)
 	return session, nil
-}
-
-func (s *Server) queueACPStreamTurn(sessionID string, turn acpStreamTurn) error {
-	attachmentIDs := make([]string, 0, len(turn.Attachments))
-	for _, attachment := range turn.Attachments {
-		attachmentIDs = append(attachmentIDs, attachment.ID)
-	}
-	_, err := s.updateSessionQueue(sessionID, queueRequest{
-		Op: "append",
-		Message: storage.QueuedMessage{
-			Text:          turn.Message,
-			Contexts:      turn.Contexts,
-			AttachmentIDs: attachmentIDs,
-			PlanRequested: turn.PlanRequested,
-			GoalRequested: turn.GoalRequested,
-		},
-	})
-	return err
 }
 
 func emitACPStream(w http.ResponseWriter, flusher http.Flusher, stream acp.StreamView, emittedAssistant, emittedThought *int, seenTools map[string]struct{}) {

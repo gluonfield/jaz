@@ -148,6 +148,16 @@ func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job
 	return f.job, f.sendErr
 }
 
+func (f *fakeACPManager) Input(ctx context.Context, req acp.SteerRequest) (acp.Job, error) {
+	f.mu.Lock()
+	state := f.job.State
+	f.mu.Unlock()
+	if state == acp.StateRunning || state == acp.StateStarting {
+		return f.Steer(ctx, req)
+	}
+	return f.Send(ctx, req)
+}
+
 func (f *fakeACPManager) StartInternalTurn(_ context.Context, req acp.InternalTurnRequest) (acp.Job, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
