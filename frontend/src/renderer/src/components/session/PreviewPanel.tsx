@@ -60,7 +60,7 @@ export function PreviewPanel({
   const cursorLayer = useRef<HTMLDivElement | null>(null)
   const readyRef = useRef<PreviewWebviewElement | null>(null)
   const targetRef = useRef(target)
-  const requests = useRef(0)
+  const latestRequest = useRef(0)
   // Targets the webview reported for the page it is showing; every other target asks it to navigate.
   const [reports] = useState(() => new WeakSet<PreviewTarget>())
   const canUseWebview = clientRuntime.capabilities.previewWebview
@@ -109,15 +109,16 @@ export function PreviewPanel({
 
   useEffect(() => {
     if (reports.has(target)) return
-    const id = ++requests.current
-    setRequest({ source: isPreviewURL(target.sourceUrl) && !shouldProxyPreview(target.sourceUrl) ? target.sourceUrl : '' })
-    if (!target.sourceUrl) return
+    const id = ++latestRequest.current
+    const direct = isPreviewURL(target.sourceUrl) && !shouldProxyPreview(target.sourceUrl)
+    setRequest({ source: direct ? target.sourceUrl : '' })
+    if (direct || !target.sourceUrl) return
     void resolvePreviewSource(target.sourceUrl)
       .then((source) => {
-        if (id === requests.current) setRequest((current) => current.source === source ? current : { source })
+        if (id === latestRequest.current) setRequest({ source })
       })
       .catch((err: Error) => {
-        if (id === requests.current) {
+        if (id === latestRequest.current) {
           setLoading(false)
           setReadyWebview(null)
           setError(err.message || 'Preview failed to load.')

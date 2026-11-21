@@ -1,15 +1,18 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { BrowserPanelSlot, BrowserWorkspace } from '@/components/browser/BrowserWorkspace'
 import type { PreviewWebviewElement } from '@/components/session/previewWebview'
-import { PreviewPanel } from '@/components/session/PreviewPanel'
-import { StrictMode, useState } from 'react'
+import { useBrowserSessions } from '@/lib/browserSessions'
+import { keys } from '@/lib/query/keys'
+import { StrictMode, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 
-function Fixture({ name }: { name: string }) {
-  const [target, setTarget] = useState(() => ({
-    displayUrl: `${location.origin}/target?address=${name}`,
-    sourceUrl: `${location.origin}/target?address=${name}`,
-  }))
-  return <div data-address-browser={name}>
-    <PreviewPanel target={target} onTargetChange={setTarget} />
+function Tab({ name }: { name: string }) {
+  const sessions = useBrowserSessions()
+  useLayoutEffect(() => {
+    sessions.openTab(name, `${location.origin}/target?address=${name}`)
+  }, [sessions, name])
+  return <div className="h-1/2">
+    <BrowserPanelSlot sessionId={name} visible />
   </div>
 }
 
@@ -19,7 +22,9 @@ export async function exerciseAddressBar(): Promise<void> {
   document.body.append(element)
   const root = createRoot(element)
   try {
-    root.render(<StrictMode><Fixture name="owner" /><Fixture name="neighbour" /></StrictMode>)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(keys.browserSettings, { enabled: false })
+    root.render(<StrictMode><QueryClientProvider client={client}><BrowserWorkspace><Tab name="owner" /><Tab name="neighbour" /></BrowserWorkspace></QueryClientProvider></StrictMode>)
     const deadline = Date.now() + 5000
     while (element.querySelectorAll('[aria-label="Reload preview"]:not(:disabled)').length !== 2) {
       if (Date.now() > deadline) {
@@ -27,7 +32,7 @@ export async function exerciseAddressBar(): Promise<void> {
       }
       await new Promise((resolve) => setTimeout(resolve, 20))
     }
-    await checkAddresses(element.querySelector('[data-address-browser="owner"]')!, element.querySelector<PreviewWebviewElement>('[data-address-browser="neighbour"] webview')!)
+    await checkAddresses(element.querySelector('[data-browser-session="owner"]')!, element.querySelector<PreviewWebviewElement>('[data-browser-session="neighbour"] webview')!)
   } finally {
     root.unmount()
     element.remove()
@@ -50,6 +55,13 @@ async function checkAddresses(panel: Element, neighbour: PreviewWebviewElement):
       throw new Error('Enter did not submit the address form')
     }
   }
+  const wait = async (ready: () => boolean) => {
+    const deadline = Date.now() + 3000
+    while (!ready() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+  }
+  const pause = () => new Promise((resolve) => setTimeout(resolve, 300))
   await window.smoke.navigationProbe(true)
   try {
     for (const blank of ['', '   ']) {
@@ -73,13 +85,10 @@ async function checkAddresses(panel: Element, neighbour: PreviewWebviewElement):
     for (const [input, expected] of cases) {
       const count = (await window.smoke.navigationProbe()).length
       await submit(input)
-      const deadline = Date.now() + 3000
       const ready = () => !panel.querySelector<HTMLButtonElement>('[aria-label="Reload preview"]')!.disabled
         && panel.querySelector<PreviewWebviewElement>('webview')?.getURL() === expected
         && !panel.querySelector('.animate-spin')
-      while (!ready() && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 20))
-      }
+      await wait(ready)
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       if (!ready()) {
         throw new Error(`Address ${JSON.stringify(input)} did not finish navigating to ${expected}; loaded ${panel.querySelector<PreviewWebviewElement>('webview')?.getURL()}`)
@@ -101,18 +110,20 @@ async function checkAddresses(panel: Element, neighbour: PreviewWebviewElement):
     for (let round = 0; round < 3; round++) {
       const count = (await window.smoke.navigationProbe()).length
       await submit(chain[0])
-      const deadline = Date.now() + 3000
-      let settled = 0
-      while (settled < 15 && Date.now() < deadline) {
-        settled = view.getURL() === signedIn && address.value === signedIn && !panel.querySelector('.animate-spin') ? settled + 1 : 0
-        await new Promise((resolve) => setTimeout(resolve, 20))
-      }
+      await wait(() => view.getURL() === signedIn)
+      await pause()
       const requests = (await window.smoke.navigationProbe()).slice(count).map((request) => request.url)
-      if (settled < 15 || JSON.stringify(requests) !== JSON.stringify(chain)) {
+      if (JSON.stringify(requests) !== JSON.stringify(chain) || view.getURL() !== signedIn || address.value !== signedIn) {
         throw new Error(`A sign-in chain of form posts ending in a rewritten address requested ${JSON.stringify(requests)}, expected ${JSON.stringify(chain)} once each; loaded ${view.getURL()}, address bar ${address.value}`)
       }
     }
-    console.warn(`Address bar: ${cases.length} Enter navigations, 2 blank submissions, 3 form-post sign-in chains without a repeated request and neighbouring browser preservation passed`)
+    const count = (await window.smoke.navigationProbe()).length
+    await submit(signedIn)
+    await pause()
+    if ((await window.smoke.navigationProbe()).length !== count) {
+      throw new Error('Entering the address already showing loaded the page again')
+    }
+    console.warn(`Address bar: ${cases.length} Enter navigations, 2 blank submissions, 3 form-post sign-in chains without a repeated request, an unchanged address without a reload and neighbouring browser preservation passed`)
   } finally {
     await window.smoke.navigationProbe(false)
   }
