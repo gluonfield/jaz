@@ -7,10 +7,19 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func (m *Manager) SetDeferredMCPTools(_ context.Context, ref string, deferred bool) error {
+func (m *Manager) SetDeferredMCPTools(ctx context.Context, ref string, deferred bool) error {
 	session, err := m.store.LoadSession(ref)
 	if err != nil {
 		return err
+	}
+	if job := m.jobByID(session.ID); job != nil {
+		if done := job.finishingTurn(); done != nil {
+			select {
+			case <-done:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
 	}
 	defer m.resumeLocks.Lock(session.ID)()
 	session, err = m.store.LoadSession(session.ID)

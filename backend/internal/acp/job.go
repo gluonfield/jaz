@@ -494,6 +494,14 @@ func (j *jobState) turnDone() chan struct{} {
 	return j.turn.done
 }
 
+// finishingTurn returns the done channel of a turn that has ended but is still
+// being recorded, which wait_threads already reports as idle.
+func (j *jobState) finishingTurn() chan struct{} {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.finishing
+}
+
 func (j *jobState) turnDoneAndPlan() (chan struct{}, bool) {
 	j.mu.RLock()
 	defer j.mu.RUnlock()

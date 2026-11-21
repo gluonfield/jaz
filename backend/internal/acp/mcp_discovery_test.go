@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -58,7 +59,35 @@ func TestDeferredMCPToolsRetiresOnlyIdleTargetAndKeepsNativeSession(t *testing.T
 	if manager.jobByID(target.SessionID) != job {
 		t.Fatal("refused selection stopped the target")
 	}
-	if err := manager.SetDeferredMCPTools(ctx, target.Slug, true); err != nil {
+	recording, recorded := make(chan struct{}), make(chan struct{})
+	record := sync.OnceFunc(func() { close(recorded) })
+	t.Cleanup(record)
+	var hold sync.Once
+	manager.TurnFinished = func(context.Context, Job) {
+		hold.Do(func() {
+			close(recording)
+			<-recorded
+		})
+	}
+	if _, err := manager.Send(ctx, SendRequest{Session: target.SessionID, Message: "ending", Completion: CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-recording:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	changed := make(chan error, 1)
+	go func() {
+		changed <- manager.SetDeferredMCPTools(ctx, target.Slug, true)
+	}()
+	select {
+	case err := <-changed:
+		t.Fatalf("selection did not wait for the ended turn to be recorded: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	record()
+	if err := <-changed; err != nil {
 		t.Fatal(err)
 	}
 	if manager.jobByID(target.SessionID) != nil || manager.jobByID(other.SessionID) != sibling {
