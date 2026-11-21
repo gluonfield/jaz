@@ -8,25 +8,23 @@ import {
   sidebarSessionSections,
 } from './sidebarSessionModel'
 
-function item(id, { path = '', pinned = false, parent, at = id } = {}) {
+function session(id, { path = '', pinned = false, parent, at = '2026-11-21T04:00:00Z' } = {}) {
   return {
-    child: Boolean(parent),
-    session: {
-      id,
-      parent_id: parent,
-      pinned,
-      runtime_ref: path ? { project_path: path } : undefined,
-      updated_at: at,
-      last_attention_at: at,
-    },
+    id,
+    parent_id: parent,
+    pinned,
+    runtime_ref: path ? { project_path: path } : undefined,
+    updated_at: at,
+    last_attention_at: at,
   }
 }
 
 describe('sidebar session organization', () => {
   test('shows fifty recent sessions before exposing the remainder', () => {
-    const sessions = Array.from({ length: 55 }, (_, index) => item(`session-${index}`))
+    const sessions = Array.from({ length: 55 }, (_, index) => session(`session-${index}`))
+    const { recentItems } = sidebarSessionSections(sessions, [])
 
-    const page = sessionPage(sessions, SESSION_PAGE_SIZE)
+    const page = sessionPage(recentItems, SESSION_PAGE_SIZE)
 
     expect(page.items).toHaveLength(50)
     expect(page.total).toBe(55)
@@ -34,11 +32,11 @@ describe('sidebar session organization', () => {
 
   test('keeps each recent child under its own parent despite interleaved attention times', () => {
     const sections = sidebarSessionSections([
-      item('rust', { at: '2026-11-21T04:02:00Z' }),
-      item('rust-child', { parent: 'rust', at: '2026-11-21T04:14:00Z' }),
-      item('other', { at: '2026-11-21T04:06:00Z' }),
-      item('copilot', { at: '2026-11-13T11:38:00Z' }),
-      item('copilot-child', { parent: 'copilot', at: '2026-11-21T04:05:00Z' }),
+      session('other', { at: '2026-11-21T04:06:00Z' }),
+      session('copilot-child', { parent: 'copilot', at: '2026-11-21T04:05:00Z' }),
+      session('rust-child', { parent: 'rust', at: '2026-11-21T04:14:00Z' }),
+      session('copilot', { at: '2026-11-13T11:38:00Z' }),
+      session('rust', { at: '2026-11-21T04:02:00Z' }),
     ], [])
 
     expect(sections.recentItems.map(({ session, child }) => [session.id, child])).toEqual([
@@ -54,14 +52,14 @@ describe('sidebar session organization', () => {
     const projectPath = 'ungrouped'
     const projectSessions = Array.from(
       { length: 55 },
-      (_, index) => item(`project-${index}`, { path: projectPath }),
+      (_, index) => session(`project-${index}`, { path: projectPath }),
     )
     const ungroupedSessions = Array.from(
       { length: 55 },
-      (_, index) => item(`ungrouped-${index}`),
+      (_, index) => session(`ungrouped-${index}`),
     )
     const sections = sidebarSessionSections(
-      [item('pinned', { pinned: true }), ...projectSessions, ...ungroupedSessions],
+      [session('pinned', { pinned: true }), ...projectSessions, ...ungroupedSessions],
       [{ path: projectPath, name: 'Named project' }],
     )
 
@@ -85,7 +83,7 @@ describe('sidebar session organization', () => {
     const groups = ['physicslab', 'jaz'].map((key) => ({
       key,
       label: key,
-      items: Array.from({ length: 12 }, (_, index) => item(`${key}-${index}`)),
+      items: Array.from({ length: 12 }, (_, index) => ({ session: session(`${key}-${index}`), child: false })),
     }))
     const initial = sessionDisplayBlocks(groups, [], new Set(), false, new Set())
 
@@ -104,9 +102,9 @@ describe('sidebar session organization', () => {
     '2026-10-01T12:00:00Z',
   ])('keeps every project above Recents with ungrouped activity at %s', (at) => {
     const sections = sidebarSessionSections([
-      item('alpha', { path: '/alpha', at: '2026-10-06T12:00:00Z' }),
-      item('beta', { path: '/beta', at: '2026-10-04T12:00:00Z' }),
-      item('recent', { at }),
+      session('alpha', { path: '/alpha', at: '2026-10-06T12:00:00Z' }),
+      session('beta', { path: '/beta', at: '2026-10-04T12:00:00Z' }),
+      session('recent', { at }),
     ], [
       { path: '/alpha', name: 'Alpha' },
       { path: '/beta', name: 'Beta' },
@@ -156,7 +154,7 @@ test('shows project groups only when they contain visible unpinned sessions', ()
     { path: '/pinned', name: 'Pinned only' },
     { path: '/active', name: 'Active' },
   ]
-  const sessions = [item('pinned', { path: '/pinned', pinned: true }), item('thread', { path: '/active' })]
+  const sessions = [session('pinned', { path: '/pinned', pinned: true }), session('thread', { path: '/active' })]
   const sections = sidebarSessionSections(sessions, projects)
   expect(sections.groups.map((group) => [group.key, group.items.length])).toEqual([
     ['/active', 1],

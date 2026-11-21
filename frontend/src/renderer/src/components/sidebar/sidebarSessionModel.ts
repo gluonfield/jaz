@@ -1,9 +1,15 @@
-import type { Project, SessionListItem } from '@/lib/api/sessions'
+import type { Project } from '@/lib/api/sessions'
+import type { Session } from '@/lib/api/types'
 
 export const SESSION_PAGE_SIZE = 50
 const PROJECT_SESSION_LIMIT = 5
 const UNGROUPED_BLOCK_KEY = 'ungrouped'
 export type SessionBlockKey = `project:${string}` | typeof UNGROUPED_BLOCK_KEY
+
+export interface SessionListItem {
+  session: Session
+  child: boolean
+}
 
 export type SessionProjectGroup = {
   key: string
@@ -92,7 +98,61 @@ function sessionsBySavedProject(items: SessionListItem[], projects: Project[]) {
   }
 }
 
-export function sidebarSessionSections(items: SessionListItem[], projects: Project[]): SessionSections {
+function sessionTime(session: Session): number {
+  const ms = Date.parse(session.last_attention_at || session.updated_at)
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+function groupSessionsForDisplay(sessions: Session[]): SessionListItem[] {
+  const ids = new Set(sessions.map((session) => session.id))
+  const children = new Map<string, Session[]>()
+  const roots: Session[] = []
+
+  for (const session of sessions) {
+    if (session.parent_id && session.parent_id !== session.id && ids.has(session.parent_id)) {
+      children.set(session.parent_id, [...(children.get(session.parent_id) ?? []), session])
+    } else {
+      roots.push(session)
+    }
+  }
+
+  const groupTimes = new Map<string, number>()
+  const groupTime = (session: Session, visiting = new Set<string>()): number => {
+    const cached = groupTimes.get(session.id)
+    if (cached !== undefined) return cached
+    if (visiting.has(session.id)) return sessionTime(session)
+
+    visiting.add(session.id)
+    let latest = sessionTime(session)
+    for (const child of children.get(session.id) ?? []) {
+      latest = Math.max(latest, groupTime(child, visiting))
+    }
+    visiting.delete(session.id)
+    groupTimes.set(session.id, latest)
+    return latest
+  }
+
+  const compareGroups = (a: Session, b: Session): number =>
+    groupTime(b) - groupTime(a) || sessionTime(b) - sessionTime(a) || a.id.localeCompare(b.id)
+
+  const ordered: SessionListItem[] = []
+  const emitted = new Set<string>()
+  const append = (session: Session, isChild: boolean) => {
+    if (emitted.has(session.id)) return
+    emitted.add(session.id)
+    ordered.push({ session, child: isChild })
+    for (const sub of [...(children.get(session.id) ?? [])].sort(compareGroups)) {
+      append(sub, true)
+    }
+  }
+
+  for (const root of [...roots].sort(compareGroups)) append(root, false)
+  for (const session of [...sessions].sort(compareGroups)) append(session, false)
+  return ordered
+}
+
+export function sidebarSessionSections(sessions: Session[], projects: Project[]): SessionSections {
+  const items = groupSessionsForDisplay(sessions)
   const pinnedItems = withLocalChildState(items.filter((item) => item.session.pinned))
   const recentItems = withLocalChildState(items.filter((item) => !item.session.pinned))
   return { pinnedItems, recentItems, ...sessionsBySavedProject(recentItems, projects) }

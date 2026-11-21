@@ -11,7 +11,6 @@ import {
   projectsQuery,
   reorderProjects,
   sidebarSessionsQuery,
-  type SessionListItem,
 } from '@/lib/api/sessions'
 import { useShowModelIcons } from '@/lib/appearance'
 import { modalDialogOpen } from '@/lib/dom/modal'
@@ -33,6 +32,7 @@ import {
   SESSION_PAGE_SIZE,
   type SessionBlockKey,
   type SessionDisplayBlock,
+  type SessionListItem,
 } from './sidebarSessionModel'
 
 const COLLAPSED_PROJECTS_KEY = 'jaz.sidebar.collapsedProjects'
