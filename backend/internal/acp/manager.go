@@ -328,6 +328,11 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 	if modelMetadata != "" {
 		env[codexModelMetadataEnv] = modelMetadata
 	}
+	// Codex ACP predicts each next prompt with an extra model call; skip it
+	// where nobody writes one. The adapter reads this as each session opens.
+	if CanonicalAgentName(name) == AgentCodex && !watchedSourceType(sessioncontext.SourceType(ctx)) {
+		env["CODEX_ACP_PROMPT_SUGGESTIONS"] = "false"
+	}
 	launchPrompt := ""
 	if agentPolicyForAgent(name).systemPromptAtLaunch || CanonicalAgentName(name) == AgentOpenCode {
 		launchPrompt, err = m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)

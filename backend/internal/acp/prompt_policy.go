@@ -29,6 +29,13 @@ func mcpServerPolicyForSourceType(sourceType string) string {
 	return restrictedWorkerPolicies[sourceType]
 }
 
+// watchedSourceType reports whether a person writes a session's next prompt:
+// in a user's thread or a bot's chat. Nobody writes to a bot's subtasks or
+// group seats, routine runs or memory workers.
+func watchedSourceType(sourceType string) bool {
+	return sourceType == "" || sourceType == storage.SourceBot
+}
+
 // rendersPromptOnLaunch reports whether the agent renders the prompt it is
 // given on every launch rather than the one recorded at the conversation's
 // start: a Claude bot's, since a bot keeps one conversation for good. Its

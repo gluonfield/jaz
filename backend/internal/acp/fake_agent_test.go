@@ -62,14 +62,19 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	}
 	_, authErr := os.Stat(os.Getenv("JAZ_FAKE_ACP_AUTH_REQUIRED_FILE"))
 	authRequired := authErr == nil
-	if path := os.Getenv("JAZ_FAKE_ACP_START_LOG"); path != "" {
+	appendLine := func(path string, line any) {
+		if path == "" {
+			return
+		}
 		file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _ = fmt.Fprintln(file, os.Getpid())
+		_, _ = fmt.Fprintln(file, line)
 		_ = file.Close()
 	}
+	appendLine(os.Getenv("JAZ_FAKE_ACP_START_LOG"), os.Getpid())
+	appendLine(os.Getenv("JAZ_FAKE_ACP_SUGGESTIONS_LOG"), strconv.Quote(os.Getenv("CODEX_ACP_PROMPT_SUGGESTIONS")))
 	// Startup waits while a hold file sits in the agent's directory, as a
 	// slow login refresh holds an agent up.
 	fakeHold(os.Getenv("JAZ_FAKE_ACP_START_HOLD"))
