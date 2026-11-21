@@ -62,11 +62,11 @@ func fakeJWT(t *testing.T, claims map[string]any) string {
 }
 
 func TestOAuthConfigValidation(t *testing.T) {
-	if err := (OAuthConfig{}).Validate(); err == nil || !strings.Contains(err.Error(), "JAZ_MICROSOFT_COPILOT_OAUTH_CLIENT_ID") {
+	if err := (OAuthConfig{}).Normalize().Validate(); err == nil || !strings.Contains(err.Error(), "JAZ_MICROSOFT_COPILOT_OAUTH_CLIENT_ID") {
 		t.Fatalf("missing client id error = %v", err)
 	}
 	for _, tenant := range []string{"consumers", "common", PersonalAccountTenantID, "Consumers"} {
-		err := (OAuthConfig{ClientID: "app-client", TenantID: tenant}).Validate()
+		err := (OAuthConfig{ClientID: "app-client", TenantID: tenant}).Normalize().Validate()
 		if err == nil || !strings.Contains(err.Error(), "work or school") {
 			t.Fatalf("tenant %q error = %v, want personal-account rejection", tenant, err)
 		}
@@ -90,6 +90,10 @@ func TestOAuthPKCEFlowRefreshRejectsPersonalAccountAndDisconnects(t *testing.T) 
 	)
 
 	entra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ua := r.Header.Get("User-Agent"); ua != browserUserAgent || strings.Contains(strings.ToLower(ua), "jaz") {
+			http.Error(w, "unexpected user-agent: "+ua, http.StatusBadRequest)
+			return
+		}
 		if r.URL.Path != "/organizations/oauth2/v2.0/token" {
 			http.NotFound(w, r)
 			return
@@ -268,6 +272,10 @@ func TestACPBridgeStreamsMultiTurnResumesCancelsAndValidatesInputs(t *testing.T)
 
 	largePadding := strings.Repeat("a", 70*1024)
 	graph := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ua := r.Header.Get("User-Agent"); ua != browserUserAgent || strings.Contains(strings.ToLower(ua), "jaz") {
+			http.Error(w, "unexpected user-agent: "+ua, http.StatusBadRequest)
+			return
+		}
 		if r.Header.Get("Authorization") != "Bearer work-token" {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(`{"error":{"code":"InvalidAuthenticationToken","message":"token expired"}}`))
@@ -303,6 +311,24 @@ func TestACPBridgeStreamsMultiTurnResumesCancelsAndValidatesInputs(t *testing.T)
 				w.Header().Set("Content-Type", "text/event-stream")
 				_, _ = w.Write([]byte("data: {\"id\":\"conv-123\",\"state\":\"disengagedForRai\",\"messages\":[]}\n\n"))
 				return
+			case "rai_after_partial":
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = w.Write([]byte("data: {\"id\":\"conv-123\",\"state\":\"active\",\"messages\":[{\"@odata.type\":\"#microsoft.graph.copilotConversationResponseMessage\",\"id\":\"resp-rai\",\"text\":\"Partial answer\"}]}\n\n"))
+				_, _ = w.Write([]byte("data: {\"id\":\"conv-123\",\"state\":\"disengagedForRai\",\"messages\":[{\"@odata.type\":\"#microsoft.graph.copilotConversationResponseMessage\",\"id\":\"resp-rai\",\"text\":\"\"}]}\n\n"))
+				return
+			case "empty_eof":
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+				return
+			case "empty_messages_only":
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = w.Write([]byte("data: {\"id\":\"conv-123\",\"state\":\"active\",\"messages\":[]}\n\n"))
+				return
+			case "non_prefix_revision":
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = w.Write([]byte("data: {\"id\":\"conv-123\",\"state\":\"active\",\"messages\":[{\"@odata.type\":\"#microsoft.graph.copilotConversationResponseMessage\",\"id\":\"resp-rev\",\"text\":\"Initial draft\"}]}\n\n"))
+				_, _ = w.Write([]byte("data: {\"id\":\"conv-123\",\"state\":\"active\",\"messages\":[{\"@odata.type\":\"#microsoft.graph.copilotConversationResponseMessage\",\"id\":\"resp-rev\",\"text\":\"Completely rewritten final answer\"}]}\n\n"))
+				return
 			case "stream_error":
 				w.Header().Set("Content-Type", "text/event-stream")
 				_, _ = w.Write([]byte("data: {\"error\":{\"code\":\"ServiceUnavailable\",\"message\":\"Copilot backend overloaded\"}}\n\n"))
@@ -333,6 +359,12 @@ func TestACPBridgeStreamsMultiTurnResumesCancelsAndValidatesInputs(t *testing.T)
 				}
 			}
 			if callNum == 1 {
+				// Official chatOverStream emits intermediate events with empty messages before responses arrive.
+				writeEvent(Conversation{
+					ID:       "conv-123",
+					State:    "active",
+					Messages: []ConversationMessage{},
+				})
 				writeEvent(Conversation{
 					ID: "conv-123", State: "active", TurnCount: 1,
 					Messages: []ConversationMessage{
@@ -594,6 +626,40 @@ func TestACPBridgeStreamsMultiTurnResumesCancelsAndValidatesInputs(t *testing.T)
 	mu.Unlock()
 	if _, err := client2.Call(ctx2, acpschema.AgentMethodSessionPrompt, acpschema.PromptRequest{SessionID: "conv-123", Prompt: []acpschema.ContentBlock{followBlock}}); err == nil || !strings.Contains(err.Error(), "Responsible AI") {
 		t.Fatalf("RAI error = %v", err)
+	}
+
+	mu.Lock()
+	mode = "rai_after_partial"
+	mu.Unlock()
+	raiRaw, err := client2.Call(ctx2, acpschema.AgentMethodSessionPrompt, acpschema.PromptRequest{SessionID: "conv-123", Prompt: []acpschema.ContentBlock{followBlock}})
+	if err != nil {
+		t.Fatalf("RAI after partial text error = %v", err)
+	}
+	var raiResp acpschema.PromptResponse
+	_ = json.Unmarshal(raiRaw, &raiResp)
+	if raiResp.StopReason != acpschema.StopReasonRefusal {
+		t.Fatalf("RAI after partial stop reason = %q, want refusal", raiResp.StopReason)
+	}
+
+	mu.Lock()
+	mode = "empty_eof"
+	mu.Unlock()
+	if _, err := client2.Call(ctx2, acpschema.AgentMethodSessionPrompt, acpschema.PromptRequest{SessionID: "conv-123", Prompt: []acpschema.ContentBlock{followBlock}}); err == nil || !strings.Contains(err.Error(), "conversation event") {
+		t.Fatalf("empty SSE EOF error = %v, want explicit stream error", err)
+	}
+
+	mu.Lock()
+	mode = "empty_messages_only"
+	mu.Unlock()
+	if _, err := client2.Call(ctx2, acpschema.AgentMethodSessionPrompt, acpschema.PromptRequest{SessionID: "conv-123", Prompt: []acpschema.ContentBlock{followBlock}}); err == nil || !strings.Contains(err.Error(), "without a response message") {
+		t.Fatalf("empty-messages-only SSE error = %v, want explicit stream error", err)
+	}
+
+	mu.Lock()
+	mode = "non_prefix_revision"
+	mu.Unlock()
+	if _, err := client2.Call(ctx2, acpschema.AgentMethodSessionPrompt, acpschema.PromptRequest{SessionID: "conv-123", Prompt: []acpschema.ContentBlock{followBlock}}); err == nil || !strings.Contains(err.Error(), "revised an already-streamed response snapshot") {
+		t.Fatalf("non-prefix revision error = %v, want explicit protocol error", err)
 	}
 
 	mu.Lock()

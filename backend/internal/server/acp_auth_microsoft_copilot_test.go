@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	m365copilotapi "github.com/wins/jaz/backend/internal/httpapi/m365copilot"
 	"github.com/wins/jaz/backend/internal/m365copilot"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/oauthbroker"
@@ -42,16 +43,39 @@ func TestMicrosoftCopilotOAuthSettingsCallbackAndDisconnect(t *testing.T) {
 	}
 	defer store.Close()
 
+	// Missing client ID is validated through the real AuthService, not a nil fallback.
+	unconfigured := m365copilot.NewAuthService(store, m365copilot.OAuthConfig{}, oauthbroker.Broker{})
+	unconfiguredSrv := &Server{
+		Store:            store,
+		Root:             root,
+		AuthKey:          "secret-key",
+		ModelCatalog:     modelcatalog.NewService(nil),
+		MicrosoftCopilot: unconfigured,
+	}
+	missingClientReq := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/microsoft_copilot/auth/login", strings.NewReader(`{"auth":{"mode":"jaz_profile"}}`))
+	missingClientReq.Host = "127.0.0.1:5299"
+	missingClientReq.Header.Set("Authorization", "Bearer secret-key")
+	missingClientReq.Header.Set("Content-Type", "application/json")
+	missingClientRes := httptest.NewRecorder()
+	unconfiguredSrv.Handler().ServeHTTP(missingClientRes, missingClientReq)
+	if missingClientRes.Code != http.StatusBadRequest || !strings.Contains(missingClientRes.Body.String(), "JAZ_MICROSOFT_COPILOT_OAUTH_CLIENT_ID") {
+		t.Fatalf("unconfigured login status = %d, body = %s", missingClientRes.Code, missingClientRes.Body.String())
+	}
+
 	msAuth := m365copilot.NewAuthService(store, m365copilot.OAuthConfig{
 		ClientID:         "entra-server-client",
 		AuthorityBaseURL: entra.URL,
 	}, oauthbroker.Broker{})
+	msCallback := m365copilotapi.NewHandler(msAuth)
 	srv := &Server{
 		Store:            store,
 		Root:             root,
 		AuthKey:          "secret-key",
 		ModelCatalog:     modelcatalog.NewService(nil),
 		MicrosoftCopilot: msAuth,
+		Routes: Routes{
+			{Pattern: "GET " + m365copilot.OAuthCallbackPath, Handler: http.HandlerFunc(msCallback.Callback)},
+		},
 	}
 	handler := srv.Handler()
 

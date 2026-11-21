@@ -31,6 +31,7 @@ func Load() (Config, error) {
 	for provider, client := range cfg.Jaz.Connections.MCP {
 		cfg.Jaz.Connections.MCP[provider] = mcpconfig.NormalizeOAuth(client)
 	}
+	cfg.Jaz.MicrosoftCopilot = cfg.Jaz.MicrosoftCopilot.Normalize()
 	if err := applyProvider(&cfg); err != nil {
 		return Config{}, err
 	}

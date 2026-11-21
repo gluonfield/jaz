@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/wins/jaz/backend/internal/api"
-	"github.com/wins/jaz/backend/internal/m365copilot"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 )
 
@@ -34,7 +33,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/prepare", s.handlePrepareACPAgent)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/auth/login", s.handleStartACPAuthLogin)
-	mux.HandleFunc("GET "+m365copilot.OAuthCallbackPath, s.handleMicrosoftCopilotAuthCallback)
 	mux.HandleFunc("GET /v1/acp/agents/antigravity/auth/methods", s.handleAntigravityAuthMethods)
 	mux.HandleFunc("GET /v1/acp/agents/antigravity/auth/cloud-terminal", s.handleAntigravityCloudLogin)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/auth/disconnect", s.handleDisconnectACPAuth)

@@ -32,6 +32,18 @@ func TestMicrosoftCopilotManagerSpawnStreamResumeAndModels(t *testing.T) {
 		case "/beta/copilot/conversations/m365-conv-1/chatOverStream":
 			n := turnCount.Add(1)
 			w.Header().Set("Content-Type", "text/event-stream")
+			if n == 3 {
+				// Prematurely closed SSE stream before any conversation event must fail the turn, never end_turn.
+				return
+			}
+			// Intermediate event with empty messages is valid in Microsoft's chatOverStream contract.
+			emptyFrame, _ := json.Marshal(m365copilot.Conversation{
+				ID:        "m365-conv-1",
+				State:     "active",
+				TurnCount: int(n),
+				Messages:  []m365copilot.ConversationMessage{},
+			})
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", emptyFrame)
 			reply := fmt.Sprintf("Copilot reply %d", n)
 			payload, _ := json.Marshal(m365copilot.Conversation{
 				ID:        "m365-conv-1",
@@ -129,6 +141,18 @@ func TestMicrosoftCopilotManagerSpawnStreamResumeAndModels(t *testing.T) {
 	}
 	if createCount.Load() != 1 || turnCount.Load() != 2 {
 		t.Fatalf("createCount=%d turnCount=%d, want 1 and 2", createCount.Load(), turnCount.Load())
+	}
+
+	// Turn 3 simulates an SSE connection closing before any conversation event; Manager must fail the turn, not idle with empty text.
+	if _, err := manager.Send(t.Context(), SendRequest{Session: spawned.SessionID, Message: "Empty stream test", FromUser: true}); err != nil {
+		t.Fatalf("Send turn 3 failed to queue: %v", err)
+	}
+	done3, err := manager.Wait(t.Context(), WaitRequest{Session: spawned.SessionID, Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("Wait turn 3 error = %v", err)
+	}
+	if done3.State != StateFailed || done3.Error == "" {
+		t.Fatalf("empty SSE stream turn = %#v, want StateFailed with stream error", done3)
 	}
 
 	if err := DisconnectAgentAuth(t.Context(), AgentMicrosoftCopilot, cfg, root, nil); err != nil {

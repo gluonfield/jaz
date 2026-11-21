@@ -19,7 +19,32 @@ import (
 	"golang.org/x/oauth2"
 )
 
-const loginStateTTL = 15 * time.Minute
+const (
+	loginStateTTL    = 15 * time.Minute
+	browserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+type browserUserAgentTransport struct {
+	base http.RoundTripper
+}
+
+func (t browserUserAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	next := req.Clone(req.Context())
+	if next.Header.Get("User-Agent") == "" {
+		next.Header.Set("User-Agent", browserUserAgent)
+	}
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(next)
+}
+
+func newOutboundHTTPClient() *http.Client {
+	return &http.Client{
+		Transport: browserUserAgentTransport{base: http.DefaultTransport},
+	}
+}
 
 type TokenStore interface {
 	integrationoauth.Store
@@ -71,7 +96,7 @@ func NewAuthService(store TokenStore, cfg OAuthConfig, broker oauthbroker.Broker
 		store:      store,
 		cfg:        cfg.Normalize(),
 		broker:     broker,
-		httpClient: http.DefaultClient,
+		httpClient: newOutboundHTTPClient(),
 		guard:      &integrationoauth.RefreshGuard{},
 		pending:    map[string]*pendingLogin{},
 	}

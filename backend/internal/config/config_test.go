@@ -174,7 +174,7 @@ func TestLoadMicrosoftCopilotOAuthFromEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ms := cfg.Jaz.MicrosoftCopilot.Normalize()
+	ms := cfg.Jaz.MicrosoftCopilot
 	if ms.ClientID != "ms-client-id" || ms.ClientSecret != "ms-client-secret" || ms.TenantID != "contoso.onmicrosoft.com" || ms.RedirectURL != "https://jaz.example.com/v1/acp/agents/microsoft_copilot/auth/callback" || !ms.UseBroker {
 		t.Fatalf("MicrosoftCopilot config = %#v", ms)
 	}

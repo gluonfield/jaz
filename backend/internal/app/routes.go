@@ -20,6 +20,7 @@ import (
 	feedapi "github.com/wins/jaz/backend/internal/httpapi/feed"
 	filesystemapi "github.com/wins/jaz/backend/internal/httpapi/filesystem"
 	hooksapi "github.com/wins/jaz/backend/internal/httpapi/hooks"
+	m365copilotapi "github.com/wins/jaz/backend/internal/httpapi/m365copilot"
 	mcpappsapi "github.com/wins/jaz/backend/internal/httpapi/mcpapps"
 	mcpsearchapi "github.com/wins/jaz/backend/internal/httpapi/mcpsearch"
 	mobilepushapi "github.com/wins/jaz/backend/internal/httpapi/mobilepush"
@@ -29,6 +30,7 @@ import (
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
 	voiceapi "github.com/wins/jaz/backend/internal/httpapi/voice"
+	"github.com/wins/jaz/backend/internal/m365copilot"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/mobilepush"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
@@ -70,11 +72,13 @@ type routeDeps struct {
 	Voice            *voiceapi.Handler
 	VoiceRelay       *voiceapi.RelayHandler
 	Push             *mobilepush.Service
+	MicrosoftCopilot *m365copilotapi.Handler
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
 	routes := server.Routes{
 		{Pattern: "GET /v1/acp/agents/{agent}/models", Handler: modelcapabilitiesapi.NewAgentModelsHandler(deps.ACP)},
+		{Pattern: "GET " + m365copilot.OAuthCallbackPath, Handler: http.HandlerFunc(deps.MicrosoftCopilot.Callback)},
 		{Pattern: "POST /v1/filesystem/dirs", Handler: http.HandlerFunc(filesystemapi.CreateDirectory)},
 		{Pattern: "GET /v1/sessions", Handler: sessionsapi.NewListHandler(deps.Store)},
 		{Pattern: "PUT /v1/sessions/{session}/agent/config", Handler: http.HandlerFunc(deps.AgentSession.SetConfig)},

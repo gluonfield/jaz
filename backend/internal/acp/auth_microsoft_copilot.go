@@ -2,12 +2,12 @@ package acp
 
 import (
 	"context"
-	"fmt"
-
-	"github.com/wins/jaz/backend/internal/m365copilot"
+	"errors"
 )
 
 const microsoftCopilotLoginLabel = "Microsoft Work/School OAuth"
+
+var errMicrosoftCopilotServiceNotConfigured = errors.New("Microsoft Copilot OAuth service is not configured")
 
 func resolveMicrosoftCopilotAuth(cfg AgentConfig) resolvedAgentAuth {
 	status := resolvedAgentAuth{
@@ -15,7 +15,7 @@ func resolveMicrosoftCopilotAuth(cfg AgentConfig) resolvedAgentAuth {
 		Source: AuthModeJazProfile,
 	}
 	if cfg.MicrosoftCopilot == nil {
-		status.Reason = m365copilot.ErrClientIDRequired.Error()
+		status.Reason = errMicrosoftCopilotServiceNotConfigured.Error()
 		return status
 	}
 	st := cfg.MicrosoftCopilot.Status(context.Background())
@@ -30,7 +30,7 @@ func resolveMicrosoftCopilotAuth(cfg AgentConfig) resolvedAgentAuth {
 func microsoftCopilotLoginCommand(cfg AgentConfig) AgentAuthStatus {
 	if cfg.MicrosoftCopilot == nil {
 		return AgentAuthStatus{
-			LoginCommandReason: m365copilot.ErrClientIDRequired.Error(),
+			LoginCommandReason: errMicrosoftCopilotServiceNotConfigured.Error(),
 		}
 	}
 	if err := cfg.MicrosoftCopilot.ValidateConfig(); err != nil {
@@ -46,7 +46,7 @@ func microsoftCopilotLoginCommand(cfg AgentConfig) AgentAuthStatus {
 
 func disconnectMicrosoftCopilotAuth(ctx context.Context, cfg AgentConfig) error {
 	if cfg.MicrosoftCopilot == nil {
-		return fmt.Errorf("Microsoft Copilot OAuth service is not configured")
+		return errMicrosoftCopilotServiceNotConfigured
 	}
 	return cfg.MicrosoftCopilot.Disconnect(ctx)
 }

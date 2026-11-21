@@ -18,6 +18,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/wins/jaz/backend/internal/acp"
+	m365copilotapi "github.com/wins/jaz/backend/internal/httpapi/m365copilot"
 	"github.com/wins/jaz/backend/internal/processenv"
 )
 
@@ -94,7 +95,24 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if agent == acp.AgentMicrosoftCopilot {
-		s.startMicrosoftCopilotAuthLogin(w, r, auth)
+		session, err := s.MicrosoftCopilot.StartLogin(r.Context(), m365copilotapi.CallbackURL(r, s.ServerConfig.PublicBaseURL()))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		job, err := s.startACPOAuthLogin(agent, auth, session.AuthURL, session.Done, func(raw string) error {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			return s.MicrosoftCopilot.CompleteFromInput(ctx, session.State, raw)
+		}, func() {
+			s.MicrosoftCopilot.CancelLogin(session.State)
+		})
+		if err != nil {
+			s.MicrosoftCopilot.CancelLogin(session.State)
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, job.response())
 		return
 	}
 	cfg = s.attachACPRuntimeConfig(agent, cfg)
@@ -235,6 +253,39 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 		}
 		release()
 		job.finish(err, cmdCtx.Err())
+	}()
+	return job, nil
+}
+
+func (s *Server) startACPOAuthLogin(agent string, auth acp.AgentAuthConfig, authURL string, done <-chan error, onInput func(string) error, onTimeout func()) (*acpAuthLoginJob, error) {
+	id, err := newACPAuthLoginID()
+	if err != nil {
+		return nil, err
+	}
+	job := &acpAuthLoginJob{
+		ID:        id,
+		Agent:     agent,
+		Status:    "running",
+		StartedAt: time.Now().UTC(),
+		authURL:   authURL,
+		onInput:   onInput,
+	}
+	s.acpAuthLoginJobs.Store(job.ID, job)
+	go func() {
+		timer := time.NewTimer(acpAuthLoginTimeout)
+		defer timer.Stop()
+		select {
+		case err := <-done:
+			if err == nil {
+				err = s.verifyACPAuthLogin(agent, auth)
+			}
+			job.finish(err, nil)
+		case <-timer.C:
+			if onTimeout != nil {
+				onTimeout()
+			}
+			job.finish(nil, context.DeadlineExceeded)
+		}
 	}()
 	return job, nil
 }

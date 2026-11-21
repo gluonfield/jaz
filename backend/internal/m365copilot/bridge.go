@@ -107,12 +107,12 @@ func (b *acpBridge) handleSessionNew(ctx context.Context) (json.RawMessage, *jso
 
 func (b *acpBridge) handleSessionResume(ctx context.Context, raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
 	var req struct {
-		SessionID string `json:"sessionId"`
+		SessionID acpschema.SessionID `json:"sessionId"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, jsonrpc.InvalidParams("invalid session/resume request", nil)
 	}
-	sessionID := strings.TrimSpace(req.SessionID)
+	sessionID := string(req.SessionID)
 	if sessionID == "" {
 		return nil, jsonrpc.InvalidParams("sessionId is required", nil)
 	}
@@ -132,7 +132,7 @@ func (b *acpBridge) handleSessionPrompt(ctx context.Context, raw json.RawMessage
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	sessionID := strings.TrimSpace(string(req.SessionID))
+	sessionID := string(req.SessionID)
 	if sessionID == "" {
 		return nil, jsonrpc.InvalidParams("sessionId is required", nil)
 	}
@@ -154,7 +154,11 @@ func (b *acpBridge) handleSessionPrompt(ctx context.Context, raw json.RawMessage
 
 	tracker := newStreamTracker(seenSnapshot)
 	latest, err := b.client.ChatStream(turnCtx, sessionID, chatReq, func(conv Conversation) error {
-		for _, chunk := range tracker.advance(conv) {
+		chunks, advanceErr := tracker.advance(conv)
+		if advanceErr != nil {
+			return advanceErr
+		}
+		for _, chunk := range chunks {
 			if notifyErr := b.sendMessageChunk(turnCtx, req.SessionID, chunk.messageID, chunk.text); notifyErr != nil {
 				return notifyErr
 			}
@@ -176,7 +180,8 @@ func (b *acpBridge) handleSessionPrompt(ctx context.Context, raw json.RawMessage
 	}
 
 	attributions := collectAttributions(currentTurnResponses(latest.Messages, seenSnapshot))
-	if citations := formatAttributions(attributions, tracker.allEmitted.String(), tracker.emittedAny); citations != "" {
+	citations := formatAttributions(attributions, tracker.allEmitted.String(), tracker.emittedAny)
+	if citations != "" {
 		if notifyErr := b.sendMessageChunk(turnCtx, req.SessionID, tracker.lastMessageID, citations); notifyErr != nil {
 			if b.isTurnCancelled(session) || errors.Is(notifyErr, context.Canceled) {
 				return jsonrpc.EncodeResult(acpschema.PromptResponse{StopReason: acpschema.StopReasonCancelled})
@@ -191,6 +196,9 @@ func (b *acpBridge) handleSessionPrompt(ctx context.Context, raw json.RawMessage
 		}
 		return jsonrpc.EncodeResult(acpschema.PromptResponse{StopReason: acpschema.StopReasonRefusal})
 	}
+	if !tracker.emittedAny && citations == "" {
+		return nil, jsonrpc.InternalError("Microsoft 365 Copilot stream ended without a response message", nil)
+	}
 	return jsonrpc.EncodeResult(acpschema.PromptResponse{StopReason: acpschema.StopReasonEndTurn})
 }
 
@@ -199,7 +207,7 @@ func (b *acpBridge) handleSessionCancel(raw json.RawMessage) (json.RawMessage, *
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	sessionID := strings.TrimSpace(string(req.SessionID))
+	sessionID := string(req.SessionID)
 	b.mu.Lock()
 	var cancel context.CancelFunc
 	if session := b.sessions[sessionID]; session != nil && session.activeCancel != nil {
@@ -351,7 +359,7 @@ func newStreamTracker(prior map[string]struct{}) *streamTracker {
 	}
 }
 
-func (t *streamTracker) advance(conv Conversation) []streamedChunk {
+func (t *streamTracker) advance(conv Conversation) ([]streamedChunk, error) {
 	candidates := currentTurnResponses(conv.Messages, t.priorResponseIDs)
 	var chunks []streamedChunk
 	for index, msg := range candidates {
@@ -366,7 +374,13 @@ func (t *streamTracker) advance(conv Conversation) []streamedChunk {
 			key = fmt.Sprintf("idx:%d", index)
 		}
 		prev := t.emittedByKey[key]
-		delta := cumulativeDelta(prev, msg.Text)
+		delta, err := cumulativeDelta(prev, msg.Text)
+		if err != nil {
+			if conv.DisengagedForRAI() {
+				continue
+			}
+			return nil, err
+		}
 		if delta == "" {
 			continue
 		}
@@ -379,7 +393,7 @@ func (t *streamTracker) advance(conv Conversation) []streamedChunk {
 		t.allEmitted.WriteString(delta)
 		chunks = append(chunks, streamedChunk{messageID: msg.ID, text: delta})
 	}
-	return chunks
+	return chunks, nil
 }
 
 func currentTurnResponses(messages []ConversationMessage, prior map[string]struct{}) []ConversationMessage {
@@ -404,17 +418,17 @@ func currentTurnResponses(messages []ConversationMessage, prior map[string]struc
 	return out
 }
 
-func cumulativeDelta(prev, next string) string {
-	if next == "" || next == prev {
-		return ""
+func cumulativeDelta(prev, next string) (string, error) {
+	if next == prev {
+		return "", nil
 	}
 	if prev == "" {
-		return next
+		return next, nil
 	}
 	if strings.HasPrefix(next, prev) {
-		return next[len(prev):]
+		return next[len(prev):], nil
 	}
-	return ""
+	return "", errors.New("Microsoft 365 Copilot revised an already-streamed response snapshot in place, which ACP append-only streaming cannot apply cleanly")
 }
 
 func collectAttributions(messages []ConversationMessage) []MessageAttribution {

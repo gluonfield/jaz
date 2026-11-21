@@ -226,8 +226,9 @@ func (c *Client) ChatStream(ctx context.Context, conversationID string, input Ch
 func readSSEConversationStream(body io.Reader, onUpdate func(Conversation) error) (Conversation, error) {
 	reader := bufio.NewReader(body)
 	var (
-		dataLines []string
-		latest    Conversation
+		dataLines     []string
+		latest        Conversation
+		receivedEvent bool
 	)
 	flush := func() error {
 		if len(dataLines) == 0 {
@@ -245,6 +246,7 @@ func readSSEConversationStream(body io.Reader, onUpdate func(Conversation) error
 		if event.Error != nil && (event.Error.Code != "" || event.Error.Message != "") {
 			return formatStreamGraphError(event.Error.Code, event.Error.Message)
 		}
+		receivedEvent = true
 		latest = event.Conversation
 		if onUpdate != nil {
 			return onUpdate(event.Conversation)
@@ -268,6 +270,9 @@ func readSSEConversationStream(body io.Reader, onUpdate func(Conversation) error
 		if errors.Is(err, io.EOF) {
 			if flushErr := flush(); flushErr != nil {
 				return latest, flushErr
+			}
+			if !receivedEvent {
+				return latest, errors.New("Microsoft 365 Copilot stream closed before returning a conversation event")
 			}
 			return latest, nil
 		}

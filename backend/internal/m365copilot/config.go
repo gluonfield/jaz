@@ -69,7 +69,9 @@ func (c OAuthConfig) Normalize() OAuthConfig {
 }
 
 func (c OAuthConfig) ValidateRuntime() error {
-	c = c.Normalize()
+	if c.TenantID == "" {
+		return errors.New("Microsoft Entra tenant is required")
+	}
 	if isUnsupportedTenant(c.TenantID) {
 		return errors.New("Microsoft 365 Copilot Chat API requires a work or school Microsoft Entra tenant (use \"organizations\" or a tenant ID/domain, not personal accounts)")
 	}
@@ -91,7 +93,6 @@ func (c OAuthConfig) ValidateRuntime() error {
 }
 
 func (c OAuthConfig) Validate() error {
-	c = c.Normalize()
 	if err := c.ValidateRuntime(); err != nil {
 		return err
 	}
@@ -102,12 +103,10 @@ func (c OAuthConfig) Validate() error {
 }
 
 func (c OAuthConfig) AuthURL() string {
-	c = c.Normalize()
 	return c.AuthorityBaseURL + "/" + url.PathEscape(c.TenantID) + "/oauth2/v2.0/authorize"
 }
 
 func (c OAuthConfig) TokenURL() string {
-	c = c.Normalize()
 	return c.AuthorityBaseURL + "/" + url.PathEscape(c.TenantID) + "/oauth2/v2.0/token"
 }
 
