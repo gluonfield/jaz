@@ -246,8 +246,12 @@ server.listen(0, '127.0.0.1', async () => {
       for (const scheme of ['http', 'https']) {
         if (enabled) {
           protocol.handle(scheme, (request) => {
-            const title = googlePasskeys && new URL(request.url).searchParams.has('cloud-fixture') ? 'Google Cloud Platform' : 'Address probe'
-            return new Response(`<!doctype html><title>${title}</title>`, { headers: { 'Content-Type': 'text/html' } })
+            const query = new URL(request.url).searchParams
+            const title = googlePasskeys && query.has('cloud-fixture') ? 'Google Cloud Platform' : 'Address probe'
+            const hop = query.has('post')
+              ? `<form method="post" action="${query.get('post')}"></form><script>document.forms[0].submit()</script>`
+              : query.has('replace') ? `<script>history.replaceState(null, '', ${JSON.stringify(query.get('replace'))})</script>` : ''
+            return new Response(`<!doctype html><title>${title}</title>${hop}`, { headers: { 'Content-Type': 'text/html' } })
           })
         } else {
           protocol.unhandle(scheme)

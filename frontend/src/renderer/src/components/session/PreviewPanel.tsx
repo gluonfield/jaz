@@ -60,10 +60,14 @@ export function PreviewPanel({
   const cursorLayer = useRef<HTMLDivElement | null>(null)
   const readyRef = useRef<PreviewWebviewElement | null>(null)
   const targetRef = useRef(target)
+  const latestRequest = useRef(0)
+  // Targets the webview reported for the page it is showing; every other target asks it to navigate.
+  const [reports] = useState(() => new WeakSet<PreviewTarget>())
   const canUseWebview = clientRuntime.capabilities.previewWebview
   const [webview, setWebview] = useState<PreviewWebviewElement | null>(null)
   const [draft, setDraft] = useState(target.displayUrl)
-  const [resolvedSourceUrl, setResolvedSourceUrl] = useState(isPreviewURL(target.sourceUrl) ? target.sourceUrl : '')
+  const [request, setRequest] = useState({ source: isPreviewURL(target.sourceUrl) ? target.sourceUrl : '' })
+  const resolvedSourceUrl = reports.has(target) ? target.sourceUrl : request.source
   const [readyWebview, setReadyWebview] = useState<PreviewWebviewElement | null>(null)
   const webviewReady = webview !== null && readyWebview === webview
   const [iframeKey, setIframeKey] = useState(0)
@@ -104,28 +108,23 @@ export function PreviewPanel({
   }, [canUseWebview, target])
 
   useEffect(() => {
-    let cancelled = false
-    if (readyRef.current === webviewRef.current && webviewRef.current?.getURL() === target.sourceUrl) {
-      setResolvedSourceUrl(target.sourceUrl)
-      return
-    }
-    setResolvedSourceUrl(isPreviewURL(target.sourceUrl) && !shouldProxyPreview(target.sourceUrl) ? target.sourceUrl : '')
-    if (!target.sourceUrl) return
+    if (reports.has(target)) return
+    const id = ++latestRequest.current
+    const direct = isPreviewURL(target.sourceUrl) && !shouldProxyPreview(target.sourceUrl)
+    setRequest({ source: direct ? target.sourceUrl : '' })
+    if (direct || !target.sourceUrl) return
     void resolvePreviewSource(target.sourceUrl)
       .then((source) => {
-        if (!cancelled) setResolvedSourceUrl(source)
+        if (id === latestRequest.current) setRequest({ source })
       })
       .catch((err: Error) => {
-        if (!cancelled) {
+        if (id === latestRequest.current) {
           setLoading(false)
           setReadyWebview(null)
           setError(err.message || 'Preview failed to load.')
         }
       })
-    return () => {
-      cancelled = true
-    }
-  }, [target.sourceUrl])
+  }, [reports, target])
 
   const bindWebview = useCallback((element: Element | null) => {
     // React omits this Electron boolean JSX attribute; set it before the guest loads.
@@ -137,6 +136,11 @@ export function PreviewPanel({
 
   useEffect(() => {
     if (!webview) return
+    const report = (patch: Partial<PreviewTarget>) => {
+      targetRef.current = { ...targetRef.current, ...patch }
+      reports.add(targetRef.current)
+      onTargetChange(targetRef.current)
+    }
     const sync = (event?: PreviewNavigationEvent) => {
       if (event?.isMainFrame === false) {
         return
@@ -160,8 +164,7 @@ export function PreviewPanel({
         setDraft(display)
         const title = readyRef.current === webview ? webview.getTitle() : undefined
         if (display !== targetRef.current.displayUrl || next !== targetRef.current.sourceUrl || title !== targetRef.current.title) {
-          targetRef.current = { ...targetRef.current, displayUrl: display, sourceUrl: next, title }
-          onTargetChange(targetRef.current)
+          report({ displayUrl: display, sourceUrl: next, title })
         }
       }
     }
@@ -176,13 +179,11 @@ export function PreviewPanel({
     }
     const favicon = (event: Event) => {
       const icons = (event as Event & { favicons: string[] }).favicons
-      targetRef.current = { ...targetRef.current, favicon: icons.find((url) => /^(https?:\/\/|data:image\/)/i.test(url)) }
-      onTargetChange(targetRef.current)
+      report({ favicon: icons.find((url) => /^(https?:\/\/|data:image\/)/i.test(url)) })
     }
     const navigate = (event: PreviewNavigationEvent) => {
       if (event.isMainFrame && !event.isInPlace && targetRef.current.favicon) {
-        targetRef.current = { ...targetRef.current, favicon: undefined }
-        onTargetChange(targetRef.current)
+        report({ favicon: undefined })
       }
     }
     const stop = () => {
@@ -218,17 +219,17 @@ export function PreviewPanel({
       webview.removeEventListener('dom-ready', ready)
       webview.removeEventListener('page-title-updated', sync)
     }
-  }, [onTargetChange, webview])
+  }, [onTargetChange, reports, webview])
 
   useEffect(() => {
-    if (!webview || !resolvedSourceUrl) {
+    if (!webview || !request.source) {
       return
     }
     const current = readyRef.current === webview ? webview.getURL() : webview.src
-    if (current !== resolvedSourceUrl) {
-      webview.src = resolvedSourceUrl
+    if (current !== request.source) {
+      webview.src = request.source
     }
-  }, [resolvedSourceUrl, webview])
+  }, [request, webview])
 
   const openDraft = () => {
     const next = normalizePreviewURL(draft)
