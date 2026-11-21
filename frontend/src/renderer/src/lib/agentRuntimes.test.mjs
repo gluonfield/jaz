@@ -23,7 +23,7 @@ describe('selectableACPModelProviders', () => {
 })
 
 describe('native agent readiness', () => {
-  test.each(['kimi', 'muse'])('%s requires an authenticated, ready runtime', (agent) => {
+  test.each(['kimi', 'muse', 'microsoft_copilot'])('%s requires an authenticated, ready runtime', (agent) => {
     const settings = {
       agents: [agent],
       acp: { [agent]: { enabled: false } },

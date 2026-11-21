@@ -60,6 +60,8 @@ type acpAuthLoginJob struct {
 	Error      string
 	StartedAt  time.Time
 	FinishedAt time.Time
+	authURL    string
+	onInput    func(string) error
 	// Open while the login process runs, so the user can hand back a code the
 	// browser printed (the remote/headless flow, where the CLI can't capture an
 	// OAuth redirect on the user's machine).
@@ -91,8 +93,11 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	cfg.AdapterBinDir = s.adapterBundleDir(cfg.ManagedAdapter)
-	cfg.LoginBinDir = s.agentLoginBinDirs(cfg)
+	if agent == acp.AgentMicrosoftCopilot {
+		s.startMicrosoftCopilotAuthLogin(w, r, auth)
+		return
+	}
+	cfg = s.attachACPRuntimeConfig(agent, cfg)
 	probeCfg := cfg
 	probeCfg.Auth = auth
 	auth = acp.ProbeAgentAuth(agent, probeCfg, s.runtimeRoot(), nil).RecommendedAuth
@@ -269,8 +274,7 @@ func startACPAuthLoginProcess(cmd *exec.Cmd, job *acpAuthLoginJob, writer acpAut
 func (s *Server) verifyACPAuthLogin(agent string, auth acp.AgentAuthConfig) error {
 	cfg, _ := s.acpAgentCatalog().Agent(agent)
 	cfg.Auth = auth
-	cfg.AdapterBinDir = s.adapterBundleDir(cfg.ManagedAdapter)
-	cfg.LoginBinDir = s.agentLoginBinDirs(cfg)
+	cfg = s.attachACPRuntimeConfig(agent, cfg)
 	status := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
 	if status.Authenticated {
 		readiness := acp.ProbeReadinessWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
@@ -382,12 +386,23 @@ func (j *acpAuthLoginJob) closeStdin() {
 // stdin so a CLI blocked waiting for it can finish.
 func (j *acpAuthLoginJob) writeInput(input string) error {
 	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.Status != "running" || j.stdin == nil {
+	if j.Status != "running" {
+		j.mu.Unlock()
+		return fmt.Errorf("sign-in is not waiting for a code")
+	}
+	if j.onInput != nil {
+		onInput := j.onInput
+		j.mu.Unlock()
+		return onInput(input)
+	}
+	if j.stdin == nil {
+		j.mu.Unlock()
 		return fmt.Errorf("sign-in is not waiting for a code")
 	}
 	line := strings.TrimRight(input, "\r\n") + "\n"
-	if _, err := io.WriteString(j.stdin, line); err != nil {
+	_, err := io.WriteString(j.stdin, line)
+	j.mu.Unlock()
+	if err != nil {
 		return fmt.Errorf("could not send the code to %s sign-in: %w", j.Agent, err)
 	}
 	return nil
@@ -397,6 +412,9 @@ func (j *acpAuthLoginJob) response() acpAuthLoginResponse {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	authURL, authCode := acpAuthLoginHints(j.Output)
+	if j.authURL != "" {
+		authURL = j.authURL
+	}
 	res := acpAuthLoginResponse{
 		ID:        j.ID,
 		Agent:     j.Agent,

@@ -484,7 +484,14 @@ func (s *Server) acpProbeConfig(name string, defaults agentsettings.AgentDefault
 	if cfg.UsesModelProvider() {
 		cfg = cfg.NormalizeProviderModel(defaultModelProvider)
 	}
+	return s.attachACPRuntimeConfig(name, cfg), command, nil
+}
+
+func (s *Server) attachACPRuntimeConfig(name string, cfg acp.AgentConfig) acp.AgentConfig {
 	cfg.AdapterBinDir = s.adapterBundleDir(cfg.ManagedAdapter)
 	cfg.LoginBinDir = s.agentLoginBinDirs(cfg)
-	return cfg, command, nil
+	if name == acp.AgentMicrosoftCopilot {
+		cfg.MicrosoftCopilot = s.MicrosoftCopilot
+	}
+	return cfg
 }

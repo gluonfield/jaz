@@ -16,7 +16,10 @@ import (
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 )
 
-const RefreshOwnerAgentCLI = "coding_agent_cli"
+const (
+	RefreshOwnerAgentCLI = "coding_agent_cli"
+	RefreshOwnerJazOAuth = "jaz_oauth"
+)
 
 const (
 	AuthKindOAuth  = "oauth"
@@ -76,6 +79,14 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 	if name == AgentCopilot && path != "" {
 		return AgentAuthConfig{}, fmt.Errorf("acp agent %q uses its native COPILOT_HOME configuration", name)
 	}
+	if name == AgentMicrosoftCopilot {
+		if mode == AuthModeExistingCLI {
+			return AgentAuthConfig{}, fmt.Errorf("acp agent %q uses Jaz-managed Microsoft Work/School OAuth, not an external CLI profile", name)
+		}
+		if path != "" {
+			return AgentAuthConfig{}, fmt.Errorf("acp agent %q stores credentials in Jaz's OAuth store and has no custom profile path", name)
+		}
+	}
 	return AgentAuthConfig{
 		Mode: mode,
 		Path: path,
@@ -119,7 +130,7 @@ func LoginAuthConfig(name string, requested AgentAuthConfig) (AgentAuthConfig, e
 
 func hasJazAuthProfile(name string) bool {
 	switch CanonicalAgentName(name) {
-	case AgentCodex, AgentClaude, AgentKimi, AgentOpenCode:
+	case AgentCodex, AgentClaude, AgentKimi, AgentOpenCode, AgentMicrosoftCopilot:
 		return true
 	default:
 		return false
@@ -149,6 +160,8 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 		return resolveMuseAuth(root, env)
 	case AgentCopilot:
 		return resolveCopilotAuth(env)
+	case AgentMicrosoftCopilot:
+		return resolveMicrosoftCopilotAuth(cfg)
 	default:
 		return resolvedAgentAuth{Config: auth}
 	}
@@ -505,6 +518,8 @@ func DisconnectAgentAuth(ctx context.Context, name string, cfg AgentConfig, root
 		return disconnectMuseAuth(ctx, cfg, root)
 	case AgentCopilot:
 		return ManualDisconnectError(agentManualDisconnect(name, cfg))
+	case AgentMicrosoftCopilot:
+		return disconnectMicrosoftCopilotAuth(ctx, cfg)
 	default:
 		auth := ProbeAgentAuthWithProviders(name, cfg, root, nil, providers)
 		return RemoveOwnedCredential(name, auth.StoragePath, root)

@@ -41,7 +41,7 @@ export function AuthLoginStatus({
   }
 
   useEffect(() => {
-    if (job?.agent !== 'codex' || job.status !== 'running' || !details.url) return
+    if ((job?.agent !== 'codex' && job?.agent !== 'microsoft_copilot') || job.status !== 'running' || !details.url) return
     const key = `${job.id}:${details.url}`
     if (opened.current === key) return
     opened.current = key

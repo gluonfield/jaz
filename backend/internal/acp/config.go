@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/m365copilot"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/plugins"
@@ -14,15 +15,16 @@ import (
 )
 
 const (
-	AgentJaz         = "jaz"
-	AgentCodex       = "codex"
-	AgentClaude      = "claude"
-	AgentKimi        = "kimi"
-	AgentGrok        = "grok"
-	AgentOpenCode    = "opencode"
-	AgentAntigravity = "antigravity"
-	AgentMuse        = "muse"
-	AgentCopilot     = "copilot"
+	AgentJaz              = "jaz"
+	AgentCodex            = "codex"
+	AgentClaude           = "claude"
+	AgentKimi             = "kimi"
+	AgentGrok             = "grok"
+	AgentOpenCode         = "opencode"
+	AgentAntigravity      = "antigravity"
+	AgentMuse             = "muse"
+	AgentCopilot          = "copilot"
+	AgentMicrosoftCopilot = m365copilot.AgentName
 
 	AgentProviderModeNone          = ""
 	AgentProviderModeAgentDefaults = "agent_defaults"
@@ -115,13 +117,14 @@ type Config struct {
 	// Providers is a static snapshot used by the read-time auth/readiness probes
 	// (and tests). ProviderSource, when set, is the live merged registry the
 	// manager reads per spawn so runtime provider changes reach new agents.
-	Providers      map[string]provider.ModelProviderConfig
-	ProviderSource provider.Source
-	ModelCatalog   ModelCatalog
-	SystemPrompt   SystemPromptSource
-	ClaudePlugins  func() ([]plugins.NativePlugin, error)
-	MCPStore       mcpconfig.ServerReader
-	ResumePrompt   SessionPromptExtensionResolver
+	Providers        map[string]provider.ModelProviderConfig
+	ProviderSource   provider.Source
+	ModelCatalog     ModelCatalog
+	SystemPrompt     SystemPromptSource
+	ClaudePlugins    func() ([]plugins.NativePlugin, error)
+	MCPStore         mcpconfig.ServerReader
+	MicrosoftCopilot *m365copilot.AuthService
+	ResumePrompt     SessionPromptExtensionResolver
 	// TurnNote is text a thread's next turn opens with for its agent alone,
 	// such as a note that a file the agent loaded has changed, and a digest of
 	// what the agent holds of the thread's own prompt and notes once the turn
@@ -139,6 +142,7 @@ type AgentConfig struct {
 	ManagedAdapterArgs      []string
 	ManagedTool             string
 	Local                   bool
+	BuiltinBridge           bool
 	ProviderMode            string
 	ModelProviderCapability string
 	ModelProvider           string
@@ -157,10 +161,13 @@ type AgentConfig struct {
 	// ModelRequested marks Model as named by the request that starts the
 	// session rather than saved earlier. Runtime-only, never persisted.
 	ModelRequested bool
+	// MicrosoftCopilot backs auth probing and the in-process ACP bridge for
+	// AgentMicrosoftCopilot. Runtime-only, never persisted.
+	MicrosoftCopilot *m365copilot.AuthService
 }
 
 func (c AgentConfig) RequiresCommand() bool {
-	return !c.Local && strings.TrimSpace(c.URL) == "" && strings.TrimSpace(c.ManagedAdapter) == ""
+	return !c.Local && !c.BuiltinBridge && strings.TrimSpace(c.URL) == "" && strings.TrimSpace(c.ManagedAdapter) == ""
 }
 
 func (c AgentConfig) SupportsAuth() bool {
@@ -307,6 +314,7 @@ var builtinAgentOrder = []string{
 	AgentAntigravity,
 	AgentMuse,
 	AgentCopilot,
+	AgentMicrosoftCopilot,
 }
 
 func BuiltinAgents() AgentCatalog {
@@ -352,6 +360,9 @@ func BuiltinAgents() AgentCatalog {
 			ManagedAdapter:     "copilot",
 			ManagedAdapterArgs: []string{"--acp", "--stdio"},
 		},
+		AgentMicrosoftCopilot: {
+			BuiltinBridge: true,
+		},
 	}
 }
 
@@ -396,6 +407,8 @@ func canonicalAgentConfig(cfg AgentConfig) AgentConfig {
 		cfg.useManagedAdapterLaunch(adapter, cfg.ManagedAdapterArgs)
 	case command != "":
 		cfg.useCommandLaunch(command, cfg.Args)
+	case cfg.BuiltinBridge:
+		cfg.useBuiltinBridgeLaunch()
 	}
 	cfg.ManagedTool = strings.TrimSpace(cfg.ManagedTool)
 	return cfg
@@ -415,6 +428,8 @@ func mergeAgentConfig(base, override AgentConfig) AgentConfig {
 		next.useManagedAdapterLaunch(adapter, override.ManagedAdapterArgs)
 	case command != "":
 		next.useCommandLaunch(command, override.Args)
+	case override.BuiltinBridge:
+		next.useBuiltinBridgeLaunch()
 	case override.ManagedAdapterArgs != nil && strings.TrimSpace(next.ManagedAdapter) != "":
 		next.ManagedAdapterArgs = append([]string(nil), override.ManagedAdapterArgs...)
 	case override.Args != nil && next.RequiresCommand():
@@ -448,6 +463,9 @@ func mergeAgentConfig(base, override AgentConfig) AgentConfig {
 	if strings.TrimSpace(override.Cwd) != "" {
 		next.Cwd = override.Cwd
 	}
+	if override.MicrosoftCopilot != nil {
+		next.MicrosoftCopilot = override.MicrosoftCopilot
+	}
 	return next
 }
 
@@ -457,6 +475,7 @@ func (c *AgentConfig) useCommandLaunch(command string, args []string) {
 	c.ManagedAdapter = ""
 	c.ManagedAdapterArgs = nil
 	c.Local = false
+	c.BuiltinBridge = false
 	c.URL = ""
 	c.Token = ""
 }
@@ -467,6 +486,7 @@ func (c *AgentConfig) useManagedAdapterLaunch(adapter string, args []string) {
 	c.ManagedAdapter = adapter
 	c.ManagedAdapterArgs = append([]string(nil), args...)
 	c.Local = false
+	c.BuiltinBridge = false
 	c.URL = ""
 	c.Token = ""
 }
@@ -477,6 +497,7 @@ func (c *AgentConfig) useURLLaunch(url, token string) {
 	c.ManagedAdapter = ""
 	c.ManagedAdapterArgs = nil
 	c.Local = false
+	c.BuiltinBridge = false
 	c.URL = url
 	c.Token = token
 }
@@ -487,6 +508,18 @@ func (c *AgentConfig) useLocalLaunch() {
 	c.ManagedAdapter = ""
 	c.ManagedAdapterArgs = nil
 	c.Local = true
+	c.BuiltinBridge = false
+	c.URL = ""
+	c.Token = ""
+}
+
+func (c *AgentConfig) useBuiltinBridgeLaunch() {
+	c.Command = ""
+	c.Args = nil
+	c.ManagedAdapter = ""
+	c.ManagedAdapterArgs = nil
+	c.Local = false
+	c.BuiltinBridge = true
 	c.URL = ""
 	c.Token = ""
 }

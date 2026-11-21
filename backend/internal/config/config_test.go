@@ -161,3 +161,21 @@ func TestLoadZoomMCPClientFromEnvironment(t *testing.T) {
 		t.Fatalf("Zoom client = %#v", zoom)
 	}
 }
+
+func TestLoadMicrosoftCopilotOAuthFromEnvironment(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("JAZ_MICROSOFT_COPILOT_OAUTH_CLIENT_ID", " ms-client-id ")
+	t.Setenv("JAZ_MICROSOFT_COPILOT_OAUTH_CLIENT_SECRET", " ms-client-secret ")
+	t.Setenv("JAZ_MICROSOFT_COPILOT_OAUTH_TENANT_ID", "contoso.onmicrosoft.com")
+	t.Setenv("JAZ_MICROSOFT_COPILOT_OAUTH_REDIRECT_URL", "https://jaz.example.com/v1/acp/agents/microsoft_copilot/auth/callback")
+	t.Setenv("JAZ_MICROSOFT_COPILOT_OAUTH_USE_BROKER", "true")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := cfg.Jaz.MicrosoftCopilot.Normalize()
+	if ms.ClientID != "ms-client-id" || ms.ClientSecret != "ms-client-secret" || ms.TenantID != "contoso.onmicrosoft.com" || ms.RedirectURL != "https://jaz.example.com/v1/acp/agents/microsoft_copilot/auth/callback" || !ms.UseBroker {
+		t.Fatalf("MicrosoftCopilot config = %#v", ms)
+	}
+}

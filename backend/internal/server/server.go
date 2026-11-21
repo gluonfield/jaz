@@ -20,6 +20,7 @@ import (
 	repoapi "github.com/wins/jaz/backend/internal/httpapi/repo"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/m365copilot"
 	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/media"
@@ -95,6 +96,7 @@ type Server struct {
 	ACP                  ACPManager
 	ACPAdapters          ACPAdapterStatusReader
 	ManagedTools         ManagedToolStatusReader
+	MicrosoftCopilot     *m365copilot.AuthService
 	MCP                  MCPRuntime
 	Locks                *sessionlock.Locks
 	Events               *sessionevents.Bus

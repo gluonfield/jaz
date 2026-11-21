@@ -90,6 +90,12 @@ func Init() error {
 	viper.SetDefault("jaz.connections.mcp.zoom.clientsecretenvvar", "JAZ_ZOOM_OAUTH_CLIENT_SECRET")
 	viper.SetDefault("jaz.connections.mcp.zoom.issuer", "https://zoom.us")
 	viper.SetDefault("jaz.connections.mcp.zoom.useappscopes", true)
+	_ = viper.BindEnv("jaz.microsoftcopilot.clientid", "JAZ_MICROSOFT_COPILOT_OAUTH_CLIENT_ID")
+	_ = viper.BindEnv("jaz.microsoftcopilot.clientsecret", "JAZ_MICROSOFT_COPILOT_OAUTH_CLIENT_SECRET")
+	_ = viper.BindEnv("jaz.microsoftcopilot.tenantid", "JAZ_MICROSOFT_COPILOT_OAUTH_TENANT_ID")
+	_ = viper.BindEnv("jaz.microsoftcopilot.redirecturl", "JAZ_MICROSOFT_COPILOT_OAUTH_REDIRECT_URL")
+	_ = viper.BindEnv("jaz.microsoftcopilot.usebroker", "JAZ_MICROSOFT_COPILOT_OAUTH_USE_BROKER")
+	viper.SetDefault("jaz.microsoftcopilot.tenantid", "organizations")
 	viper.SetDefault("jaz.connections.chat.grouphistorylimit", app.DefaultChatGroupHistoryLimit)
 	_ = viper.BindEnv("jaz.connections.chat.grouphistorylimit", "JAZ_CHAT_GROUP_HISTORY_LIMIT")
 	if err := viper.ReadInConfig(); err != nil {
