@@ -231,7 +231,7 @@ function Fixture() {
         progress('address-bar Enter navigation and searches')
         await exerciseAddressBar()
         if (suite === 'address-bar') {
-          window.smoke.result({ ok: true, checks: ['address-bar Enter searches preserve encoded terms and URL inputs, ignore blanks and navigate only the owning webview'] })
+          window.smoke.result({ ok: true, checks: ['address-bar Enter searches preserve encoded terms and URL inputs, ignore blanks, navigate only the owning webview and never repeat a request a page made itself'] })
           return
         }
       }

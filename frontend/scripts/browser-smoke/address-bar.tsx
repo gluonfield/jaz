@@ -93,7 +93,26 @@ async function checkAddresses(panel: Element, neighbour: PreviewWebviewElement):
         throw new Error('Address submission changed the neighbouring browser')
       }
     }
-    console.warn(`Address bar: ${cases.length} Enter navigations, 2 blank submissions and neighbouring browser preservation passed`)
+    const view = panel.querySelector<PreviewWebviewElement>('webview')!
+    const signedIn = 'https://portal.example/home'
+    const callback = 'https://portal.example/callback?replace=%2Fhome'
+    const working = `https://accounts.example/working?post=${encodeURIComponent(callback)}`
+    const chain = [`https://accounts.example/pick?post=${encodeURIComponent(working)}`, working, callback, signedIn]
+    for (let round = 0; round < 3; round++) {
+      const count = (await window.smoke.navigationProbe()).length
+      await submit(chain[0])
+      const deadline = Date.now() + 3000
+      let settled = 0
+      while (settled < 15 && Date.now() < deadline) {
+        settled = view.getURL() === signedIn && address.value === signedIn && !panel.querySelector('.animate-spin') ? settled + 1 : 0
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
+      const requests = (await window.smoke.navigationProbe()).slice(count).map((request) => request.url)
+      if (settled < 15 || JSON.stringify(requests) !== JSON.stringify(chain)) {
+        throw new Error(`A sign-in chain of form posts ending in a rewritten address requested ${JSON.stringify(requests)}, expected ${JSON.stringify(chain)} once each; loaded ${view.getURL()}, address bar ${address.value}`)
+      }
+    }
+    console.warn(`Address bar: ${cases.length} Enter navigations, 2 blank submissions, 3 form-post sign-in chains without a repeated request and neighbouring browser preservation passed`)
   } finally {
     await window.smoke.navigationProbe(false)
   }
