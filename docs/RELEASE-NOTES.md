@@ -1,5 +1,3 @@
-Changes since v0.0.291:
+Changes since v0.0.293:
 
-- Messages sent during work reach the active conversation, including while a turn finishes or retries.
-- Multiple follow-up messages keep their send order. A rejected send restores its text and attachments.
-- The side browser no longer reloads sign-in callback pages.
+- Antigravity bots use compact discovery for Jaz-managed tools when their agent process next starts or resumes, keeping task and thread tools discoverable. Running sessions are left unchanged, and native conversation history is preserved.
