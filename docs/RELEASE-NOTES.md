@@ -1,4 +1,5 @@
-Changes since v0.0.289:
+Changes since v0.0.291:
 
-- Bot chats show predicted next prompts for Claude and Codex, as user threads do; bot workers, group seats, routine runs and memory jobs still skip them.
-- Switching a thread's MCP tool discovery right after its turn ends no longer fails with "wait for the agent to become idle".
+- Messages sent during work reach the active conversation, including while a turn finishes or retries.
+- Multiple follow-up messages keep their send order. A rejected send restores its text and attachments.
+- The side browser no longer reloads sign-in callback pages.
