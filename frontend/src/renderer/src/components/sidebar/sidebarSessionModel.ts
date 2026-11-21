@@ -94,9 +94,8 @@ function sessionsBySavedProject(items: SessionListItem[], projects: Project[]) {
 
 export function sidebarSessionSections(items: SessionListItem[], projects: Project[]): SessionSections {
   const pinnedItems = withLocalChildState(items.filter((item) => item.session.pinned))
-  const projectItems = withLocalChildState(items.filter((item) => !item.session.pinned))
-  const recentItems = [...projectItems].sort((a, b) => sessionListItemTime(b) - sessionListItemTime(a))
-  return { pinnedItems, recentItems, ...sessionsBySavedProject(projectItems, projects) }
+  const recentItems = withLocalChildState(items.filter((item) => !item.session.pinned))
+  return { pinnedItems, recentItems, ...sessionsBySavedProject(recentItems, projects) }
 }
 
 export function applySessionDragOrder(
@@ -125,11 +124,6 @@ export function applySidebarProjectOrder(projects: Project[], blockOrder: Sessio
 
 export function sessionPage(items: SessionListItem[], limit: number) {
   return { items: items.slice(0, limit), total: items.length }
-}
-
-function sessionListItemTime(item: SessionListItem): number {
-  const ms = Date.parse(item.session.last_attention_at || item.session.updated_at)
-  return Number.isNaN(ms) ? 0 : ms
 }
 
 export function sessionDisplayBlocks(

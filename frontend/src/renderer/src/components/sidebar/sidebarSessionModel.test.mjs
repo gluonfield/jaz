@@ -8,11 +8,12 @@ import {
   sidebarSessionSections,
 } from './sidebarSessionModel'
 
-function item(id, { path = '', pinned = false, at = id } = {}) {
+function item(id, { path = '', pinned = false, parent, at = id } = {}) {
   return {
-    child: false,
+    child: Boolean(parent),
     session: {
       id,
+      parent_id: parent,
       pinned,
       runtime_ref: path ? { project_path: path } : undefined,
       updated_at: at,
@@ -31,17 +32,21 @@ describe('sidebar session organization', () => {
     expect(page.total).toBe(55)
   })
 
-  test('sorts the flat list by attention time instead of project or parent order', () => {
+  test('keeps each recent child under its own parent despite interleaved attention times', () => {
     const sections = sidebarSessionSections([
-      item('older', { at: '2026-08-15T12:00:00Z' }),
-      item('newest', { at: '2026-08-17T12:00:00Z' }),
-      item('middle', { at: '2026-08-16T12:00:00Z' }),
+      item('rust', { at: '2026-11-21T04:02:00Z' }),
+      item('rust-child', { parent: 'rust', at: '2026-11-21T04:14:00Z' }),
+      item('other', { at: '2026-11-21T04:06:00Z' }),
+      item('copilot', { at: '2026-11-13T11:38:00Z' }),
+      item('copilot-child', { parent: 'copilot', at: '2026-11-21T04:05:00Z' }),
     ], [])
 
-    expect(sections.recentItems.map((entry) => entry.session.id)).toEqual([
-      'newest',
-      'middle',
-      'older',
+    expect(sections.recentItems.map(({ session, child }) => [session.id, child])).toEqual([
+      ['rust', false],
+      ['rust-child', true],
+      ['other', false],
+      ['copilot', false],
+      ['copilot-child', true],
     ])
   })
 
