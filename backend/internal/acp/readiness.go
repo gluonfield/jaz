@@ -48,6 +48,13 @@ func probeReadiness(name string, cfg AgentConfig, root string, env map[string]st
 	if strings.TrimSpace(cfg.URL) != "" {
 		return Readiness{Available: true}
 	}
+	if cfg.BuiltinBridge {
+		auth := probeAuth()
+		if !auth.Authenticated {
+			return Readiness{Reason: auth.Reason}
+		}
+		return Readiness{Available: true}
+	}
 	if name == AgentMuse {
 		probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, cfg)
 		if _, err := musecli.Resolve(probeEnv, ""); err != nil {

@@ -31,6 +31,7 @@ import (
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/m365copilot"
 	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/mcpconfig"
@@ -119,6 +120,7 @@ func serveOptions(args []string) []fx.Option {
 			app.NewACPAgentConfigSource,
 			app.NewACPAdapterManager,
 			app.NewManagedToolManager,
+			app.NewMicrosoftCopilotAuth,
 			app.NewACPConfig,
 			acp.NewManager,
 			sessionlock.New,
@@ -246,6 +248,7 @@ func startServer(
 	manager *acp.Manager,
 	adapters *acpadapter.Manager,
 	managedTools *managedtool.Manager,
+	msCopilot *m365copilot.AuthService,
 	locks *sessionlock.Locks,
 	events *sessionevents.Bus,
 	prompts *coordinator.Builder,
@@ -284,6 +287,7 @@ func startServer(
 		ACP:                   manager,
 		ACPAdapters:           adapters,
 		ManagedTools:          managedTools,
+		MicrosoftCopilot:      msCopilot,
 		MCP:                   mcpManager,
 		Locks:                 locks,
 		Events:                events,

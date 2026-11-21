@@ -19,12 +19,14 @@ import (
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/jazagent"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/m365copilot"
 	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/mobilepush"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
+	"github.com/wins/jaz/backend/internal/oauthbroker"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -56,17 +58,18 @@ import (
 )
 
 type Config struct {
-	Root           string
-	Workspace      string
-	ModelProviders map[string]provider.ModelProviderConfig
-	Skills         SkillsConfig
-	Voice          VoiceConfig
-	ACP            acp.Config
-	Memory         MemoryConfig
-	Connections    ConnectionsConfig
-	Devices        DevicesConfig
-	Push           mobilepush.Config
-	Bots           []bots.Config
+	Root             string
+	Workspace        string
+	ModelProviders   map[string]provider.ModelProviderConfig
+	Skills           SkillsConfig
+	Voice            VoiceConfig
+	ACP              acp.Config
+	MicrosoftCopilot m365copilot.OAuthConfig
+	Memory           MemoryConfig
+	Connections      ConnectionsConfig
+	Devices          DevicesConfig
+	Push             mobilepush.Config
+	Bots             []bots.Config
 	// MCPServers declares MCP servers as a JSON array of server inputs
 	// (JAZ_MCP_SERVERS), which each start applies.
 	MCPServers string
@@ -270,6 +273,10 @@ func NewManagedToolManager(layout runtimefiles.Layout) *managedtool.Manager {
 	return managedtool.New(layout.Root)
 }
 
+func NewMicrosoftCopilotAuth(store *sqlitestore.Store, cfg Config, broker oauthbroker.Broker) *m365copilot.AuthService {
+	return m365copilot.NewAuthService(store, cfg.MicrosoftCopilot, broker)
+}
+
 func appendPathList(current, dir string) string {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
@@ -328,7 +335,7 @@ func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, log
 	})
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service, installed *plugins.Store) (acp.Config, error) {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service, installed *plugins.Store, msCopilot *m365copilot.AuthService) (acp.Config, error) {
 	if err := bots.MigrateHomes(store); err != nil {
 		return acp.Config{}, err
 	}
@@ -343,6 +350,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	cfg.ACP.SystemPrompt = prompts
 	cfg.ACP.ClaudePlugins = installed.ClaudePlugins
 	cfg.ACP.MCPStore = mcpServers
+	cfg.ACP.MicrosoftCopilot = msCopilot
 	promptBuilder := loops.RuntimePromptBuilder{Repo: store, PromptExtras: []func(loops.Loop, loops.Run) string{bots.RoutineInstructions(store)}}
 	if widgetService != nil {
 		promptBuilder.PromptExtras = append(promptBuilder.PromptExtras, widgetService.LoopPromptExtra)
