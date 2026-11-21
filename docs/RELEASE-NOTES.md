@@ -1,7 +1,4 @@
-Changes since v0.0.285:
+Changes since v0.0.288:
 
-- Fixes composer cursor/text misalignment when scrollbars take up space.
-- Agents use charts and other visuals when they explain an answer better; the visual guide has fuller chart design rules.
-- Shortens the always-on thread instructions and loads detailed visual guidance when needed.
-- Adds connections_search so agents can find available services and their connect links.
-- Adds a Microsoft Copilot Work/School chat preview, requiring a configured Microsoft Entra application and an eligible work or school account.
+- Pins Antigravity to 1.5.14 and stops the agy CLI from updating Jaz's managed copy past its pin.
+- Skips Codex's predicted next-prompt model call in bot workers, group seats, routine runs and memory jobs, where nobody types; user threads and bot chats keep suggestions.
