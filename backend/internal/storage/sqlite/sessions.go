@@ -486,6 +486,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		Cwd:                   nullDBString(runtimeRef.Cwd),
 		ArtifactSurface:       nullDBString(runtimeRef.ArtifactSurface),
 		McpServerPolicy:       nullDBString(runtimeRef.MCPServerPolicy),
+		DeferredMcpTools:      boolInt(runtimeRef.DeferredMCPTools),
 		ProjectPath:           nullDBString(runtimeRef.ProjectPath),
 		Error:                 nullDBString(session.Error),
 		ModelProvider:         nullDBString(session.ModelProvider),
@@ -579,15 +580,16 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 	if session.Status == "" {
 		session.Status = storage.StatusIdle
 	}
-	if row.AcpAgent.Valid || row.AcpSessionID.Valid || row.Cwd.Valid || row.ArtifactSurface.Valid || row.McpServerPolicy.Valid || row.ProjectPath.Valid {
+	if row.AcpAgent.Valid || row.AcpSessionID.Valid || row.Cwd.Valid || row.ArtifactSurface.Valid || row.McpServerPolicy.Valid || row.DeferredMcpTools != 0 || row.ProjectPath.Valid {
 		session.RuntimeRef = &storage.RuntimeRef{
-			Type:            session.Runtime,
-			Agent:           row.AcpAgent.String,
-			SessionID:       row.AcpSessionID.String,
-			Cwd:             row.Cwd.String,
-			ProjectPath:     row.ProjectPath.String,
-			ArtifactSurface: row.ArtifactSurface.String,
-			MCPServerPolicy: row.McpServerPolicy.String,
+			Type:             session.Runtime,
+			Agent:            row.AcpAgent.String,
+			SessionID:        row.AcpSessionID.String,
+			Cwd:              row.Cwd.String,
+			ProjectPath:      row.ProjectPath.String,
+			ArtifactSurface:  row.ArtifactSurface.String,
+			MCPServerPolicy:  row.McpServerPolicy.String,
+			DeferredMCPTools: row.DeferredMcpTools != 0,
 		}
 	}
 	return session, nil
@@ -682,12 +684,13 @@ func (s *Store) uniqueSlugLocked(value, currentID string) (string, error) {
 }
 
 type runtimeRefColumnsRow struct {
-	Agent           string
-	SessionID       string
-	Cwd             string
-	ArtifactSurface string
-	MCPServerPolicy string
-	ProjectPath     string
+	Agent            string
+	SessionID        string
+	Cwd              string
+	ArtifactSurface  string
+	MCPServerPolicy  string
+	DeferredMCPTools bool
+	ProjectPath      string
 }
 
 func runtimeRefColumns(session storage.Session) runtimeRefColumnsRow {
@@ -695,12 +698,13 @@ func runtimeRefColumns(session storage.Session) runtimeRefColumnsRow {
 		return runtimeRefColumnsRow{}
 	}
 	return runtimeRefColumnsRow{
-		Agent:           session.RuntimeRef.Agent,
-		SessionID:       session.RuntimeRef.SessionID,
-		Cwd:             session.RuntimeRef.Cwd,
-		ArtifactSurface: session.RuntimeRef.ArtifactSurface,
-		MCPServerPolicy: session.RuntimeRef.MCPServerPolicy,
-		ProjectPath:     session.RuntimeRef.ProjectPath,
+		Agent:            session.RuntimeRef.Agent,
+		SessionID:        session.RuntimeRef.SessionID,
+		Cwd:              session.RuntimeRef.Cwd,
+		ArtifactSurface:  session.RuntimeRef.ArtifactSurface,
+		MCPServerPolicy:  session.RuntimeRef.MCPServerPolicy,
+		DeferredMCPTools: session.RuntimeRef.DeferredMCPTools,
+		ProjectPath:      session.RuntimeRef.ProjectPath,
 	}
 }
 

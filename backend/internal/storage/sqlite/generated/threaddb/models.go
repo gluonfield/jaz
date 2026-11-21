@@ -55,4 +55,5 @@ type Thread struct {
 	PromptDigest             string         `json:"prompt_digest"`
 	TurnsEnded               int64          `json:"turns_ended"`
 	BackgroundWork           int64          `json:"background_work"`
+	DeferredMcpTools         int64          `json:"deferred_mcp_tools"`
 }

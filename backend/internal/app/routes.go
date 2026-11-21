@@ -78,6 +78,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		{Pattern: "POST /v1/filesystem/dirs", Handler: http.HandlerFunc(filesystemapi.CreateDirectory)},
 		{Pattern: "GET /v1/sessions", Handler: sessionsapi.NewListHandler(deps.Store)},
 		{Pattern: "PUT /v1/sessions/{session}/agent/config", Handler: http.HandlerFunc(deps.AgentSession.SetConfig)},
+		{Pattern: "PUT /v1/sessions/{session}/mcp/discovery", Handler: http.HandlerFunc(deps.AgentSession.SetMCPDiscovery)},
 		{Pattern: "POST /v1/sessions/{session}/agent/tasks/{task}/stop", Handler: http.HandlerFunc(deps.AgentSession.StopTask)},
 		{Pattern: "POST /v1/sessions/{session}/agent/input", Handler: http.HandlerFunc(deps.AgentSession.Input)},
 		{Pattern: "GET /v1/sessions/{session}/messages", Handler: deps.SessionMessages},

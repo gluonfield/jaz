@@ -170,6 +170,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 	m.trackPromptSends(ac, job)
 	process := newAgentProcess(ac)
 	process.mcpPolicy = mcpServerPolicy
+	process.mcpDeferred = session.RuntimeRef.DeferredMCPTools
 	process.mcpRevision = mcpRevision
 	process.mcpRefresh = supportedMCPRefresh(ac.initRaw, mcpServerPolicy)
 	m.disconnectAgentWork(job)
@@ -217,7 +218,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}{
 			Meta:       meta,
 			Cwd:        cwd,
-			MCPServers: m.mcpServersForAgent(ctx, ac.initRaw, mcpServerPolicy, agentName),
+			MCPServers: m.mcpServersForAgent(ctx, ac.initRaw, mcpServerPolicy, agentName, session.RuntimeRef.DeferredMCPTools),
 			SessionID:  acpschema.SessionID(storedID),
 		})
 		if err == nil {
@@ -241,7 +242,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}
 		m.log.Warn("replacing unmaterialized agent session", "agent", agentName, "session", session.ID, "acp_session", storedID)
 	}
-	acpSession, err := m.newACPSession(ctx, ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, session.SourceType, systemPromptExtensions)
+	acpSession, err := m.newACPSession(ctx, ac, agentName, cfg, cwd, session, systemPromptExtensions)
 	if err != nil {
 		return "", ModeState{}, false, err
 	}

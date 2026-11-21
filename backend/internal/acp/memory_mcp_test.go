@@ -24,7 +24,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 		}},
 	}}}}}
 	capable := json.RawMessage(`{"agentCapabilities":{"mcpCapabilities":{"http":true}}}`)
-	servers := m.mcpServersForAgent(context.Background(), capable, MCPServerPolicyAll, AgentOpenCode)
+	servers := m.mcpServersForAgent(context.Background(), capable, MCPServerPolicyAll, AgentOpenCode, false)
 	if len(servers) != 1 {
 		t.Fatalf("expected configured jaz entry, got %v", servers)
 	}
@@ -43,7 +43,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 	if got := headerValue(entry.Headers, mcpsession.HeaderName); got != "" {
 		t.Fatalf("unexpected session header without context: %q", got)
 	}
-	servers = m.mcpServersForAgent(mcpsession.With(context.Background(), "thread-1"), capable, MCPServerPolicyAll, AgentOpenCode)
+	servers = m.mcpServersForAgent(mcpsession.With(context.Background(), "thread-1"), capable, MCPServerPolicyAll, AgentOpenCode, false)
 	if len(servers) != 1 {
 		t.Fatalf("expected configured jaz entry with session context, got %v", servers)
 	}
@@ -55,7 +55,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 	}
 
 	incapable := json.RawMessage(`{"agentCapabilities":{}}`)
-	if servers := m.mcpServersForAgent(context.Background(), incapable, MCPServerPolicyAll, AgentOpenCode); len(servers) != 0 {
+	if servers := m.mcpServersForAgent(context.Background(), incapable, MCPServerPolicyAll, AgentOpenCode, false); len(servers) != 0 {
 		t.Fatalf("non-http-capable agent must get nothing, got %v", servers)
 	}
 }
@@ -84,7 +84,7 @@ func TestMCPServersForJaztoolsOnlyPolicyOnlyExposesJaztools(t *testing.T) {
 		}}},
 	}
 	capable := json.RawMessage(`{"agentCapabilities":{"mcpCapabilities":{"http":true}}}`)
-	servers := m.mcpServersForAgent(mcpsession.With(context.Background(), "search-session"), capable, MCPServerPolicyMemorySearchWorker, AgentOpenCode)
+	servers := m.mcpServersForAgent(mcpsession.With(context.Background(), "search-session"), capable, MCPServerPolicyMemorySearchWorker, AgentOpenCode, false)
 	if len(servers) != 1 {
 		t.Fatalf("servers = %d, want only jaztools", len(servers))
 	}
@@ -108,7 +108,7 @@ func TestMCPServersForJaztoolsOnlyPolicyOnlyExposesJaztools(t *testing.T) {
 
 }
 
-func TestOpenCodeBotDefersOnlyJazOwnedMCPConnections(t *testing.T) {
+func TestDeferredMCPDiscoveryPreservesAllowedConnections(t *testing.T) {
 	m := &Manager{cfg: Config{MCPStore: staticMCPServerStore{servers: []mcpconfig.Server{
 		{ID: "jaztools", Name: "jaztools", Transport: mcpconfig.TransportStreamableHTTP, URL: "http://127.0.0.1:5299/mcp/jaztools", Enabled: true},
 		{ID: "jaz_mcp", Name: "jaz_mcp", Transport: mcpconfig.TransportStreamableHTTP, URL: "http://127.0.0.1:5299/mcp/proxy", Enabled: true},
@@ -117,14 +117,27 @@ func TestOpenCodeBotDefersOnlyJazOwnedMCPConnections(t *testing.T) {
 	capable := json.RawMessage(`{"agentCapabilities":{"mcpCapabilities":{"http":true}}}`)
 	for _, tc := range []struct {
 		agent, policy string
+		optedIn       bool
 		deferred      bool
 	}{
-		{AgentOpenCode, MCPServerPolicyBot, true},
-		{AgentOpenCode, MCPServerPolicyAll, false},
-		{AgentCodex, MCPServerPolicyBot, false},
-		{AgentOpenCode, MCPServerPolicyMemorySearchWorker, false},
+		{AgentOpenCode, MCPServerPolicyBot, false, true},
+		{AgentOpenCode, MCPServerPolicyAll, false, false},
+		{AgentCodex, MCPServerPolicyBot, false, false},
+		{AgentAntigravity, MCPServerPolicyAll, false, false},
+		{AgentAntigravity, MCPServerPolicyAll, true, true},
+		{AgentCodex, MCPServerPolicyAll, true, true},
+		{AgentOpenCode, MCPServerPolicyMemorySearchWorker, false, false},
+		{AgentAntigravity, MCPServerPolicyMemorySearchWorker, true, true},
 	} {
-		for _, raw := range m.mcpServersForAgent(t.Context(), capable, tc.policy, tc.agent) {
+		servers := m.mcpServersForAgent(t.Context(), capable, tc.policy, tc.agent, tc.optedIn)
+		wantCount := 3
+		if tc.policy == MCPServerPolicyMemorySearchWorker {
+			wantCount = 1
+		}
+		if len(servers) != wantCount {
+			t.Fatalf("%s/%s: %d allowed connections, want %d", tc.agent, tc.policy, len(servers), wantCount)
+		}
+		for _, raw := range servers {
 			var server httpMCPServer
 			if err := json.Unmarshal(raw, &server); err != nil {
 				t.Fatal(err)
@@ -136,6 +149,9 @@ func TestOpenCodeBotDefersOnlyJazOwnedMCPConnections(t *testing.T) {
 			}
 			if server.Name == "jaztools" && tc.policy == MCPServerPolicyBot && u.Query().Get("jaztools_surface") != "bot" {
 				t.Fatal("lost bot surface restriction")
+			}
+			if server.Name == "jaztools" && tc.policy == MCPServerPolicyMemorySearchWorker && u.Query().Get("jaztools_surface") != MCPServerPolicyMemorySearchWorker {
+				t.Fatal("lost worker surface restriction")
 			}
 		}
 	}

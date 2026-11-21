@@ -15,6 +15,7 @@ import (
 
 type Runtime interface {
 	SetSessionConfig(context.Context, string, string, string) error
+	SetDeferredMCPTools(context.Context, string, bool) error
 	StopBackgroundTask(context.Context, string, string) error
 	Input(context.Context, acp.SteerRequest) (acp.Job, error)
 }
@@ -23,6 +24,25 @@ type Handler struct{ runtime Runtime }
 
 func NewHandler(runtime Runtime) *Handler {
 	return &Handler{runtime: runtime}
+}
+
+func (h *Handler) SetMCPDiscovery(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Deferred *bool `json:"deferred"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	if input.Deferred == nil {
+		httpapi.WriteError(w, http.StatusBadRequest, fmt.Errorf("deferred is required"))
+		return
+	}
+	if err := h.runtime.SetDeferredMCPTools(r.Context(), r.PathValue("session"), *input.Deferred); err != nil {
+		httpapi.WriteError(w, http.StatusConflict, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, struct{}{})
 }
 
 func (h *Handler) SetConfig(w http.ResponseWriter, r *http.Request) {

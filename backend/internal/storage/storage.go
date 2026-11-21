@@ -76,13 +76,14 @@ func SessionStatusForACPState(state, stopReason string) string {
 }
 
 type RuntimeRef struct {
-	Type            string `json:"type"`
-	Agent           string `json:"agent,omitempty"`
-	SessionID       string `json:"session_id,omitempty"`
-	Cwd             string `json:"cwd,omitempty"`
-	ProjectPath     string `json:"project_path,omitempty"`
-	ArtifactSurface string `json:"artifact_surface,omitempty"`
-	MCPServerPolicy string `json:"mcp_server_policy,omitempty"`
+	Type             string `json:"type"`
+	Agent            string `json:"agent,omitempty"`
+	SessionID        string `json:"session_id,omitempty"`
+	Cwd              string `json:"cwd,omitempty"`
+	ProjectPath      string `json:"project_path,omitempty"`
+	ArtifactSurface  string `json:"artifact_surface,omitempty"`
+	MCPServerPolicy  string `json:"mcp_server_policy,omitempty"`
+	DeferredMCPTools bool   `json:"deferred_mcp_tools,omitempty"`
 }
 
 // Usage follows provider-facing token vocabulary: InputTokens includes cache

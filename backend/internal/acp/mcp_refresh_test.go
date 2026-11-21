@@ -149,7 +149,7 @@ func TestGrokRefreshVersionsOnlyTheProxyConnection(t *testing.T) {
 		{ID: "jaztools", Name: "jaztools", URL: "http://example.test/jaztools", Transport: mcpconfig.TransportStreamableHTTP, Enabled: true},
 	}}}, nil)
 	job := &jobState{Job: Job{ID: "jaz-session", ACPSession: "native"}}
-	servers, err := manager.grokMCPServers(t.Context(), job, MCPServerPolicyWidget, 42)
+	servers, err := manager.grokMCPServers(t.Context(), job, MCPServerPolicyWidget, false, 42)
 	if err != nil || len(servers) != 2 {
 		t.Fatalf("servers = %v, %v", servers, err)
 	}

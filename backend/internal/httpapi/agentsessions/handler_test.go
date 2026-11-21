@@ -16,6 +16,39 @@ type runtimeStub struct {
 	session, id, value string
 	err                error
 	contexts           []storage.MessageContext
+	deferred           bool
+}
+
+func (r *runtimeStub) SetDeferredMCPTools(_ context.Context, session string, deferred bool) error {
+	r.session, r.deferred = session, deferred
+	return r.err
+}
+
+func TestMCPDiscoveryRequiresAnExplicitChoice(t *testing.T) {
+	for _, test := range []struct {
+		body   string
+		err    error
+		status int
+	}{
+		{`{"deferred":true}`, nil, http.StatusOK},
+		{`{"deferred":false}`, nil, http.StatusOK},
+		{`{}`, nil, http.StatusBadRequest},
+		{`{"deferred":null}`, nil, http.StatusBadRequest},
+		{`{"deferred":"true"}`, nil, http.StatusBadRequest},
+		{`{"deferred":true}`, errors.New("agent is busy"), http.StatusConflict},
+	} {
+		runtime := &runtimeStub{err: test.err}
+		request := httptest.NewRequest(http.MethodPut, "/", strings.NewReader(test.body))
+		request.SetPathValue("session", "selected-thread")
+		response := httptest.NewRecorder()
+		NewHandler(runtime).SetMCPDiscovery(response, request)
+		if response.Code != test.status {
+			t.Fatalf("%s: status %d, want %d", test.body, response.Code, test.status)
+		}
+		if test.status != http.StatusBadRequest && (runtime.session != "selected-thread" || runtime.deferred != strings.Contains(test.body, "true")) {
+			t.Fatalf("discovery choice: %#v", runtime)
+		}
+	}
 }
 
 func (r *runtimeStub) SetSessionConfig(_ context.Context, session, id, value string) error {

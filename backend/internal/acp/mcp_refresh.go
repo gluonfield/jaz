@@ -71,7 +71,7 @@ func (m *Manager) refreshMCPBeforeTurn(ctx context.Context, job *jobState) error
 	}
 	params := map[string]any{"sessionId": job.ACPSession}
 	if process.mcpRefresh == grokMCPUpdateMethod {
-		servers, err := m.grokMCPServers(ctx, job, process.mcpPolicy, revision)
+		servers, err := m.grokMCPServers(ctx, job, process.mcpPolicy, process.mcpDeferred, revision)
 		if err != nil {
 			return err
 		}
@@ -97,8 +97,8 @@ func (m *Manager) refreshMCPBeforeTurn(ctx context.Context, job *jobState) error
 	return nil
 }
 
-func (m *Manager) grokMCPServers(ctx context.Context, job *jobState, policy string, revision uint64) ([]json.RawMessage, error) {
-	servers, err := enabledHTTPMCPServers(mcpsession.With(ctx, job.ID), m.cfg.MCPStore, policy)
+func (m *Manager) grokMCPServers(ctx context.Context, job *jobState, policy string, deferred bool, revision uint64) ([]json.RawMessage, error) {
+	servers, err := enabledHTTPMCPServers(mcpsession.With(ctx, job.ID), m.cfg.MCPStore, policy, deferred)
 	if err != nil {
 		return nil, err
 	}

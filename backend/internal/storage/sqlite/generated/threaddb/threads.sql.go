@@ -104,7 +104,7 @@ func (q *Queries) CompleteSession(ctx context.Context, arg CompleteSessionParams
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work FROM threads
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
 `
@@ -159,6 +159,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.PromptDigest,
 		&i.TurnsEnded,
 		&i.BackgroundWork,
+		&i.DeferredMcpTools,
 	)
 	return i, err
 }
@@ -255,7 +256,7 @@ func (q *Queries) IsMainBot(ctx context.Context, threadID string) (bool, error) 
 }
 
 const listChildSessions = `-- name: ListChildSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools
 FROM threads
 WHERE parent_id = ?1
   AND archived = ?2
@@ -358,6 +359,7 @@ func (q *Queries) ListChildSessions(ctx context.Context, arg ListChildSessionsPa
 			&i.PromptDigest,
 			&i.TurnsEnded,
 			&i.BackgroundWork,
+			&i.DeferredMcpTools,
 		); err != nil {
 			return nil, err
 		}
@@ -500,7 +502,7 @@ func (q *Queries) ListSessionSubtree(ctx context.Context, id string) ([]string, 
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools
 FROM threads
 WHERE archived = ?1
   AND (?2 OR parent_id IS NULL OR parent_id = '')
@@ -612,6 +614,7 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]T
 			&i.PromptDigest,
 			&i.TurnsEnded,
 			&i.BackgroundWork,
+			&i.DeferredMcpTools,
 		); err != nil {
 			return nil, err
 		}
@@ -1083,6 +1086,7 @@ INSERT INTO threads (
   cwd,
   artifact_surface,
   mcp_server_policy,
+  deferred_mcp_tools,
   project_path,
   error,
   model_provider,
@@ -1146,7 +1150,8 @@ INSERT INTO threads (
   ?35,
   ?36,
   ?37,
-  ?38
+  ?38,
+  ?39
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -1162,6 +1167,7 @@ ON CONFLICT(id) DO UPDATE SET
   cwd = excluded.cwd,
   artifact_surface = excluded.artifact_surface,
   mcp_server_policy = excluded.mcp_server_policy,
+  deferred_mcp_tools = excluded.deferred_mcp_tools,
   project_path = excluded.project_path,
   model_provider = excluded.model_provider,
   model = excluded.model,
@@ -1201,6 +1207,7 @@ type UpsertSessionParams struct {
 	Cwd                   sql.NullString `json:"cwd"`
 	ArtifactSurface       sql.NullString `json:"artifact_surface"`
 	McpServerPolicy       sql.NullString `json:"mcp_server_policy"`
+	DeferredMcpTools      int64          `json:"deferred_mcp_tools"`
 	ProjectPath           sql.NullString `json:"project_path"`
 	Error                 sql.NullString `json:"error"`
 	ModelProvider         sql.NullString `json:"model_provider"`
@@ -1243,6 +1250,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.Cwd,
 		arg.ArtifactSurface,
 		arg.McpServerPolicy,
+		arg.DeferredMcpTools,
 		arg.ProjectPath,
 		arg.Error,
 		arg.ModelProvider,
