@@ -489,7 +489,6 @@ export function ComposerCard({
                     aria-haspopup="menu"
                     aria-expanded={optionsOpen}
                     aria-label="Composer options"
-                    title="Composer options"
                     disabled={disabled}
                     onClick={() => setOptionsOpen((value) => !value)}
                   >
