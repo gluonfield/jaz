@@ -147,7 +147,6 @@ export function ComposerCard({
   const hasSendableDraft = (messageEmpty: boolean) => !messageEmpty || hasNonTextDraftContent
   const hasDraftContent = hasSendableDraft(mention.isEmpty)
   const showVoiceButton = !hasDraftContent && Boolean(onVoice)
-  const actionLabel = showVoiceButton ? 'Voice mode' : 'Send message'
   const submitDisabled = !hasDraftContent || disabled || attachmentBusy || (streaming && !canSendWhileStreaming)
   const showStopButton = !voiceActive && streaming && onStop && (!sendWhileStreaming || !hasDraftContent)
   const dictation = useDictation({
@@ -569,17 +568,21 @@ export function ComposerCard({
               >
                 <Square size={12} fill="currentColor" strokeWidth={0} />
               </IconButton>
-            ) : !voiceActive || hasDraftContent ? (
-              <SendButton
-                label={actionLabel}
-                shortcut={showVoiceButton ? undefined : 'Enter'}
-                disabled={showVoiceButton ? disabled || Boolean(dictation.phase) : submitDisabled}
-                onSend={() => (showVoiceButton ? onVoice?.() : void submit())}
-                onQueue={queue}
+            ) : voiceActive && !hasDraftContent ? null : showVoiceButton ? (
+              <IconButton
+                variant="primary"
+                size="md"
+                className="relative after:absolute after:-inset-1"
+                aria-label="Voice mode"
+                title="Voice mode"
+                disabled={disabled || Boolean(dictation.phase)}
+                onClick={onVoice}
               >
-                {showVoiceButton ? <AudioLines size={16} /> : <ArrowUp size={16} />}
-              </SendButton>
-            ) : null}
+                <AudioLines size={16} />
+              </IconButton>
+            ) : (
+              <SendButton disabled={submitDisabled} onSend={() => void submit()} onQueue={queue} />
+            )}
           </div>
           {/* Opaque, so it hides the controls and, in chat, the draft while the
               textarea keeps focus for Enter and Escape. */}

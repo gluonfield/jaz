@@ -1,7 +1,7 @@
 import { Maximize2, Minimize2 } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useMemo, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
+import { IconSwap } from '@/components/ui/IconSwap'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
@@ -51,18 +51,7 @@ export function CanvasChatToggle({ chat }: { chat: ReturnType<typeof useCanvasCh
   const label = chat.shown ? 'Hide chat' : 'Show chat'
   return (
     <IconButton variant="ghost" size="md" aria-label={label} aria-keyshortcuts={'Meta+\\'} title={label} onClick={chat.toggle}>
-      <AnimatePresence initial={false}>
-        <motion.span
-          key={String(chat.shown)}
-          className="[grid-area:1/1]"
-          initial={{ opacity: 0, scale: 0.25, filter: 'blur(4px)' }}
-          animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-          exit={{ opacity: 0, scale: 0.25, filter: 'blur(4px)' }}
-          transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-        >
-          {chat.shown ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-        </motion.span>
-      </AnimatePresence>
+      <IconSwap id={label}>{chat.shown ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</IconSwap>
     </IconButton>
   )
 }

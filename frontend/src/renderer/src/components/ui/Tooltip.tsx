@@ -11,10 +11,24 @@ const MARGIN = 8
 const WIDE = 240
 const KEYS: Record<string, string> = { Meta: '⌘', Shift: '⇧', Alt: '⌥', Control: '⌃', Enter: '↵', Escape: 'Esc' }
 
-type Tip = { anchor: HTMLElement; text: string; keys: string; x?: number; instant: boolean }
+// pointerX is where the pointer came onto the anchor; keyboard focus has none.
+type Tip = { anchor: HTMLElement; text: string; keys: string; pointerX?: number; instant: boolean }
 
 function truncated(el: Element): boolean {
   return [el, ...el.querySelectorAll('*')].some((node) => node.scrollWidth > node.clientWidth || node.scrollHeight > node.clientHeight)
+}
+
+function park(el: HTMLElement) {
+  if (!el.title) return
+  el.dataset.tooltip = el.title
+  el.removeAttribute('title')
+}
+
+function read(anchor: HTMLElement, pointerX: number | undefined, instant: boolean): Tip | null {
+  const text = anchor.title || anchor.dataset.tooltip || ''
+  const keys = (anchor.getAttribute('aria-keyshortcuts') ?? '').split(' ')[0].split('+').map((key) => KEYS[key] ?? key).join('')
+  const adds = keys !== '' || text !== anchor.textContent?.trim() || truncated(anchor)
+  return text && adds ? { anchor, text, keys, pointerX, instant } : null
 }
 
 // The app's one tooltip, drawn for every element that has a `title`, with its
@@ -28,31 +42,23 @@ export function TooltipLayer() {
 
   useEffect(() => {
     let anchor: HTMLElement | null = null
-    let shown = false
+    let shown: Tip | null = null
     let timer: number | undefined
     let closedAt = -Infinity
 
-    const park = (el: HTMLElement) => {
-      if (!el.title) return
-      el.dataset.tooltip = el.title
-      el.removeAttribute('title')
-    }
-    const read = (el: HTMLElement, x: number | undefined, instant: boolean): Tip | null => {
-      const text = el.title || el.dataset.tooltip || ''
-      const keys = (el.getAttribute('aria-keyshortcuts') ?? '').split(' ')[0].split('+').map((key) => KEYS[key] ?? key).join('')
-      const adds = keys !== '' || text !== el.textContent?.trim() || truncated(el)
-      return text && adds ? { anchor: el, text, keys, x, instant } : null
+    const show = (next: Tip | null) => {
+      if (shown && !next) closedAt = performance.now()
+      shown = next
+      setTip(next)
     }
     const observer = new MutationObserver(() => {
       if (!anchor) return
       if ('tooltip' in anchor.dataset) park(anchor)
-      if (shown) setTip((current) => current && read(current.anchor, current.x, current.instant))
+      if (shown) show(read(anchor, shown.pointerX, shown.instant))
     })
     const hide = () => {
       window.clearTimeout(timer)
-      if (shown) closedAt = performance.now()
-      shown = false
-      setTip(null)
+      show(null)
     }
     const leave = () => {
       hide()
@@ -63,23 +69,19 @@ export function TooltipLayer() {
       }
       anchor = null
     }
-    const enter = (el: HTMLElement, x?: number) => {
+    const enter = (el: HTMLElement, pointerX?: number) => {
       leave()
       anchor = el
       observer.observe(el, { attributeFilter: ['title'] })
       const instant = performance.now() - closedAt < WARM
-      const open = () => {
-        const next = read(el, x, instant)
-        shown = next !== null
-        setTip(next)
-      }
-      if (instant || x === undefined) open()
+      const open = () => show(read(el, pointerX, instant))
+      if (instant || pointerX === undefined) open()
       else timer = window.setTimeout(open, SHOW_DELAY)
     }
 
     const listeners = new AbortController()
-    const on = <K extends keyof WindowEventMap>(type: K, listener: (event: WindowEventMap[K]) => void, capture = true) =>
-      window.addEventListener(type, listener, { capture, signal: listeners.signal })
+    const on = <K extends keyof WindowEventMap>(type: K, listener: (event: WindowEventMap[K]) => void) =>
+      window.addEventListener(type, listener, { capture: true, signal: listeners.signal })
     on('pointerover', (event) => {
       if (event.pointerType !== 'mouse') return
       const el = event.buttons ? null : (event.target as Element).closest<HTMLElement>(ANCHOR)
@@ -105,7 +107,6 @@ export function TooltipLayer() {
     })
     on('pointerdown', hide)
     on('keydown', hide)
-    on('blur', leave, false)
     return () => {
       listeners.abort()
       leave()
@@ -125,7 +126,7 @@ function Tooltip({ tip }: { tip: Tip }) {
     const viewport = layoutViewport()
     const beside = tip.anchor.dataset.tooltipSide === 'right'
     const above = rect.top - GAP - height >= MARGIN
-    const centre = tip.x !== undefined && rect.width > WIDE ? layoutPoint(tip.x, 0).x : rect.left + rect.width / 2
+    const centre = tip.pointerX !== undefined && rect.width > WIDE ? layoutPoint(tip.pointerX, 0).x : rect.left + rect.width / 2
     const left = beside ? rect.right + GAP : centre - width / 2
     const top = beside ? rect.top + (rect.height - height) / 2 : above ? rect.top - GAP - height : rect.bottom + GAP
     el.style.left = `${Math.max(MARGIN, Math.min(left, viewport.width - width - MARGIN))}px`
@@ -140,7 +141,7 @@ function Tooltip({ tip }: { tip: Tip }) {
           tip.instant ? '' : 'motion-safe:animate-[tooltip-in_125ms_ease-out]'
         }`}
       >
-        {tip.text}
+        <span className="line-clamp-12">{tip.text}</span>
         {tip.keys ? <kbd className="shrink-0 font-sans text-bg/60">{tip.keys}</kbd> : null}
       </div>
     </div>
