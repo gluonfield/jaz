@@ -425,7 +425,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Run the login suites')
     await until('the open task did not close', () => !opened())
     await click('Activity')
-    await until('Activity never listed today', () => text().includes('Today') && text().includes('Updated memory'))
+    await until('Activity never listed its history', () => text().includes('Updated memory'))
     if (text().includes('Delivered to you') || text().includes('He chose option A instead') || text().includes('Calmer bot faces') || text().includes('Muse-style identity cards')) {
       throw new Error('Bot panel: completed or cancelled task history leaked into Activity')
     }
@@ -444,7 +444,7 @@ export async function exerciseBotPanel(): Promise<void> {
     if (!(indent('review-b3') > indent('review-b2') + 10) || !link('review-b2')?.textContent?.endsWith('Failed')) {
       throw new Error('Bot panel: worker nesting or failure state is missing')
     }
-    if (!link('side-c2')?.textContent?.endsWith('Running for 14m') || link('side-c2')?.parentElement?.querySelector('h3')?.textContent !== 'Today') {
+    if (!link('side-c2')?.textContent?.endsWith('Running for 14m') || link('side-c2')?.parentElement !== tabpanel().querySelector('section:not([aria-label="Tasks"])')) {
       throw new Error('Bot panel: dated activity lost the running side chat or its state')
     }
     await click('Notes cleanup')
@@ -467,6 +467,18 @@ export async function exerciseBotPanel(): Promise<void> {
     dark(true)
     await capture('bot-panel-activity-dark')
     dark(false)
+    const current = client.getQueryData(activityKey)!
+    client.setQueryData(activityKey, { ...current, owed: [] })
+    await until('a bot without tasks hid its work history', () => !tabpanel().querySelector('section[aria-label="Tasks"]') && text().includes('Updated memory'))
+    await capture('bot-panel-no-tasks')
+    client.setQueryData(activityKey, { owed: [], items: [], started: {} })
+    await until('a bot with no tasks or work did not say it has no tasks', () => tabpanel().textContent === 'No tasks yet.')
+    await capture('bot-panel-empty')
+    dark(true)
+    await capture('bot-panel-empty-dark')
+    dark(false)
+    client.setQueryData(activityKey, current)
+    await until('the tasks did not return', () => text().includes(`Tasks ${owed.length}`))
 
     await click('Routines')
     await until('routines are not grouped by cadence', () => text().includes('Through the day') && text().includes('Every 30 minutes') && text().includes('Daily'))
@@ -587,7 +599,6 @@ export async function exerciseBotPanel(): Promise<void> {
     const completed = owed.splice(0)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
     await until('completed tasks did not leave the open list', () => !document.querySelector('section[aria-label="Tasks"]') && !text().includes(completed[0].name!) && text().includes('Updated memory'))
-    await capture('bot-panel-no-tasks')
     owed.push(...completed)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
     await until('new tasks did not appear', () => text().includes(completed[0].name!))
@@ -605,13 +616,6 @@ export async function exerciseBotPanel(): Promise<void> {
       owed[0].status = 'waiting_for_user'
       await until('a moving task waited longer than the active polling interval to refresh', () => document.querySelector('section[aria-label="Tasks"] h4')?.textContent === 'Waiting for you 1' && taskStates().length === 0)
     }
-    owed.splice(0)
-    await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-    await until('a bot with no tasks or work did not say it has no tasks', () => tabpanel().textContent === 'No tasks yet.')
-    await capture('bot-panel-empty')
-    dark(true)
-    await capture('bot-panel-empty-dark')
-    dark(false)
   } finally {
     if (originalLastBot === null) localStorage.removeItem('jaz.lastBot')
     else localStorage.setItem('jaz.lastBot', originalLastBot)
