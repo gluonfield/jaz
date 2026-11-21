@@ -616,7 +616,8 @@ function prefersAbove(placement: 'above' | 'below', rect: DOMRect): boolean {
 // The painted pair behind every mention-capable field: a mirror painting the
 // text and token highlights, with the real textarea above it keeping
 // transparent glyphs (the caret via caret-ink). The textarea's selection
-// highlight must stay translucent for the mirror glyphs to read through it.
+// highlight must stay translucent for the mirror glyphs to read through it,
+// and its scrollbar hidden: one that takes width wraps it apart from the mirror.
 export function MentionTextarea({
   mention,
   placeholder,
@@ -678,7 +679,7 @@ export function MentionTextarea({
         aria-keyshortcuts={suggestion ? 'Tab' : undefined}
         // No spellcheck: squiggles under skill/path tokens read as errors.
         spellCheck={false}
-        className={`composer-input relative z-[1] block w-full resize-none bg-transparent ${minHeightClass} ${TEXT_CLASSES} text-transparent caret-ink select-text placeholder:text-ink-3 disabled:cursor-default`}
+        className={`composer-input relative z-[1] block w-full resize-none bg-transparent ${minHeightClass} ${TEXT_CLASSES} text-transparent caret-ink select-text [scrollbar-width:none] placeholder:text-ink-3 disabled:cursor-default [&::-webkit-scrollbar]:hidden`}
         style={{ maxHeight: mention.maxHeight }}
         onFocus={mention.onFocus}
         onBlur={mention.onBlur}

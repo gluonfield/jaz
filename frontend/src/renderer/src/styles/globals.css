@@ -965,11 +965,7 @@ input {
 }
 
 /* The composer paints its text in a mirror div behind a transparent-text
-   textarea; its selected glyphs stay transparent so the mirror shows through.
-   A scrollbar that takes width would wrap the textarea apart from the mirror. */
-.composer-input {
-  scrollbar-width: none;
-}
+   textarea; its selected glyphs stay transparent so the mirror shows through. */
 .composer-input::selection {
   color: transparent;
 }
