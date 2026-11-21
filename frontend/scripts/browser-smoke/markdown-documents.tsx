@@ -250,7 +250,7 @@ export async function exerciseMarkdownDocuments() {
       await click(actions)
       await until(() => Boolean(document.querySelector('[role="menu"][aria-label="File actions"]')))
       const menu = document.querySelector('[role="menu"][aria-label="File actions"]')!
-      if (menu.textContent !== 'Open folderDownload file') throw new Error('The file menu lost its actions')
+      if (menu.textContent !== 'Copy pathDownload file') throw new Error('A remote file should offer Copy path and Download file')
       await new Promise((resolve) => setTimeout(resolve, 180))
       await window.smoke.capture(width === 1200 ? 'compact-document-menu-desktop' : 'compact-document-menu-phone')
       await window.smoke.key('Escape')

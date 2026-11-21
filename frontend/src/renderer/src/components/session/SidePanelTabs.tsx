@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { motion, Reorder } from 'motion/react'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { AppIcon } from '@/components/apps/AppIcon'
+import { CopyPathMenuRow } from '@/components/session/FileActions'
 import { IconButton } from '@/components/ui/IconButton'
 import { ContextMenu, MenuRow, Popover } from '@/components/ui/Popover'
 import { Favicon } from '@/components/ui/Favicon'
@@ -83,7 +84,9 @@ export function SidePanelTabs({ tabs, activeId, sideChatAvailable, onSelect, onR
   const list = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<{ point: { x: number; y: number }; id: string | null } | null>(null)
   const menuTriggers = useContextMenuTrigger((point, target) => setMenu({ point, id: target.getAttribute('data-tab-id') }))
-  const menuTab = tabs.find((tab) => tab.id === menu?.id)
+  const menuIndex = tabs.findIndex((tab) => tab.id === menu?.id)
+  const menuTab = tabs[menuIndex]
+  const menuPath = menuTab?.kind === 'file' || menuTab?.kind === 'app' ? menuTab.file?.path : undefined
   useEffect(() => {
     list.current?.querySelector('[aria-selected="true"]')?.parentElement?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [activeId])
@@ -99,13 +102,13 @@ export function SidePanelTabs({ tabs, activeId, sideChatAvailable, onSelect, onR
       target?.focus()
     })
   }
-  const menuRow = (Icon: LucideIcon, label: string, action: () => void, disabled = false) => (
-    <MenuRow disabled={disabled} onClick={() => {
+  const menuRow = (Icon: LucideIcon, label: string, action: () => void) => (
+    <MenuRow role="menuitem" onClick={() => {
       setMenu(null)
       action()
     }}>
       <span className="flex items-center gap-2">
-        <Icon size={13} />
+        <Icon size={15} aria-hidden />
         {label}
       </span>
     </MenuRow>
@@ -174,15 +177,18 @@ export function SidePanelTabs({ tabs, activeId, sideChatAvailable, onSelect, onR
       <SidePanelTabMenu sideChatAvailable={sideChatAvailable} onAdd={onAdd} />
       {menu && menuTab ? (
         <ContextMenu point={menu.point} onClose={() => setMenu(null)}>
-          {menuTab.kind === 'preview' ? <>
-            {menuRow(Plus, 'New tab to the right', () => onAdd('preview', menuTab.id))}
-            {menuRow(RotateCw, 'Reload', () => sessions.reload(menuTab.id), !browsers.find((browser) => browser.id === menuTab.id)?.target.sourceUrl)}
-            {menuRow(Copy, 'Duplicate', () => onDuplicate(menuTab.id))}
-            <div className="my-1 h-px bg-border/70" />
-          </> : null}
-          {menuRow(X, 'Close', () => closeTabs([menuTab]))}
-          {menuRow(X, 'Close other tabs', () => closeTabs(tabs.filter((tab) => tab !== menuTab)), tabs.length < 2)}
-          {menuRow(X, 'Close tabs to the right', () => closeTabs(tabs.slice(tabs.indexOf(menuTab) + 1)), menuTab === tabs.at(-1))}
+          <div role="menu" aria-label="Tab actions">
+            {menuTab.kind === 'preview' ? <>
+              {menuRow(Plus, 'New tab to the right', () => onAdd('preview', menuTab.id))}
+              {browsers.find((browser) => browser.id === menuTab.id)?.target.sourceUrl && menuRow(RotateCw, 'Reload', () => sessions.reload(menuTab.id))}
+              {menuRow(Copy, 'Duplicate', () => onDuplicate(menuTab.id))}
+              <div className="my-1 h-px bg-border/70" />
+            </> : null}
+            {menuPath && <CopyPathMenuRow path={menuPath} onClose={() => setMenu(null)} />}
+            {menuRow(X, 'Close', () => closeTabs([menuTab]))}
+            {tabs.length > 1 && menuRow(X, 'Close other tabs', () => closeTabs(tabs.filter((tab) => tab !== menuTab)))}
+            {menuIndex < tabs.length - 1 && menuRow(X, 'Close tabs to the right', () => closeTabs(tabs.slice(menuIndex + 1)))}
+          </div>
         </ContextMenu>
       ) : null}
     </div>

@@ -338,6 +338,20 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
     }
     await click(element.querySelector('.markdown-document-card button'))
     await until(() => panel?.activeTab?.kind === 'file' && Boolean(element.querySelector('[role="tabpanel"] h1')))
+    const tabActions = () => document.querySelector('[role="menu"][aria-label="Tab actions"]')
+    const clipboard = navigator.clipboard
+    const writeText = clipboard.writeText
+    let copiedPath = ''
+    clipboard.writeText = async (path) => { copiedPath = path }
+    try {
+      await click(tab('file:/ANALYSIS.md'), 'right')
+      await until(() => Boolean(tabActions()))
+      if (tabActions()?.textContent !== 'Copy pathClose') throw new Error('A lone file tab should only offer Copy path and Close')
+      await click(button('Copy path')!)
+      await until(() => copiedPath === '/ANALYSIS.md' && !tabActions())
+    } finally {
+      clipboard.writeText = writeText
+    }
     if (button('Overview')?.getAttribute('aria-pressed') !== 'false' || button('Side Panel')?.getAttribute('aria-pressed') !== 'true') {
       throw new Error('File links did not select the tabbed panel exclusively')
     }
@@ -350,6 +364,11 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
     }
     await click(element.querySelector('[role="tabpanel"] .chat-prose-link[role="link"]'))
     await until(() => panel.tabs.length === 2 && panel.activeTab?.id === 'file:/NOTES.md')
+    await click(tab('file:/NOTES.md'), 'right')
+    await until(() => Boolean(tabActions()))
+    if (tabActions()?.textContent !== 'Copy pathCloseClose other tabs') throw new Error('The last tab should only offer bulk close for other tabs')
+    await window.smoke.key('Escape')
+    await until(() => !tabActions())
     await click(tab('file:/ANALYSIS.md'))
     await window.smoke.key('Right')
     await until(() => document.activeElement === tab('file:/NOTES.md'))
