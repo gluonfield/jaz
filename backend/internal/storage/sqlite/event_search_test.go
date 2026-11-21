@@ -26,9 +26,6 @@ func TestEventSearchUpgradeAndMutationLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.DownTo(t.Context(), 53); err != nil {
-		t.Fatal(err)
-	}
 	session, err := store.CreateSession(storage.CreateSession{Slug: "existing-answer"})
 	if err != nil {
 		t.Fatal(err)
@@ -37,6 +34,9 @@ func TestEventSearchUpgradeAndMutationLifecycle(t *testing.T) {
 		Type: sessionevents.TypeACPMessage, Content: "quartz",
 		ACP: &sessionevents.ACPEvent{ID: session.ID},
 	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.DownTo(t.Context(), 53); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := provider.Up(t.Context()); err != nil {

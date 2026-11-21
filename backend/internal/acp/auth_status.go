@@ -64,9 +64,15 @@ func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env 
 }
 
 func agentAuthStatus(name string, cfg AgentConfig, root string, env map[string]string, resolved resolvedAgentAuth) AgentAuthStatus {
-	status := agentLoginCommand(name, root, resolved.Config, loginBinDirs(cfg), env)
+	var status AgentAuthStatus
+	if CanonicalAgentName(name) == AgentMicrosoftCopilot {
+		status = microsoftCopilotLoginCommand(cfg)
+		status.RefreshOwner = RefreshOwnerJazOAuth
+	} else {
+		status = agentLoginCommand(name, root, resolved.Config, loginBinDirs(cfg), env)
+		status.RefreshOwner = RefreshOwnerAgentCLI
+	}
 	status.ManualDisconnect = agentManualDisconnect(name, cfg)
-	status.RefreshOwner = RefreshOwnerAgentCLI
 	status.StoragePath = resolved.StoragePath
 	status.Authenticated = resolved.Authenticated
 	status.Reason = resolved.Reason

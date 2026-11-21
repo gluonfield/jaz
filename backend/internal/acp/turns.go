@@ -286,7 +286,7 @@ func (m *Manager) attachmentResourceResolver(job *jobState) (attachmentResourceR
 	if !ok {
 		return attachmentResourceResolver{}, fmt.Errorf("acp agent %q is not configured", job.ACPAgent)
 	}
-	return attachmentResourceResolver{localFiles: strings.TrimSpace(cfg.URL) == ""}, nil
+	return attachmentResourceResolver{localFiles: strings.TrimSpace(cfg.URL) == "" && !cfg.BuiltinBridge}, nil
 }
 
 type attachmentResourceResolver struct {

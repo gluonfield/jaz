@@ -183,7 +183,7 @@ function AgentCard({
               {companionAppBlocked
                 ? `Needs ${onboardingAgentLabel(probe.agent)}`
                 : {
-                    action: canLogin ? 'Sign in' : 'Add API key',
+                    action: canLogin ? 'Sign in' : canKey ? 'Add API key' : 'Setup required',
                     missing: 'Not installed',
                     downloading: 'Downloading',
                     failed: 'Download failed',

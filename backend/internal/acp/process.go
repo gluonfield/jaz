@@ -18,6 +18,7 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
+	"github.com/wins/jaz/backend/internal/m365copilot"
 	"github.com/wins/jaz/backend/internal/processenv"
 	"github.com/wins/jaz/backend/internal/subprocess"
 )
@@ -106,6 +107,9 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		conn, err := streamhttp.Dial(cfg.URL, opts...)
 		return conn, nil, err
 	}
+	if cfg.BuiltinBridge {
+		return m.openBuiltinBridge(ctx, name, cfg)
+	}
 	if strings.TrimSpace(cfg.ManagedAdapter) != "" {
 		if m.cfg.Adapters == nil {
 			return nil, nil, fmt.Errorf("acp agent %q managed adapter %q is not available", name, cfg.ManagedAdapter)
@@ -188,6 +192,22 @@ func validateAgentLaunch(name string, cfg AgentConfig) error {
 		return fmt.Errorf("configured acp agent %q cannot use a URL: its model and Jaz system prompt require the local agent launch", name)
 	}
 	return nil
+}
+
+func (m *Manager) openBuiltinBridge(ctx context.Context, name string, cfg AgentConfig) (jsonrpc.MessageConn, *processStderrTail, error) {
+	switch CanonicalAgentName(name) {
+	case AgentMicrosoftCopilot:
+		auth := cfg.MicrosoftCopilot
+		if auth == nil {
+			auth = m.cfg.MicrosoftCopilot
+		}
+		if auth == nil {
+			return nil, nil, fmt.Errorf("acp agent %q OAuth service is not configured", name)
+		}
+		return m365copilot.OpenACPConn(ctx, auth), nil, nil
+	default:
+		return nil, nil, fmt.Errorf("acp agent %q has no built-in ACP bridge", name)
+	}
 }
 
 func launchCommand(command string, args []string) (string, []string) {

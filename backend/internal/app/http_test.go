@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
+	"github.com/wins/jaz/backend/internal/m365copilot"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/server"
@@ -74,7 +75,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil), Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager, acp.AgentCatalog{}, runtimefiles.New(store.RootDir())),
-		fx.Provide(NewProviderSource, sessionevents.New, fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus)))),
+		fx.Provide(NewOAuthBroker, NewMicrosoftCopilotAuth, NewProviderSource, sessionevents.New, fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus)))),
 		fx.Provide(func() storage.Store { return store }),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
 		fx.Provide(func() storage.FeedStore { return fakeFeedStore{} }),
@@ -85,6 +86,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	requireRoute(t, routes, "GET /v1/usage/daily")
+	requireRoute(t, routes, "GET "+m365copilot.OAuthCallbackPath)
 	requireRoute(t, routes, "POST /v1/filesystem/dirs")
 	requireRoute(t, routes, "GET /v1/usage/models")
 	requireRoute(t, routes, "GET /v1/feed")
@@ -308,7 +310,7 @@ func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}, Config{}, serverconfig.Config{}),
-		fx.Provide(NewStore, NewRuntimeAuthKey, NewProviderSource, sessionevents.New, fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus)))),
+		fx.Provide(NewStore, NewOAuthBroker, NewMicrosoftCopilotAuth, NewRuntimeAuthKey, NewProviderSource, sessionevents.New, fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus)))),
 		fx.Provide(func(store *sqlitestore.Store) *mcpruntime.Manager {
 			return mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil)
 		}),

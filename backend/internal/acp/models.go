@@ -176,6 +176,8 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			systemPromptAtLaunch: true,
 			unadvertisedModel:    unadvertisedModelRejected,
 		}
+	case AgentMicrosoftCopilot:
+		return agentPolicy{}
 	default:
 		return agentPolicy{
 			effortConfigID: sessionConfigReasoningEffort,

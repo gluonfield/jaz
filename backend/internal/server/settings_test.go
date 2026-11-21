@@ -234,7 +234,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity,muse,copilot" {
+	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity,muse,copilot,microsoft_copilot" {
 		t.Fatalf("unexpected seeded settings %#v", got)
 	}
 	if !hasModelProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
@@ -282,6 +282,9 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 	if got.ACP["copilot"].Enabled || got.ACP["copilot"].Model != "" || !got.ACPOptions["copilot"].SupportsAuth || len(got.ACPOptions["copilot"].ReasoningEfforts) != 0 {
 		t.Fatalf("unexpected Copilot defaults: %#v, %#v", got.ACP["copilot"], got.ACPOptions["copilot"])
+	}
+	if got.ACP["microsoft_copilot"].Enabled || got.ACP["microsoft_copilot"].Model != "" || !got.ACPOptions["microsoft_copilot"].SupportsAuth || len(got.ACPOptions["microsoft_copilot"].ReasoningEfforts) != 0 || len(got.ACPOptions["microsoft_copilot"].Models) != 0 {
+		t.Fatalf("unexpected Microsoft Copilot defaults: %#v, %#v", got.ACP["microsoft_copilot"], got.ACPOptions["microsoft_copilot"])
 	}
 	if got.ACP["opencode"].Enabled ||
 		got.ACP["opencode"].ModelProvider != "openrouter" ||
@@ -845,7 +848,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity,muse,copilot,local_helper" {
+	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity,muse,copilot,microsoft_copilot,local_helper" {
 		t.Fatalf("agents = %#v", got.Agents)
 	}
 	if _, ok := got.ACP[acp.AgentJaz]; ok {

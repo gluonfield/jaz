@@ -250,7 +250,11 @@ function ACPAgentRow({
       : authStatus?.authenticated && authStatus.ready === false
       ? (authStatus.reason ?? `Sign in with ${authProviderLabel(agent)} again.`)
       : selectedProviderNativeAuth || (supportsAuth && !usesModelProvider)
-        ? `Connect ${authProviderLabel(agent)} or add an API key before enabling.`
+        ? authStatus?.api_key?.source_env
+          ? `Connect ${authProviderLabel(agent)} or add an API key before enabling.`
+          : authStatus?.login_command_available === false && authStatus.reason
+            ? authStatus.reason
+            : `Connect ${authProviderLabel(agent)} before enabling.`
         : usesModelProvider && selectedProvider
           ? `Connect ${selectedProvider.label} in Model Providers before enabling.`
           : 'Select a provider before enabling.'
@@ -586,10 +590,13 @@ function AgentAuthPanel({
 
       {(method === 'login' && canLogin) || !canKey ? (
         <div className="flex flex-col items-start gap-2">
-          <Button variant="primary" size="md" disabled={disabled || running} onClick={onStartLogin}>
+          <Button variant="primary" size="md" disabled={disabled || running || !canLogin} onClick={onStartLogin}>
             {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
             {running ? 'Waiting for sign-in…' : `Sign in with ${authProviderLabel(agent)}`}
           </Button>
+          {!canLogin && (status?.login_command_reason || status?.reason) ? (
+            <p className="text-[12px] text-ink-3">{status.login_command_reason || status.reason}</p>
+          ) : null}
           <div className="w-full">
             <AuthLoginStatus job={loginJob} running={running} />
           </div>

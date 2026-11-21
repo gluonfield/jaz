@@ -7,6 +7,7 @@ import (
 	feedcore "github.com/wins/jaz/backend/internal/feed"
 	agentsessionsapi "github.com/wins/jaz/backend/internal/httpapi/agentsessions"
 	canvasapi "github.com/wins/jaz/backend/internal/httpapi/canvas"
+	m365copilotapi "github.com/wins/jaz/backend/internal/httpapi/m365copilot"
 	pluginsapi "github.com/wins/jaz/backend/internal/httpapi/plugins"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
@@ -52,6 +53,7 @@ func HTTPModule() fx.Option {
 		pluginsapi.NewViewHandler,
 		fx.Annotate(pluginsapi.NewHandler, fx.From(new(*sqlitestore.Store), new(*mcpruntime.Manager))),
 		fx.Annotate(canvasapi.NewHandler, fx.From(new(*sqlitestore.Store))),
+		m365copilotapi.NewHandler,
 		NewRoutes,
 		NewPublicRoutes,
 	)
