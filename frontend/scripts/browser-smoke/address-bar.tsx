@@ -6,14 +6,13 @@ import { keys } from '@/lib/query/keys'
 import { StrictMode, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 
-function Tab({ name }: { name: string }) {
+function Tabs({ shown }: { shown: string }) {
   const sessions = useBrowserSessions()
   useLayoutEffect(() => {
-    sessions.openTab(name, `${location.origin}/target?address=${name}`)
-  }, [sessions, name])
-  return <div className="h-1/2">
-    <BrowserPanelSlot sessionId={name} visible />
-  </div>
+    sessions.openTab('neighbour', `${location.origin}/target?address=neighbour`)
+    sessions.openTab('owner', `${location.origin}/target?address=owner`)
+  }, [sessions])
+  return <BrowserPanelSlot sessionId={shown} visible />
 }
 
 export async function exerciseAddressBar(): Promise<void> {
@@ -24,13 +23,17 @@ export async function exerciseAddressBar(): Promise<void> {
   try {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     client.setQueryData(keys.browserSettings, { enabled: false })
-    root.render(<StrictMode><QueryClientProvider client={client}><BrowserWorkspace><Tab name="owner" /><Tab name="neighbour" /></BrowserWorkspace></QueryClientProvider></StrictMode>)
-    const deadline = Date.now() + 5000
-    while (element.querySelectorAll('[aria-label="Reload preview"]:not(:disabled)').length !== 2) {
-      if (Date.now() > deadline) {
-        throw new Error('Address-bar webviews did not become ready')
+    const ready = () => element.querySelectorAll('[aria-label="Reload preview"]:not(:disabled)').length
+    for (const shown of ['neighbour', 'owner']) {
+      const before = ready()
+      root.render(<StrictMode><QueryClientProvider client={client}><BrowserWorkspace><Tabs shown={shown} /></BrowserWorkspace></QueryClientProvider></StrictMode>)
+      const deadline = Date.now() + 5000
+      while (ready() === before) {
+        if (Date.now() > deadline) {
+          throw new Error('Address-bar webviews did not become ready')
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20))
       }
-      await new Promise((resolve) => setTimeout(resolve, 20))
     }
     await checkAddresses(element.querySelector('[data-browser-session="owner"]')!, element.querySelector<PreviewWebviewElement>('[data-browser-session="neighbour"] webview')!)
   } finally {
