@@ -1,15 +1,15 @@
-# Claude Prompt Suggestions in Bot and Background Sessions
+# Prompt Suggestions in Background Sessions
 
-Claude sessions used for bot chats, bot workers, group seats, routine runs and
-memory jobs start and resume with the native SDK option `promptSuggestions: false`.
-Ordinary user threads retain the provider default. Human-started and hidden turns
-in a bot's chat share the same session policy. This works with the existing Claude
-adapter and does not change prompts, tools or authentication.
+Claude sessions used for bot workers, group seats, routine runs and memory jobs
+start and resume with the native SDK option `promptSuggestions: false`; Codex
+sessions of those kinds start their adapter with `CODEX_ACP_PROMPT_SUGGESTIONS=false`.
+User threads and bot chats retain the provider default, so human-started and hidden
+turns in a bot's chat both get suggestions. This works with the existing adapters
+and does not change prompts, tools or authentication.
 
 The session's persisted source type determines the option on both initial launch
 and restart. Regression tests cover eight source classes and six other agents
-across a Manager restart, sending both human and hidden turns. The bot-chat case
-fails against the old policy on both initial launch and resume.
+across a Manager restart, sending both human and hidden turns.
 
 ## Historical Worker Measurement
 

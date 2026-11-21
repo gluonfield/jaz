@@ -14,37 +14,31 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-var promptSuggestionSources = []string{
-	"",
-	storage.SourceBot,
-	storage.SourceBotWorker,
-	storage.SourceBotMember,
-	storage.SourceLoopRun,
-	storage.SourceMemorySearch,
-	storage.SourceMemorySource,
-	storage.SourceMemoryDream,
-}
-
-func TestClaudePromptSuggestionsOnlyInOrdinaryThreads(t *testing.T) {
-	for _, source := range promptSuggestionSources {
-		t.Run("source="+source, func(t *testing.T) {
+func TestPromptSuggestionsOnlyWhereSomeoneWrites(t *testing.T) {
+	for _, source := range []string{
+		"",
+		storage.SourceBot,
+		storage.SourceBotWorker,
+		storage.SourceBotMember,
+		storage.SourceLoopRun,
+		storage.SourceMemorySearch,
+		storage.SourceMemorySource,
+		storage.SourceMemoryDream,
+	} {
+		off := source != "" && source != storage.SourceBot
+		t.Run("claude/source="+source, func(t *testing.T) {
 			opened, _ := sessionPromptSuggestionOptions(t, acp.AgentClaude, source)
 			for method, options := range opened {
 				value, set := options["promptSuggestions"]
-				if set != (source != "") || set && value != false {
-					t.Errorf("%s promptSuggestions = %#v (set %v), want disabled %v", method, value, set, source != "")
+				if set != off || set && value != false {
+					t.Errorf("%s promptSuggestions = %#v (set %v), want disabled %v", method, value, set, off)
 				}
 			}
 		})
-	}
-}
-
-func TestCodexPromptSuggestionsOnlyWhereSomeoneWrites(t *testing.T) {
-	for _, source := range promptSuggestionSources {
-		t.Run("source="+source, func(t *testing.T) {
-			want := `"false"`
-			if source == "" || source == storage.SourceBot {
-				want = `""`
+		t.Run("codex/source="+source, func(t *testing.T) {
+			want := `""`
+			if off {
+				want = `"false"`
 			}
 			_, launches := sessionPromptSuggestionOptions(t, acp.AgentCodex, source)
 			if len(launches) != 2 {
