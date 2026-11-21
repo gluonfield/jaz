@@ -2,23 +2,24 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { CornerDownRight } from 'lucide-react'
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
-import { Modal } from '@/components/ui/Modal'
 import { RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotFileName, BotOwed, BotOwedThread, BotStartedThread } from '@/lib/api/types'
-import { BOT_FILE_LABELS, taskName, taskStateLabel } from '@/lib/bots'
+import { taskName, taskStateLabel } from '@/lib/bots'
 import { clockTime, formatDuration, messageTime, shortDate } from '@/lib/format/time'
 
-// A row says what happened and how to open it: a thread, a routine, a file, or
-// a message or commitment shown in full.
+// One line of work: what it is and how far it got, opening a thread, a
+// routine or the bot's memory.
 type Row = {
   key: string
-  title: string
-  detail?: string
   at: string
+  title: string
   running?: boolean
-  danger?: boolean
-  open?: { thread: string } | { routine: string } | { file: BotFileName } | { message: BotActivity }
+  // How the work ended, said in place of when, and a failed run's error.
+  ended?: string
+  failed?: boolean
+  error?: string
+  open?: { thread: string } | { routine: string } | { file: BotFileName }
 }
 
 export function BotActivity({
@@ -31,7 +32,6 @@ export function BotActivity({
   onOpenFile: (name: BotFileName) => void
 }) {
   const activity = useQuery(botActivityQuery(bot.id))
-  const [message, setMessage] = useState<BotActivity | null>(null)
   const [shown, setShown] = useState<number | null>(null)
   const now = useNow()
   if (activity.isPending) {
@@ -45,14 +45,14 @@ export function BotActivity({
     { title: '', tasks: owed.filter((task) => task.status !== 'waiting_for_user') },
     { title: 'Waiting for you', tasks: owed.filter((task) => task.status === 'waiting_for_user') },
   ]
-  const selected = owed.find((task) => task.id === shown)
-  const rows = items.map(row)
-  const days = groupByDay(rows, now)
+  const days = groupByDay(items.map(row), now)
   const open = (target: Row['open']) => {
     if (!target) return
     if ('routine' in target) onOpenRoutine(target.routine)
     else if ('file' in target) onOpenFile(target.file)
-    else if ('message' in target) setMessage(target.message)
+  }
+  if (!owed.length && !days.length) {
+    return <p className="text-[13px] text-ink-3">No tasks yet.</p>
   }
   return (
     <div className="flex flex-col gap-5">
@@ -62,129 +62,91 @@ export function BotActivity({
           <div key={title} className="flex min-w-0 flex-col gap-0.5">
             {title ? <h4 className="mt-3 mb-1 text-[11px] font-medium text-ink-3">{title} <span className="ml-1 tabular-nums">{tasks.length}</span></h4> : null}
             {tasks.map((task) => (
-              <button key={task.id} type="button" onClick={() => setShown(task.id)} className="-mx-2 flex min-h-10 min-w-0 cursor-pointer flex-col justify-center rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-list-hover">
-                <span className="line-clamp-2 w-full text-[13px] leading-5 font-medium wrap-break-word text-ink">{taskName(task)}</span>
-                {!title ? <span className="text-[11px] text-ink-3">{taskStateLabel(task)}</span> : null}
-              </button>
+              <div key={task.id} className="flex min-w-0 flex-col">
+                <button type="button" aria-expanded={task.id === shown} onClick={() => setShown(task.id === shown ? null : task.id)} className="-mx-2 flex min-h-10 min-w-0 cursor-pointer flex-col justify-center rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-list-hover">
+                  <span className="line-clamp-2 w-full text-[13px] leading-5 font-medium wrap-break-word text-ink">{taskName(task)}</span>
+                  {!title ? <span className="text-[11px] text-ink-3">{taskStateLabel(task)}</span> : null}
+                </button>
+                {task.id === shown ? <TaskDetails botId={bot.id} task={task} started={started} now={now} /> : null}
+              </div>
             ))}
           </div>
         ) : null)}
       </section> : null}
       {days.map(([day, list]) => (
-        <Group key={day} title={day}>
+        <section key={day} className="flex flex-col gap-0.5">
+          <h3 className="mb-1 text-[13px] font-semibold text-ink">{day}</h3>
           {list.map((item) => (
             <ActivityRow key={item.key} item={item} started={started} now={now} onOpen={open} />
           ))}
-        </Group>
+        </section>
       ))}
-      {message ? (
-        <Modal open onClose={() => setMessage(null)} title={messageTitle(message)} description={messageTime(message.at)} size="sm">
-          <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink">{message.text}</p>
-        </Modal>
-      ) : null}
-      {selected ? <OwedModal botId={bot.id} owed={selected} started={started} now={now} onClose={() => setShown(null)} /> : null}
     </div>
   )
 }
 
 const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Working', background: 'Working in the background', finished: 'Finished', failed: 'Failed', idle: 'Not started', gone: 'Archived' }
 
-function OwedModal({ botId, owed, started, now, onClose }: { botId: string; owed: BotOwed; started: Started; now: number; onClose: () => void }) {
-  const openMessage = (event: MouseEvent<HTMLAnchorElement>) => {
-    document.getElementById(event.currentTarget.hash.slice(1))?.scrollIntoView({ block: 'center' })
-    onClose()
-  }
+// What a task needs and has produced, opened in place under it: its work
+// threads, the question it waits on, its last note and where it came from.
+function TaskDetails({ botId, task, started, now }: { botId: string; task: BotOwed; started: Started; now: number }) {
+  const toMessage = (event: MouseEvent<HTMLAnchorElement>) => document.getElementById(event.currentTarget.hash.slice(1))?.scrollIntoView({ block: 'center' })
+  const chatLink = (seq: number, label: string) => (
+    <Link to="/bots/$botId" params={{ botId }} search={{ message: seq }} hash={`message-${seq}`} onClick={toMessage} className="font-medium text-ink-2 hover:text-ink">{label}</Link>
+  )
   return (
-    <Modal open onClose={onClose} title={taskName(owed)} description={[`For ${owed.for ?? 'you'}`, taskStateLabel(owed), `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm" className="[&_h2]:line-clamp-2">
-      <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-ink">
-        {owed.check_at ? <p>Check: {messageTime(owed.check_at)}</p> : null}
-        {owed.blocked && owed.depends_on?.length ? <p>Prerequisites: {owed.depends_on.map((id) => `#${id}`).join(', ')}</p> : null}
-        {owed.threads?.length ? (
-          <section aria-label="Related work">
-            <h3 className="font-medium">Work & results</h3>
-            <ul className="flex flex-col">
-              {owed.threads.map((thread) => (
-                <li key={thread.id}>
-                  <Link to="/sessions/$sessionId" params={{ sessionId: thread.id }} onClick={onClose} className="-mx-2 flex min-w-0 items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-list-hover">
-                    <span className="min-w-0 flex-1 wrap-break-word font-medium">{thread.title}</span>
-                    <span className={`shrink-0 text-[12px] ${thread.state === 'failed' ? 'text-danger' : thread.state === 'working' || thread.state === 'background' ? 'text-running' : 'text-ink-3'}`}>{THREAD_STATES[thread.state]}</span>
-                  </Link>
-                  <StartedThreads started={started} by={thread.id} now={now} onOpen={onClose} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        <nav aria-label="Task context" className="flex flex-wrap gap-x-4 gap-y-2 font-medium text-ink-2">
-          {owed.opening_seq ? <Link to="/bots/$botId" params={{ botId }} search={{ message: owed.opening_seq }} hash={`message-${owed.opening_seq}`} onClick={openMessage} className="hover:text-ink">Opening context</Link> : null}
-          {owed.question && owed.question_seq ? <Link to="/bots/$botId" params={{ botId }} search={{ message: owed.question_seq }} hash={`message-${owed.question_seq}`} onClick={openMessage} className="hover:text-ink">Open question in chat</Link> : null}
-          <Link to="/bots/$botId" params={{ botId }} search={{}} onClick={onClose} className="hover:text-ink">Open bot chat</Link>
-        </nav>
-        {owed.question ? (
-          <section aria-label="Question for you" className="flex flex-col gap-1">
-            <h3 className="font-medium">Question for you</h3>
-            <RenderedMarkdown text={owed.question} />
-          </section>
-        ) : null}
-        {owed.next ? <section aria-label="Progress" className="flex flex-col gap-1">
-          <h3 className="font-medium">{owed.status === 'stopped' ? 'Reason' : 'Progress & next step'}</h3>
-          <p className="line-clamp-3 whitespace-pre-wrap wrap-break-word text-ink-2">{owed.next}</p>
-        </section> : null}
-        <details className="text-ink-2">
-          <summary tabIndex={0} className="cursor-pointer font-medium hover:text-ink">Task details</summary>
-          <div className="mt-2 flex flex-col gap-3 whitespace-pre-wrap wrap-break-word">
-            <p>{owed.request}</p>
-            {owed.next ? <p>{owed.status === 'stopped' ? 'Reason' : 'Next'}: {owed.next}</p> : null}
-          </div>
-        </details>
-      </div>
-    </Modal>
+    <div className="mb-2 ml-0.5 flex min-w-0 flex-col gap-2 border-l border-border pl-3 text-[13px] leading-relaxed">
+      {task.threads?.length ? (
+        <ul aria-label="Work" className="flex flex-col">
+          {task.threads.map((thread) => (
+            <li key={thread.id}>
+              <Link to="/sessions/$sessionId" params={{ sessionId: thread.id }} className={LINE}>
+                <Line title={thread.title} state={THREAD_STATES[thread.state]} tone={thread.state === 'failed' ? 'danger' : thread.state === 'working' || thread.state === 'background' ? 'running' : undefined} />
+              </Link>
+              <StartedThreads started={started} by={thread.id} now={now} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {task.question ? (
+        <section aria-label="Question for you" className="flex flex-col gap-1">
+          <RenderedMarkdown text={task.question} />
+          {task.question_seq ? chatLink(task.question_seq, 'Answer in chat') : null}
+        </section>
+      ) : null}
+      {task.next ? <p className="line-clamp-3 whitespace-pre-wrap wrap-break-word text-ink-2">{task.next}</p> : null}
+      <p className="flex flex-wrap gap-x-3 text-[12px] text-ink-3">
+        <span>{[`For ${task.for ?? 'you'}`, `since ${messageTime(task.opened_at)}`, task.blocked && task.depends_on?.length ? `after ${task.depends_on.map((id) => `#${id}`).join(', ')}` : ''].filter(Boolean).join(' · ')}</span>
+        {task.opening_seq ? chatLink(task.opening_seq, 'Opening message') : null}
+      </p>
+      <details className="text-[12px] text-ink-3">
+        <summary className="cursor-pointer font-medium hover:text-ink">Request</summary>
+        <p className="mt-1 whitespace-pre-wrap wrap-break-word text-ink-2">{task.request}</p>
+      </details>
+    </div>
   )
 }
 
+const ROUTINE_ENDS: Partial<Record<string, string>> = { error: 'Failed', skipped: 'Skipped', cancelled: 'Stopped' }
+
 function row(item: BotActivity, index: number): Row {
-  const key = `${item.kind}:${item.thread_id ?? item.loop_id ?? ''}:${item.at}:${index}`
-  const base = { key, at: item.at, running: item.running }
+  const base = { key: `${item.kind}:${item.thread_id ?? item.loop_id ?? ''}:${item.at}:${index}`, at: item.at, running: item.running }
   switch (item.kind) {
     case 'side_chat':
-      return {
-        ...base,
-        title: item.title || 'Side chat',
-        detail: item.status === 'error' ? 'Side chat · failed' : 'Side chat',
-        danger: item.status === 'error',
-        open: item.thread_id ? { thread: item.thread_id } : undefined,
-      }
+      return { ...base, title: item.title || 'Side chat', ended: item.status === 'error' ? 'Failed' : undefined, failed: item.status === 'error', open: item.thread_id ? { thread: item.thread_id } : undefined }
     case 'routine':
       return {
         ...base,
         title: item.title,
-        detail: item.status === 'error' ? item.text || 'Failed' : item.status === 'skipped' ? 'Skipped' : item.status === 'cancelled' ? 'Stopped' : 'Routine',
-        danger: item.status === 'error',
+        ended: ROUTINE_ENDS[item.status ?? ''],
+        failed: item.status === 'error',
+        error: item.status === 'error' ? item.text : undefined,
         open: item.loop_id ? { routine: item.loop_id } : undefined,
       }
-    case 'message_sent':
-    case 'message_received':
-      return {
-        ...base,
-        title: messageTitle(item),
-        detail: item.text,
-        open: item.text ? { message: item } : undefined,
-      }
     case 'file_changed':
-    case 'file_edited': {
-      const label = BOT_FILE_LABELS[item.title as BotFileName]
-      return {
-        ...base,
-        title: item.kind === 'file_edited' ? `You edited ${label}` : 'Learned something new',
-        detail: item.kind === 'file_changed' ? label : undefined,
-        open: { file: item.title as BotFileName },
-      }
-    }
+    case 'file_edited':
+      return { ...base, title: item.kind === 'file_edited' ? 'You edited memory' : 'Updated memory', open: { file: item.title as BotFileName } }
   }
-}
-
-function messageTitle(item: BotActivity): string {
-  return item.kind === 'message_sent' ? `Messaged ${item.title}` : `Message from ${item.title}`
 }
 
 function groupByDay(rows: Row[], now: number): [string, Row[]][] {
@@ -197,43 +159,45 @@ function groupByDay(rows: Row[], now: number): [string, Row[]][] {
   return [...days]
 }
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
+const LINE = '-mx-2 flex min-h-8 min-w-0 flex-col justify-center rounded-lg px-2 py-1 text-left text-[13px] transition-colors duration-150 hover:bg-list-hover'
+
+// A piece of work in one line, its state at the end; a thread another thread
+// started is marked as such.
+function Line({ title, state, tone, error, started }: { title: string; state: string; tone?: 'running' | 'danger'; error?: string; started?: boolean }) {
   return (
-    <section className="flex flex-col gap-0.5">
-      <h3 className="mb-1 text-[13px] font-semibold text-ink">{title}</h3>
-      {children}
-    </section>
+    <>
+      <span className="flex min-w-0 items-center gap-1.5">
+        {started ? <CornerDownRight size={12} className="shrink-0 text-ink-3" /> : null}
+        <span className={`min-w-0 flex-1 truncate ${started ? 'text-ink-2' : 'font-medium text-ink'}`}>{title}</span>
+        <span className={`shrink-0 text-[12px] tabular-nums ${tone === 'running' ? 'text-running' : tone === 'danger' ? 'text-danger' : 'text-ink-3'}`}>{state}</span>
+      </span>
+      {error ? <span className="truncate text-[12px] text-danger">{error}</span> : null}
+    </>
   )
 }
 
+function rowLine(item: Row, now: number, started?: boolean): ReactNode {
+  const state = item.running ? `Running for ${formatDuration(now - Date.parse(item.at))}` : item.ended ?? clockTime(item.at)
+  return <Line title={item.title} state={state} tone={item.running ? 'running' : item.failed ? 'danger' : undefined} error={item.error} started={started} />
+}
+
 function ActivityRow({ item, started, now, onOpen }: { item: Row; started: Started; now: number; onOpen: (target: Row['open']) => void }) {
-  const since = item.running && item.at ? now - Date.parse(item.at) : undefined
-  const content = (
-    <>
-      <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
-      {item.detail ? <span className={`line-clamp-2 text-[12px] ${item.danger ? 'text-danger' : 'text-ink-2'}`}>{item.detail}</span> : null}
-      <span className={`block text-[12px] tabular-nums ${item.running ? 'text-running' : 'text-ink-3'}`}>
-        {item.running ? (since !== undefined ? `Running for ${formatDuration(since)}` : 'Running') : clockTime(item.at)}
-      </span>
-    </>
-  )
-  const className = '-mx-2 flex min-w-0 flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150'
   if (item.open && 'thread' in item.open) {
     return (
       <>
-        <Link to="/sessions/$sessionId" params={{ sessionId: item.open.thread }} className={`${className} hover:bg-list-hover`}>
-          {content}
+        <Link to="/sessions/$sessionId" params={{ sessionId: item.open.thread }} className={LINE}>
+          {rowLine(item, now)}
         </Link>
         <StartedThreads started={started} by={item.open.thread} now={now} />
       </>
     )
   }
   return item.open ? (
-    <button type="button" onClick={() => onOpen(item.open)} className={`${className} cursor-pointer hover:bg-list-hover`}>
-      {content}
+    <button type="button" onClick={() => onOpen(item.open)} className={`${LINE} cursor-pointer`}>
+      {rowLine(item, now)}
     </button>
   ) : (
-    <div className={className}>{content}</div>
+    <div className={LINE}>{rowLine(item, now)}</div>
   )
 }
 
@@ -242,26 +206,17 @@ type Started = Record<string, BotStartedThread[]>
 
 // StartedThreads lists the threads a thread started under it, and theirs
 // under them, each opening its thread.
-function StartedThreads({ started, by, now, onOpen, nested }: { started: Started; by: string; now: number; onOpen?: () => void; nested?: boolean }) {
+function StartedThreads({ started, by, now, nested }: { started: Started; by: string; now: number; nested?: boolean }) {
   const threads = started[by]
   if (!threads?.length) return null
   return (
     <ul className={`flex flex-col ${nested ? 'ml-[18px]' : ''}`}>
-      {threads.map((thread) => (
+      {threads.map((thread, index) => (
         <li key={thread.thread_id}>
-          <Link
-            to="/sessions/$sessionId"
-            params={{ sessionId: thread.thread_id }}
-            onClick={onOpen}
-            className="-mx-2 flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[13px] transition-colors duration-150 hover:bg-list-hover"
-          >
-            <CornerDownRight size={12} className="shrink-0 text-ink-3" />
-            <span className="min-w-0 flex-1 truncate text-ink-2">{thread.title || 'Thread'}</span>
-            <span className={`shrink-0 text-[12px] tabular-nums ${thread.running ? 'text-running' : thread.status === 'error' ? 'text-danger' : 'text-ink-3'}`}>
-              {thread.running ? `Running for ${formatDuration(now - Date.parse(thread.at))}` : thread.status === 'error' ? 'Failed' : clockTime(thread.at)}
-            </span>
+          <Link to="/sessions/$sessionId" params={{ sessionId: thread.thread_id }} className={LINE}>
+            {rowLine(row(thread, index), now, true)}
           </Link>
-          <StartedThreads started={started} by={thread.thread_id} now={now} onOpen={onOpen} nested />
+          <StartedThreads started={started} by={thread.thread_id} now={now} nested />
         </li>
       ))}
     </ul>

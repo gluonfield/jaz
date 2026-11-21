@@ -800,12 +800,12 @@ export interface BotActivityEvent {
   text?: string
 }
 
-// One thing a bot is doing or did: a side chat, a routine run, a message to or
-// from another bot, or a change to its MEMORY.md. `at` is when a
-// running item started, or else when it happened or ended; `title` names the
-// side chat, routine, other bot or file.
+// One thing a bot is doing or did: a side chat, a routine run or a change to
+// its MEMORY.md. `at` is when a running item started, or else when it
+// happened or ended; `title` names the side chat, routine or file, and `text`
+// is a run's error.
 export interface BotActivity {
-  kind: 'side_chat' | 'routine' | 'message_sent' | 'message_received' | 'file_changed' | 'file_edited'
+  kind: 'side_chat' | 'routine' | 'file_changed' | 'file_edited'
   at: string
   running?: boolean
   title: string
@@ -832,7 +832,6 @@ export interface BotOwed {
   question?: string
   opening_seq?: number
   reply_seq?: number
-  check_at?: string
   depends_on?: number[]
   blocked?: boolean
   moving?: boolean

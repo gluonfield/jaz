@@ -481,8 +481,6 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	// Side chats that serve commitments show through them.
 	want := []string{
 		"file_changed:MEMORY.md::",
-		"message_received:Operations:The queue fixes.:",
-		"message_sent:Operations:Which fixes matter this week?:",
 		"routine:Morning brief::ok",
 		"routine:Morning brief:Gmail sign-in expired:error",
 		"side_chat:Errand for the team::idle",
@@ -524,7 +522,7 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	for range activityShown {
 		if err := store.AppendSessionEvents(research.ID, sessionevents.Event{
 			SessionID: research.ID, Type: sessionevents.TypeBotActivity, At: time.Now().UTC(),
-			BotActivity: &sessionevents.BotActivityEvent{Kind: "message_sent", Label: "Operations", Text: "ping"},
+			BotActivity: &sessionevents.BotActivityEvent{Kind: "file_edited", Label: memoryFile},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -533,14 +531,19 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	if err != nil || len(busy.Items) != activityShown+2 || !busy.Items[0].Running || !busy.Items[1].Running {
 		t.Fatalf("after %d newer items the running side chats are gone: %d items, first %+v, %v", activityShown, len(busy.Items), busy.Items[:2], err)
 	}
+	// Messages between bots stay in each bot's thread, out of Activity.
 	theirs, err := service.Activity(operations.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(theirs.Items, func(item Activity) bool {
-		return item.Kind == "message_received" && item.Text == "Which fixes matter this week?"
+	received, err := store.LoadBotActivity(operations.ID, time.Unix(0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(theirs.Items) != 0 || !slices.ContainsFunc(received, func(event sessionevents.Event) bool {
+		return event.BotActivity.Kind == "message_received" && event.BotActivity.Text == "Which fixes matter this week?"
 	}) {
-		t.Fatalf("the bot written to has no record of the message: %+v", theirs)
+		t.Fatalf("Activity lists a message between bots, or the bot written to has no record of it: %+v, %+v", theirs.Items, received)
 	}
 }
 

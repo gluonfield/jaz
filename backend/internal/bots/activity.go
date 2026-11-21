@@ -19,21 +19,15 @@ const (
 	activityShown = 200
 )
 
-// listedActivity says whether Activity lists a bot activity event: a message between
-// bots or a change to MEMORY.md. Routine events are covered by the runs they
-// announce.
+// listedActivity says whether Activity lists a bot activity event: only a
+// change to MEMORY.md. Messages between bots are coordination and stay in the
+// bot's thread; routine events are covered by the runs they announce.
 func listedActivity(activity *sessionevents.BotActivityEvent) bool {
-	switch activity.Kind {
-	case "message_sent", "message_received":
-		return true
-	case "file_changed", "file_edited":
-		return activity.Label == memoryFile
-	}
-	return false
+	return (activity.Kind == "file_changed" || activity.Kind == "file_edited") && activity.Label == memoryFile
 }
 
-// Activity is one thing a bot is doing or did: a side chat, a routine run,
-// a message to or from another bot, or a change to its MEMORY.md.
+// Activity is one thing a bot is doing or did: a side chat, a routine run or
+// a change to its MEMORY.md.
 type Activity struct {
 	// Kind is side_chat, routine, or the kind of the bot activity
 	// event.
@@ -41,10 +35,9 @@ type Activity struct {
 	// At is when a running item started, or else when it happened or ended.
 	At      time.Time `json:"at"`
 	Running bool      `json:"running,omitempty"`
-	// Title is the side chat's or routine's name, the other bot's name, the
-	// file's name.
+	// Title is the side chat's or routine's name, or the file's name.
 	Title string `json:"title"`
-	// Text is a message's text or a run's error.
+	// Text is a run's error.
 	Text     string `json:"text,omitempty"`
 	Status   string `json:"status,omitempty"`
 	ThreadID string `json:"thread_id,omitempty"`
@@ -179,7 +172,7 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 	}
 	for _, event := range events {
 		if activity := event.BotActivity; activity != nil && listedActivity(activity) {
-			out = append(out, Activity{Kind: activity.Kind, At: event.At, Title: activity.Label, Text: activity.Text})
+			out = append(out, Activity{Kind: activity.Kind, At: event.At, Title: activity.Label})
 		}
 	}
 	slices.SortStableFunc(out, func(a, b Activity) int { return b.At.Compare(a.At) })
