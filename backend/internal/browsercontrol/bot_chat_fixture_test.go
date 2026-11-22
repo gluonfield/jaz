@@ -86,9 +86,6 @@ func mountBotChatFixture(t *testing.T, mux *http.ServeMux, store *sqlitestore.St
 	mux.HandleFunc("GET /exercise-bot-chat", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"id": bot.ID})
 	})
-	mux.HandleFunc("GET /v1/auth/check", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "{}")
-	})
 	streams := make(map[chan sessionevents.Event]bool)
 	mux.HandleFunc("GET /v1/sessions/{session}/events", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
