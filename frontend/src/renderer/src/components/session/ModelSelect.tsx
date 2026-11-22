@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
 import { AgentTabs, agentTabsWidth, type AgentChoice } from '@/components/session/AgentTabs'
-import { EASE, Pop, Roll, SWAP, Tick, useDirection, useWidthTransition } from '@/components/session/pickerMotion'
+import { Pop, Roll, SWAP, Tick, useDirection, useWidthTransition } from '@/components/session/pickerMotion'
 import { Button } from '@/components/ui/Button'
 import { Popover } from '@/components/ui/Popover'
 import { agentLabel } from '@/lib/agentLabel'
@@ -14,8 +14,6 @@ import type { ModelPickerOption, ModelSelection } from '@/lib/modelPicker'
 import { modelSuggestionFor, modelSuggestionLabel } from '@/lib/modelSuggestion'
 import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 
-const ROW = 28
-const RESIZE = { duration: 0.26, ease: EASE }
 
 const list = {
   rest: { transition: { staggerChildren: 0.025, delayChildren: 0.03 } },
@@ -26,7 +24,8 @@ const row = {
   rest: { x: 0, opacity: 1, transition: SWAP },
 }
 
-// One agent's models. A new `id` slides the old list out and the new one in along `direction`.
+// One agent's models in a fixed-height, scrolling area, so the picker keeps its size.
+// A new `id` slides the old list out and the new one in along `direction`.
 function ModelList({
   id,
   direction,
@@ -45,12 +44,7 @@ function ModelList({
   onPick: (model: ModelPickerOption) => void
 }) {
   return (
-    <motion.div
-      className="relative overflow-hidden"
-      initial={false}
-      animate={{ height: models.length ? Math.min(224, models.length * ROW) : loading ? ROW : 0 }}
-      transition={RESIZE}
-    >
+    <div className="relative h-[168px] overflow-hidden">
       <AnimatePresence mode="popLayout" custom={direction}>
         <motion.div
           key={id}
@@ -61,7 +55,7 @@ function ModelList({
           initial="enter"
           animate="rest"
           exit="exit"
-          className="max-h-56 w-full overflow-y-auto"
+          className="h-full w-full overflow-y-auto"
           onKeyDown={(event) => {
             if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
               return
@@ -95,7 +89,7 @@ function ModelList({
           {!models.length && loading ? <div className="h-7 px-2.5 text-[12px] leading-7 text-ink-3">Loading models…</div> : null}
         </motion.div>
       </AnimatePresence>
-    </motion.div>
+    </div>
   )
 }
 
@@ -144,6 +138,8 @@ export function ModelSelect({
   const agentDirection = useDirection(agent ? agent.options.indexOf(agent.value) : 0)
   const effortDirection = useDirection(effortOptions.findIndex((option) => option.value === effortValue))
   useWidthTransition(triggerRef, `${agent?.value}/${label}/${effortLabel}/${fast}`)
+  const adjustable = effortOptions.length > 1
+  const listed = suggestions.length > 0 || Boolean(loading)
   const focusSelection = useCallback((dialog: HTMLElement | null) => {
     const model = dialog?.querySelector<HTMLElement>('[role="menuitemradio"][tabindex="0"]')
     const target = model ?? dialog?.querySelector<HTMLElement>('[role="tab"][tabindex="0"]')
@@ -190,61 +186,56 @@ export function ModelSelect({
           style={{ width: Math.max(256, tabs ? agentTabsWidth(tabs.options.length) : 0) }}
         >
           {tabs ? <AgentTabs {...tabs} disabled={disabled} /> : null}
-          <ModelList
-            id={agent?.value ?? ''}
-            direction={agentDirection}
-            models={suggestions}
-            selected={selected}
-            loading={loading}
-            disabled={disabled}
-            onPick={(model) => onChange({
-              model: model.value,
-              effort: model.reasoning && !model.reasoning.efforts?.includes(effortValue) ? model.reasoning.default_effort ?? '' : effortValue,
-            })}
-          />
-          <AnimatePresence initial={false}>
-            {effortOptions.length > 1 || fastMode ? (
-              <motion.div
-                key="effort"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={RESIZE}
-                className="overflow-hidden"
-              >
-                <div className={`px-1 pt-1 ${tabs || suggestions.length || loading ? 'mt-1.5 border-t border-border' : ''}`}>
-                  <div className="flex h-6 items-center px-1.5 text-[12px] font-medium">
-                    <Roll value={effortLabel} direction={effortDirection} className={effortClass || 'text-ink'} />
-                    {fastMode ? (
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-label="Fast Mode"
-                        aria-checked={fast}
-                        disabled={fastMode.disabled}
-                        onClick={() => fastMode.onChange(!fast)}
-                        className={`relative ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 transition-[background-color,color,scale] active:scale-[0.94] disabled:opacity-50 ${fast
-                          ? 'bg-primary text-on-primary'
-                          : 'text-ink-3 enabled:hover:bg-surface-2 enabled:hover:text-ink'}`}
-                      >
-                        <Pop id={String(fast)}><Zap size={12} fill={fast ? 'currentColor' : 'none'} /></Pop>
-                        Fast
-                      </button>
-                    ) : null}
-                  </div>
-                  {effortOptions.length > 1 ? (
-                    <ReasoningEffortSlider
-                      compact
-                      options={effortOptions}
-                      value={effortValue}
-                      disabled={disabled}
-                      onChange={(effort) => onChange({ model: value, effort })}
-                    />
-                  ) : null}
+          {listed ? (
+            <ModelList
+              id={agent?.value ?? ''}
+              direction={agentDirection}
+              models={suggestions}
+              selected={selected}
+              loading={loading}
+              disabled={disabled}
+              onPick={(model) => onChange({
+                model: model.value,
+                effort: model.reasoning && !model.reasoning.efforts?.includes(effortValue) ? model.reasoning.default_effort ?? '' : effortValue,
+              })}
+            />
+          ) : null}
+          {listed || adjustable || fastMode ? (
+            <div className={`px-1 pt-1 ${listed ? 'mt-1.5 border-t border-border' : ''}`}>
+              <div className="flex h-6 items-center px-1.5 text-[12px] font-medium">
+                <Roll value={effortLabel || 'No effort levels'} direction={effortDirection} className={effortClass || (effortLabel ? 'text-ink' : 'font-normal text-ink-3')} />
+                {fastMode ? (
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="Fast Mode"
+                    aria-checked={fast}
+                    disabled={fastMode.disabled}
+                    onClick={() => fastMode.onChange(!fast)}
+                    className={`relative ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 transition-[background-color,color,scale] active:scale-[0.94] disabled:opacity-50 ${fast
+                      ? 'bg-primary text-on-primary'
+                      : 'text-ink-3 enabled:hover:bg-surface-2 enabled:hover:text-ink'}`}
+                  >
+                    <Pop id={String(fast)}><Zap size={12} fill={fast ? 'currentColor' : 'none'} /></Pop>
+                    Fast
+                  </button>
+                ) : null}
+              </div>
+              {adjustable ? (
+                <ReasoningEffortSlider
+                  compact
+                  options={effortOptions}
+                  value={effortValue}
+                  disabled={disabled}
+                  onChange={(effort) => onChange({ model: value, effort })}
+                />
+              ) : (
+                <div className="flex h-9 items-center">
+                  <div className="h-6 w-full rounded-[10px] bg-ink/5" />
                 </div>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
+              )}
+            </div>
+          ) : null}
         </div>
       </Popover>
     </MotionConfig>
