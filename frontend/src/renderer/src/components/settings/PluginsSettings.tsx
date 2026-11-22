@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, MoreHorizontal, Plus, RefreshCw, Settings2 } from 'lucide-react'
+import { ArrowRight, Loader2, MoreHorizontal, Plus, RefreshCw, Settings2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
@@ -28,6 +28,8 @@ import { categoryLabel, pluginCanConnect, pluginSummary } from './pluginFormatti
 import { PluginAvatar } from './PluginVisuals'
 import { usePluginSignIn } from './usePluginSignIn'
 
+const CONNECTED_PREVIEW_LIMIT = 4
+
 export function PluginsSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -35,6 +37,7 @@ export function PluginsSettings() {
   const [selectedID, setSelectedID] = useState<string | null>(null)
   const [addMode, setAddMode] = useState<AddPluginMode | null>(null)
   const [managingSources, setManagingSources] = useState(false)
+  const [showAllConnected, setShowAllConnected] = useState(false)
 
   const signIn = usePluginSignIn({ onStartAccepted: () => setSelectedID(null) })
   const catalog = signIn.catalog
@@ -139,9 +142,17 @@ export function PluginsSettings() {
   )
 
   const catalogGroups = useMemo(() => {
-    const available = filtered.filter((plugin) => !isActivePlugin(plugin))
+    const available = filtered.filter((plugin) => !isActivePlugin(plugin) || Boolean(plugin.auth?.multi_account))
     return groupCatalogPlugins(available)
   }, [filtered])
+
+  const hasHiddenConnected = !query.trim() && connectedPlugins.length > CONNECTED_PREVIEW_LIMIT
+  const visibleConnected = hasHiddenConnected && !showAllConnected
+    ? connectedPlugins.slice(0, CONNECTED_PREVIEW_LIMIT)
+    : connectedPlugins
+  const hiddenConnected = hasHiddenConnected && !showAllConnected
+    ? connectedPlugins.slice(CONNECTED_PREVIEW_LIMIT)
+    : []
 
   const selected = useMemo(
     () => allPlugins.find((plugin) => plugin.id === selectedID) ?? null,
@@ -232,10 +243,19 @@ export function PluginsSettings() {
             <section className="space-y-1">
               <div className="flex items-center justify-between pb-1">
                 <h3 className="text-[13px] font-semibold text-ink">Connected</h3>
-                <span className="text-[12px] tabular-nums text-ink-3">{connectedPlugins.length}</span>
+                {hasHiddenConnected ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllConnected((prev) => !prev)}
+                    className="inline-flex cursor-pointer items-center gap-1 text-[13px] text-ink-2 transition-colors hover:text-ink"
+                  >
+                    {showAllConnected ? 'Show less' : 'Show all'}
+                    {!showAllConnected ? <ArrowRight size={13} /> : null}
+                  </button>
+                ) : null}
               </div>
               <div className="divide-y divide-border/50">
-                {connectedPlugins.map((plugin) => {
+                {visibleConnected.map((plugin) => {
                   const accounts = plugin.auth?.accounts ?? []
                   const singleAccount = accounts.length === 1 ? accounts[0] : null
                   const hasSkillsOrViews = (plugin.skills?.length ?? 0) > 0 || (plugin.views?.length ?? 0) > 0
@@ -258,6 +278,15 @@ export function PluginsSettings() {
                   )
                 })}
               </div>
+              {hiddenConnected.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAllConnected(true)}
+                  className="cursor-pointer pt-2 pl-[42px] text-left text-[12.5px] text-ink-3 transition-colors hover:text-ink-2"
+                >
+                  {hiddenConnectedSummary(hiddenConnected)}
+                </button>
+              ) : null}
             </section>
           ) : null}
 
@@ -460,6 +489,14 @@ function CatalogPluginRow({
       </IconButton>
     </div>
   )
+}
+
+function hiddenConnectedSummary(plugins: Plugin[]): string {
+  const names = plugins.map((plugin) => plugin.display_name)
+  if (names.length <= 3) return names.join(', ')
+  const shown = names.slice(0, 3).join(', ')
+  const extra = names.length - 3
+  return `${shown} and ${extra} more`
 }
 
 function isActivePlugin(plugin: Plugin): boolean {
