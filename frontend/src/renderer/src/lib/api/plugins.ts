@@ -150,10 +150,6 @@ export const pluginPageQuery = (plugin: string) => queryOptions({
   refetchInterval: 5000,
 })
 
-export function setPluginEnabled(id: string, enabled: boolean): Promise<Plugin> {
-  return put<Plugin>(`/v1/plugins/${encodeURIComponent(id)}/enabled`, { enabled })
-}
-
 export function savePluginConfig(id: string, values: Record<string, string>): Promise<Plugin> {
   return put<Plugin>(`/v1/plugins/${encodeURIComponent(id)}/config`, { values })
 }

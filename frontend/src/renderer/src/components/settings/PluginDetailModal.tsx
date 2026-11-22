@@ -4,7 +4,6 @@ import { type FormEvent, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
-import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import {
   savePluginConfig,
@@ -30,14 +29,12 @@ export function PluginDetailModal({
   installing,
   updating,
   removing,
-  toggling,
   onClose,
   onConnect,
   onDisconnect,
   onInstall,
   onUpdate,
   onRemove,
-  onToggleEnabled,
 }: {
   plugin: Plugin | null
   connecting: boolean
@@ -45,18 +42,15 @@ export function PluginDetailModal({
   installing: boolean
   updating: boolean
   removing: boolean
-  toggling: boolean
   onClose: () => void
   onConnect: (plugin: Plugin) => void
   onDisconnect: (accountID: string) => void
   onInstall: (plugin: Plugin) => void
   onUpdate: (plugin: Plugin) => void
   onRemove: (plugin: Plugin) => void
-  onToggleEnabled: (plugin: Plugin, enabled: boolean) => void
 }) {
   if (!plugin) return null
 
-  const canRemove = plugin.installed && plugin.origin !== 'builtin'
   const accounts = plugin.auth?.accounts ?? []
   const hasAccounts = accounts.length > 0
   const hasConfig = (plugin.config_variables?.length ?? 0) > 0
@@ -66,6 +60,8 @@ export function PluginDetailModal({
   const hasMCP = (plugin.mcp_servers?.length ?? 0) > 0
   const singleConnectedAccount =
     plugin.auth?.connected && !plugin.auth.multi_account && accounts.length === 1 ? accounts[0] : null
+  const isRemoteMCPOnly = Boolean(plugin.auth && !hasSkills && !(plugin.views?.length ?? 0))
+  const canRemove = plugin.installed && plugin.origin !== 'builtin' && !isRemoteMCPOnly
 
   return (
     <Modal open onClose={onClose} title={plugin.display_name} size="wide" chromeless>
@@ -73,17 +69,6 @@ export function PluginDetailModal({
         <div className="flex items-start justify-between gap-4">
           <PluginAvatar plugin={plugin} size="lg" />
           <div className="flex items-center gap-2">
-            {plugin.installed ? (
-              <div className="flex items-center gap-2 rounded-full bg-surface px-3 py-1.5 text-[12px] text-ink-2">
-                <span>{plugin.enabled ? 'Enabled' : 'Disabled'}</span>
-                <Switch
-                  checked={plugin.enabled}
-                  disabled={toggling}
-                  aria-label={`Toggle ${plugin.display_name}`}
-                  onChange={(next) => onToggleEnabled(plugin, next)}
-                />
-              </div>
-            ) : null}
             {plugin.installed && plugin.source ? (
               <Button variant="secondary" size="sm" disabled={updating || removing} onClick={() => onUpdate(plugin)}>
                 <RefreshCw size={13} className={updating ? 'animate-spin' : undefined} />
@@ -115,19 +100,7 @@ export function PluginDetailModal({
             ) : null}
           </div>
 
-          {!plugin.installed ? (
-            plugin.auth && pluginCanConnect(plugin) ? (
-              <Button variant="primary" size="lg" disabled={connecting || installing} onClick={() => onConnect(plugin)} className="shrink-0">
-                {connecting ? <Loader2 size={14} className="animate-spin" /> : <Plug size={14} />}
-                {connecting ? 'Connecting…' : 'Connect'}
-              </Button>
-            ) : (
-              <Button variant="primary" size="lg" disabled={installing} onClick={() => onInstall(plugin)} className="shrink-0">
-                {installing ? <Loader2 size={14} className="animate-spin" /> : <ArrowDownToLine size={14} />}
-                {installing ? 'Installing…' : 'Install'}
-              </Button>
-            )
-          ) : singleConnectedAccount ? (
+          {singleConnectedAccount ? (
             <Button
               variant="secondary"
               size="lg"
@@ -140,6 +113,11 @@ export function PluginDetailModal({
             </Button>
           ) : plugin.auth ? (
             <ConnectButton plugin={plugin} connecting={connecting} onConnect={() => onConnect(plugin)} />
+          ) : !plugin.installed ? (
+            <Button variant="primary" size="lg" disabled={installing} onClick={() => onInstall(plugin)} className="shrink-0">
+              {installing ? <Loader2 size={14} className="animate-spin" /> : <ArrowDownToLine size={14} />}
+              {installing ? 'Installing…' : 'Install'}
+            </Button>
           ) : null}
         </div>
       </div>

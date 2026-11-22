@@ -223,6 +223,7 @@ func (s *Service) Connect(ctx context.Context, id string, opts connections.Start
 	if err != nil {
 		return connections.ConnectResult{}, err
 	}
+	installedNow := false
 	if !plugin.Installed {
 		if plugin.Source == nil || plugin.Source.Repository == "" {
 			return connections.ConnectResult{}, fmt.Errorf("%w: plugin %q cannot be connected before installation", ErrInvalid, id)
@@ -240,6 +241,7 @@ func (s *Service) Connect(ctx context.Context, id string, opts connections.Start
 		}); err != nil {
 			return connections.ConnectResult{}, err
 		}
+		installedNow = true
 		plugin, err = s.Get(ctx, id, opts.MCP.LoopbackAllowed)
 		if err != nil {
 			return connections.ConnectResult{}, err
@@ -247,8 +249,15 @@ func (s *Service) Connect(ctx context.Context, id string, opts connections.Start
 	}
 	for _, srv := range plugin.MCPServers {
 		if srv.Transport == string(mcpconfig.TransportStreamableHTTP) && srv.URL != "" {
-			return s.connect.StartMCP(ctx, plugin.ID, MCPServerID(plugin.ID, srv.Name), plugin.DisplayName, srv.URL, opts.MCP)
+			res, startErr := s.connect.StartMCP(ctx, plugin.ID, MCPServerID(plugin.ID, srv.Name), plugin.DisplayName, srv.URL, opts.MCP)
+			if startErr != nil && installedNow && isPureRemoteMCP(plugin) {
+				_ = s.store.Remove(plugin.ID)
+			}
+			return res, startErr
 		}
+	}
+	if installedNow && isPureRemoteMCP(plugin) {
+		_ = s.store.Remove(plugin.ID)
 	}
 	return connections.ConnectResult{}, fmt.Errorf("%w: plugin %q has no remote MCP server to connect", ErrInvalid, id)
 }
@@ -265,8 +274,52 @@ func (s *Service) DisconnectAccount(ctx context.Context, accountID string) (conn
 		if clearErr := s.clearPluginMCPTokens(ctx, result.Provider); clearErr != nil {
 			return connections.DisconnectResult{}, clearErr
 		}
+		if err := s.removeIfRemoteMCPOnly(ctx, result.Provider); err != nil {
+			return connections.DisconnectResult{}, err
+		}
 	}
 	return result, nil
+}
+
+func isPureRemoteMCP(plugin Plugin) bool {
+	if len(plugin.Skills) > 0 || len(plugin.Views) > 0 || len(plugin.MCPServers) == 0 {
+		return false
+	}
+	for _, srv := range plugin.MCPServers {
+		if srv.Transport != string(mcpconfig.TransportStreamableHTTP) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Service) removeIfRemoteMCPOnly(ctx context.Context, pluginID string) error {
+	if s.store == nil || (s.connections != nil && s.connections.Catalog() != nil && s.connections.Catalog().IsNative(pluginID)) {
+		return nil
+	}
+	plugin, err := s.store.Read(ctx, pluginID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	if !isPureRemoteMCP(plugin) {
+		return nil
+	}
+	if s.connections != nil {
+		accounts, err := s.connections.ListAccounts(ctx, pluginID)
+		if err != nil {
+			return err
+		}
+		if len(accounts) > 0 {
+			return nil
+		}
+	}
+	if err := s.store.Remove(pluginID); err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	return nil
 }
 
 func (s *Service) Install(ctx context.Context, input RepositoryInput) (InstallResult, error) {
