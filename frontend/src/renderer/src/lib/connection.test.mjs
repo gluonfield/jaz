@@ -55,11 +55,13 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, storedValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
+async function fixture({ auth, authMe, discovery, storedValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
   const stored = new Map(storedValues)
+  const sessionStored = new Map()
   const configured = []
   const timers = new Map()
   let nextTimer = 0
+  const loc = new URL(locationHref)
   let snapshot = initialSnapshot || { revision: 0, phase: 'initial', url: '', session: null, error: null, localPending: false }
   const session = {
     read: () => ({ document: 1, owner, snapshot }),
@@ -77,11 +79,26 @@ async function fixture({ auth, storedValues = [], encryptCredential, decryptCred
       if (!result?.ok) {
         throw new Error(result?.error || 'Fixture local start unavailable')
       }
-      return { url: result.url, token: 'local-bearer-token', deviceId: '', remembered: false }
+      return { url: result.url, token: 'local-bearer-token', remembered: false }
     },
   }
   replace('window', {
-    location: { origin: 'http://localhost', search: '', hash: '' },
+    location: {
+      href: loc.href,
+      origin: loc.origin,
+      pathname: loc.pathname,
+      search: loc.search,
+      hash: loc.hash,
+    },
+    history: {
+      state: null,
+      replaceState(_state, _title, next) {
+        const updated = new URL(String(next))
+        window.location.href = updated.href
+        window.location.search = updated.search
+        window.location.hash = updated.hash
+      },
+    },
     addEventListener() {},
     jaz: web ? undefined : {
       apiBaseUrl: 'http://127.0.0.1:5299',
@@ -101,7 +118,13 @@ async function fixture({ auth, storedValues = [], encryptCredential, decryptCred
     setItem: (key, value) => stored.set(key, value),
     removeItem: (key) => stored.delete(key),
   })
+  replace('sessionStorage', {
+    getItem: (key) => sessionStored.get(key) ?? null,
+    setItem: (key, value) => sessionStored.set(key, value),
+    removeItem: (key) => sessionStored.delete(key),
+  })
   window.localStorage = localStorage
+  window.sessionStorage = sessionStorage
   replace('setTimeout', (callback, delay) => {
     timers.set(++nextTimer, { callback, delay })
     return nextTimer
@@ -109,11 +132,17 @@ async function fixture({ auth, storedValues = [], encryptCredential, decryptCred
   replace('clearTimeout', (id) => timers.delete(id))
   replace('fetch', async (url, init) => {
     const target = new URL(url)
+    if (target.pathname === '/.well-known/jaz-server' && discovery) {
+      return discovery(target)
+    }
     if (target.hostname === '127.0.0.1' && target.pathname === '/health') {
       return Response.json({ ok: false })
     }
     if (target.pathname === '/health') {
       return health ? health() : Response.json({ ok: true, auth_required: true })
+    }
+    if (target.pathname === '/v1/auth/me' && authMe) {
+      return authMe(init)
     }
     if (target.pathname === '/v1/auth/check') {
       return auth(init)
@@ -128,9 +157,9 @@ async function fixture({ auth, storedValues = [], encryptCredential, decryptCred
     ? { ...React, useSyncExternalStore: (_subscribe, snapshot) => snapshot(), useEffect: (effect) => effect() }
     : name === '@/lib/browserCredentials' ? {
       loadBrowserCredential: loadBrowserCredential || (async (url) => browserCredentials.get(url)),
-      saveBrowserCredential: saveBrowserCredential || (async (url, token, deviceId, current) => {
+      saveBrowserCredential: saveBrowserCredential || (async (url, token, current) => {
         if (!current()) throw new Error('Connection changed')
-        browserCredentials.set(url, { token, deviceId })
+        browserCredentials.set(url, { token })
       }),
       forgetBrowserCredential: async (url) => browserCredentials.delete(url),
     }
@@ -492,7 +521,7 @@ test.each([true, false])('recoverable hydration retains the snapshot and retries
   let checks = 0
   let keychain = 0
   const url = 'https://jaz.example'
-  const snapshot = { revision: 4, phase: 'connected', url, session: { url, token: 'verified-token', deviceId: '', remembered: false }, error: null, localPending: false }
+  const snapshot = { revision: 4, phase: 'connected', url, session: { url, token: 'verified-token', remembered: false }, error: null, localPending: false }
   const { connection, session, timers } = await fixture({
     owner, initialSnapshot: snapshot,
     encryptCredential() {
@@ -548,7 +577,7 @@ test('browser bearer session survives a fresh renderer and clears on forget', as
   const first = await fixture({ web: true, auth })
   expect(await first.connection.connectRemote(url + '#key=bearer-token')).toBeNull()
   expect(first.connection.useConnection().status).toBe('connected')
-  expect(first.browserCredentials.get(url)).toEqual({ token: 'bearer-token', deviceId: '' })
+  expect(first.browserCredentials.get(url)).toEqual({ token: 'bearer-token' })
   expect(first.stored.has('jaz.backendAuth.' + url)).toBe(false)
   const storedValues = [...first.stored]
   first.connection.disconnectBackend()
@@ -589,7 +618,7 @@ test('browser restore rejects invalid auth before publishing credentials', async
   const { connection } = await fixture({
     web: true,
     auth: () => Response.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 }),
-    browserCredentials: new Map([[url, { token: 'saved-token', deviceId: '' }]]),
+    browserCredentials: new Map([[url, { token: 'saved-token' }]]),
     storedValues: [['jaz.connection', JSON.stringify({ mode: 'remote', remoteUrl: url })]],
   })
   expect(connection.useConnection().status).toBe('disconnected')
@@ -606,13 +635,13 @@ test('browser credential cannot persist after a newer connection replaces it', a
   const waiting = new Promise((resolve) => { release = resolve })
   const { connection } = await fixture({
     web: true,
-    async saveBrowserCredential(url, token, deviceId, current) {
+    async saveBrowserCredential(url, token, current) {
       if (token === 'first-token') {
         saving()
         await waiting
       }
       if (!current()) throw new Error('Connection changed')
-      saved.set(url, { token, deviceId })
+      saved.set(url, { token })
     },
     auth: () => Response.json({ ok: true, auth_kind: 'bearer' }),
   })
@@ -621,7 +650,7 @@ test('browser credential cannot persist after a newer connection replaces it', a
   expect(await connection.connectRemote(url + '#key=second-token')).toBeNull()
   release()
   await first
-  expect(saved.get(url)).toEqual({ token: 'second-token', deviceId: '' })
+  expect(saved.get(url)).toEqual({ token: 'second-token' })
   expect(connection.cachedApiAuthToken(url)).toBe('second-token')
 })
 
@@ -653,4 +682,96 @@ test('org-baked cloud build with local disabled auto-connects to cloudUrl and re
   expect(connection.useConnection().status).toBe('connected')
   expect(connection.useConnection().url).toBe(cloudUrl)
   expect(await connection.startLocal()).toContain('disabled')
+})
+
+test('Cloud OIDC endpoint verifies via /v1/auth/me, stores user identity, and surfaces SSO requirement without token', async () => {
+  const cloudUrl = 'https://jaz-cloud.example'
+  let authCheckHits = 0
+  const { connection } = await fixture({
+    discovery: () => Response.json({
+      ok: true,
+      mode: 'cloud',
+      auth: 'oidc',
+      oidc_login_url: '/v1/auth/login',
+      capabilities: { spaces: true, connected_machines: true, cloud_instructions: true },
+    }),
+    auth: () => {
+      authCheckHits += 1
+      return Response.json({ error: 'unexpected' }, { status: 404 })
+    },
+    authMe: (init) => {
+      if (new Headers(init?.headers).get('Authorization') !== 'Bearer oidc-valid') {
+        return Response.json({ error: 'authentication required' }, { status: 401 })
+      }
+      return Response.json({
+        id: 'usr_9',
+        org_id: 'org_cas',
+        org_name: 'CAS',
+        email: 'engineer@cas.example',
+        display_name: 'Sam',
+        role: 'admin',
+      })
+    },
+  })
+
+  expect(await connection.connectRemote(cloudUrl)).toContain('Sign in with SSO')
+  expect(connection.useConnection()).toMatchObject({
+    status: 'disconnected',
+    mode: 'cloud',
+    auth: 'oidc',
+    oidcLoginUrl: '/v1/auth/login',
+    user: null,
+  })
+  expect(authCheckHits).toBe(0)
+
+  expect(await connection.connectRemote(`${cloudUrl}#token=oidc-valid`)).toBeNull()
+  expect(connection.useConnection()).toMatchObject({
+    status: 'connected',
+    url: cloudUrl,
+    mode: 'cloud',
+    auth: 'oidc',
+    user: {
+      id: 'usr_9',
+      org_id: 'org_cas',
+      org_name: 'CAS',
+      email: 'engineer@cas.example',
+      display_name: 'Sam',
+      role: 'admin',
+    },
+  })
+  expect(connection.isCloudConnection()).toBe(true)
+  expect(authCheckHits).toBe(0)
+})
+
+test('web #token= OIDC callback connects on startup and clears fragment from URL', async () => {
+  const cloudUrl = 'https://jaz-cloud.example'
+  const { connection } = await fixture({
+    web: true,
+    locationHref: `https://app.jaz.chat/#token=web-oidc-token&server=${encodeURIComponent(cloudUrl)}`,
+    discovery: () => Response.json({
+      ok: true,
+      mode: 'cloud',
+      auth: 'oidc',
+      oidc_login_url: '/v1/auth/login',
+      capabilities: { spaces: true },
+    }),
+    authMe: (init) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer web-oidc-token')
+      return Response.json({
+        id: 'usr_web',
+        org_id: 'org_web',
+        email: 'web@example.com',
+        display_name: 'Web User',
+        role: 'member',
+      })
+    },
+  })
+  expect(connection.useConnection()).toMatchObject({
+    status: 'connected',
+    url: cloudUrl,
+    mode: 'cloud',
+    auth: 'oidc',
+    user: { id: 'usr_web', email: 'web@example.com' },
+  })
+  expect(window.location.hash).toBe('')
 })

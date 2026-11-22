@@ -1,8 +1,10 @@
 import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { Cloud, Laptop, Lock, Users } from 'lucide-react'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { NewThreadOptions } from '@/components/home/NewThreadOptions'
 import { ThreadModeSwitch } from '@/components/home/ThreadModeSwitch'
+import { CloudSpendBanner } from '@/components/session/CloudSpendBanner'
 import { deleteAttachmentDraft, saveAttachmentDraft } from '@/components/session/composerAttachmentDraftStore'
 import { fileAttachment } from '@/components/session/composerAttachmentTypes'
 import { useComposerDraft } from '@/components/session/useComposerDraft'
@@ -12,10 +14,12 @@ import { FastModeOption } from '@/components/session/NativeModelOptions'
 import { TaskWorkspaceControl } from '@/components/session/TaskWorkspaceControl'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
+import { isSpendCapError, machinesQuery, spacesQuery } from '@/lib/api/cloud'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
 import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { agentLabel } from '@/lib/agentLabel'
 import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
+import { useIsCloud } from '@/lib/connection'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useTaskWorkspace } from '@/lib/hooks/useTaskWorkspace'
 import { modelSuggestionLabel } from '@/lib/models'
@@ -28,6 +32,7 @@ import { submitNewSession } from './-newSessionSubmission'
 
 type NewSearch = {
   project?: string
+  space?: string
 }
 
 declare module '@tanstack/history' {
@@ -41,8 +46,10 @@ function storedString(key: string): string {
 }
 
 export const Route = createFileRoute('/new')({
-  validateSearch: (search): NewSearch =>
-    typeof search.project === 'string' ? { project: search.project } : {},
+  validateSearch: (search): NewSearch => ({
+    ...(typeof search.project === 'string' ? { project: search.project } : {}),
+    ...(typeof search.space === 'string' && search.space.trim() ? { space: search.space.trim() } : {}),
+  }),
   component: NewSessionPage,
 })
 
@@ -56,7 +63,14 @@ function NewSessionPage() {
   const search = Route.useSearch()
   const queryClient = useQueryClient()
   const toast = useToast()
+  const isCloud = useIsCloud()
   const [creating, setCreating] = useState(false)
+  const [spendCapError, setSpendCapError] = useState<string | null>(null)
+  const [spaceId, setSpaceId] = useState(() => search.space ?? '')
+  const [machineId, setMachineId] = useState('')
+  const spaces = useQuery({ ...spacesQuery, enabled: isCloud })
+  const machines = useQuery({ ...machinesQuery, enabled: isCloud })
+  const onlineMachines = (machines.data ?? []).filter((machine) => machine.online)
   const controls = useNewThreadControls()
   const incomingPrompt = useLocation({ select: (location) => location.state.newThreadPrompt })
   const { setDraft } = useComposerDraft({ storageKey: NEW_SESSION_DRAFT_KEY })
@@ -76,6 +90,10 @@ function NewSessionPage() {
     if (search.project === undefined) return
     setDirectory(search.project)
   }, [search.project])
+
+  useEffect(() => {
+    if (search.space !== undefined) setSpaceId(search.space)
+  }, [search.space])
 
   useEffect(() => {
     localStorage.setItem(NEW_SESSION_DIRECTORY_KEY, directory)
@@ -109,8 +127,16 @@ function NewSessionPage() {
       return
     }
     setCreating(true)
+    setSpendCapError(null)
     try {
-      const input = controls.sessionConfig({ directory, worktree, canvas }, text?.trim() || undefined)
+      const baseInput = controls.sessionConfig({ directory, worktree, canvas }, text?.trim() || undefined)
+      const input = isCloud
+        ? {
+            ...baseInput,
+            ...(spaceId ? { space_id: spaceId, visibility: 'space' as const } : { visibility: 'private' as const }),
+            ...(machineId ? { machine_id: machineId } : {}),
+          }
+        : baseInput
       if (text === undefined) {
         const session = await createSession(input)
         invalidateSessionLists(queryClient, { session: session.id })
@@ -141,6 +167,9 @@ function NewSessionPage() {
         },
       )
     } catch (error) {
+      if (isSpendCapError(error)) {
+        setSpendCapError((error as Error).message || 'Monthly spend cap reached.')
+      }
       toast(`Couldn't start a session: ${(error as Error).message}`, 'danger')
       setCreating(false)
     }
@@ -190,6 +219,44 @@ function NewSessionPage() {
   // whether it is a chat or a canvas.
   const setupControls = (
     <>
+      {isCloud ? (
+        <label className="inline-flex h-7 items-center gap-1.5 rounded-full bg-surface px-2.5 text-[12px] text-ink-2">
+          {spaceId ? <Users size={12} className="text-primary" /> : <Lock size={12} className="text-ink-3" />}
+          <select
+            aria-label="Thread visibility"
+            value={spaceId}
+            disabled={creating}
+            onChange={(event) => setSpaceId(event.target.value)}
+            className="cursor-pointer bg-transparent font-medium text-ink outline-none"
+          >
+            <option value="">Private</option>
+            {(spaces.data ?? []).map((space) => (
+              <option key={space.id} value={space.id}>
+                {space.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      {isCloud && onlineMachines.length > 0 ? (
+        <label className="inline-flex h-7 items-center gap-1.5 rounded-full bg-surface px-2.5 text-[12px] text-ink-2">
+          {machineId ? <Laptop size={12} className="text-primary" /> : <Cloud size={12} className="text-ink-3" />}
+          <select
+            aria-label="Execution target"
+            value={machineId}
+            disabled={creating}
+            onChange={(event) => setMachineId(event.target.value)}
+            className="cursor-pointer bg-transparent font-medium text-ink outline-none"
+          >
+            <option value="">Cloud Sandbox</option>
+            {onlineMachines.map((machine) => (
+              <option key={machine.device_id} value={machine.device_id}>
+                {machine.display_name || machine.device_id}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       {controls.showProjectPicker ? (
         <ProjectPicker
           value={directory}
@@ -223,6 +290,7 @@ function NewSessionPage() {
         goalAvailable={acpAgentSupportsGoal(runtime)}
         leftSlot={isMobile ? null : agentControls}
         shelf={isMobile ? null : setupControls}
+        banner={isCloud ? <CloudSpendBanner capError={spendCapError} onClearError={() => setSpendCapError(null)} /> : null}
         canvas={canvas}
         optionsSlot={controls.fastMode ? <FastModeOption {...controls.fastMode} disabled={creating} /> : null}
         draftStorageKey={NEW_SESSION_DRAFT_KEY}

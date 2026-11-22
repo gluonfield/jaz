@@ -89,6 +89,10 @@ export interface Session {
   usage?: Usage
   queued_messages?: QueuedMessage[]
   pending_steer_message?: QueuedMessage
+  space_id?: string
+  visibility?: 'private' | 'space'
+  run_id?: string
+  personal_sources_enabled?: boolean
   created_at: string
   updated_at: string
   last_attention_at: string
@@ -447,6 +451,9 @@ export interface Attachment {
 
 export interface ChatMessage {
   from_user?: boolean
+  actor_user_id?: string
+  actor_display_name?: string
+  actor_email?: string
   seq: number
   role: 'system' | 'developer' | 'user' | 'assistant'
   content: string

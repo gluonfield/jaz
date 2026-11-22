@@ -14,7 +14,9 @@ import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { ComputerSettings } from '@/components/settings/ComputerSettings'
+import { ConnectedMachinesSettings } from '@/components/settings/ConnectedMachinesSettings'
 import { NotificationsSettings } from '@/components/settings/NotificationsSettings'
+import { useIsCloud } from '@/lib/connection'
 import { BrowserSettings } from './BrowserSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
@@ -48,6 +50,7 @@ export function SettingsOverlay({
 }) {
   const reduce = useReducedMotion()
   const isMobile = useIsMobile()
+  const isCloud = useIsCloud()
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const escapeLayerID = useRef<string | null>(null)
   if (!escapeLayerID.current) escapeLayerID.current = createEscapeLayerID('settings')
@@ -80,7 +83,7 @@ export function SettingsOverlay({
     }
   }, [open, onClose])
 
-  const visibleSections = visibleSettingsSections(experimentalEnabled)
+  const visibleSections = visibleSettingsSections(experimentalEnabled, isCloud)
   const current = visibleSections.find((item) => item.id === section) ?? visibleSections[0]
 
   useEffect(() => {
@@ -200,6 +203,8 @@ function SectionContent({
       return <MemorySettings />
     case 'computer':
       return <ComputerSettings />
+    case 'machines':
+      return <ConnectedMachinesSettings />
     case 'browser':
       return <BrowserSettings />
     case 'usage':

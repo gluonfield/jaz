@@ -7,6 +7,7 @@ import {
   type Rectangle,
   type WebContents,
   app,
+  dialog,
   ipcMain,
   nativeTheme,
   screen,
@@ -20,7 +21,6 @@ import { attachBrowserCloseShortcut } from '@main/browserCloseShortcut'
 import { attachWindowOpenHandler } from '@main/browserPopups'
 import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { installCredentialEncryption } from './credentialEncryption'
-import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { registerDictation } from './dictation'
 import { configureAppPermissions } from './permissions'
 import { createNotifications } from './notifications'
@@ -325,8 +325,13 @@ app.whenReady().then(() => {
       return result
     })
   })
-  ipcMain.handle('jaz:get-device-identity', () => getDeviceIdentity())
-  ipcMain.handle('jaz:get-device-metadata', () => getDeviceMetadata())
+  ipcMain.handle('jaz:pick-directory', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = win
+      ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+      : await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
   ipcMain.handle('jaz:configure-notifications', (event, config) => {
     connectionSession.authorizeOwner(event)
     const active = connectionSession.current()

@@ -5,6 +5,7 @@ import { SidePanelControl } from '@/components/session/SidePanelControl'
 import type { useSidePanelState } from '@/components/session/SidePanelState'
 import { SidePanelTabs } from '@/components/session/SidePanelTabs'
 import { TokenStats } from '@/components/session/TokenStats'
+import { CloudThreadControls } from '@/components/session/CloudThreadControls'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import type { PluginView, Session } from '@/lib/api/types'
 import { useTitlebarActions, useTitlebarSlot } from '@/lib/titlebar'
@@ -24,6 +25,7 @@ export function SessionTitlebar({ session, isMobile, panel, sideChatAvailable, h
   const slot = useMemo(() => header ?? <>
     <RuntimeBadge session={session} truncate />
     <TokenStats session={session} />
+    <CloudThreadControls session={session} />
   </>, [header, session])
   useTitlebarSlot(slot)
   // On desktop the open panel's own header carries its tabs and controls.

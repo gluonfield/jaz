@@ -126,7 +126,7 @@ export function createConnectionSession(deps: Dependencies) {
     if (request.operation === 'reject') {
       authorize(event, request.document)
       if (request.revision === snapshot.revision && snapshot.phase === 'connected') {
-        clear('Backend device access was rejected')
+        clear('Backend authentication was rejected')
       }
       return snapshot
     }
@@ -148,14 +148,14 @@ export function createConnectionSession(deps: Dependencies) {
     }
     const session = request.session
     if (request.revision !== snapshot.revision || (snapshot.phase !== 'pending' && snapshot.phase !== 'connected') ||
-      session.url !== snapshot.url || !validBackendOrigin(session.url) || typeof session.token !== 'string' || typeof session.deviceId !== 'string' || typeof session.remembered !== 'boolean') {
+      session.url !== snapshot.url || !validBackendOrigin(session.url) || typeof session.token !== 'string' || typeof session.remembered !== 'boolean') {
       throw new Error('Connection session was replaced')
     }
     if (localFlight?.settled) {
       localFlight = null
     }
     return change({ phase: 'connected', url: session.url,
-      session: { url: session.url, token: session.token, deviceId: session.deviceId, remembered: session.remembered },
+      session: { url: session.url, token: session.token, remembered: session.remembered },
       error: null, localPending: false }, record.window)
   }
 
@@ -179,7 +179,7 @@ export function createConnectionSession(deps: Dependencies) {
       throw new Error('Local backend is not healthy')
     }
     if (!healthBody.auth_required) {
-      return { url: LOCAL_URL, token: '', deviceId: '', remembered: false }
+      return { url: LOCAL_URL, token: '', remembered: false }
     }
     if (!local.key) {
       throw new Error('Local bootstrap credential is unavailable')
@@ -191,7 +191,7 @@ export function createConnectionSession(deps: Dependencies) {
       throw new Error('Local authentication verification failed')
     }
     const access = verifiedAccess(await check.json())
-    return { url: LOCAL_URL, token: local.key, deviceId: access.deviceId, ticket: access.ticket, remembered: false }
+    return { url: LOCAL_URL, token: local.key, ticket: access.ticket, remembered: false }
   }
 
   async function local(event: IpcMainInvokeEvent, document: number, revision: number): Promise<LocalSession> {

@@ -91,7 +91,7 @@ async function run() {
       return
     }
     if (path === '/v1/auth/check') {
-      response.end(JSON.stringify({ ok: true, auth_kind: 'device', device_id: 'fixture', resource_ticket: { token: 'fixture-ticket', expires_at: new Date(Date.now() + 60_000).toISOString() } }))
+      response.end(JSON.stringify({ ok: true, auth_kind: 'bearer', resource_ticket: { token: 'fixture-ticket', expires_at: new Date(Date.now() + 60_000).toISOString() } }))
       return
     }
     if (path === '/v1/sessions/stored-chat/messages') {

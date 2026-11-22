@@ -2,19 +2,41 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
+import { cloudModelProfilesQuery, cloudProfileToAgentOption } from '@/lib/api/cloud'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
+import { useIsCloud } from '@/lib/connection'
 import { composerConfig } from '@/lib/jazDefaults'
 import { useModelReasoningState } from '@/lib/modelReasoning'
-import { parseModelSelections, pickerEffortOptions, type ModelSelection } from '@/lib/modelPicker'
+import {
+  parseModelSelections,
+  pickerEffortOptions,
+  type ModelSelection,
+  type PickerAgentOption,
+} from '@/lib/modelPicker'
 import { modelSuggestionFor } from '@/lib/modelSuggestion'
 import { NEW_SESSION_AGENT_KEY, NEW_SESSION_MODELS_KEY } from '@/lib/newSessionConfig'
 
 export function useNewThreadControls() {
+  const isCloud = useIsCloud()
   const settingsQuery = useQuery(agentSettingsQuery)
+  const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: isCloud })
   const agentSettings = settingsQuery.data
-  const agents = useMemo(() => enabledACPAgents(agentSettings), [agentSettings])
-  const runtimeReady = settingsQuery.isSuccess
+  const cloudProfiles = isCloud ? (cloudProfilesQuery.data ?? []) : []
+  const usingCloudProfiles = isCloud && cloudProfiles.length > 0
+
+  const agentItems: PickerAgentOption[] = useMemo(() => {
+    if (usingCloudProfiles) {
+      return cloudProfiles.map(cloudProfileToAgentOption)
+    }
+    const location = isCloud ? 'cloud' : 'local'
+    return enabledACPAgents(agentSettings).map((id) => ({ id, location }))
+  }, [agentSettings, cloudProfiles, isCloud, usingCloudProfiles])
+
+  const agents = useMemo(() => agentItems.map((item) => item.id), [agentItems])
+  const runtimeReady = usingCloudProfiles
+    ? cloudProfilesQuery.isSuccess
+    : settingsQuery.isSuccess || (isCloud && cloudProfilesQuery.isSuccess)
   const runtimeAvailable = runtimeReady && agents.length > 0
 
   const [runtime, setRuntime] = useState(() => localStorage.getItem(NEW_SESSION_AGENT_KEY) || '')
@@ -34,33 +56,57 @@ export function useNewThreadControls() {
     localStorage.removeItem(NEW_SESSION_AGENT_KEY)
   }, [agents, runtime, runtimeReady])
 
+  const activeCloudProfile = usingCloudProfiles
+    ? cloudProfiles.find((profile) => profile.profile_id === runtime) ?? cloudProfiles[0]
+    : undefined
+
   const model = runtimeModelState(agentSettings, runtime)
   const { usesProvider, provider } = model
   const agentOptions = agentSettings?.acp_options?.[runtime]
-  const selectionKey = `${runtime}/${provider}`
+  const selectionKey = usingCloudProfiles
+    ? `cloud:${activeCloudProfile?.profile_id ?? runtime}`
+    : `${runtime}/${provider}`
   const selection = selections[selectionKey]
-  const selectedModel = selection?.model ?? model.defaultModel
-  const requestedEffort = selection?.effort ?? model.defaultEffort
+  const selectedModel = selection?.model
+    ?? (usingCloudProfiles
+      ? activeCloudProfile?.default_model || activeCloudProfile?.models?.[0]?.value || ''
+      : model.defaultModel)
+  const requestedEffort = selection?.effort
+    ?? (usingCloudProfiles ? activeCloudProfile?.default_effort || '' : model.defaultEffort)
 
-  const {
-    modelSuggestions,
-    modelsLoading,
-    reasoningOptions: effortOptions,
-    effectiveReasoningEffort: effort,
-    reasoningStatus,
-    reasoningBlocked,
-  } = useModelReasoningState({
-    settings: agentSettings,
-    agent: runtime,
+  const localReasoning = useModelReasoningState({
+    settings: usingCloudProfiles ? undefined : agentSettings,
+    agent: usingCloudProfiles ? '' : runtime,
     model: selectedModel,
     reasoningEffort: requestedEffort,
     provider,
   })
 
+  const cloudModels = activeCloudProfile?.models ?? []
+  const cloudSelectedSuggestion = modelSuggestionFor(cloudModels, selectedModel)
+  const cloudEffortOptions = (cloudSelectedSuggestion?.reasoning?.efforts ?? []).map((value) => ({
+    value,
+    label: value.charAt(0).toUpperCase() + value.slice(1),
+  }))
+  const cloudEffort = cloudEffortOptions.some((o) => o.value === requestedEffort)
+    ? requestedEffort
+    : cloudSelectedSuggestion?.reasoning?.default_effort ?? cloudEffortOptions[0]?.value ?? ''
+
+  const modelSuggestions = usingCloudProfiles ? cloudModels : localReasoning.modelSuggestions
+  const modelsLoading = usingCloudProfiles ? cloudProfilesQuery.isPending : localReasoning.modelsLoading
+  const effortOptions = usingCloudProfiles ? cloudEffortOptions : localReasoning.reasoningOptions
+  const effort = usingCloudProfiles ? cloudEffort : localReasoning.effectiveReasoningEffort
+  const reasoningStatus = usingCloudProfiles ? 'ready' as const : localReasoning.reasoningStatus
+  const reasoningBlocked = usingCloudProfiles ? false : localReasoning.reasoningBlocked
+
   const composer = composerConfig()
-  const fastModeConfigID = selectedModel && (!usesProvider || provider === agentOptions?.default_model_provider)
+  const fastModeConfigID = !usingCloudProfiles
+    && selectedModel
+    && (!usesProvider || provider === agentOptions?.default_model_provider)
     && agentOptions?.fast_mode_models?.includes(modelSuggestionFor(modelSuggestions, selectedModel)?.value ?? selectedModel)
-    ? agentOptions.fast_mode_config_id : undefined
+    ? agentOptions.fast_mode_config_id
+    : undefined
+
   const setSelection = (next: ModelSelection) => {
     const updated = { ...selections, [selectionKey]: { ...selection, ...next } }
     setSelections(updated)
@@ -74,10 +120,11 @@ export function useNewThreadControls() {
   return {
     agentSettings,
     agents,
+    agentItems,
     runtimeReady,
     runtimeAvailable,
     // Picker visibility lives here so the controls and the mobile summary agree.
-    showAgentPicker: agents.length > 1,
+    showAgentPicker: agents.length > 1 || isCloud,
     showModelPicker: !composer.hideModelPicker,
     showProjectPicker: !composer.hideProjectPicker,
     runtime,
@@ -98,11 +145,18 @@ export function useNewThreadControls() {
     sessionConfig: (extra: { directory: string; worktree: boolean; canvas?: boolean }, title?: string): CreateSessionInput => ({
       ...(title ? { title } : {}),
       runtime: 'acp',
-      agent: runtime,
+      agent: usingCloudProfiles ? (activeCloudProfile?.agent || 'codex') : runtime,
       directory: extra.directory,
       worktree: extra.worktree,
       ...(extra.canvas ? { artifact_surface: 'canvas' as const } : {}),
-      ...(usesProvider && provider ? { model_provider: provider } : {}),
+      ...(usingCloudProfiles && activeCloudProfile
+        ? {
+            model_profile_id: activeCloudProfile.profile_id,
+            model_provider: activeCloudProfile.provider,
+          }
+        : usesProvider && provider
+          ? { model_provider: provider }
+          : {}),
       ...(selectedModel ? { model: selectedModel } : {}),
       ...(effort ? { reasoning_effort: effort } : {}),
       ...(fastModeConfigID && selection?.fastMode !== undefined
@@ -141,7 +195,12 @@ export function AgentModelControls({
   return (
     <ModelSelect
       {...model}
-      agent={{ value: controls.runtime, options: controls.agents, onChange: controls.selectRuntime }}
+      agent={{
+        value: controls.runtime,
+        options: controls.agents,
+        items: controls.agentItems,
+        onChange: controls.selectRuntime,
+      }}
       placement={placement}
       disabled={disabled}
       onChange={controls.setSelection}

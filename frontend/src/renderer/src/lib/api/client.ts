@@ -46,6 +46,8 @@ export function isLocalBackendUrl(url: string): boolean {
   }
 }
 
+export const PENDING_OIDC_SERVER_KEY = 'jaz.oidc.pendingServer'
+
 export function parseBackendConnectUrl(input: string): { url: string; key: string } {
   let raw = input.trim()
   if (raw && !/^https?:\/\//i.test(raw)) {
@@ -53,8 +55,15 @@ export function parseBackendConnectUrl(input: string): { url: string; key: strin
   }
   try {
     const parsed = new URL(raw)
-    const key = (parsed.searchParams.get('key') || new URLSearchParams(parsed.hash.slice(1)).get('key'))?.trim() ?? ''
+    const hashParams = new URLSearchParams(parsed.hash.replace(/^#\??/, ''))
+    const key = (
+      parsed.searchParams.get('key') ||
+      parsed.searchParams.get('token') ||
+      hashParams.get('key') ||
+      hashParams.get('token')
+    )?.trim() ?? ''
     parsed.searchParams.delete('key')
+    parsed.searchParams.delete('token')
     parsed.pathname = ''
     parsed.hash = ''
     parsed.search = ''
@@ -64,18 +73,39 @@ export function parseBackendConnectUrl(input: string): { url: string; key: strin
   }
 }
 
+export function rememberPendingOidcServer(url: string): void {
+  try {
+    sessionStorage.setItem(PENDING_OIDC_SERVER_KEY, normalizeBaseUrl(url))
+  } catch {
+    // sessionStorage may be unavailable in restricted contexts.
+  }
+}
+
+export function consumePendingOidcServer(): string {
+  try {
+    const value = sessionStorage.getItem(PENDING_OIDC_SERVER_KEY)?.trim() ?? ''
+    if (value) sessionStorage.removeItem(PENDING_OIDC_SERVER_KEY)
+    return value ? normalizeBaseUrl(value) : ''
+  } catch {
+    return ''
+  }
+}
+
 export function consumeStartupConnectUrl(): string {
   if (clientRuntime.kind !== 'web') {
     return ''
   }
   const { params, source } = startupConnectParams()
-  const key = params.get('key')?.trim() ?? ''
+  const key = (params.get('token') || params.get('key'))?.trim() ?? ''
   if (!key) {
     return ''
   }
+  const pending = consumePendingOidcServer()
   const target =
     params.get('server')?.trim() ||
     params.get('url')?.trim() ||
+    pending ||
+    clientRuntime.cloudUrl ||
     clientRuntime.defaultApiBaseUrl()
   if (!target) {
     return ''
@@ -88,6 +118,7 @@ export function consumeStartupConnectUrl(): string {
     next.searchParams.delete('server')
     next.searchParams.delete('url')
     next.searchParams.delete('key')
+    next.searchParams.delete('token')
   }
   window.history.replaceState(window.history.state, '', next)
   return raw
@@ -103,7 +134,8 @@ function startupConnectParams(): { params: URLSearchParams; source: 'search' | '
 }
 
 function hasStartupConnectParams(params: URLSearchParams): boolean {
-  return Boolean((params.get('server')?.trim() || params.get('url')?.trim()) && params.get('key')?.trim())
+  const secret = (params.get('token') || params.get('key'))?.trim()
+  return Boolean((params.get('server')?.trim() || params.get('url')?.trim()) && secret)
 }
 
 function connectUrlWithKey(target: string, key: string): string {

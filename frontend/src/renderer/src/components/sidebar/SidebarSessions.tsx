@@ -13,11 +13,13 @@ import {
   sidebarSessionsQuery,
 } from '@/lib/api/sessions'
 import { useShowModelIcons } from '@/lib/appearance'
+import { useIsCloud } from '@/lib/connection'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { keys } from '@/lib/query/keys'
 import { SessionRow } from './SessionRow'
+import { SidebarSpaces } from './SidebarSpaces'
 import {
   SidebarOrganizationMenu,
   type SidebarOrganization,
@@ -322,6 +324,8 @@ function RecentSessionList({
 
 export function SidebarSessions({ open }: { open: boolean }) {
   const queryClient = useQueryClient()
+  const isCloud = useIsCloud()
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null)
   const sessions = useQuery(sidebarSessionsQuery)
   const projects = useQuery(projectsQuery)
   const [organization, setOrganization] = useSidebarOrganization()
@@ -331,10 +335,19 @@ export function SidebarSessions({ open }: { open: boolean }) {
   const [collapsedProjects, setCollapsedProjects] = useState(storedCollapsedProjects)
   const [dragOrder, setDragOrder] = useState<SessionBlockKey[] | null>(null)
   useEffect(() => storeCollapsedProjects(collapsedProjects), [collapsedProjects])
+  useEffect(() => {
+    if (!isCloud) setSelectedSpaceId(null)
+  }, [isCloud])
+
+  const filteredSessions = useMemo(() => {
+    const all = sessions.data ?? []
+    if (!isCloud || !selectedSpaceId) return all
+    return all.filter((session) => session.space_id === selectedSpaceId)
+  }, [isCloud, selectedSpaceId, sessions.data])
 
   const sections = useMemo(
-    () => sidebarSessionSections(sessions.data ?? [], projects.data ?? []),
-    [projects.data, sessions.data],
+    () => sidebarSessionSections(filteredSessions, projects.data ?? []),
+    [filteredSessions, projects.data],
   )
   const groups = useMemo(
     () => applySessionDragOrder(sections.groups, dragOrder),
@@ -409,6 +422,12 @@ export function SidebarSessions({ open }: { open: boolean }) {
   return (
     <HoverCardGroup>
       <section className="flex shrink-0 flex-col gap-3">
+        {isCloud ? (
+          <SidebarSpaces
+            selectedSpaceId={selectedSpaceId}
+            onSelectSpace={setSelectedSpaceId}
+          />
+        ) : null}
         <PinnedSessions
           items={sections.pinnedItems}
           shortcutByID={shortcutByID}

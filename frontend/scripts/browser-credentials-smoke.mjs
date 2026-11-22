@@ -30,7 +30,7 @@ async function run() {
         return response.end(JSON.stringify({ code: 'unauthorized' }))
       }
       approvedChecks += 1
-      return response.end(JSON.stringify({ ok: true, auth_kind: 'device', device_id: 'device' }))
+      return response.end(JSON.stringify({ ok: true, auth_kind: 'bearer' }))
     }
     if (request.url === '/fixture.js') {
       response.setHeader('Content-Type', 'text/javascript')
@@ -54,8 +54,8 @@ async function run() {
   stage = 'parallel key creation'
   assert.deepEqual(await evaluate(`(async () => {
     await Promise.all([
-      credentials.saveBrowserCredential('https://one.example', 'first', 'one', () => true),
-      credentials.saveBrowserCredential('https://two.example', 'second', 'two', () => true),
+      credentials.saveBrowserCredential('https://one.example', 'first', () => true),
+      credentials.saveBrowserCredential('https://two.example', 'second', () => true),
     ])
     const db = await new Promise(resolve => {
       const request = indexedDB.open('jaz.browserCredentials', 1)
@@ -75,8 +75,8 @@ async function run() {
   await window.loadURL(origin + '/reload')
   stage = 'restore after reload'
   assert.deepEqual(await evaluate(`Promise.all(['https://one.example', 'https://two.example'].map(url => credentials.loadBrowserCredential(url)))`), [
-    { token: 'first', deviceId: 'one' },
-    { token: 'second', deviceId: 'two' },
+    { token: 'first' },
+    { token: 'second' },
   ])
   stage = 'hold storage transaction'
   await evaluate(`new Promise(resolve => {
@@ -100,7 +100,7 @@ async function run() {
   assert.equal(await evaluate('connection.connectionPreference()'), null)
   stage = 'forget with held storage'
   await evaluate(`window.cancelled = false
-    window.cancelledSave = credentials.saveBrowserCredential('https://cancel.example', 'cancelled', 'device', () => !window.cancelled).then(() => false, () => true)
+    window.cancelledSave = credentials.saveBrowserCredential('https://cancel.example', 'cancelled', () => !window.cancelled).then(() => false, () => true)
     connection.forgetBackend(location.origin)
     window.cancelled = true
     releaseStorage()`)

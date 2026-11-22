@@ -21,6 +21,7 @@ import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
 import { SessionErrorNotice, type SessionErrorAction } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
 import { GoalStatusBar } from '@/components/session/GoalStatusBar'
+import { CloudSpendBanner } from '@/components/session/CloudSpendBanner'
 import { PendingSteerBubble } from '@/components/session/PendingSteerBubble'
 import { PendingSessionHistory } from '@/components/session/PendingSessionHistory'
 import { SidePanel } from '@/components/session/SidePanel'
@@ -44,7 +45,9 @@ import { HorizontalResizeHandle } from '@/components/ui/HorizontalResizeHandle'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
+import { isSpendCapError, uploadCloudFile } from '@/lib/api/cloud'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
+import { useIsCloud } from '@/lib/connection'
 import {
   answerSessionInteractiveResponse,
   cancelSession,
@@ -160,6 +163,7 @@ export function ThreadView({
   chat?: (view: ThreadChatView) => ReactNode
 }) {
   const queryClient = useQueryClient()
+  const isCloud = useIsCloud()
   const config = useSessionConfig(sessionId)
   const toast = useToast()
   const reportHistoryError = useCallback((message: string) => {
@@ -375,13 +379,21 @@ export function ThreadView({
     queryClient.invalidateQueries({ queryKey: keys.usage })
   }, [queryClient, sendACPFallback, sessionId])
 
+  const uploadAttachment = useCallback(
+    (file: File) =>
+      isCloud
+        ? uploadCloudFile(detailSession?.run_id || sessionId, file)
+        : uploadSessionAttachment(sessionId, file),
+    [detailSession?.run_id, isCloud, sessionId],
+  )
+
   const handleSideChatSend = useCallback(async (
     sideChatID: string,
     message: string,
     options: SendMessageOptions = {},
   ) => {
     const uploaded = options.files?.length
-      ? await Promise.all(options.files.map((file) => uploadSessionAttachment(sessionId, file)))
+      ? await Promise.all(options.files.map((file) => uploadAttachment(file)))
       : []
     const prepared = preparedSendMessage(options, uploaded)
     await sendSessionSideChat(sessionId, {
@@ -391,7 +403,7 @@ export function ThreadView({
       attachment_ids: prepared.attachmentIds,
     })
     await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
-  }, [queryClient, sessionId])
+  }, [queryClient, sessionId, uploadAttachment])
 
 
 
@@ -523,7 +535,7 @@ export function ThreadView({
         overview={details?.({ agentSession: derived.agentSession, working: sessionRunning, threads: spawnedThreads, subagents: providerSubagents })}
         overviewLabel={overviewLabel}
         onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
-        onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
+        onUploadAttachment={uploadAttachment}
         onSend={handleSend}
         onQueuePrompt={queue.onQueuePrompt}
         onQueueAction={queue.onQueueAction}
@@ -708,6 +720,11 @@ export function ThreadView({
               ) : (
                 <>
                   {goalStatusVisible ? <GoalStatusBar goal={goal} /> : null}
+                  {isCloud ? (
+                    <CloudSpendBanner
+                      capError={live?.error && isSpendCapError(new Error(live.error)) ? live.error : null}
+                    />
+                  ) : null}
                   <Composer
                     placeholder={canvasContexts.present ? canvasContexts.placeholder : placeholder}
                     streaming={sessionRunning}
@@ -734,7 +751,7 @@ export function ThreadView({
                     onClearGoal={clearGoal}
                     onVoice={voiceAvailable && voice.phase === 'off' ? voice.start : undefined}
                     voiceActive={voice.phase !== 'off'}
-                    onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
+                    onUploadAttachment={uploadAttachment}
                     attachable={!canvas}
                     leftSlot={canvas ? <CanvasChatToggle chat={canvasChat} /> : undefined}
                     onSteerQueuedPrompt={queue.onSteerQueuedPrompt}

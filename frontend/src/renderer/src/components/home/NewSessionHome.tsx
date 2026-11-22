@@ -40,6 +40,7 @@ export function NewSessionHome({
   goalAvailable = false,
   leftSlot,
   shelf,
+  banner,
   canvas = false,
   optionsSlot,
   draftStorageKey,
@@ -53,6 +54,7 @@ export function NewSessionHome({
   leftSlot: ReactNode
   /** setup controls on a tab behind the composer's top edge */
   shelf?: ReactNode
+  banner?: ReactNode
   /** a canvas thread is being set up: the page shows the canvas's dots */
   canvas?: boolean
   optionsSlot?: ReactNode
@@ -82,6 +84,7 @@ export function NewSessionHome({
             invertInDarkMode={settings.invertHomeLogoInDarkMode}
           />
           <div>
+            {banner}
             {shelf ? (
               <div className="mx-5 -mb-3 flex items-center gap-1 rounded-t-[18px] bg-surface-2 px-2.5 pt-2 pb-5 ring-1 ring-border dark:bg-bg">
                 {shelf}

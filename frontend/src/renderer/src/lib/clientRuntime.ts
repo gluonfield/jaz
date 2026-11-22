@@ -32,14 +32,7 @@ export interface ClientRuntime {
   setNativeTheme?: (source: 'light' | 'dark' | 'system') => void
   setWindowButtonsVisible?: (visible: boolean) => void
   startLocalBackend?: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
-  getDeviceIdentity?: () => Promise<{ device_id: string; public_key: string }>
-  getDeviceMetadata?: () => Promise<{
-    name: string
-    platform: string
-    device_family: string
-    model_identifier: string
-    app_version: string
-  }>
+  pickDirectory?: () => Promise<string | null>
   configureNotifications?: (config: NotificationConfig) => Promise<boolean>
   notchAccess?: () => Promise<NotchAccess>
   shareFocusStatus?: () => Promise<NotchAccess>
@@ -89,10 +82,9 @@ function createRuntime(): ClientRuntime {
       setNativeTheme: electron.setNativeTheme,
       setWindowButtonsVisible: electron.setWindowButtonsVisible,
       startLocalBackend: electron.startLocalBackend,
-      getDeviceIdentity: electron.getDeviceIdentity,
       encryptCredential: electron.encryptCredential,
       decryptCredential: electron.decryptCredential,
-      getDeviceMetadata: electron.getDeviceMetadata,
+      pickDirectory: electron.pickDirectory,
       configureNotifications: electron.configureNotifications,
       notchAccess: electron.notchAccess,
       shareFocusStatus: electron.shareFocusStatus,

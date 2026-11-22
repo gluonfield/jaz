@@ -1,7 +1,7 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
-import { Prec } from '@codemirror/state'
+import { EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { useEffect, useRef } from 'react'
@@ -45,11 +45,13 @@ const highlight = HighlightStyle.define([
 export function MarkdownEditor({
   initialValue,
   placeholder,
+  readOnly = false,
   onChange,
   onSave,
 }: {
   initialValue: string
   placeholder?: string
+  readOnly?: boolean
   onChange: (doc: string) => void
   onSave: () => void
 }) {
@@ -84,6 +86,7 @@ export function MarkdownEditor({
         markdown(),
         syntaxHighlighting(highlight),
         theme,
+        ...(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
         ...(placeholder ? [cmPlaceholder(placeholder)] : []),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) onChangeRef.current(update.state.doc.toString())

@@ -8,8 +8,10 @@ import { ModelBreakdown, UsageShareCharts } from '@/components/settings/UsageMod
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { agentSettingsQuery } from '@/lib/api/settings'
+import { evaluateSpendStatus, usageSummaryQuery } from '@/lib/api/cloud'
 import { dailyUsageQuery } from '@/lib/api/sessions'
 import type { AgentSettings, DailyUsage } from '@/lib/api/types'
+import { useIsCloud } from '@/lib/connection'
 import { formatTokens } from '@/lib/format/tokens'
 import { type ModelPricing, openRouterModelsQuery } from '@/lib/models'
 import { buildPricingIndex, formatUsd, priceModels } from '@/lib/usageCost'
@@ -38,11 +40,14 @@ const usageSquarePx = 12
 const usageGapPx = 3
 
 export function UsageSettings() {
+  const isCloud = useIsCloud()
   const [window, setWindow] = useState<UsageWindow>({ days: 30 })
   const usage = useQuery(dailyUsageQuery(window))
+  const cloudSummary = useQuery({ ...usageSummaryQuery, enabled: isCloud })
   const agentSettings = useQuery(agentSettingsQuery)
   const openRouter = useQuery(openRouterModelsQuery)
   const pricing = useMemo(() => buildPricingIndex(openRouter.data?.models ?? []), [openRouter.data])
+  const spendStatus = evaluateSpendStatus(cloudSummary.data)
 
   return (
     <section className="py-4">
@@ -52,6 +57,35 @@ export function UsageSettings() {
           <p className="mt-0.5 text-[13px] text-ink-2">Daily input and output tokens across all agent sessions, excluding cache reads.</p>
         </div>
       </div>
+
+      {isCloud && cloudSummary.data ? (
+        <SettingsCard className="mt-4 p-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-[12px] font-medium text-ink">
+                Monthly cloud spend{cloudSummary.data.month ? ` · ${cloudSummary.data.month}` : ''}
+              </p>
+              {spendStatus ? (
+                <p className={`mt-0.5 text-[12px] ${spendStatus.level === 'exceeded' ? 'text-danger' : 'text-accent-strong'}`}>
+                  {spendStatus.message}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-4 font-mono text-[13px] tabular-nums">
+              {typeof cloudSummary.data.user_spend_usd === 'number' ? (
+                <span className="text-ink-2">
+                  You <span className="text-ink">${cloudSummary.data.user_spend_usd.toFixed(2)}</span>
+                  {cloudSummary.data.user_cap_usd ? ` / $${cloudSummary.data.user_cap_usd.toFixed(2)}` : ''}
+                </span>
+              ) : null}
+              <span className="text-ink-2">
+                Org <span className="text-ink">${cloudSummary.data.org_spend_usd.toFixed(2)}</span>
+                {cloudSummary.data.org_cap_usd ? ` / $${cloudSummary.data.org_cap_usd.toFixed(2)}` : ''}
+              </span>
+            </div>
+          </div>
+        </SettingsCard>
+      ) : null}
 
       <UsageWindowFilter window={window} onChange={setWindow} />
 

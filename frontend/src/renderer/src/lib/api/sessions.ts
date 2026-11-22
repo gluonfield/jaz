@@ -34,9 +34,13 @@ export interface CreateSessionInput {
   // Per-session overrides of the Settings > Agents defaults; model_provider
   // applies to ACP agents with provider-backed models.
   model_provider?: string
+  model_profile_id?: string
   model?: string
   reasoning_effort?: string
   config_options?: Record<string, string>
+  space_id?: string
+  visibility?: 'private' | 'space'
+  machine_id?: string
 }
 
 export async function createSession(input: CreateSessionInput = {}): Promise<Session> {

@@ -2,6 +2,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import { BackendSwitcher } from '@/components/connection/BackendSwitcher'
 import { SearchField } from '@/components/ui/SearchField'
+import { useIsCloud } from '@/lib/connection'
 import { type SettingsSection, useExperimentalFeaturesEnabled, visibleSettingsSections } from './sections'
 
 // The Settings menu. On desktop it takes the left column on the window colour,
@@ -18,9 +19,10 @@ export function SettingsNav({
   onOpenConnect: () => void
 }) {
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
+  const isCloud = useIsCloud()
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
-  const items = visibleSettingsSections(experimentalEnabled).filter((item) => !q || item.label.toLowerCase().includes(q))
+  const items = visibleSettingsSections(experimentalEnabled, isCloud).filter((item) => !q || item.label.toLowerCase().includes(q))
 
   return (
     <div className="flex min-h-0 flex-1 flex-col pt-1.5 pr-3 pl-1.5 max-sm:px-3 max-sm:pt-0">

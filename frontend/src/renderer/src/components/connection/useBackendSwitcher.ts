@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import { useToast } from '@/components/ui/toast'
 import { useKnownBackends } from '@/lib/backends'
-import { connectRemote, rememberConnection, startLocal, useConnection } from '@/lib/connection'
+import { connectRemote, rememberConnection, startCloudSignIn, startLocal, useConnection } from '@/lib/connection'
 
 // State and orchestration shared by the two "Run jaz on" switchers — the sidebar
-// footer and the settings panel. Owns the open popover, the current backend and
-// saved remotes, and switching between them (toasting on failure). Each switcher
-// renders its own chrome and per-row actions on top of this.
+// footer and the settings panel. Owns the open popover, the current backend, cloud
+// user identity, saved remotes, and switching between them (toasting on failure).
 export function useBackendSwitcher() {
-  const { status, url } = useConnection()
+  const { status, url, mode, auth, oidcLoginUrl, user } = useConnection()
   const remotes = useKnownBackends()
   const toast = useToast()
   const [open, setOpen] = useState(false)
@@ -24,9 +23,14 @@ export function useBackendSwitcher() {
     setOpen,
     status,
     url,
+    mode,
+    auth,
+    oidcLoginUrl,
+    user,
     remotes,
     switchLocal: () => switchTo(startLocal),
     switchRemote: (remoteUrl: string) => switchTo(() => connectRemote(remoteUrl)),
+    signInWithSSO: (targetUrl: string, loginUrl?: string) => switchTo(() => startCloudSignIn(targetUrl, loginUrl)),
     remember: () => {
       const error = rememberConnection()
       toast(error || 'Connection remembered', error ? 'danger' : 'ok')

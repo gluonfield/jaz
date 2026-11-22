@@ -1,4 +1,4 @@
-import { ChevronDown, Zap } from 'lucide-react'
+import { ChevronDown, Cloud, Zap } from 'lucide-react'
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
@@ -118,7 +118,11 @@ export function ModelSelect({
   align?: 'start' | 'end'
   onChange: (selection: ModelSelection) => void
 }) {
-  const tabs = agent && agent.options.length > 1 ? agent : undefined
+  const hasCloudItems = Boolean(agent?.items?.some((item) => item.location === 'cloud'))
+  const tabs = agent && (agent.options.length > 1 || hasCloudItems) ? agent : undefined
+  const activeAgentItem = agent?.items?.find((item) => item.id === agent.value)
+  const activeAgentLogo = activeAgentItem?.logoAgent || agent?.value || ''
+  const activeAgentLabel = activeAgentItem?.label || (agent ? agentLabel(agent.value) : '')
   disabled ||= (!tabs && suggestions.length === 0 && effortOptions.length === 0 && !fastMode)
   const [open, setOpen] = useState(false)
   useEffect(() => {
@@ -127,7 +131,7 @@ export function ModelSelect({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const selected = modelSuggestionFor(suggestions, value)
   const effortValue = effort || selected?.reasoning?.default_effort || ''
-  const label = value ? modelSuggestionLabel(suggestions, value) : agent ? agentLabel(agent.value) : 'Model'
+  const label = value ? modelSuggestionLabel(suggestions, value) : activeAgentLabel || 'Model'
   const automatic = selected?.reasoning?.automatic && effortOptions.length === 0
   const effortLabel = automatic
     ? 'Thinking'
@@ -165,12 +169,13 @@ export function ModelSelect({
             style={{ justifyContent: 'flex-start' }}
             aria-haspopup="dialog"
             aria-expanded={open && !disabled}
-            aria-label={`Model: ${label}${effortLabel ? `, reasoning effort: ${effortLabel}` : ''}${agent ? `, agent: ${agentLabel(agent.value)}` : ''}${fast ? ', Fast Mode' : ''}`}
+            aria-label={`Model: ${label}${effortLabel ? `, reasoning effort: ${effortLabel}` : ''}${activeAgentLabel ? `, agent: ${activeAgentLabel}` : ''}${fast ? ', Fast Mode' : ''}`}
             title={[label, effortLabel].filter(Boolean).join(' ') + (fast ? ' · Fast Mode' : '')}
             disabled={disabled}
             onClick={() => setOpen(!open)}
           >
-            {agent && hasAgentLogo(agent.value) ? <Pop id={agent.value}><AgentLogo agent={agent.value} size={14} /></Pop> : null}
+            {activeAgentItem?.location === 'cloud' ? <Cloud size={12} className="shrink-0 text-primary" /> : null}
+            {activeAgentLogo && hasAgentLogo(activeAgentLogo) ? <Pop id={activeAgentLogo}><AgentLogo agent={activeAgentLogo} size={14} /></Pop> : null}
             <Roll value={label} direction={agentDirection} className="max-w-28" />
             {effortLabel ? <Roll value={effortLabel} direction={effortDirection} className={effortClass || 'text-ink-3'} /> : null}
             {fast ? <Zap size={12} fill="currentColor" className="shrink-0 text-primary" /> : null}

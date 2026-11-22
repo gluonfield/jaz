@@ -1,9 +1,9 @@
 export const CONNECTION_SESSION_CHANNEL = 'jaz:connection-session'
 export const LOCAL_SESSION_CHANNEL = 'jaz:local-session'
 
-export type AuthKind = 'bearer' | 'oidc' | 'device' | 'root'
+export type AuthKind = 'bearer' | 'oidc'
 export type ResourceTicket = { token: string; expires_at: string }
-export type VerifiedSession = { url: string; token: string; deviceId: string; remembered: boolean }
+export type VerifiedSession = { url: string; token: string; remembered: boolean }
 export type LocalSession = VerifiedSession & { ticket?: ResourceTicket }
 export type SessionSnapshot = {
   revision: number
@@ -36,16 +36,15 @@ export function validBackendOrigin(value: string): boolean {
   }
 }
 
-export function verifiedAccess(value: unknown): { kind: AuthKind; deviceId: string; ticket?: ResourceTicket } {
-  const body = value as { ok?: unknown; auth_kind?: unknown; device_id?: unknown; resource_ticket?: ResourceTicket } | null
+export function verifiedAccess(value: unknown): { kind: AuthKind; ticket?: ResourceTicket } {
+  const body = value as { ok?: unknown; auth_kind?: unknown; resource_ticket?: ResourceTicket } | null
   const kind = body?.auth_kind
-  if (!body || body.ok !== true || (kind !== 'bearer' && kind !== 'oidc' && kind !== 'device' && kind !== 'root')) {
+  if (!body || body.ok !== true || (kind !== 'bearer' && kind !== 'oidc')) {
     throw new Error('Backend did not verify the session credential')
   }
   const ticket = body.resource_ticket
   if (ticket && (typeof ticket.token !== 'string' || !ticket.token || typeof ticket.expires_at !== 'string' || !(Date.parse(ticket.expires_at) > Date.now()))) {
     throw new Error('Backend returned an invalid resource ticket')
   }
-  const deviceId = typeof body.device_id === 'string' ? body.device_id : ''
-  return { kind, deviceId, ticket }
+  return { kind, ticket }
 }

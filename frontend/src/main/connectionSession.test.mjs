@@ -98,11 +98,11 @@ test('handoff accepts actual app windows and exact documents, with owner-only pu
   expect(() => board.call({ operation: 'begin', document: secondary.document, url: 'https://remote.example' })).toThrow('owner')
   const pending = owner.call({ operation: 'begin', document, url: 'https://remote.example' })
   owner.call({ operation: 'commit', document, revision: pending.revision,
-    session: { url: 'https://remote.example', token: 'bearer-authorized', deviceId: '', remembered: false, rootGrant: 'must-stay-private' } })
+    session: { url: 'https://remote.example', token: 'bearer-authorized', remembered: false, rootGrant: 'must-stay-private' } })
   expect(board.messages.at(-1).snapshot.session.token).toBe('bearer-authorized')
-  expect(Object.keys(board.read().snapshot.session).sort()).toEqual(['deviceId', 'remembered', 'token', 'url'])
+  expect(Object.keys(board.read().snapshot.session).sort()).toEqual(['remembered', 'token', 'url'])
   expect(() => owner.call({ operation: 'commit', document, revision: pending.revision,
-    session: { url: 'https://other.example', token: 'bearer-other', deviceId: '' } })).toThrow('replaced')
+    session: { url: 'https://other.example', token: 'bearer-other', remembered: false } })).toThrow('replaced')
   board.navigate('file:///wrong/renderer/index.html')
   expect(() => board.read()).toThrow('document')
   const count = board.messages.length
@@ -208,7 +208,7 @@ test('local to remote to local waits for outstanding issuance and discards its l
   const old = owner.local(document, first.revision).catch((error) => error)
   await started
   const remote = owner.call({ operation: 'begin', document, url: 'https://remote.example' })
-  owner.call({ operation: 'commit', document, revision: remote.revision, session: { url: remote.url, token: 'remote-bearer', deviceId: '', remembered: false } })
+  owner.call({ operation: 'commit', document, revision: remote.revision, session: { url: remote.url, token: 'remote-bearer', remembered: false } })
   const next = owner.call({ operation: 'begin', document, url: 'http://127.0.0.1:5299' })
   const resumed = owner.local(document, next.revision)
   expect(f.counts().starts).toBe(1)

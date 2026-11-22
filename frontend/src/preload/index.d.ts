@@ -46,14 +46,7 @@ declare global {
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
       setWindowButtonsVisible: (visible: boolean) => void
       startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
-      getDeviceIdentity: () => Promise<{ device_id: string; public_key: string }>
-      getDeviceMetadata: () => Promise<{
-        name: string
-        platform: string
-        device_family: string
-        model_identifier: string
-        app_version: string
-      }>
+      pickDirectory?: () => Promise<string | null>
       configureNotifications: (config: NotificationConfig) => Promise<boolean>
       notchAccess: () => Promise<NotchAccess>
       shareFocusStatus: () => Promise<NotchAccess>

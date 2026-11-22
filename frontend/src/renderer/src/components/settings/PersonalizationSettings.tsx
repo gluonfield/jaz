@@ -8,7 +8,9 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { agentFilesQuery, saveAgentFile } from '@/lib/api/agentFiles'
 import type { AgentFile, AgentFilesResponse } from '@/lib/api/types'
+import { useIsCloud } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
+import { CloudInstructionsEditor } from './CloudInstructionsEditor'
 
 const FILE_DESCRIPTIONS: Record<string, string> = {
   'AGENTS.md': 'Your standing instructions shared by all threads and bots.',
@@ -17,6 +19,14 @@ const FILE_DESCRIPTIONS: Record<string, string> = {
 }
 
 export function PersonalizationSettings() {
+  const isCloud = useIsCloud()
+  if (isCloud) {
+    return <CloudInstructionsEditor />
+  }
+  return <LocalPersonalizationSettings />
+}
+
+function LocalPersonalizationSettings() {
   const files = useQuery(agentFilesQuery)
   const queryClient = useQueryClient()
   const toast = useToast()

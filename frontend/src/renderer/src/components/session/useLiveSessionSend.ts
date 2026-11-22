@@ -1,8 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { uploadCloudFile } from '@/lib/api/cloud'
 import { uploadSessionAttachment } from '@/lib/api/sessions'
 import { streamSessionMessage, type AgentStreamEvent } from '@/lib/api/stream'
 import type { SessionMessages } from '@/lib/api/types'
+import { isCloudConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
 import { preparedSendMessage, type ComposerContext, type SendMessageOptions } from '@/lib/sendMessage'
 import { hasCompletedLiveReply, type LiveAttachment, type LiveExchange } from './liveTranscript'
@@ -61,8 +63,15 @@ export function useLiveSessionSend({
     setStreaming(true)
 
     const started = (async () => {
+      const runId = history?.session.run_id || sessionId
       const attachments = files.length
-        ? await Promise.all(files.map((file) => uploadSessionAttachment(sessionId, file, controller.signal)))
+        ? await Promise.all(
+            files.map((file) =>
+              isCloudConnection()
+                ? uploadCloudFile(runId, file, { signal: controller.signal })
+                : uploadSessionAttachment(sessionId, file, controller.signal),
+            ),
+          )
         : []
       if (attachments.length && sendRef.current?.controller === controller) {
         setLive((prev) =>

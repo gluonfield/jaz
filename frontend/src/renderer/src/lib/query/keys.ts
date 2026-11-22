@@ -65,4 +65,10 @@ export const keys = {
   botFiles: (botId: string) => ['bots', botId, 'files'] as const,
   boards: ['boards'] as const,
   boardDetail: (id: string) => ['boards', id] as const,
+  cloudSpaces: ['cloud', 'spaces'] as const,
+  cloudMachines: ['cloud', 'machines'] as const,
+  cloudModelProfiles: ['cloud', 'model-profiles'] as const,
+  cloudUsageSummary: ['cloud', 'usage', 'summary'] as const,
+  cloudInstruction: (scope: string, scopeId: string, kind: string) =>
+    ['cloud', 'instructions', scope, scopeId, kind] as const,
 }

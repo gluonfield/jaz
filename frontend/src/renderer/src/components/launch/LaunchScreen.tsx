@@ -1,15 +1,20 @@
-import { LoaderCircle, X } from 'lucide-react'
+import { Cloud, KeyRound, Laptop, LoaderCircle, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { parseOidcCallbackHash } from '@/lib/api/cloud'
 import { useKnownBackends } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
 import {
   connectionPreference,
   connectRemote,
+  currentConnection,
   type ConnectionStatus,
   forgetBackend,
+  startCloudSignIn,
   startLocal,
   useConnection,
 } from '@/lib/connection'
@@ -19,9 +24,6 @@ import { localDeviceLabel } from '@/lib/deviceLabel'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
-// `?launch` pins the boot gate to the checking state, `?launch=welcome` to
-// the options state, so the launch visuals can be iterated in a browser while
-// a live backend is reachable.
 const launchPreview = devPreview('launch')
 const previewStatus: ConnectionStatus | null =
   launchPreview === null ? null : launchPreview === 'welcome' ? 'disconnected' : 'checking'
@@ -43,8 +45,8 @@ const swap = {
   transition: { duration: 0.2, ease: 'easeOut' as const },
 }
 
-// Floats over the live app while the health poll retries a lost backend; the
-// window only falls back to the launch screen after the reconnect grace.
+type SsoTarget = { url: string; label: string; oidcLoginUrl: string }
+
 export function ReconnectingBanner({ show }: { show: boolean }) {
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[60px] z-50 flex justify-center">
@@ -66,22 +68,15 @@ export function ReconnectingBanner({ show }: { show: boolean }) {
   )
 }
 
-// Boot gate renders with no props; the manual overlay must hand in a way to
-// dismiss itself. Pairing the two stops a manual screen from rendering with no
-// close button and no close-on-success — a trap with no way out.
 type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; onClose: () => void }
 
-// Full-window connect screen. As the boot gate it shows whenever no backend is
-// reachable (first launch, failed startup probe, lost connection). In `manual`
-// mode it is presented over the live app so a connected user can switch
-// machines through the exact same flow they onboarded with; on success it
-// dismisses itself via `onClose`.
 export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}) {
-  const { status: liveStatus, error, url: currentUrl } = useConnection()
+  const { status: liveStatus, error, url: currentUrl, auth: currentAuth, oidcLoginUrl: currentOidcUrl } = useConnection()
   const status = previewStatus ?? liveStatus
-  const [mode, setMode] = useState<'options' | 'remote'>('options')
-  // The target currently connecting: 'local', or a backend URL. Disables the
-  // others and drives the per-row spinner.
+  const [mode, setMode] = useState<'options' | 'remote' | 'sso'>('options')
+  const [ssoTarget, setSsoTarget] = useState<SsoTarget | null>(null)
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [callbackInput, setCallbackInput] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const backends = useKnownBackends()
@@ -89,11 +84,19 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   const current = describeBackend(currentUrl)
   const [url, setUrl] = useState('')
   const canStartLocal = clientRuntime.capabilities.localBackend
+  const managedCloud = backends.find((backend) => backend.managed || backend.mode === 'cloud')
+  const cloudOnly = !canStartLocal && Boolean(clientRuntime.cloudUrl || managedCloud)
 
-  // On success the connection store flips backends: as the boot gate that
-  // unmounts this screen; in manual mode we stay mounted over the live app, so
-  // dismiss ourselves. A connect that needs device approval drops to the boot
-  // gate either way, which then unmounts the manual overlay.
+  useEffect(() => {
+    if (!manual && currentAuth === 'oidc' && currentUrl && status === 'disconnected') {
+      setSsoTarget({
+        url: currentUrl,
+        label: describeBackend(currentUrl).title,
+        oidcLoginUrl: currentOidcUrl || '/v1/auth/login',
+      })
+    }
+  }, [currentAuth, currentOidcUrl, currentUrl, manual, status])
+
   const run = async (target: string, action: () => Promise<string | null>) => {
     setBusy(target)
     setActionError(null)
@@ -112,22 +115,85 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   }
 
   const onStartLocal = () => run('local', startLocal)
-  const connectTo = (target: string) => run(target, () => connectRemote(target))
+
+  const connectTo = (target: string) =>
+    run(target, async () => {
+      const err = await connectRemote(target)
+      if (!err) return null
+      const next = currentConnection()
+      if (next.auth === 'oidc' && sameBackend(next.url, target)) {
+        setSsoTarget({
+          url: next.url,
+          label: describeBackend(next.url).title,
+          oidcLoginUrl: next.oidcLoginUrl || '/v1/auth/login',
+        })
+        setMode('sso')
+        setPasteOpen(false)
+        setCallbackInput('')
+        return null
+      }
+      return err
+    })
+
+  const launchSso = (target: SsoTarget) =>
+    run(`sso:${target.url}`, async () => {
+      const err = await startCloudSignIn(target.url, target.oidcLoginUrl)
+      if (err) return err
+      if (clientRuntime.kind === 'electron') {
+        setSsoTarget(target)
+        setMode('sso')
+        setPasteOpen(true)
+      }
+      return null
+    })
+
+  const submitCallbackToken = () => {
+    if (!ssoTarget) return
+    const raw = callbackInput.trim()
+    if (!raw) return
+    const parsed = parseOidcCallbackHash(raw)
+    const token = parsed.token || raw
+    const targetUrl = parsed.server || ssoTarget.url
+    void run(`token:${targetUrl}`, () => connectRemote(`${targetUrl}#token=${encodeURIComponent(token)}`))
+  }
+
   const isCurrent = (target: string) => manual && sameBackend(currentUrl, target)
 
-  // While 'checking' we know what we're waiting on — tailor the copy so a
-  // remembered server or a local start reads as intentional, not a hang.
   const checkingCopy =
-    connectionPreference()?.mode === 'remote'
-      ? 'Connecting to your server…'
-      : connectionPreference()?.mode === 'local'
-        ? canStartLocal
-          ? `Starting jaz on ${deviceLabel}…`
-          : 'Connecting to server…'
+    connectionPreference()?.mode === 'remote' || cloudOnly
+      ? 'Connecting to Jaz Cloud…'
+      : connectionPreference()?.mode === 'local' && canStartLocal
+        ? `Starting jaz on ${deviceLabel}…`
         : 'Connecting to backend…'
+
   const reconnectHint = canStartLocal
-    ? 'Start one here or point jaz at another server.'
-    : 'Point jaz at another server.'
+    ? 'Start one here or connect to a cloud server.'
+    : 'Sign in with SSO or connect to your workspace server.'
+
+  const ssoPromptNeeded = cloudOnly && currentAuth === 'oidc' && error === 'Sign in with SSO to connect to this server'
+  const visibleError = ssoPromptNeeded ? null : error
+
+  const heading = manual
+    ? canStartLocal
+      ? 'Switch workspace'
+      : 'Connect to Jaz Cloud'
+    : visibleError
+      ? cloudOnly
+        ? 'Sign in to Jaz Cloud'
+        : 'Reconnect to jaz'
+      : cloudOnly
+        ? 'Welcome to Jaz Cloud'
+        : 'Welcome to jaz'
+
+  const activeSso =
+    ssoTarget ??
+    (cloudOnly && (clientRuntime.cloudUrl || managedCloud)
+      ? {
+          url: clientRuntime.cloudUrl || managedCloud!.url,
+          label: managedCloud?.label || describeBackend(clientRuntime.cloudUrl).title,
+          oidcLoginUrl: managedCloud?.oidcLoginUrl || currentOidcUrl || '/v1/auth/login',
+        }
+      : null)
 
   return (
     <div className="relative flex h-full flex-col bg-bg">
@@ -145,7 +211,6 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
           </button>
         ) : null}
       </div>
-      {/* offset the titlebar so the content is optically centered */}
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-[52px]">
         <div className="mb-8">
           <DitherWordmark delay={0.35} />
@@ -173,31 +238,116 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
               variants={stagger}
               initial="hidden"
               animate="show"
-              className="flex w-full max-w-[320px] flex-col items-center"
+              className="flex w-full max-w-[340px] flex-col items-center"
             >
               <motion.h1
                 variants={rise}
                 className="text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
               >
-                {manual ? 'Connect to a machine' : error ? 'Reconnect to jaz' : 'Welcome to jaz'}
+                {heading}
               </motion.h1>
 
               {manual ? (
                 <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
                   Currently on <span className="text-ink">{current.title}</span>.{' '}
-                  {canStartLocal ? 'Run jaz on this computer or point it at another server.' : 'Point jaz at another server.'}
+                  {canStartLocal ? 'Run jaz locally or switch to a cloud workspace.' : 'Switch to another cloud server.'}
                 </motion.p>
-              ) : error ? (
+              ) : visibleError ? (
                 <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
-                  <span>{error}</span>
+                  <span>{visibleError}</span>
                   <span className="mt-1 block text-ink-3">{reconnectHint}</span>
+                </motion.p>
+              ) : cloudOnly && activeSso ? (
+                <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
+                  Sign in with your organization SSO to open <span className="text-ink">{activeSso.label}</span>.
                 </motion.p>
               ) : null}
 
               <motion.div variants={rise} className="mt-6 w-full">
                 <AnimatePresence mode="wait" initial={false}>
-                  {mode === 'options' ? (
+                  {mode === 'sso' && activeSso ? (
+                    <motion.div
+                      key="sso"
+                      {...swap}
+                      className="flex flex-col gap-2.5 rounded-[16px] bg-surface/90 p-3.5 shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-[2px]"
+                    >
+                      <div className="flex items-center justify-between gap-2 px-0.5">
+                        <span className="min-w-0 truncate text-[13px] font-medium text-ink">{activeSso.label}</span>
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary">
+                          <Cloud size={11} />
+                          Cloud SSO
+                        </span>
+                      </div>
+                      <ChoiceButton
+                        primary
+                        label="Sign in with SSO"
+                        busyLabel="Opening SSO…"
+                        busy={busy === `sso:${activeSso.url}`}
+                        disabled={busy !== null}
+                        onClick={() => launchSso(activeSso)}
+                      />
+                      {pasteOpen ? (
+                        <form
+                          onSubmit={(event) => {
+                            event.preventDefault()
+                            submitCallbackToken()
+                          }}
+                          className="mt-1 flex flex-col gap-2 border-t border-border/70 pt-2.5"
+                        >
+                          <p className="text-[11.5px] text-ink-3">
+                            After signing in, paste the callback URL or session token if the app did not catch it automatically.
+                          </p>
+                          <Input
+                            value={callbackInput}
+                            onChange={(event) => setCallbackInput(event.target.value)}
+                            placeholder="#token=… or session token"
+                            spellCheck={false}
+                            className="rounded-full font-mono text-[12px]"
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => setPasteOpen(false)}>
+                              Cancel
+                            </Button>
+                            <Button variant="primary" size="sm" type="submit" disabled={busy !== null || !callbackInput.trim()}>
+                              Continue
+                            </Button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div className="flex items-center justify-between px-0.5 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMode('options')
+                              setActionError(null)
+                            }}
+                            className="cursor-pointer text-[12px] text-ink-3 transition-colors duration-150 hover:text-ink"
+                          >
+                            Back
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPasteOpen(true)}
+                            className="inline-flex cursor-pointer items-center gap-1 text-[12px] text-ink-3 transition-colors duration-150 hover:text-ink"
+                          >
+                            <KeyRound size={11} />
+                            Paste session token
+                          </button>
+                        </div>
+                      )}
+                    </motion.div>
+                  ) : mode === 'options' ? (
                     <motion.div key="opts" {...swap} className="flex flex-col gap-2">
+                      {cloudOnly && activeSso && !isCurrent(activeSso.url) ? (
+                        <ChoiceButton
+                          primary
+                          label="Sign in with SSO"
+                          busyLabel="Opening SSO…"
+                          busy={busy === `sso:${activeSso.url}`}
+                          disabled={busy !== null}
+                          onClick={() => launchSso(activeSso)}
+                        />
+                      ) : null}
                       {canStartLocal ? (
                         <ChoiceButton
                           primary={!(manual && current.local)}
@@ -205,27 +355,44 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                           busyLabel="Starting backend…"
                           busy={busy === 'local'}
                           connected={manual && current.local}
+                          kind="local"
                           disabled={busy !== null}
                           onClick={onStartLocal}
                         />
                       ) : null}
-                      {backends.map((backend) => (
-                        <BackendChoice
-                          key={backend.url}
-                          label={backend.label}
-                          busy={busy === backend.url}
-                          connected={isCurrent(backend.url)}
-                          managed={backend.managed}
+                      {backends.map((backend) => {
+                        const isCloud = backend.mode === 'cloud' || backend.auth === 'oidc'
+                        const connected = isCurrent(backend.url)
+                        return (
+                          <BackendChoice
+                            key={backend.url}
+                            label={backend.label}
+                            busy={busy === backend.url || busy === `sso:${backend.url}`}
+                            connected={connected}
+                            managed={backend.managed}
+                            isCloud={isCloud}
+                            disabled={busy !== null}
+                            onConnect={() => connectTo(backend.url)}
+                            onForget={() => forgetBackend(backend.url)}
+                          />
+                        )
+                      })}
+                      {!cloudOnly ? (
+                        <ChoiceButton
+                          label="Connect to a server"
                           disabled={busy !== null}
-                          onConnect={() => connectTo(backend.url)}
-                          onForget={() => forgetBackend(backend.url)}
+                          onClick={() => setMode('remote')}
                         />
-                      ))}
-                      <ChoiceButton
-                        label="Connect to a server"
-                        disabled={busy !== null}
-                        onClick={() => setMode('remote')}
-                      />
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          onClick={() => setMode('remote')}
+                          className="mt-1 cursor-pointer text-center text-[12px] text-ink-3 transition-colors duration-150 hover:text-ink disabled:opacity-50"
+                        >
+                          Use another server address
+                        </button>
+                      )}
                     </motion.div>
                   ) : (
                     <motion.div
@@ -268,16 +435,13 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   )
 }
 
-// Full-width rounded pill: run locally / add a server. Primary = the cobalt
-// recommended path (run locally), secondary = a quiet surface pill. `connected`
-// marks it as the current backend with a settled dot instead of a CTA. Soft
-// drop shadow floats it over the terrain; scales on press.
 function ChoiceButton({
   label,
   busyLabel,
   busy = false,
   primary = false,
   connected = false,
+  kind,
   disabled,
   onClick,
 }: {
@@ -286,6 +450,7 @@ function ChoiceButton({
   busy?: boolean
   primary?: boolean
   connected?: boolean
+  kind?: 'local' | 'cloud'
   disabled?: boolean
   onClick: () => void
 }) {
@@ -305,6 +470,10 @@ function ChoiceButton({
         <LoaderCircle size={15} className="animate-spin" />
       ) : connected ? (
         <span className="size-1.5 shrink-0 rounded-full bg-ok" />
+      ) : kind === 'local' ? (
+        <Laptop size={14} className="shrink-0 opacity-80" />
+      ) : kind === 'cloud' ? (
+        <Cloud size={14} className="shrink-0 opacity-80" />
       ) : null}
       {busy && busyLabel ? busyLabel : label}
       {connected ? <span className="text-[12px] text-ink-3">Connected</span> : null}
@@ -312,13 +481,12 @@ function ChoiceButton({
   )
 }
 
-// A saved remote backend: tap the pill to switch to it; the × (hover) forgets
-// it. The one we're on shows a settled dot and can't be forgotten.
 function BackendChoice({
   label,
   busy,
   connected,
   managed = false,
+  isCloud = false,
   disabled,
   onConnect,
   onForget,
@@ -327,6 +495,7 @@ function BackendChoice({
   busy: boolean
   connected: boolean
   managed?: boolean
+  isCloud?: boolean
   disabled: boolean
   onConnect: () => void
   onForget: () => void
@@ -344,8 +513,13 @@ function BackendChoice({
           <LoaderCircle size={15} className="shrink-0 animate-spin" />
         ) : connected ? (
           <span className="size-1.5 shrink-0 rounded-full bg-ok" />
+        ) : isCloud ? (
+          <Cloud size={14} className="shrink-0 text-primary" />
         ) : null}
         <span className="min-w-0 truncate">{label}</span>
+        {isCloud && !connected ? (
+          <span className="shrink-0 rounded-full bg-primary-soft px-1.5 py-0.5 text-[10px] font-medium text-primary">Cloud</span>
+        ) : null}
         {connected ? <span className="shrink-0 text-[12px] text-ink-3">Connected</span> : null}
       </motion.button>
       {!connected && !managed ? (

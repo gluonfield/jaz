@@ -163,15 +163,7 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
     setWindowButtonsVisible: (visible: boolean) => ipcRenderer.send('jaz:set-window-buttons-visible', visible),
     startLocalBackend: (): Promise<{ ok: boolean; url?: string; key?: string; error?: string }> =>
       ipcRenderer.invoke('jaz:start-local-backend'),
-    getDeviceIdentity: (): Promise<{ device_id: string; public_key: string }> =>
-      ipcRenderer.invoke('jaz:get-device-identity'),
-    getDeviceMetadata: (): Promise<{
-      name: string
-      platform: string
-      device_family: string
-      model_identifier: string
-      app_version: string
-    }> => ipcRenderer.invoke('jaz:get-device-metadata'),
+    pickDirectory: (): Promise<string | null> => ipcRenderer.invoke('jaz:pick-directory'),
     configureNotifications: (config: NotificationConfig): Promise<boolean> =>
       ipcRenderer.invoke('jaz:configure-notifications', config),
     notchAccess: (): Promise<NotchAccess> => ipcRenderer.invoke('jaz:notifications:notch-access'),
