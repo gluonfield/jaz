@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
 import { keys } from '@/lib/query/keys'
-import { get, put } from './client'
+import { cloudGet, cloudPut } from './cloudClient'
 import type { CloudUser } from './serverTypes'
 
 export type InstructionScope = 'org' | 'space' | 'user' | 'bot'
@@ -103,7 +103,7 @@ export async function getInstruction(
   signal?: AbortSignal,
 ): Promise<CloudInstructionDocument> {
   try {
-    const raw = await get<RawInstructionRecord>(
+    const raw = await cloudGet<RawInstructionRecord>(
       `/v1/instructions/${encodeURIComponent(scope)}/${encodeURIComponent(scopeId)}/${encodeURIComponent(kind)}`,
       { signal },
     )
@@ -122,7 +122,7 @@ export async function saveInstruction(
   kind: InstructionKind,
   input: { body_md: string; expected_version: string },
 ): Promise<CloudInstructionDocument> {
-  const raw = await put<RawInstructionRecord>(
+  const raw = await cloudPut<RawInstructionRecord>(
     `/v1/instructions/${encodeURIComponent(scope)}/${encodeURIComponent(scopeId)}/${encodeURIComponent(kind)}`,
     {
       body_md: input.body_md,

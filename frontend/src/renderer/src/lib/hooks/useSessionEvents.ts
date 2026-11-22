@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import { isCloudApiSession } from '@/lib/api/client'
+import { isCloudThread } from '@/lib/api/cloudClient'
 import { openSessionEvents } from '@/lib/api/sse'
 import type { SessionEvent } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
@@ -29,7 +29,7 @@ export function useSessionEvents(
     if (afterSeq === undefined) return
     const refetchMessages = () => {
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
-      if (isCloudApiSession()) {
+      if (isCloudThread(sessionId)) {
         queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
         return
       }

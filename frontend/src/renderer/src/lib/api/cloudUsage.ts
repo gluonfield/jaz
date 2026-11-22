@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
 import { keys } from '@/lib/query/keys'
-import { get } from './client'
+import { cloudGet } from './cloudClient'
 
 export interface CloudUsageSummary {
   month_start: string
@@ -31,7 +31,7 @@ function optionalPositiveCap(value: unknown): number | null {
 }
 
 export async function fetchUsageSummary(signal?: AbortSignal): Promise<CloudUsageSummary> {
-  const raw = await get<Partial<CloudUsageSummary>>('/v1/usage/summary', { signal })
+  const raw = await cloudGet<Partial<CloudUsageSummary>>('/v1/usage/summary', { signal })
   return {
     month_start: typeof raw?.month_start === 'string' ? raw.month_start : '',
     org_spent_usd: finiteNumber(raw?.org_spent_usd),

@@ -3,8 +3,10 @@ import { ApiError, readAPIResponse } from '@/lib/api/response'
 import { queryOptions } from '@tanstack/react-query'
 import type { MessageContextInput } from '@/lib/messageContext'
 import { telemetry } from '@/lib/telemetry'
+import { waitForCloudRestore } from '@/lib/cloudAccount'
 import { keys } from '../query/keys'
 import { apiEmbeddedGetUrl, apiFetch, del, get, isCloudApiSession, post, put } from './client'
+import { hasActiveCloudTarget, isCloudThread } from './cloudClient'
 import { updateThreadUserState } from './cloudSpaces'
 import {
   cloudThreadToSession,
@@ -52,7 +54,7 @@ export interface CreateSessionInput {
 }
 
 export async function createSession(input: CreateSessionInput = {}): Promise<Session> {
-  if (isCloudApiSession()) {
+  if (isCloudApiSession() || Boolean(input.model_profile_id)) {
     const thread = await createCloudThread({
       title: input.title,
       space_id: input.space_id,
@@ -78,11 +80,39 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
   return session
 }
 
-export async function getSession(id: string, signal?: AbortSignal): Promise<Session> {
-  if (isCloudApiSession()) {
-    return cloudThreadToSession(await getCloudThread(id, signal))
+async function routeSessionRead<T>(
+  id: string,
+  readLocal: () => Promise<T>,
+  readCloud: () => Promise<T>,
+  allowNotFoundFallback = true,
+): Promise<T> {
+  if (isCloudThread(id)) {
+    if (!hasActiveCloudTarget()) await waitForCloudRestore()
+    return readCloud()
   }
-  return get<Session>(`/v1/sessions/${id}`, { signal })
+  try {
+    return await readLocal()
+  } catch (error) {
+    if (allowNotFoundFallback && error instanceof ApiError && error.status === 404) {
+      if (!hasActiveCloudTarget()) await waitForCloudRestore()
+      if (hasActiveCloudTarget()) {
+        try {
+          return await readCloud()
+        } catch {
+          // Preserve the original local 404 when the thread does not exist on Cloud either.
+        }
+      }
+    }
+    throw error
+  }
+}
+
+export function getSession(id: string, signal?: AbortSignal): Promise<Session> {
+  return routeSessionRead(
+    id,
+    () => get<Session>(`/v1/sessions/${id}`, { signal }),
+    async () => cloudThreadToSession(await getCloudThread(id, signal)),
+  )
 }
 
 export function setSessionAgentConfig(sessionId: string, id: string, value: string): Promise<void> {
@@ -391,7 +421,7 @@ export function restoreSessionWorktree(id: string): Promise<RepoInfo> {
 }
 
 export async function setSessionArchived(id: string, archived: boolean): Promise<Session> {
-  if (isCloudApiSession()) {
+  if (isCloudThread(id)) {
     await updateThreadUserState(id, { archived })
     const session = await getSession(id)
     return { ...session, archived }
@@ -400,7 +430,7 @@ export async function setSessionArchived(id: string, archived: boolean): Promise
 }
 
 export async function setSessionPinned(id: string, pinned: boolean): Promise<Session> {
-  if (isCloudApiSession()) {
+  if (isCloudThread(id)) {
     await updateThreadUserState(id, { pinned })
     const session = await getSession(id)
     return { ...session, pinned }
@@ -450,11 +480,42 @@ export function answerSessionInteractiveResponse(
   return post<{ ok: boolean }>(`/v1/sessions/${id}/interactive-response`, input)
 }
 
+function mergeSidebarSessions(localSessions: Session[], cloudSessions: Session[]): Session[] {
+  const byId = new Map<string, Session>()
+  for (const session of localSessions) {
+    byId.set(session.id, session)
+  }
+  for (const session of cloudSessions) {
+    if (!byId.has(session.id)) {
+      byId.set(session.id, session)
+    }
+  }
+  return [...byId.values()].sort((a, b) => {
+    const aTime = Date.parse(a.updated_at) || 0
+    const bTime = Date.parse(b.updated_at) || 0
+    return bTime - aTime || a.id.localeCompare(b.id)
+  })
+}
+
 export const sidebarSessionsQuery = queryOptions({
   queryKey: keys.sidebarSessions,
   queryFn: async ({ signal }) => {
     if (isCloudApiSession()) {
       return (await listCloudThreads(undefined, signal)).map(cloudThreadToSession)
+    }
+    if (hasActiveCloudTarget()) {
+      const [localRes, cloudRes] = await Promise.allSettled([
+        get<{ sessions: Session[] | null }>('/v1/sessions?include_children=true', { signal }),
+        listCloudThreads(undefined, signal),
+      ])
+      if (localRes.status === 'rejected') {
+        throw localRes.reason
+      }
+      const localSessions = localRes.value.sessions ?? []
+      const cloudSessions = cloudRes.status === 'fulfilled'
+        ? cloudRes.value.map(cloudThreadToSession)
+        : []
+      return mergeSidebarSessions(localSessions, cloudSessions)
     }
     const { sessions } = await get<{ sessions: Session[] | null }>('/v1/sessions?include_children=true', { signal })
     return sessions ?? []
@@ -505,22 +566,25 @@ type SessionMessagesPageRequest = {
   turns?: number
 }
 
-export async function getSessionMessagesPage(
+export function getSessionMessagesPage(
   id: string,
   page: SessionMessagesPageRequest = {},
   signal?: AbortSignal,
 ): Promise<SessionMessages> {
-  if (isCloudApiSession()) {
-    return fetchCloudThreadMessages(id, signal)
-  }
   const params = new URLSearchParams()
   if (page.beforeMessageSeq) params.set('before_message_seq', String(page.beforeMessageSeq))
   if (page.beforeEventSeq) params.set('before_event_seq', String(page.beforeEventSeq))
   if (page.historyRevision) params.set('history_revision', String(page.historyRevision))
   if (page.turns) params.set('turns', String(page.turns))
   const query = params.size ? `?${params.toString()}` : ''
-  return normalizedSessionMessages(
-    await get<SessionMessagesResponse>(`/v1/sessions/${id}/messages${query}`, { signal }),
+  return routeSessionRead(
+    id,
+    async () =>
+      normalizedSessionMessages(
+        await get<SessionMessagesResponse>(`/v1/sessions/${id}/messages${query}`, { signal }),
+      ),
+    () => fetchCloudThreadMessages(id, signal),
+    !page.beforeMessageSeq && !page.beforeEventSeq,
   )
 }
 

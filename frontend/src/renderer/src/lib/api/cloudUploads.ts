@@ -1,5 +1,6 @@
 import { ApiError } from '@/lib/api/response'
-import { apiEmbeddedGetUrl, post, secureBackendConnection } from './client'
+import { secureBackendConnection } from './client'
+import { cloudEmbeddedGetUrl, cloudPost } from './cloudClient'
 import type { Attachment } from './types'
 
 export interface PresignUploadInput {
@@ -40,11 +41,11 @@ export interface CommitUploadResponse {
 }
 
 export function presignUpload(runId: string, input: PresignUploadInput, signal?: AbortSignal): Promise<PresignUploadResponse> {
-  return post<PresignUploadResponse>(`/v1/runs/${encodeURIComponent(runId)}/uploads/presign`, input, signal)
+  return cloudPost<PresignUploadResponse>(`/v1/runs/${encodeURIComponent(runId)}/uploads/presign`, input, signal)
 }
 
 export function commitUpload(runId: string, input: CommitUploadInput, signal?: AbortSignal): Promise<CommitUploadResponse> {
-  return post<CommitUploadResponse>(`/v1/runs/${encodeURIComponent(runId)}/uploads/commit`, input, signal)
+  return cloudPost<CommitUploadResponse>(`/v1/runs/${encodeURIComponent(runId)}/uploads/commit`, input, signal)
 }
 
 export async function sha256Hex(data: ArrayBuffer): Promise<string> {
@@ -124,5 +125,5 @@ export function cloudRunFileUrl(runId: string, relpath: string): string {
     .split('/')
     .map((segment) => encodeURIComponent(segment))
     .join('/')
-  return apiEmbeddedGetUrl(`/v1/runs/${encodeURIComponent(runId)}/files/${encodedPath}`)
+  return cloudEmbeddedGetUrl(`/v1/runs/${encodeURIComponent(runId)}/files/${encodedPath}`)
 }

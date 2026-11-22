@@ -45,10 +45,10 @@ import { HorizontalResizeHandle } from '@/components/ui/HorizontalResizeHandle'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
+import { isCloudThread } from '@/lib/api/cloudClient'
 import { uploadCloudFile } from '@/lib/api/cloudUploads'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
-import { useIsCloud } from '@/lib/connection'
 import {
   answerSessionInteractiveResponse,
   cancelSession,
@@ -164,16 +164,16 @@ export function ThreadView({
   chat?: (view: ThreadChatView) => ReactNode
 }) {
   const queryClient = useQueryClient()
-  const isCloud = useIsCloud()
   const config = useSessionConfig(sessionId)
   const toast = useToast()
   const reportHistoryError = useCallback((message: string) => {
     toast(`Couldn't load earlier history: ${message}`, 'danger')
   }, [toast])
-  useComputerControl(sessionId)
   const detail = useSessionHistory(sessionId, reportHistoryError)
+  const isCloudThreadView = detail.data?.session.backend === 'cloud' || isCloudThread(sessionId)
+  useComputerControl(sessionId, !isCloudThreadView)
   const voice = useVoiceMode(sessionId)
-  const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !isCloud }).data
+  const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !isCloudThreadView }).data
   const { start: startVoiceConversation } = voice
   const startVoice = useLocation({ select: (location) => location.state.startVoice })
   const navigate = useNavigate()
@@ -182,10 +182,10 @@ export function ThreadView({
     void navigate({ replace: true, state: (previous) => ({ ...previous, startVoice: undefined }) })
     startVoiceConversation()
   }, [navigate, startVoice, startVoiceConversation])
-  const overview = useQuery({ ...sessionOverviewQuery(sessionId), enabled: !isCloud })
+  const overview = useQuery({ ...sessionOverviewQuery(sessionId), enabled: !isCloudThreadView })
   useEffect(() => {
-    if (!isCloud) void queryClient.prefetchQuery(sessionRepoQuery(sessionId))
-  }, [isCloud, queryClient, sessionId])
+    if (!isCloudThreadView) void queryClient.prefetchQuery(sessionRepoQuery(sessionId))
+  }, [isCloudThreadView, queryClient, sessionId])
   const events = useQuery(sessionEventsQuery(sessionId))
   const shownCriticalErrors = useRef(new Set<string>())
   const [lastSessionEventAt, setLastSessionEventAt] = useState<string>()
@@ -309,6 +309,12 @@ export function ThreadView({
   const stopSession = useCallback(() => {
     // The turn runs detached server-side; clear local optimistic state now.
     abortLiveMessage()
+    if (isCloudThreadView) {
+      queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+      queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
+      return
+    }
     void cancelSession(sessionId)
       .catch(() => {})
       .finally(() => {
@@ -316,7 +322,7 @@ export function ThreadView({
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         queryClient.invalidateQueries({ queryKey: keys.usage })
       })
-  }, [abortLiveMessage, queryClient, sessionId])
+  }, [abortLiveMessage, isCloudThreadView, queryClient, sessionId])
 
   const clearGoal = useCallback(() => {
     void clearSessionGoal(sessionId)
@@ -384,10 +390,10 @@ export function ThreadView({
 
   const uploadAttachment = useCallback(
     (file: File) =>
-      isCloud
+      isCloudThreadView
         ? uploadCloudFile(detailSession?.run_id || sessionId, file)
         : uploadSessionAttachment(sessionId, file),
-    [detailSession?.run_id, isCloud, sessionId],
+    [detailSession?.run_id, isCloudThreadView, sessionId],
   )
 
   const handleSideChatSend = useCallback(async (
@@ -411,10 +417,10 @@ export function ThreadView({
 
 
   useEffect(() => {
-    if (seenRequestedRef.current || isCloud) return
+    if (seenRequestedRef.current || isCloudThreadView || !detail.isSuccess) return
     seenRequestedRef.current = true
     void markThreadSeen(sessionId).finally(() => invalidateSessionLists(queryClient))
-  }, [isCloud, sessionId, queryClient])
+  }, [detail.isSuccess, isCloudThreadView, sessionId, queryClient])
 
   // A deep link jumps once. Without this the effect re-fires on every streamed
   // update and drags the reader back to the linked message after they have
@@ -723,7 +729,7 @@ export function ThreadView({
               ) : (
                 <>
                   {goalStatusVisible ? <GoalStatusBar goal={goal} /> : null}
-                  {isCloud ? (
+                  {isCloudThreadView ? (
                     <CloudSpendBanner
                       capError={live?.error && isSpendCapError(new Error(live.error)) ? live.error : null}
                     />

@@ -1,4 +1,4 @@
-import { Check, Cloud, Laptop, LogIn, Pencil, Plus, X } from 'lucide-react'
+import { Check, Cloud, Laptop, LogIn, LogOut, Pencil, Plus, Settings, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Input } from '@/components/ui/Input'
 import { Popover } from '@/components/ui/Popover'
@@ -16,6 +16,7 @@ export function BackendSwitcherMenu({
   placement,
   trigger,
   onConnectServer,
+  onOpenCloudSettings,
   editable = false,
   showRemember = false,
 }: {
@@ -23,6 +24,7 @@ export function BackendSwitcherMenu({
   placement: 'above' | 'below'
   trigger: ReactNode
   onConnectServer: () => void
+  onOpenCloudSettings?: () => void
   editable?: boolean
   showRemember?: boolean
 }) {
@@ -35,14 +37,19 @@ export function BackendSwitcherMenu({
     auth,
     oidcLoginUrl,
     user,
+    cloud,
     remotes,
     switchLocal,
     switchRemote,
     signInWithSSO,
+    signOutCloud,
     remember,
   } = switcher
   const localEnabled = clientRuntime.capabilities.localBackend
-  const isCloud = mode === 'cloud'
+  const isPrimaryCloud = mode === 'cloud'
+  const visibleRemotes = isPrimaryCloud
+    ? remotes
+    : remotes.filter((remote) => remote.mode !== 'cloud' && remote.auth !== 'oidc')
 
   return (
     <Popover
@@ -52,7 +59,7 @@ export function BackendSwitcherMenu({
       align="start"
       trigger={trigger}
     >
-      {isCloud && user ? (
+      {isPrimaryCloud && user ? (
         <>
           <CloudIdentityBadge user={user} />
           <div className="my-1.5 h-px bg-border/70" />
@@ -69,7 +76,7 @@ export function BackendSwitcherMenu({
           onSwitch={switchLocal}
         />
       ) : null}
-      {remotes.map((remote) => (
+      {visibleRemotes.map((remote) => (
         <RemoteRow
           key={remote.url}
           backend={remote}
@@ -80,8 +87,59 @@ export function BackendSwitcherMenu({
           onForget={() => forgetBackend(remote.url)}
         />
       ))}
+      {!isPrimaryCloud ? (
+        <>
+          <div className="my-1.5 h-px bg-border/70" />
+          <div className="flex items-center justify-between px-2.5 pb-1 pt-0.5">
+            <span className="text-[11px] font-medium text-ink-3">Jaz Cloud</span>
+            {cloud.source === 'attached' && cloud.active ? (
+              <span className="rounded-full bg-primary-soft px-1.5 py-px text-[10px] font-medium text-primary">
+                Attached
+              </span>
+            ) : null}
+          </div>
+          {cloud.source === 'attached' && cloud.active ? (
+            <>
+              {cloud.user ? <CloudIdentityBadge user={cloud.user} /> : null}
+              {onOpenCloudSettings ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    onOpenCloudSettings()
+                  }}
+                  className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                >
+                  <Settings size={13} />
+                  Manage Jaz Cloud
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={signOutCloud}
+                className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+              >
+                <LogOut size={13} />
+                Sign out of Jaz Cloud
+              </button>
+            </>
+          ) : onOpenCloudSettings ? (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                onOpenCloudSettings()
+              }}
+              className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink transition-colors duration-150 hover:bg-surface-2"
+            >
+              <Cloud size={13} className="text-primary" />
+              Connect Jaz Cloud
+            </button>
+          ) : null}
+        </>
+      ) : null}
       <div className="my-1 h-px bg-border/70" />
-      {isCloud && auth === 'oidc' ? (
+      {isPrimaryCloud && auth === 'oidc' ? (
         <button
           type="button"
           onClick={() => signInWithSSO(url, oidcLoginUrl)}

@@ -5,6 +5,7 @@ import {
   Boxes,
   Brain,
   ChartNoAxesColumn,
+  Cloud,
   Globe,
   Keyboard,
   Laptop,
@@ -28,6 +29,7 @@ export type SettingsSection =
   | 'browser'
   | 'computer'
   | 'machines'
+  | 'cloud'
   | 'usage'
   | 'keyboard'
   | 'mcp'
@@ -46,7 +48,7 @@ type SettingsNavItem = {
   fullHeight?: boolean
   wide?: boolean
   experimental?: boolean
-  cloudOnly?: boolean
+  requiresCloud?: boolean
 }
 
 export const SETTINGS_SECTIONS: SettingsNavItem[] = [
@@ -63,7 +65,8 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'plugins', label: 'Plugins', icon: Puzzle, group: 'Capabilities', wide: true },
   { id: 'browser', label: 'Browser', icon: Globe, group: 'Capabilities' },
   { id: 'computer', label: 'Computer Use', icon: MonitorSmartphone, group: 'Capabilities' },
-  { id: 'machines', label: 'Connected Machines', icon: Laptop, group: 'Capabilities', cloudOnly: true },
+  { id: 'machines', label: 'Connected Machines', icon: Laptop, group: 'Capabilities', requiresCloud: true },
+  { id: 'cloud', label: 'Jaz Cloud', icon: Cloud, group: 'Account' },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn, group: 'Account' },
   { id: 'archived', label: 'Archived threads', icon: ArchiveRestore, group: 'Account' },
 ]
@@ -84,9 +87,9 @@ export function useExperimentalFeaturesEnabled(): [boolean, (enabled: boolean) =
   return [enabled, setExperimentalFeaturesEnabled]
 }
 
-export function visibleSettingsSections(experimentalEnabled: boolean, isCloud = false): SettingsNavItem[] {
+export function visibleSettingsSections(experimentalEnabled: boolean, hasCloud = false): SettingsNavItem[] {
   return SETTINGS_SECTIONS.filter((item) => {
-    if (item.cloudOnly && !isCloud) return false
+    if (item.requiresCloud && !hasCloud) return false
     if (!import.meta.env.DEV && !experimentalEnabled && item.experimental) return false
     return true
   })

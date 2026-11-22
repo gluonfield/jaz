@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Archive, CornerDownRight, Pencil, Pin } from 'lucide-react'
+import { Archive, Cloud, CornerDownRight, Pencil, Pin } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { SessionHoverDetails } from '@/components/sidebar/SessionHoverDetails'
 import { ActiveRowHighlight } from '@/components/sidebar/SidebarScroll'
@@ -103,6 +103,15 @@ export function SessionRow({
                   {title}
                 </span>
               )}
+              {!inlineEditing && session.backend === 'cloud' ? (
+                <span
+                  title="Jaz Cloud"
+                  aria-label="Cloud thread"
+                  className="shrink-0 text-ink-3 group-hover:hidden"
+                >
+                  <Cloud size={12} />
+                </span>
+              ) : null}
               {inlineEditing ? null : shortcut ? (
                 <span className="flex min-w-8 shrink-0 justify-end">
                   <KeyboardShortcut value={shortcut} />
@@ -320,12 +329,14 @@ function RowActionsMenu({
 
   return (
     <ContextMenu point={point} onClose={onClose}>
-      <MenuRow onClick={() => run(onRename)}>
-        <span className="flex items-center gap-2">
-          <Pencil size={13} />
-          Rename
-        </span>
-      </MenuRow>
+      {session.backend !== 'cloud' ? (
+        <MenuRow onClick={() => run(onRename)}>
+          <span className="flex items-center gap-2">
+            <Pencil size={13} />
+            Rename
+          </span>
+        </MenuRow>
+      ) : null}
       <MenuRow onClick={() => run(togglePin)}>
         <span className="flex items-center gap-2">
           <Pin size={13} className={pinned ? 'fill-current' : ''} />

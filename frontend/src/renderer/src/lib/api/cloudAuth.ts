@@ -1,23 +1,26 @@
 import { readAPIResponse } from '@/lib/api/response'
-import { backendFetch } from '@/lib/clientRuntime'
+import { backendFetch, clientRuntime, openExternal } from '@/lib/clientRuntime'
 import type { ResourceTicket } from '@shared/connectionSession'
 import {
   CLIENT_PLATFORM,
   CLIENT_PLATFORM_HEADER,
-  get,
   normalizeBaseUrl,
   secureBackendConnection,
 } from './client'
+import { cloudGet } from './cloudClient'
 import type { CloudUser } from './serverTypes'
 
 export const PENDING_OIDC_STORAGE_KEY = 'jaz.oidc.pending'
 export const PENDING_OIDC_TTL_MS = 10 * 60_000
+
+export type OidcLoginPurpose = 'primary' | 'attached'
 
 export interface PendingOidcLogin {
   server: string
   state: string
   codeVerifier?: string
   startedAt: number
+  purpose?: OidcLoginPurpose
 }
 
 export interface ParsedOidcCallback {
@@ -60,7 +63,11 @@ export async function pkceS256Challenge(verifier: string): Promise<string> {
   return base64UrlEncode(new Uint8Array(digest))
 }
 
-export function beginPendingOidcLogin(server: string, now: () => number = Date.now): PendingOidcLogin {
+export function beginPendingOidcLogin(
+  server: string,
+  now: () => number = Date.now,
+  purpose?: OidcLoginPurpose,
+): PendingOidcLogin {
   const origin = normalizeBaseUrl(server)
   if (!secureBackendConnection(origin)) {
     throw new Error('Remote connections require HTTPS')
@@ -70,6 +77,7 @@ export function beginPendingOidcLogin(server: string, now: () => number = Date.n
     state: generateRandomUrlSafe(24),
     codeVerifier: generateRandomUrlSafe(32),
     startedAt: now(),
+    ...(purpose ? { purpose } : {}),
   }
   try {
     sessionStorage.setItem(PENDING_OIDC_STORAGE_KEY, JSON.stringify(record))
@@ -105,11 +113,14 @@ function parsePendingRecord(raw: string | null, now: () => number): PendingOidcL
     const codeVerifier = typeof parsed.codeVerifier === 'string' && parsed.codeVerifier.trim()
       ? parsed.codeVerifier.trim()
       : undefined
+    const purpose: OidcLoginPurpose | undefined =
+      parsed.purpose === 'attached' || parsed.purpose === 'primary' ? parsed.purpose : undefined
     return {
       server,
       state: parsed.state.trim(),
       ...(codeVerifier ? { codeVerifier } : {}),
       startedAt: parsed.startedAt,
+      ...(purpose ? { purpose } : {}),
     }
   } catch {
     return null
@@ -323,12 +334,46 @@ export function normalizeCloudUser(raw: RawAuthMe): CloudUser {
   }
 }
 
+export async function launchOidcBrowserFlow(
+  origin: string,
+  loginPath: string,
+  pending: PendingOidcLogin,
+): Promise<void> {
+  const codeChallenge = pending.codeVerifier ? await pkceS256Challenge(pending.codeVerifier) : undefined
+  if (clientRuntime.kind === 'web') {
+    const sameOrigin = window.location.origin === origin
+    const clientRedirect = sameOrigin ? undefined : `${window.location.origin}/`
+    const target = buildOidcLoginUrl(origin, loginPath, {
+      clientRedirect,
+      state: pending.state,
+      ...(clientRedirect && codeChallenge ? { codeChallenge } : {}),
+    })
+    if (typeof window.location.assign === 'function') {
+      window.location.assign(target)
+    } else {
+      openExternal(target)
+    }
+    return
+  }
+  const started = await clientRuntime.beginOidcSignIn?.()
+  const clientRedirect =
+    started && typeof started === 'object' && typeof started.redirectUri === 'string' && started.redirectUri.trim()
+      ? started.redirectUri.trim()
+      : 'jaz://auth/callback'
+  const target = buildOidcLoginUrl(origin, loginPath, {
+    clientRedirect,
+    state: pending.state,
+    ...(codeChallenge ? { codeChallenge } : {}),
+  })
+  openExternal(target)
+}
+
 export async function fetchAuthMe(
   baseUrl?: string,
   options: { token?: string; signal?: AbortSignal; credentials?: RequestCredentials } = {},
 ): Promise<AuthMeResult> {
   if (!baseUrl) {
-    const raw = await get<RawAuthMe>('/v1/auth/me', { redirect: 'error', signal: options.signal })
+    const raw = await cloudGet<RawAuthMe>('/v1/auth/me', { redirect: 'error', signal: options.signal })
     return { user: normalizeCloudUser(raw), ticket: extractResourceTicket(raw) }
   }
   const origin = normalizeBaseUrl(baseUrl)

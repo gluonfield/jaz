@@ -1,4 +1,4 @@
-import { isCloudApiSession } from '@/lib/api/client'
+import { isCloudThread } from '@/lib/api/cloudClient'
 import { createCloudTurn } from '@/lib/api/cloudThreads'
 import { uploadCloudFile } from '@/lib/api/cloudUploads'
 import {
@@ -34,7 +34,7 @@ export async function appendSessionPrompt(
   append?: Append,
   cloud?: AppendPromptCloudContext,
 ): Promise<AppendedSessionPrompt | null> {
-  const isCloud = isCloudApiSession()
+  const isCloud = isCloudThread(sessionId) || Boolean(cloud?.modelProfileId)
   const runId = cloud?.runId || sessionId
   const uploaded = options.files?.length
     ? await Promise.all(

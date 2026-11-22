@@ -3,18 +3,20 @@ import { Lock, ShieldOff, ShieldCheck, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
+import { isCloudThread } from '@/lib/api/cloudClient'
 import { spacesQuery, updateThreadUserState } from '@/lib/api/cloudSpaces'
 import type { Session } from '@/lib/api/types'
-import { useIsCloud } from '@/lib/connection'
+import { useHasCloud } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
 // Compact visibility badge (`Shared in <Space>` vs `Private`) plus an explicit
 // Personal Sources opt-in switch (default OFF) on shared Space threads.
 export function CloudThreadControls({ session }: { session: Session }) {
-  const isCloud = useIsCloud()
+  const hasCloud = useHasCloud()
+  const isCloudSession = session.backend === 'cloud' || isCloudThread(session.id)
   const queryClient = useQueryClient()
   const toast = useToast()
-  const spaces = useQuery({ ...spacesQuery, enabled: isCloud })
+  const spaces = useQuery({ ...spacesQuery, enabled: isCloudSession && hasCloud })
   const isShared = Boolean(session.space_id || session.visibility === 'space')
   const spaceName = session.space_id
     ? spaces.data?.find((space) => space.id === session.space_id)?.name ?? 'Space'
@@ -43,7 +45,7 @@ export function CloudThreadControls({ session }: { session: Session }) {
     },
   })
 
-  if (!isCloud) return null
+  if (!isCloudSession) return null
 
   return (
     <div className="flex shrink-0 items-center gap-1.5">

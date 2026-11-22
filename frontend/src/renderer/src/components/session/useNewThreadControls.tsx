@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
+import { agentLabel } from '@/lib/agentLabel'
 import { cloudModelProfilesQuery, cloudProfileToAgentOption } from '@/lib/api/cloudThreads'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
+import { useHasCloud } from '@/lib/cloudSession'
 import { useIsCloud } from '@/lib/connection'
 import { composerConfig } from '@/lib/jazDefaults'
 import { useModelReasoningState } from '@/lib/modelReasoning'
@@ -15,15 +17,20 @@ import {
   type PickerAgentOption,
 } from '@/lib/modelPicker'
 import { modelSuggestionFor } from '@/lib/modelSuggestion'
-import { NEW_SESSION_AGENT_KEY, NEW_SESSION_MODELS_KEY } from '@/lib/newSessionConfig'
+import {
+  NEW_SESSION_AGENT_KEY,
+  NEW_SESSION_CLOUD_PROFILE_KEY,
+  NEW_SESSION_MODELS_KEY,
+} from '@/lib/newSessionConfig'
 
-export function useNewThreadControls() {
-  const isCloud = useIsCloud()
-  const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !isCloud })
-  const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: isCloud })
-  const agentSettings = isCloud ? undefined : settingsQuery.data
-  const cloudProfiles = isCloud ? (cloudProfilesQuery.data ?? []) : []
-  const usingCloudProfiles = isCloud
+export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
+  const isPrimaryCloud = useIsCloud()
+  const hasCloud = useHasCloud()
+  const usingCloudProfiles = targetLocation ? targetLocation === 'cloud' : isPrimaryCloud
+  const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles && !isPrimaryCloud })
+  const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: usingCloudProfiles && hasCloud })
+  const agentSettings = usingCloudProfiles ? undefined : settingsQuery.data
+  const cloudProfiles = usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : []
 
   const agentItems: PickerAgentOption[] = useMemo(() => {
     if (usingCloudProfiles) {
@@ -33,14 +40,22 @@ export function useNewThreadControls() {
   }, [agentSettings, cloudProfiles, usingCloudProfiles])
 
   const agents = useMemo(() => agentItems.map((item) => item.id), [agentItems])
-  const runtimeReady = isCloud ? cloudProfilesQuery.isSuccess : settingsQuery.isSuccess
+  const runtimeReady = usingCloudProfiles ? (!hasCloud || cloudProfilesQuery.isSuccess) : settingsQuery.isSuccess
   const runtimeAvailable = runtimeReady && agents.length > 0
 
-  const [runtime, setRuntime] = useState(() => localStorage.getItem(NEW_SESSION_AGENT_KEY) || '')
+  const [localRuntime, setLocalRuntime] = useState(() => localStorage.getItem(NEW_SESSION_AGENT_KEY) || '')
+  const [cloudRuntime, setCloudRuntime] = useState(() => localStorage.getItem(NEW_SESSION_CLOUD_PROFILE_KEY) || '')
   const [selections, setSelections] = useState(() => parseModelSelections(localStorage.getItem(NEW_SESSION_MODELS_KEY)))
 
+  const runtime = usingCloudProfiles ? cloudRuntime : localRuntime
   const selectRuntime = (next: string) => {
-    setRuntime(next)
+    if (usingCloudProfiles) {
+      setCloudRuntime(next)
+      if (next) localStorage.setItem(NEW_SESSION_CLOUD_PROFILE_KEY, next)
+      else localStorage.removeItem(NEW_SESSION_CLOUD_PROFILE_KEY)
+      return
+    }
+    setLocalRuntime(next)
     if (next) localStorage.setItem(NEW_SESSION_AGENT_KEY, next)
     else localStorage.removeItem(NEW_SESSION_AGENT_KEY)
   }
@@ -49,13 +64,20 @@ export function useNewThreadControls() {
     if (!runtimeReady || agents.includes(runtime)) return
     const next = agents[0] ?? ''
     if (next === runtime) return
-    setRuntime(next)
-    localStorage.removeItem(NEW_SESSION_AGENT_KEY)
-  }, [agents, runtime, runtimeReady])
+    if (usingCloudProfiles) {
+      setCloudRuntime(next)
+      localStorage.removeItem(NEW_SESSION_CLOUD_PROFILE_KEY)
+    } else {
+      setLocalRuntime(next)
+      localStorage.removeItem(NEW_SESSION_AGENT_KEY)
+    }
+  }, [agents, runtime, runtimeReady, usingCloudProfiles])
 
   const activeCloudProfile = usingCloudProfiles
     ? cloudProfiles.find((profile) => profile.profile_id === runtime) ?? cloudProfiles[0]
     : undefined
+
+  const activeAgentLabel = agentItems.find((item) => item.id === runtime)?.label || agentLabel(runtime)
 
   const model = runtimeModelState(agentSettings, runtime)
   const { usesProvider, provider } = model
@@ -118,12 +140,14 @@ export function useNewThreadControls() {
     agentSettings,
     agents,
     agentItems,
+    activeAgentLabel,
+    isCloudTarget: usingCloudProfiles,
     runtimeReady,
     runtimeAvailable,
     // Picker visibility lives here so the controls and the mobile summary agree.
-    showAgentPicker: agents.length > 1 || isCloud,
+    showAgentPicker: agents.length > 1 || usingCloudProfiles,
     showModelPicker: !composer.hideModelPicker,
-    showProjectPicker: !composer.hideProjectPicker && !isCloud,
+    showProjectPicker: !composer.hideProjectPicker && !usingCloudProfiles,
     runtime,
     selectRuntime,
     model: selectedModel,
@@ -143,9 +167,13 @@ export function useNewThreadControls() {
       ...(title ? { title } : {}),
       runtime: 'acp',
       agent: usingCloudProfiles ? (activeCloudProfile?.agent || 'codex') : runtime,
-      directory: extra.directory,
-      worktree: extra.worktree,
-      ...(extra.canvas ? { artifact_surface: 'canvas' as const } : {}),
+      ...(usingCloudProfiles
+        ? {}
+        : {
+            directory: extra.directory,
+            worktree: extra.worktree,
+            ...(extra.canvas ? { artifact_surface: 'canvas' as const } : {}),
+          }),
       ...(usingCloudProfiles && activeCloudProfile
         ? {
             model_profile_id: activeCloudProfile.profile_id,
@@ -173,7 +201,9 @@ export function AgentModelControls({
 }) {
   if (!controls.runtimeAvailable) {
     return controls.runtimeReady ? (
-      <span className="px-1.5 text-[13px] text-ink-3">Connect an agent in Settings</span>
+      <span className="px-1.5 text-[13px] text-ink-3">
+        {controls.isCloudTarget ? 'No cloud models configured' : 'Connect an agent in Settings'}
+      </span>
     ) : null
   }
   if (!controls.showModelPicker && !controls.showAgentPicker) {

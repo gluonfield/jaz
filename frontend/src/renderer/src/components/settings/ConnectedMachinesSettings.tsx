@@ -23,7 +23,7 @@ import {
   type CommandShellKind,
   type LocalMachineShareConfig,
 } from '@/lib/cloudMachineConfig'
-import { useConnection } from '@/lib/connection'
+import { useCloudSession } from '@/lib/cloudSession'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { useCopyAction } from '@/lib/useCopyAction'
 
@@ -77,8 +77,8 @@ const SHELL_OPTIONS: { value: CommandShellKind; label: string }[] = [
 ]
 
 export function ConnectedMachinesSettings() {
-  const { url: cloudUrl } = useConnection()
-  const machines = useQuery(machinesQuery)
+  const { url: cloudUrl, active: cloudActive } = useCloudSession()
+  const machines = useQuery({ ...machinesQuery, enabled: cloudActive })
 
   return (
     <section className="flex flex-col gap-5 py-4">

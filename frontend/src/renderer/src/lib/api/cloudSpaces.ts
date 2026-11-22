@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '@/lib/query/keys'
-import { get, post, put } from './client'
+import { cloudGet, cloudPost, cloudPut } from './cloudClient'
 
 export interface CloudSpaceMember {
   space_id?: string
@@ -31,7 +31,7 @@ export interface ThreadUserState {
 }
 
 export async function listSpaces(signal?: AbortSignal): Promise<CloudSpace[]> {
-  const response = await get<{ spaces?: CloudSpace[] | null } | CloudSpace[]>('/v1/spaces', { signal })
+  const response = await cloudGet<{ spaces?: CloudSpace[] | null } | CloudSpace[]>('/v1/spaces', { signal })
   if (Array.isArray(response)) return response
   return response.spaces ?? []
 }
@@ -45,7 +45,7 @@ export const spacesQuery = queryOptions({
 export async function createSpace(input: { name: string }): Promise<CloudSpace> {
   const name = input.name.trim()
   if (!name) throw new Error('Space name is required')
-  return post<CloudSpace>('/v1/spaces', { name })
+  return cloudPost<CloudSpace>('/v1/spaces', { name })
 }
 
 export async function addSpaceMember(
@@ -60,7 +60,7 @@ export async function addSpaceMember(
   if (!payload.email && !payload.user_id) {
     throw new Error('Enter a user email or ID')
   }
-  const response = await post<CloudSpaceMember>(`/v1/spaces/${encodeURIComponent(spaceId)}/members`, payload)
+  const response = await cloudPost<CloudSpaceMember>(`/v1/spaces/${encodeURIComponent(spaceId)}/members`, payload)
   return {
     space_id: response?.space_id ?? spaceId,
     user_id: response?.user_id ?? payload.user_id,
@@ -77,7 +77,7 @@ export async function updateThreadUserState(
   threadId: string,
   patch: Partial<Pick<ThreadUserState, 'pinned' | 'archived' | 'last_read_seq' | 'personal_sources_enabled'>>,
 ): Promise<ThreadUserState> {
-  const response = await put<RawThreadUserState>(`/v1/threads/${encodeURIComponent(threadId)}/user-state`, patch)
+  const response = await cloudPut<RawThreadUserState>(`/v1/threads/${encodeURIComponent(threadId)}/user-state`, patch)
   return {
     thread_id: response?.thread_id ?? threadId,
     user_id: response?.user_id,

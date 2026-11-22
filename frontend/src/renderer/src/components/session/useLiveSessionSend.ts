@@ -1,11 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { isCloudThread } from '@/lib/api/cloudClient'
 import { createCloudTurn } from '@/lib/api/cloudThreads'
 import { uploadCloudFile } from '@/lib/api/cloudUploads'
 import { uploadSessionAttachment } from '@/lib/api/sessions'
 import { streamSessionMessage, type AgentStreamEvent } from '@/lib/api/stream'
 import type { SessionMessages } from '@/lib/api/types'
-import { isCloudConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
 import { preparedSendMessage, type ComposerContext, type SendMessageOptions } from '@/lib/sendMessage'
 import { hasCompletedLiveReply, type LiveAttachment, type LiveExchange } from './liveTranscript'
@@ -64,8 +64,8 @@ export function useLiveSessionSend({
     setStreaming(true)
 
     const runId = history?.session.run_id || sessionId
+    const isCloud = history?.session.backend === 'cloud' || isCloudThread(sessionId)
     const started = (async () => {
-      const isCloud = isCloudConnection()
       const attachments = files.length
         ? await Promise.all(
             files.map((file) =>
@@ -122,7 +122,7 @@ export function useLiveSessionSend({
       .finally(async () => {
         await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        if (isCloudConnection()) {
+        if (isCloud) {
           queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
         } else {
           queryClient.invalidateQueries({ queryKey: keys.usage })
@@ -135,7 +135,7 @@ export function useLiveSessionSend({
         }
       })
     return accepted
-  }, [history?.session.run_id, onCriticalError, queryClient, sessionId])
+  }, [history?.session.backend, history?.session.run_id, onCriticalError, queryClient, sessionId])
 
   const abort = useCallback(() => {
     const pending = sendRef.current

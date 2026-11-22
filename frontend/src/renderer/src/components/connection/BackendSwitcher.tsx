@@ -5,11 +5,18 @@ import { useBackendSwitcher } from './useBackendSwitcher'
 
 export { CloudIdentityBadge } from './BackendSwitcherMenu'
 
-export function BackendSwitcher({ onConnectServer }: { onConnectServer: () => void }) {
+export function BackendSwitcher({
+  onConnectServer,
+  onOpenCloudSettings,
+}: {
+  onConnectServer: () => void
+  onOpenCloudSettings?: () => void
+}) {
   const switcher = useBackendSwitcher()
-  const { status, url, mode, user, setOpen } = switcher
+  const { status, url, mode, user, cloud, setOpen } = switcher
   const { dot } = connectionStatusDisplay(status)
-  const isCloud = mode === 'cloud'
+  const isPrimaryCloud = mode === 'cloud'
+  const cloudAttached = !isPrimaryCloud && cloud.active
 
   return (
     <BackendSwitcherMenu
@@ -18,6 +25,7 @@ export function BackendSwitcher({ onConnectServer }: { onConnectServer: () => vo
       editable
       showRemember
       onConnectServer={onConnectServer}
+      onOpenCloudSettings={onOpenCloudSettings}
       trigger={
         <button
           type="button"
@@ -26,14 +34,35 @@ export function BackendSwitcher({ onConnectServer }: { onConnectServer: () => vo
         >
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-ink-3">
-              {isCloud ? <Cloud size={10} className="text-primary" /> : <Laptop size={10} />}
-              {isCloud ? 'Cloud' : 'Local'}
+              {isPrimaryCloud ? (
+                <>
+                  <Cloud size={10} className="text-primary" />
+                  Cloud
+                </>
+              ) : cloudAttached ? (
+                <>
+                  <Laptop size={10} />
+                  Local
+                  <span aria-hidden>·</span>
+                  <Cloud size={10} className="text-primary" />
+                  Cloud
+                </>
+              ) : (
+                <>
+                  <Laptop size={10} />
+                  Local
+                </>
+              )}
             </span>
             <span className="block truncate text-[13px] font-medium text-ink">
-              {isCloud && user?.org_name ? user.org_name : backendName(url)}
+              {isPrimaryCloud && user?.org_name ? user.org_name : backendName(url)}
             </span>
-            {isCloud && user ? (
+            {isPrimaryCloud && user ? (
               <span className="block truncate text-[11px] text-ink-3">{user.email || user.display_name}</span>
+            ) : cloudAttached && cloud.user ? (
+              <span className="block truncate text-[11px] text-ink-3">
+                {cloud.user.org_name || cloud.user.email || cloud.user.display_name}
+              </span>
             ) : null}
           </span>
           <span className={`size-1.5 shrink-0 rounded-full ${dot}`} />

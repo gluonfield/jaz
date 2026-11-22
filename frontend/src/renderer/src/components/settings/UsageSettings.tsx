@@ -11,6 +11,7 @@ import { agentSettingsQuery } from '@/lib/api/settings'
 import { evaluateSpendStatus, formatUsageMonth, usageSummaryQuery } from '@/lib/api/cloudUsage'
 import { dailyUsageQuery } from '@/lib/api/sessions'
 import type { AgentSettings, DailyUsage } from '@/lib/api/types'
+import { useHasCloud } from '@/lib/cloudSession'
 import { useIsCloud } from '@/lib/connection'
 import { formatTokens } from '@/lib/format/tokens'
 import { type ModelPricing, openRouterModelsQuery } from '@/lib/models'
@@ -40,12 +41,13 @@ const usageSquarePx = 12
 const usageGapPx = 3
 
 export function UsageSettings() {
-  const isCloud = useIsCloud()
+  const isPrimaryCloud = useIsCloud()
+  const hasCloud = useHasCloud()
   const [window, setWindow] = useState<UsageWindow>({ days: 30 })
-  const usage = useQuery({ ...dailyUsageQuery(window), enabled: !isCloud })
-  const cloudSummary = useQuery({ ...usageSummaryQuery, enabled: isCloud })
-  const agentSettings = useQuery({ ...agentSettingsQuery, enabled: !isCloud })
-  const openRouter = useQuery({ ...openRouterModelsQuery, enabled: !isCloud })
+  const usage = useQuery({ ...dailyUsageQuery(window), enabled: !isPrimaryCloud })
+  const cloudSummary = useQuery({ ...usageSummaryQuery, enabled: hasCloud })
+  const agentSettings = useQuery({ ...agentSettingsQuery, enabled: !isPrimaryCloud })
+  const openRouter = useQuery({ ...openRouterModelsQuery, enabled: !isPrimaryCloud })
   const pricing = useMemo(() => buildPricingIndex(openRouter.data?.models ?? []), [openRouter.data])
   const spendStatus = evaluateSpendStatus(cloudSummary.data)
   const monthLabel = cloudSummary.data ? formatUsageMonth(cloudSummary.data.month_start) : ''
@@ -56,14 +58,14 @@ export function UsageSettings() {
         <div>
           <p className="text-sm font-medium text-ink">Usage</p>
           <p className="mt-0.5 text-[13px] text-ink-2">
-            {isCloud
+            {isPrimaryCloud
               ? 'Monthly cloud spend and active organization caps.'
               : 'Daily input and output tokens across all agent sessions, excluding cache reads.'}
           </p>
         </div>
       </div>
 
-      {isCloud ? (
+      {hasCloud ? (
         cloudSummary.isPending ? (
           <SettingsCard className="mt-4 p-3.5">
             <Skeleton className="h-14" />
@@ -96,7 +98,9 @@ export function UsageSettings() {
             </div>
           </SettingsCard>
         ) : null
-      ) : (
+      ) : null}
+
+      {!isPrimaryCloud ? (
         <>
           <UsageWindowFilter window={window} onChange={setWindow} />
 
@@ -113,7 +117,7 @@ export function UsageSettings() {
             />
           )}
         </>
-      )}
+      ) : null}
     </section>
   )
 }

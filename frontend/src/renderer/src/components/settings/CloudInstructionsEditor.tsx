@@ -22,7 +22,7 @@ import {
 } from '@/lib/api/cloudInstructions'
 import { spacesQuery } from '@/lib/api/cloudSpaces'
 import { ApiError } from '@/lib/api/response'
-import { useConnection } from '@/lib/connection'
+import { useCloudSession } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import { FileTabs } from './FileTabs'
 
@@ -50,7 +50,7 @@ interface SaveVariables {
 }
 
 export function CloudInstructionsEditor() {
-  const { user } = useConnection()
+  const { user, source } = useCloudSession()
   const queryClient = useQueryClient()
   const toast = useToast()
 
@@ -63,7 +63,7 @@ export function CloudInstructionsEditor() {
   const [editorResetSeq, setEditorResetSeq] = useState(0)
 
   const spaces = useQuery({ ...spacesQuery, enabled: scope === 'space' })
-  const bots = useQuery({ ...botsQuery, enabled: scope === 'bot', retry: false })
+  const bots = useQuery({ ...botsQuery, enabled: scope === 'bot' && source === 'primary', retry: false })
 
   const validKinds = INSTRUCTION_SCOPE_KINDS[scope]
   const kind: InstructionKind = validKinds.includes(selectedKind) ? selectedKind : validKinds[0]

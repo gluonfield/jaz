@@ -344,6 +344,7 @@ function RootLayout() {
                       onResizeStart={startResize}
                       onResizeReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
                       onOpenSettings={() => openSettings()}
+                      onOpenCloudSettings={() => openSettings('cloud')}
                       onOpenConnect={() => setConnectOpen(true)}
                     >
                       {settingsMenu ? (

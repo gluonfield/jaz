@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, X } from 'lucide-react'
 import { useState } from 'react'
 import { evaluateSpendStatus, usageSummaryQuery } from '@/lib/api/cloudUsage'
-import { useIsCloud } from '@/lib/connection'
+import { useHasCloud } from '@/lib/cloudSession'
 
 // Subtle spend-cap indicator above the Cloud composer. Stays silent on local
 // backends and below the warning threshold.
@@ -13,11 +13,11 @@ export function CloudSpendBanner({
   capError?: string | null
   onClearError?: () => void
 }) {
-  const isCloud = useIsCloud()
-  const summary = useQuery({ ...usageSummaryQuery, enabled: isCloud })
+  const hasCloud = useHasCloud()
+  const summary = useQuery({ ...usageSummaryQuery, enabled: hasCloud })
   const [dismissedKey, setDismissedKey] = useState('')
 
-  if (!isCloud) return null
+  if (!hasCloud) return null
 
   const status = evaluateSpendStatus(summary.data)
   if (!capError && !status) return null

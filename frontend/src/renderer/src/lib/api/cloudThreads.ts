@@ -2,7 +2,15 @@ import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
 import type { ModelPickerOption, PickerAgentOption } from '@/lib/modelPicker'
 import { keys } from '@/lib/query/keys'
-import { apiFetch, apiSessionRevision, get, onApiSessionChange, post } from './client'
+import {
+  cloudFetch,
+  cloudGet,
+  cloudPost,
+  cloudSessionRevision,
+  onCloudSessionChange,
+  registerCloudThread,
+  registerCloudThreads,
+} from './cloudClient'
 import type { ConnectedMachine } from './serverTypes'
 import type { Attachment, ChatMessage, MessageBlock, Session, SessionEvent, SessionMessages } from './types'
 
@@ -131,6 +139,9 @@ const CLOUD_PROVIDER_DEFAULTS: Record<
     label: 'Vertex AI',
     logoAgent: 'codex',
     models: [
+      { value: 'google/gemini-4-hydrogen', label: 'Gemini 4 Hydrogen', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
+      { value: 'google/gemini-4-neon', label: 'Gemini 4 Neon', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
+      { value: 'google/gemini-4-carbon', label: 'Gemini 4 Carbon', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
       { value: 'google/gemini-3-flash-preview', label: 'Gemini 3 Flash', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
       { value: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
     ],
@@ -226,7 +237,7 @@ export function cloudProfileToAgentOption(profile: CloudModelProfile): PickerAge
 
 export async function listCloudModelProfiles(signal?: AbortSignal): Promise<CloudModelProfile[]> {
   try {
-    const response = await get<
+    const response = await cloudGet<
       | { models?: RawCloudModelProfile[] | null; profiles?: RawCloudModelProfile[] | null; model_profiles?: RawCloudModelProfile[] | null }
       | RawCloudModelProfile[]
     >('/v1/models', { signal })
@@ -248,7 +259,7 @@ export const cloudModelProfilesQuery = queryOptions({
 })
 
 export async function listMachines(signal?: AbortSignal): Promise<ConnectedMachine[]> {
-  const response = await get<{ machines?: ConnectedMachine[] | null } | ConnectedMachine[]>('/v1/machines', { signal })
+  const response = await cloudGet<{ machines?: ConnectedMachine[] | null } | ConnectedMachine[]>('/v1/machines', { signal })
   const items = Array.isArray(response) ? response : (response.machines ?? [])
   return items.map((machine) => ({
     ...machine,
@@ -300,6 +311,7 @@ export function cloudThreadToSession(thread: CloudThread): Session {
     visibility: thread.visibility === 'space' || thread.space_id ? 'space' : 'private',
     run_id: thread.run_id || thread.id,
     personal_sources_enabled: thread.personal_sources_enabled,
+    backend: 'cloud',
     created_at: thread.created_at || updatedAt,
     updated_at: updatedAt,
     last_attention_at: updatedAt,
@@ -308,13 +320,14 @@ export function cloudThreadToSession(thread: CloudThread): Session {
 
 export async function listCloudThreads(spaceId?: string, signal?: AbortSignal): Promise<CloudThread[]> {
   const query = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : ''
-  const response = await get<{ threads?: CloudThread[] | null } | CloudThread[]>(`/v1/threads${query}`, { signal })
-  if (Array.isArray(response)) return response
-  return response.threads ?? []
+  const response = await cloudGet<{ threads?: CloudThread[] | null } | CloudThread[]>(`/v1/threads${query}`, { signal })
+  const threads = Array.isArray(response) ? response : (response.threads ?? [])
+  registerCloudThreads(threads.map((thread) => thread.id))
+  return threads
 }
 
-export function createCloudThread(input: CreateCloudThreadInput): Promise<CloudThread> {
-  return post<CloudThread>('/v1/threads', {
+export async function createCloudThread(input: CreateCloudThreadInput): Promise<CloudThread> {
+  const thread = await cloudPost<CloudThread>('/v1/threads', {
     ...(input.title ? { title: input.title } : {}),
     ...(input.space_id ? { space_id: input.space_id } : {}),
     ...(input.model_profile_id ? { model_profile_id: input.model_profile_id } : {}),
@@ -322,10 +335,15 @@ export function createCloudThread(input: CreateCloudThreadInput): Promise<CloudT
     ...(input.reasoning_effort ? { reasoning_effort: input.reasoning_effort } : {}),
     ...(input.executor_target ? { executor_target: input.executor_target } : {}),
   })
+  registerCloudThread(thread.id)
+  return thread
 }
 
-export function getCloudThread(threadId: string, signal?: AbortSignal): Promise<CloudThread> {
-  return get<CloudThread>(`/v1/threads/${encodeURIComponent(threadId)}`, { signal })
+export async function getCloudThread(threadId: string, signal?: AbortSignal): Promise<CloudThread> {
+  const thread = await cloudGet<CloudThread>(`/v1/threads/${encodeURIComponent(threadId)}`, { signal })
+  registerCloudThread(thread.id)
+  if (threadId !== thread.id) registerCloudThread(threadId)
+  return thread
 }
 
 export function createCloudTurn(
@@ -337,7 +355,7 @@ export function createCloudTurn(
     (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
-  return post<{ turn: CloudTurn; replayed: boolean }>(
+  return cloudPost<{ turn: CloudTurn; replayed: boolean }>(
     `/v1/threads/${encodeURIComponent(threadId)}/turns`,
     {
       client_request_id: clientRequestId,
@@ -575,7 +593,7 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
 export async function fetchCloudThreadMessages(threadId: string, signal?: AbortSignal): Promise<SessionMessages> {
   const [thread, eventsRes] = await Promise.all([
     getCloudThread(threadId, signal),
-    apiFetch(`/v1/threads/${encodeURIComponent(threadId)}/events?once=1`, {
+    cloudFetch(`/v1/threads/${encodeURIComponent(threadId)}/events?once=1`, {
       headers: { Accept: 'text/event-stream' },
       signal,
     }),
@@ -595,7 +613,7 @@ export function openCloudThreadEvents(
   let retryTimer: ReturnType<typeof setTimeout> | undefined
   let activeController: AbortController | null = null
   let streamedAssistant = ''
-  const revision = apiSessionRevision()
+  const revision = cloudSessionRevision()
 
   function emitCloudEvent(parsed: CloudSessionEvent): void {
     if (isCloudUserEvent(parsed.type)) {
@@ -620,19 +638,19 @@ export function openCloudThreadEvents(
   }
 
   async function connect(): Promise<void> {
-    if (closed || apiSessionRevision() !== revision) return
+    if (closed || cloudSessionRevision() !== revision) return
     const controller = new AbortController()
     activeController = controller
     const suffix = lastSeq > 0 ? `?after_seq=${lastSeq}` : ''
     try {
-      const response = await apiFetch(`/v1/threads/${encodeURIComponent(threadId)}/events${suffix}`, {
+      const response = await cloudFetch(`/v1/threads/${encodeURIComponent(threadId)}/events${suffix}`, {
         headers: { Accept: 'text/event-stream' },
         signal: controller.signal,
       })
       if (!response.ok || !response.body) {
         throw new Error(`Cloud event stream failed (${response.status})`)
       }
-      if (closed || apiSessionRevision() !== revision) return
+      if (closed || cloudSessionRevision() !== revision) return
       onConnection?.(true)
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
@@ -640,7 +658,7 @@ export function openCloudThreadEvents(
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
-        if (closed || apiSessionRevision() !== revision) return
+        if (closed || cloudSessionRevision() !== revision) return
         buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
         let sep = buffer.indexOf('\n\n')
         while (sep !== -1) {
@@ -656,13 +674,13 @@ export function openCloudThreadEvents(
     } catch {
       // Reconnect below unless closed.
     }
-    if (!closed && apiSessionRevision() === revision) {
+    if (!closed && cloudSessionRevision() === revision) {
       onConnection?.(false)
       retryTimer = setTimeout(() => void connect(), 2_000)
     }
   }
 
-  const unsubscribe = onApiSessionChange(close)
+  const unsubscribe = onCloudSessionChange(close)
   function close(): void {
     closed = true
     clearTimeout(retryTimer)

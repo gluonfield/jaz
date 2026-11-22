@@ -1,15 +1,16 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import {
   beginPendingOidcLogin,
-  buildOidcLoginUrl,
   consumePendingOidcLogin,
   exchangeOidcCode,
+  launchOidcBrowserFlow,
   logoutCloudSession,
   parseOidcCallbackUrl,
   peekPendingOidcLogin,
-  pkceS256Challenge,
   validateOidcCallback,
 } from '@/lib/api/cloudAuth'
+import { setPrimaryCloudUser } from '@/lib/api/cloudClient'
+import { completeAttachedOidcCallback } from '@/lib/cloudAccount'
 import type {
   CloudUser,
   ServerAuthMethod,
@@ -34,7 +35,7 @@ import {
   setResourceTicket,
 } from '@/lib/api/client'
 import { rememberBackend, removeKnownBackend, updateBackendMetadata } from '@/lib/backends'
-import { clientRuntime, openExternal } from '@/lib/clientRuntime'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { loadBrowserCredential, saveBrowserCredential, forgetBrowserCredential } from '@/lib/browserCredentials'
 import { queryClient } from '@/lib/query/queryClient'
 import { fetchServerDiscovery, readAccess, readCloudAccess, type ServerDiscovery } from '@/lib/connectionProbe'
@@ -99,6 +100,7 @@ const listeners = new Set<() => void>()
 
 function setState(next: Partial<ConnectionState>): void {
   state = { ...state, ...next }
+  setPrimaryCloudUser(state.mode === 'cloud' ? state.user : null)
   for (const listener of listeners) {
     listener()
   }
@@ -492,33 +494,8 @@ export async function startCloudSignIn(baseUrl: string, oidcLoginUrl?: string): 
     }
     loginPath = discovery.oidcLoginUrl || '/v1/auth/login'
   }
-  const pending = beginPendingOidcLogin(origin)
-  const codeChallenge = pending.codeVerifier ? await pkceS256Challenge(pending.codeVerifier) : undefined
-  if (clientRuntime.kind === 'web') {
-    const sameOrigin = window.location.origin === origin
-    const clientRedirect = sameOrigin ? undefined : `${window.location.origin}/`
-    const target = buildOidcLoginUrl(origin, loginPath, {
-      clientRedirect,
-      state: pending.state,
-      ...(clientRedirect && codeChallenge ? { codeChallenge } : {}),
-    })
-    if (typeof window.location.assign === 'function') {
-      window.location.assign(target)
-    } else {
-      openExternal(target)
-    }
-    return null
-  }
-  const started = await clientRuntime.beginOidcSignIn?.()
-  const clientRedirect = started && typeof started === 'object' && typeof started.redirectUri === 'string' && started.redirectUri.trim()
-    ? started.redirectUri.trim()
-    : 'jaz://auth/callback'
-  const target = buildOidcLoginUrl(origin, loginPath, {
-    clientRedirect,
-    state: pending.state,
-    ...(codeChallenge ? { codeChallenge } : {}),
-  })
-  openExternal(target)
+  const pending = beginPendingOidcLogin(origin, Date.now, 'primary')
+  await launchOidcBrowserFlow(origin, loginPath, pending)
   return null
 }
 
@@ -529,6 +506,10 @@ export async function completeOidcCallback(
   const parsed = parseOidcCallbackUrl(rawCallbackUrl)
   if (!parsed.code && !parsed.token) {
     return options.passive ? null : 'Callback did not include an authorization code or session token'
+  }
+  const peeked = peekPendingOidcLogin()
+  if (peeked?.purpose === 'attached') {
+    return completeAttachedOidcCallback(rawCallbackUrl, options)
   }
   const pending = consumePendingOidcLogin()
   if (!pending && options.passive) {
@@ -758,9 +739,14 @@ async function init(): Promise<void> {
     return
   }
   const webCallback = consumeWebOidcCallback()
-  if (webCallback && peekPendingOidcLogin()) {
-    await completeOidcCallback(webCallback, { passive: true })
-    return
+  const pendingOidc = webCallback ? peekPendingOidcLogin() : null
+  if (webCallback && pendingOidc) {
+    if (pendingOidc.purpose === 'attached') {
+      void completeAttachedOidcCallback(webCallback, { passive: true })
+    } else {
+      await completeOidcCallback(webCallback, { passive: true })
+      return
+    }
   }
   const preference = connectionPreference()
   if (preference?.mode === 'local' && clientRuntime.capabilities.localBackend) {

@@ -298,7 +298,7 @@ export function assertBackendRelativePath(path: string, helper: string): void {
   }
 }
 
-function resolveBackendUrl(path: string, base: string, helper: string): string {
+export function resolveBackendUrl(path: string, base: string, helper: string): string {
   assertBackendRelativePath(path, helper)
   const origin = normalizeBaseUrl(base)
   let resolved: URL
@@ -311,6 +311,10 @@ function resolveBackendUrl(path: string, base: string, helper: string): string {
     throw new Error(`${helper} only accepts backend-relative paths`)
   }
   return resolved.toString()
+}
+
+export function cachedResourceTicket(url = apiBaseUrl()): ResourceTicket | undefined {
+  return resourceTickets.get(normalizeBaseUrl(url))
 }
 
 export function setResourceTicket(url: string, ticket?: { token: string; expires_at: string }): void {

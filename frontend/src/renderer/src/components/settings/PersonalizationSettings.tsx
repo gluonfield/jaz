@@ -4,10 +4,12 @@ import { MarkdownEditor } from '@/components/agent/MarkdownEditor'
 import { FileTabs } from './FileTabs'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Segmented } from '@/components/ui/Segmented'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { agentFilesQuery, saveAgentFile } from '@/lib/api/agentFiles'
 import type { AgentFile, AgentFilesResponse } from '@/lib/api/types'
+import { useHasCloud } from '@/lib/cloudSession'
 import { useIsCloud } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
 import { CloudInstructionsEditor } from './CloudInstructionsEditor'
@@ -18,12 +20,38 @@ const FILE_DESCRIPTIONS: Record<string, string> = {
   'BOTS.md': 'Instructions for bot chats only, including coordination and delegation.',
 }
 
+const TARGET_OPTIONS = [
+  { value: 'local' as const, label: 'Local' },
+  { value: 'cloud' as const, label: 'Cloud' },
+]
+
 export function PersonalizationSettings() {
-  const isCloud = useIsCloud()
-  if (isCloud) {
+  const isPrimaryCloud = useIsCloud()
+  const hasCloud = useHasCloud()
+  const [target, setTarget] = useState<'local' | 'cloud'>('local')
+
+  if (isPrimaryCloud) {
     return <CloudInstructionsEditor />
   }
-  return <LocalPersonalizationSettings />
+  if (!hasCloud) {
+    return <LocalPersonalizationSettings />
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="mx-auto flex w-full max-w-[860px] items-center justify-between px-10 pt-2 pb-1 max-sm:px-4">
+        <Segmented
+          layoutId="personalization-backend-target"
+          value={target}
+          options={TARGET_OPTIONS}
+          onChange={setTarget}
+        />
+      </div>
+      <div className="min-h-0 flex-1">
+        {target === 'cloud' ? <CloudInstructionsEditor /> : <LocalPersonalizationSettings />}
+      </div>
+    </div>
+  )
 }
 
 function LocalPersonalizationSettings() {

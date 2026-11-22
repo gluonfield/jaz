@@ -12,6 +12,7 @@ export function Sidebar({
   onResizeStart,
   onResizeReset,
   onOpenSettings,
+  onOpenCloudSettings,
   onOpenConnect,
   children,
 }: {
@@ -22,6 +23,7 @@ export function Sidebar({
   onResizeStart: (e: ReactPointerEvent) => void
   onResizeReset: () => void
   onOpenSettings: () => void
+  onOpenCloudSettings: () => void
   onOpenConnect: () => void
   children: ReactNode
 }) {
@@ -41,7 +43,7 @@ export function Sidebar({
 
       <div className="flex shrink-0 flex-col gap-0.5 border-t border-border pl-1.5 pr-3 py-1.5 empty:hidden max-sm:pl-3">
         <UpdatePanel />
-        <ConnectionFooterButton onOpenConnect={onOpenConnect} />
+        <ConnectionFooterButton onOpenConnect={onOpenConnect} onOpenCloudSettings={onOpenCloudSettings} />
         {mobile && (
           <button
             type="button"

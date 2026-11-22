@@ -13,6 +13,7 @@ import {
   sidebarSessionsQuery,
 } from '@/lib/api/sessions'
 import { useShowModelIcons } from '@/lib/appearance'
+import { useHasCloud } from '@/lib/cloudSession'
 import { useIsCloud } from '@/lib/connection'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
@@ -324,10 +325,11 @@ function RecentSessionList({
 
 export function SidebarSessions({ open }: { open: boolean }) {
   const queryClient = useQueryClient()
-  const isCloud = useIsCloud()
+  const isPrimaryCloud = useIsCloud()
+  const hasCloud = useHasCloud()
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null)
   const sessions = useQuery(sidebarSessionsQuery)
-  const projects = useQuery({ ...projectsQuery, enabled: !isCloud })
+  const projects = useQuery({ ...projectsQuery, enabled: !isPrimaryCloud })
   const [organization, setOrganization] = useSidebarOrganization()
   const [visibleRecentCount, setVisibleRecentCount] = useState(SESSION_PAGE_SIZE)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
@@ -336,14 +338,14 @@ export function SidebarSessions({ open }: { open: boolean }) {
   const [dragOrder, setDragOrder] = useState<SessionBlockKey[] | null>(null)
   useEffect(() => storeCollapsedProjects(collapsedProjects), [collapsedProjects])
   useEffect(() => {
-    if (!isCloud) setSelectedSpaceId(null)
-  }, [isCloud])
+    if (!hasCloud) setSelectedSpaceId(null)
+  }, [hasCloud])
 
   const filteredSessions = useMemo(() => {
     const all = sessions.data ?? []
-    if (!isCloud || !selectedSpaceId) return all
+    if (!hasCloud || !selectedSpaceId) return all
     return all.filter((session) => session.space_id === selectedSpaceId)
-  }, [isCloud, selectedSpaceId, sessions.data])
+  }, [hasCloud, selectedSpaceId, sessions.data])
 
   const sections = useMemo(
     () => sidebarSessionSections(filteredSessions, projects.data ?? []),
@@ -412,7 +414,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
     reorder.mutate(next.map((project) => project.path))
   }
 
-  if (sessions.isPending || (!isCloud && organization === 'project' && projects.isPending)) {
+  if (sessions.isPending || (!isPrimaryCloud && organization === 'project' && projects.isPending)) {
     return <SkeletonRows count={4} />
   }
   if (sessions.isError && !sessions.data) {
@@ -422,7 +424,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
   return (
     <HoverCardGroup>
       <section className="flex shrink-0 flex-col gap-3">
-        {isCloud ? (
+        {hasCloud ? (
           <SidebarSpaces
             selectedSpaceId={selectedSpaceId}
             onSelectSpace={setSelectedSpaceId}

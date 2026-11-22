@@ -93,6 +93,7 @@ export interface Session {
   visibility?: 'private' | 'space'
   run_id?: string
   personal_sources_enabled?: boolean
+  backend?: 'local' | 'cloud'
   created_at: string
   updated_at: string
   last_attention_at: string
