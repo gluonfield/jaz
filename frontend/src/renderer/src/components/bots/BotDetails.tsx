@@ -81,7 +81,7 @@ export function BotDetails({ bot, focusName, agentSession, working }: { bot: Bot
       </div>
       <div role="tabpanel" id={id} aria-labelledby={id + tab}>
         {tab === 'Activity' ? (
-          <BotActivity bot={bot} onOpenRoutine={setRoutine} onOpenFile={setFile} />
+          <BotActivity bot={bot} />
         ) : tab === 'Routines' ? (
           <BotRoutines bot={bot} onOpen={setRoutine} />
         ) : tab === 'Identity' ? (

@@ -174,7 +174,7 @@ export async function exerciseBotChat() {
     flushSync(() => root.render(null))
     client.removeQueries({ queryKey: keys.sessionMessages(id) })
     client.removeQueries({ queryKey: keys.sessionEvents(id) })
-    client.setQueryData(botActivityQuery(id).queryKey, { owed: [{ id: 1, request: 'Revisit the saved question', status: 'waiting_for_user', question_seq: target, question: 'Bot response 05', opened_at: bot.created_at! }], items: [], started: {} })
+    client.setQueryData(botActivityQuery(id).queryKey, { owed: [{ id: 1, request: 'Revisit the saved question', status: 'waiting_for_user', question_seq: target }], items: [], started: {} })
     openDetails = true
     await router.navigate({ to: '/bots/$botId', params: { botId: id }, search: { message: target }, hash: `message-${target}` })
     mount()
@@ -183,8 +183,8 @@ export async function exerciseBotChat() {
     const linked = await painted('Bot response 05', 'bot-chat-question-deep-link')
     viewport().scrollTop = viewport().scrollHeight
     const click = async (label: string) => {
-      const find = () => [...document.querySelectorAll<HTMLElement>('button,a')].find((node) => node.textContent?.trim() === label)
-      await until('missing popup control ' + label, () => Boolean(find()))
+      const find = () => [...document.querySelectorAll<HTMLElement>('button,a')].find((node) => node.textContent?.trim().startsWith(label))
+      await until('missing control ' + label, () => Boolean(find()))
       const control = find()!
       control.scrollIntoView({ block: 'nearest' })
       await sleep(40)
@@ -196,8 +196,6 @@ export async function exerciseBotChat() {
       await window.smoke.pointer('mouseUp', x, y)
     }
     await click('Revisit the saved question')
-    await until('task popup unavailable for repeated question navigation', () => Boolean(document.querySelector('[role="dialog"]')))
-    await click('Open question in chat')
     await sleep(450)
     await painted('Bot response 05', 'bot-chat-repeated-deep-link')
     const linkedTop = viewport().scrollTop

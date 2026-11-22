@@ -5,12 +5,11 @@ import { createRoot } from 'react-dom/client'
 import { BotDetails } from '@/components/bots/BotDetails'
 import { BotsPanel } from '@/components/bots/BotsPanel'
 import { PermissionCard } from '@/components/session/TranscriptPermissions'
-import { FileReaderLinkProvider } from '@/components/session/MessageMarkdown'
 import { getAppearance, setAppearance } from '@/lib/appearance'
 import { botActivityQuery, botsQuery } from '@/lib/api/bots'
 import { installKeyboardFocus } from '@/lib/dom/keyboardFocus'
 import { Route as botsIndexRoute } from '@/routes/bots.index'
-import type { Bot, BotActivity, BotFile, BotOwed, BotStartedThread, Loop, LoopRun } from '@/lib/api/types'
+import type { Bot, BotActivity, BotFile, BotOwed, Loop, LoopRun } from '@/lib/api/types'
 
 // A bot's side panel against a stubbed server: what it owes, is doing and
 // did, its routines and their actions, and its AGENTS.md and MEMORY.md edited
@@ -19,29 +18,29 @@ export async function exerciseBotPanel(): Promise<void> {
   const minutes = (n: number) => new Date(Date.now() - n * 60_000).toISOString()
   const bot: Bot = { id: 'panel', kind: 'bot', name: 'Jaz Self Improvement Bot', avatar: { shape: 'hex', color: 'amber' }, unread: false, status: 'idle', updated_at: minutes(0) }
   const owed: BotOwed[] = [
-    { id: 4, name: 'Keep delegated work visible', request: 'Keep bot tasks and their results visible across delegated work, restarts and follow-up conversations', status: 'in_progress', moving: true, next: 'check its report, then send it', opened_at: minutes(14), threads: [{ id: 'side-a', title: 'Commitments and lost results', state: 'working' }] },
-    { id: 3, request: 'Which fixes matter this week', status: 'in_progress', for: 'Priorities Bot', opened_at: minutes(95), threads: [{ id: 'side-e', title: 'Fixes triage', state: 'finished' }] },
-    { id: 6, request: 'Compare the supplier quotes', status: 'stopped', next: 'Checked both routes; neither supports this input. Retry after support is added.', opened_at: minutes(40), threads: [{ id: 'side-h', title: 'Quote comparison', state: 'finished' }] },
-    { id: 5, request: 'Overnight stress run; done when all overnight checks pass and their results are reviewed', status: 'pending', blocked: true, depends_on: [1], opened_at: minutes(70) },
-    { id: 2, request: 'Pause prompt suggestions on hidden turns', status: 'waiting_for_user', question_seq: 15, question: 'Keep suggestions enabled in bot chats, or disable them?', next: 'wait for his OK, then start the fork change', opened_at: minutes(60 * 3) },
-    { id: 8, request: 'Choose public artifact sharing defaults', status: 'waiting_for_user', question_seq: 16, question: 'Approve the [exact sharing list](/fixture/sharing-list.tsv)?\n\n[Evidence and limits](/fixture/evidence.md)', opened_at: minutes(180), threads: [{ id: 'sharing-audit', title: 'Sharing audit', state: 'finished' }] },
-    { id: 9, request: 'Choose the bot chat sync direction', status: 'waiting_for_user', question_seq: 17, opened_at: minutes(180) },
-    { id: 10, request: 'Resolve deferred bot identity changes', status: 'waiting_for_user', question_seq: 18, opened_at: minutes(180) },
-    { id: 1, request: 'Capacity test with 20 threads', status: 'in_progress', opened_at: minutes(60 * 4), threads: [{ id: 'side-f', title: 'Capacity harness', state: 'finished' }, { id: 'side-g', title: 'Capacity run', state: 'failed' }] },
-    { id: 7, request: 'Run the login suites', status: 'in_progress', moving: true, opened_at: minutes(25), threads: [{ id: 'side-i', title: 'Login suites', state: 'background' }, { id: 'side-j', title: 'Login fix', state: 'finished' }] },
+    { id: 4, name: 'Keep delegated work visible', request: 'Keep bot tasks and their results visible across delegated work, restarts and follow-up conversations', status: 'in_progress', moving: true, opening_seq: 3, threads: [{ id: 'side-a', title: 'Commitments and lost results', state: 'working' }] },
+    { id: 3, request: 'Which fixes matter this week', status: 'in_progress', threads: [{ id: 'side-e', title: 'Fixes triage', state: 'finished' }] },
+    { id: 6, request: 'Compare the supplier quotes', status: 'stopped', threads: [{ id: 'side-h', title: 'Quote comparison', state: 'finished' }] },
+    { id: 5, request: 'Overnight stress run; done when all overnight checks pass and their results are reviewed', status: 'pending', blocked: true, opening_seq: 9 },
+    { id: 2, request: 'Pause prompt suggestions on hidden turns', status: 'waiting_for_user', question_seq: 15, opening_seq: 4 },
+    { id: 8, request: 'Choose public artifact sharing defaults', status: 'waiting_for_user', question_seq: 16, threads: [{ id: 'sharing-audit', title: 'Sharing audit', state: 'finished' }] },
+    { id: 9, request: 'Choose the bot chat sync direction', status: 'waiting_for_user', question_seq: 17 },
+    { id: 10, request: 'Resolve deferred bot identity changes', status: 'waiting_for_user', question_seq: 18 },
+    { id: 1, request: 'Capacity test with 20 threads', status: 'in_progress', threads: [{ id: 'side-f', title: 'Capacity harness', state: 'finished' }, { id: 'side-g', title: 'Capacity run', state: 'failed' }] },
+    { id: 7, request: 'Run the login suites', status: 'in_progress', moving: true, threads: [{ id: 'side-i', title: 'Login suites', state: 'background' }, { id: 'side-j', title: 'Login fix', state: 'finished' }] },
   ]
+  // The server once listed closed commitments too; the panel drops them.
   const activity: (BotActivity | { kind: 'commitment'; at: string; title: string; status: string; text?: string; thread_id?: string })[] = [
     { kind: 'commitment', at: minutes(20), title: 'Calmer bot faces', status: 'completed', thread_id: 'side-d' },
     { kind: 'commitment', at: minutes(60 * 24 + 40), title: 'Muse-style identity cards', status: 'cancelled', text: 'He chose option A instead' },
     { kind: 'side_chat', at: minutes(14), running: true, title: 'Notes cleanup', status: 'running', thread_id: 'side-c2' },
     { kind: 'side_chat', at: minutes(30), title: 'Merged both reviews into one plan', status: 'idle', thread_id: 'side-b' },
-    { kind: 'file_changed', at: minutes(62), title: 'MEMORY.md' },
-    { kind: 'routine', at: minutes(80), title: 'Grok Bot and Dots watch', status: 'ok', thread_id: 'panel', loop_id: 'l-watch' },
-    { kind: 'routine', at: minutes(60 * 24 + 5), title: 'Heartbeat', status: 'error', text: 'Gmail sign-in expired', thread_id: 'panel', loop_id: 'l-heartbeat' },
+    { kind: 'routine', at: minutes(80), title: 'Grok Bot and Dots watch', status: 'ok', thread_id: 'run-watch' },
+    { kind: 'routine', at: minutes(60 * 24 + 5), title: 'Heartbeat', status: 'error', text: 'Gmail sign-in expired', thread_id: 'run-heartbeat' },
     { kind: 'side_chat', at: minutes(60 * 24 + 90), title: 'Jaz bot scheduling design', status: 'idle', thread_id: 'side-c' },
   ]
   // What the bot's threads started in turn, by the thread that started them.
-  const started: Record<string, BotStartedThread[]> = {
+  const started: Record<string, BotActivity[]> = {
     'side-a': [
       { kind: 'side_chat', at: minutes(12), title: 'Commitments design review', status: 'idle', thread_id: 'review-a1' },
       { kind: 'side_chat', at: minutes(4), running: true, title: 'Commitments diff review', status: 'running', thread_id: 'review-a2' },
@@ -162,7 +161,6 @@ export async function exerciseBotPanel(): Promise<void> {
   const threadRoute = createRoute({ getParentRoute: () => rootRoute, path: '/sessions/$sessionId', component: () => <p>thread</p> })
   const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, botRoute, threadRoute]), history: createMemoryHistory({ initialEntries: ['/bots'] }) })
   const root = createRoot(element)
-  let openedFile = ''
   let mounts = 0
   function MountProbe() {
     useEffect(() => { mounts += 1 }, [])
@@ -174,9 +172,7 @@ export async function exerciseBotPanel(): Promise<void> {
     <StrictMode>
       <QueryClientProvider client={client}>
         <MountProbe />
-        <FileReaderLinkProvider sessionId={bot.id} onOpen={(file) => { openedFile = file.path }}>
-          <RouterProvider router={router} />
-        </FileReaderLinkProvider>
+        <RouterProvider router={router} />
       </QueryClientProvider>
     </StrictMode>,
   )
@@ -220,10 +216,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const wasDark = document.documentElement.classList.contains('dark')
   const dark = (on: boolean) => document.documentElement.classList.toggle('dark', on)
   const editor = () => document.querySelector<HTMLElement>('[role="dialog"] .ProseMirror')
-  const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] button > span:nth-child(2)')].map((node) => node.textContent)
-  const opened = () => document.querySelector<HTMLElement>('section[aria-label="Tasks"] button[aria-expanded="true"]')?.nextElementSibling as HTMLElement | null
-  const openText = () => opened()?.textContent ?? ''
-  const workLinks = () => [...opened()?.querySelectorAll('[aria-label="Work"] a') ?? []].map((link) => link.textContent).join('|')
+  const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] li > * > span:nth-child(2)')].map((node) => node.textContent)
   const selected = () => document.querySelector('[role="tablist"][aria-label="Bot details"] [aria-selected="true"]')
   const tabpanel = () => document.getElementById(selected()!.getAttribute('aria-controls')!)!
   // Named, equal icon targets with no text, selected or not, each the only
@@ -270,7 +263,7 @@ export async function exerciseBotPanel(): Promise<void> {
     client.setQueryData(botsQuery.queryKey, listed)
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     dark(false)
-    await until('Activity did not open with tasks and history', () => selected() === find('Activity') && text().includes(`Tasks ${owed.length}`) && text().includes('Updated memory'))
+    await until('Activity did not open with tasks and history', () => selected() === find('Activity') && text().includes(`Tasks ${owed.length}`) && text().includes('Notes cleanup'))
     if (mounts !== 2) throw new Error(`Bot panel: development StrictMode mounted ${mounts} times`)
     if ([...tabpanel().querySelectorAll('h3')].some((heading) => heading.textContent === 'Now') || tabpanel().textContent?.includes('Reviewer')) {
       throw new Error('Bot panel: the separate Now helper block is still visible')
@@ -279,26 +272,26 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: tasks have a separate tab instead of appearing in Activity')
     }
     const tabLayout = iconTabs('on the desktop panel')
-    const states = taskStates()
     const tasks = document.querySelector<HTMLElement>('section[aria-label="Tasks"]')!
     const waiting = owed.filter((task) => task.status === 'waiting_for_user')
     const working = owed.filter((task) => task.status !== 'waiting_for_user')
-    const titles = [...tasks.querySelectorAll('button > span:first-child')].map((node) => node.textContent)
-    if (titles.join() !== [...working, ...waiting].map((task) => task.id === 5 ? 'Overnight stress run' : task.name || task.request).join() || tasks.querySelectorAll('h4').length !== 1 || tasks.querySelector('h4')?.textContent !== `Waiting for you ${waiting.length}` || tasks.textContent?.split('Waiting for you').length !== 2) {
-      throw new Error('Bot panel: work must precede one counted waiting group without repeated labels')
+    const titles = [...tasks.querySelectorAll('li > * > span:first-child')].map((node) => node.textContent)
+    if (titles.join() !== [...working, ...waiting].map((task) => task.id === 5 ? 'Overnight stress run' : task.name || task.request).join() || [...tasks.querySelectorAll('h4')].map((heading) => heading.textContent).join() !== `Waiting for you ${waiting.length}`) {
+      throw new Error(`Bot panel: work must precede one counted waiting group, got ${titles}`)
     }
-    if (states.join() !== 'Worker active,Worker ended · outcome open,Stopped,Waiting on prerequisites,Worker ended · outcome open,Worker active') {
-      throw new Error(`Bot panel: work lost its task states, got ${states}`)
+    if (taskStates().join() !== 'Working,Not delivered yet,Stopped,Waiting on another task,Not delivered yet,Working') {
+      throw new Error(`Bot panel: tasks lost their states, got ${taskStates()}`)
     }
-    for (const button of tasks.querySelectorAll('button')) {
-      const title = button.firstElementChild!
-      const box = title.getBoundingClientRect()
-      if (box.width < button.clientWidth - 17 || title.scrollWidth > title.clientWidth || button.children.length > 1 && box.bottom > button.lastElementChild!.getBoundingClientRect().top) {
-        throw new Error('Bot panel: task titles must use the full row width above any state')
-      }
+    const href = (title: string) => find(title)?.getAttribute('href')
+    const opens = { 'Keep delegated work visible': '/sessions/side-a', 'Run the login suites': '/sessions/side-i', 'Capacity test with 20 threads': '/sessions/side-g', 'Compare the supplier quotes': '/sessions/side-h', 'Pause prompt suggestions on hidden turns': '/bots/panel?message=15#message-15', 'Choose public artifact sharing defaults': '/bots/panel?message=16#message-16', 'Overnight stress run': '/bots/panel?message=9#message-9' }
+    for (const [title, target] of Object.entries(opens)) {
+      if (href(title) !== target) throw new Error(`Bot panel: "${title}" opens ${href(title)}, not ${target}`)
     }
-    if (tasks.textContent?.includes(owed[0].request) || find(owed[0].name!)!.firstElementChild!.getBoundingClientRect().height > 40) {
-      throw new Error('Bot panel: a compact task name was replaced by its internal completion contract')
+    if (tabpanel().querySelector('button, details, [aria-expanded]') || tasks.textContent?.includes(owed[0].request) || text().includes('Updated memory') || text().includes('Side chat')) {
+      throw new Error('Bot panel: Activity shows more than one line per task or thread')
+    }
+    if ([...tabpanel().querySelectorAll('li > :first-child')].some((row) => row.getBoundingClientRect().height > 32)) {
+      throw new Error('Bot panel: a row is taller than one line')
     }
     await capture('bot-panel-tasks')
     dark(true)
@@ -306,149 +299,56 @@ export async function exerciseBotPanel(): Promise<void> {
     dark(false)
     await window.smoke.resize(390, 844)
     await capture('bot-panel-tasks-phone')
-    dark(true)
-    await capture('bot-panel-tasks-phone-dark')
-    dark(false)
-    for (const task of waiting) {
-      if (find(task.request)!.textContent !== task.request) throw new Error('Bot panel: waiting rows repeat their state')
-    }
-    if (tasks.textContent?.includes('Next:') || tasks.textContent?.includes('For you')) {
-      throw new Error('Bot panel: task rows repeat work details instead of showing compact labels and status')
-    }
-    if ([tasks, ...tasks.querySelectorAll('button')].some((node) => node.getBoundingClientRect().right > innerWidth || node.getBoundingClientRect().left < 0)) {
+    if ([tasks, ...tasks.querySelectorAll('li > *')].some((node) => node.getBoundingClientRect().right > innerWidth || node.getBoundingClientRect().left < 0)) {
       throw new Error('Bot panel: tasks overflow on a phone')
     }
     if (iconTabs('on a phone') !== tabLayout) {
       throw new Error('Bot panel: the tabs change size on a phone')
     }
-    const activityKey = botActivityQuery(bot.id).queryKey
-    const loaded = client.getQueryData(activityKey)!
-    client.setQueryData(activityKey, { ...loaded, owed: [working[0], ...waiting] })
-    await until('the compact work and waiting view did not refresh', () => text().includes('Tasks 5'))
-    await capture('bot-panel-waiting-phone')
-    dark(true)
-    await capture('bot-panel-waiting-phone-dark')
-    await window.smoke.resize(1050, 850)
-    await capture('bot-panel-waiting-dark')
-    dark(false)
-    await capture('bot-panel-waiting')
+    await window.smoke.resize(1200, 900)
     element.querySelector<HTMLInputElement>('input[type="radio"]')!.focus()
     await window.smoke.key('Space')
     await click('Submit')
     await until('the pending question did not accept its answer', () => questionAnswered && !find('Submit'))
-    client.setQueryData(activityKey, { ...loaded, owed: waiting })
-    await until('waiting-only tasks did not render', () => text().includes('Tasks 4') && tasks.querySelectorAll('button').length === 4 && tasks.querySelectorAll('h4').length === 1)
-    client.setQueryData(activityKey, { ...loaded, owed: working })
-    await until('the waiting heading survived after its last task left', () => text().includes('Tasks 6') && !tasks.querySelector('h4'))
-    client.setQueryData(activityKey, loaded)
-    await until('the full task list did not return', () => text().includes(`Tasks ${owed.length}`))
-    await window.smoke.resize(1200, 900)
+    await click('Pause prompt suggestions on hidden turns')
+    await until('a task waiting on you did not open its question in the chat', () => router.state.location.pathname === '/bots/panel' && (router.state.location.search as { message?: number }).message === 15)
     await click(owed[0].name!)
-    await until('a task with one worker did not open its details in place', () => openText().includes('check its report'))
-    if (document.querySelector('[role="dialog"]') || opened()!.querySelector('details')?.open || opened()!.querySelector('[aria-label="Work"]')!.getBoundingClientRect().bottom > innerHeight) {
-      throw new Error('Bot panel: task details opened a modal, showed the request first or put the work below the fold')
-    }
-    await click('Request')
-    if (!opened()!.querySelector('details')?.open || !opened()!.querySelector('details')?.textContent?.includes(owed[0].request)) throw new Error('Bot panel: the full task contract was lost')
-    await click('Request')
-    await capture('bot-panel-named-task')
-    if (!find(owed[0].name!)!.textContent!.endsWith('Worker active') || !openText().includes('For you · since')) {
-      throw new Error('Bot panel: an open task lost its state or owner')
-    }
-    const link = (thread: string) => document.querySelector<HTMLElement>(`a[href$="/sessions/${thread}"]`)
-    const follows = (row: string, nested: string) => link(row)?.nextElementSibling?.contains(link(nested)) ?? false
-    if (!follows('side-a', 'review-a2') || !link('review-a2')?.textContent?.endsWith('Running for 4m')) {
-      throw new Error('Bot panel: task details lost the worker descendants or their running state')
-    }
-    activityFails = true
-    await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-    await settle()
-    if (!document.querySelector('section[aria-label="Tasks"]') || !openText().includes('check its report')) {
-      throw new Error('Bot panel: a failed background refresh hid the last loaded tasks or their open details')
-    }
-    activityFails = false
-    owed[0].next = 'Deliver the verified report'
-    await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-    await until('open task details did not refresh', () => openText().includes(owed[0].next!))
-    await click('Commitments design review')
-    await until('a task worker did not open', () => router.state.location.pathname === '/sessions/review-a1')
+    await until('a task did not open the thread working on it', () => router.state.location.pathname === '/sessions/side-a')
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes(`Tasks ${owed.length}`))
-    await click(owed[0].name!)
-    await click('Pause prompt suggestions on hidden turns')
-    await until('a commitment without a thread did not open its details', () => openText().includes('wait for his OK'))
-    if (document.querySelectorAll('section[aria-label="Tasks"] button[aria-expanded="true"]').length !== 1) {
-      throw new Error('Bot panel: opening a task left another open')
+    const activityKey = botActivityQuery(bot.id).queryKey
+    activityFails = true
+    await client.invalidateQueries({ queryKey: activityKey })
+    await settle()
+    if (!text().includes(`Tasks ${owed.length}`)) {
+      throw new Error('Bot panel: a failed background refresh hid the last loaded tasks')
     }
-    if (opened()!.querySelector('[aria-label="Question for you"]')?.textContent !== `${waiting[0].question}Answer in chat` || opened()!.querySelector('[aria-label="Work"]')) {
-      throw new Error('Bot panel: a human wait lost its actual question or gained an invented worker')
-    }
-    await capture('bot-panel-waiting-question')
-    await click('Answer in chat')
-    await until('the question did not open in the bot chat', () => router.state.location.pathname === '/bots/panel' && (router.state.location.search as { message?: number }).message === 15)
-    find('Choose public artifact sharing defaults')!.focus()
-    await window.smoke.key('Enter')
-    await until('a waiting task did not open from the keyboard', () => find('Choose public artifact sharing defaults')?.getAttribute('aria-expanded') === 'true' && workLinks() === 'Sharing auditFinished')
-    await click('Evidence and limits')
-    await until('the question document did not remain a usable file link', () => openedFile === '/fixture/evidence.md')
-    await click('exact sharing list')
-    await until('the question evidence did not open through the file reader', () => openedFile === '/fixture/sharing-list.tsv')
-    await capture('bot-panel-waiting-related-work')
-    await click('Sharing audit')
-    await until('a finished worker did not open', () => router.state.location.pathname === '/sessions/sharing-audit')
-    await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
-    await until('the panel did not return after finished work', () => Boolean(find('Overnight stress run')))
-    await click('Overnight stress run')
-    await until('task details lost the prerequisite reason', () => openText().includes('after #1'))
-    await click('Request')
-    if (opened()!.querySelector('details p')?.textContent !== owed.find((task) => task.id === 5)!.request) throw new Error('Bot panel: a compact legacy title lost the full task specification')
-    await capture('bot-panel-legacy-title')
-    await click('Overnight stress run')
-    await until('the open task did not close', () => !opened())
-    await click('Compare the supplier quotes')
-    await until('the stopped reason was not visible', () => openText().includes('Checked both routes'))
-    if (!find('Compare the supplier quotes')!.textContent!.endsWith('Stopped') || openText().includes('Next:')) {
-      throw new Error('Bot panel: stopped work lost its exception or gained a label')
-    }
-    await capture('bot-panel-stopped')
-    await window.smoke.resize(390, 844)
-    if (opened()!.getBoundingClientRect().right > innerWidth) throw new Error('Bot panel: open task details overflow on a phone')
-    await capture('bot-panel-stopped-phone')
-    await window.smoke.resize(1200, 900)
-    await click('Capacity test with 20 threads')
-    await until('a commitment with several threads did not list them with what they started', () => /^Capacity harnessFinished\|Harness design review.+\|Capacity runFailed$/.test(workLinks()))
-    await capture('bot-panel-commitment')
-    await click('Which fixes matter this week')
-    await until('a task owed to another bot lost its owner', () => openText().includes('For Priorities Bot · since'))
-    await click('Run the login suites')
-    await until('a thread working in the background did not show as working', () => workLinks() === 'Login suitesWorking in the background|Login fixFinished' && openText().includes('For you · since'))
-    await click('Run the login suites')
-    await until('the open task did not close', () => !opened())
-    await click('Activity')
-    await until('Activity never listed its history', () => text().includes('Updated memory'))
-    if (text().includes('Delivered to you') || text().includes('He chose option A instead') || text().includes('Calmer bot faces') || text().includes('Muse-style identity cards')) {
+    activityFails = false
+    if (text().includes('He chose option A instead') || text().includes('Calmer bot faces') || text().includes('Muse-style identity cards')) {
       throw new Error('Bot panel: completed or cancelled task history leaked into Activity')
     }
-    if (text().includes('Side chat') || [...tabpanel().querySelectorAll<HTMLElement>('section:not([aria-label="Tasks"]) a, section:not([aria-label="Tasks"]) button')].some((row) => row.getBoundingClientRect().height > 32 && !row.textContent?.endsWith('Gmail sign-in expired'))) {
-      throw new Error('Bot panel: Activity rows are not one line each')
+    const link = (thread: string) => document.querySelector<HTMLElement>(`a[href="/sessions/${thread}"]`)
+    const follows = (row: string, nested: string) => link(row)?.nextElementSibling?.contains(link(nested)) ?? false
+    if (link('review-a1') || link('side-a')?.closest('section')?.getAttribute('aria-label') !== 'Tasks') {
+      throw new Error('Bot panel: a task\'s threads show outside its one line')
     }
-    if (find('Heartbeat')?.textContent !== 'HeartbeatFailedGmail sign-in expired') {
-      throw new Error('Bot panel: a failed routine run lost its failure or reason')
+    if (link('run-heartbeat')?.textContent !== 'HeartbeatFailed' || link('run-heartbeat')?.title !== 'Gmail sign-in expired' || !link('run-watch')) {
+      throw new Error('Bot panel: a routine run lost its thread, failure or reason')
     }
     find('Merged both reviews into one plan')?.scrollIntoView({ block: 'center' })
     await capture('bot-panel-started')
-    if (!follows('side-b', 'review-b1') || !follows('side-b', 'review-b2')) {
-      throw new Error('Bot panel: a side chat lost its worker descendants')
+    if (!follows('side-b', 'review-b1') || !follows('side-b', 'review-b2') || !follows('review-b2', 'review-b3')) {
+      throw new Error('Bot panel: a side chat lost the threads it started')
     }
     const indent = (thread: string) => link(thread)!.querySelector('svg')!.getBoundingClientRect().left
     if (!(indent('review-b3') > indent('review-b2') + 10) || !link('review-b2')?.textContent?.endsWith('Failed')) {
-      throw new Error('Bot panel: worker nesting or failure state is missing')
+      throw new Error('Bot panel: nesting or failure state is missing')
     }
-    if (!link('side-c2')?.textContent?.endsWith('Running for 14m') || link('side-c2')?.parentElement !== tabpanel().querySelector('section:not([aria-label="Tasks"])')) {
-      throw new Error('Bot panel: dated activity lost the running side chat or its state')
+    if (!link('side-c2')?.textContent?.endsWith('Running for 14m') || link('side-c2')?.closest('section') !== tabpanel().querySelector('section:not([aria-label="Tasks"])')) {
+      throw new Error('Bot panel: the newest day lost the running side chat or its state')
     }
-    await click('Notes cleanup')
-    await until('the running side chat did not open', () => router.state.location.pathname === '/sessions/side-c2')
+    await click('Heartbeat')
+    await until('a routine run did not open its thread', () => router.state.location.pathname === '/sessions/run-heartbeat')
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes(`Tasks ${owed.length}`))
     // In the sidebar a bot waiting on the person always has a dot; a working
@@ -469,7 +369,7 @@ export async function exerciseBotPanel(): Promise<void> {
     dark(false)
     const current = client.getQueryData(activityKey)!
     client.setQueryData(activityKey, { ...current, owed: [] })
-    await until('a bot without tasks hid its work history', () => !tabpanel().querySelector('section[aria-label="Tasks"]') && text().includes('Updated memory'))
+    await until('a bot without tasks hid its work history', () => !tabpanel().querySelector('section[aria-label="Tasks"]') && text().includes('Notes cleanup'))
     await capture('bot-panel-no-tasks')
     client.setQueryData(activityKey, { owed: [], items: [], started: {} })
     await until('a bot with no tasks or work did not say it has no tasks', () => tabpanel().textContent === 'No tasks yet.')
@@ -598,7 +498,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Activity')
     const completed = owed.splice(0)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-    await until('completed tasks did not leave the open list', () => !document.querySelector('section[aria-label="Tasks"]') && !text().includes(completed[0].name!) && text().includes('Updated memory'))
+    await until('completed tasks did not leave the open list', () => !document.querySelector('section[aria-label="Tasks"]') && !text().includes(completed[0].name!) && text().includes('Notes cleanup'))
     owed.push(...completed)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
     await until('new tasks did not appear', () => text().includes(completed[0].name!))
@@ -610,9 +510,9 @@ export async function exerciseBotPanel(): Promise<void> {
       delete started[parent]
     }
     for (const motion of [{ threads: [{ id: 'background-worker', title: 'Report worker', state: 'background' as const }] }, { moving: true }]) {
-      owed.splice(0, owed.length, { id: 8, request: 'Deliver the report', status: 'in_progress', opened_at: minutes(1), next: 'Check the report', ...motion })
+      owed.splice(0, owed.length, { id: 8, request: 'Deliver the report', status: 'in_progress', ...motion })
       await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-      await until('the moving task did not appear', () => find('Deliver the report')?.firstElementChild?.textContent === 'Deliver the report' && taskStates().join() === ('moving' in motion ? 'Worker active' : 'In progress'))
+      await until('the moving task did not appear', () => document.querySelector('section[aria-label="Tasks"] li > * > span')?.textContent === 'Deliver the report' && taskStates().join() === ('moving' in motion ? 'Working' : 'In progress'))
       owed[0].status = 'waiting_for_user'
       await until('a moving task waited longer than the active polling interval to refresh', () => document.querySelector('section[aria-label="Tasks"] h4')?.textContent === 'Waiting for you 1' && taskStates().length === 0)
     }

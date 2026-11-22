@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/loops"
-	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -19,23 +18,16 @@ const (
 	activityShown = 200
 )
 
-// listedActivity says whether Activity lists a bot activity event: only a
-// change to MEMORY.md. Messages between bots are coordination and stay in the
-// bot's thread; routine events are covered by the runs they announce.
-func listedActivity(activity *sessionevents.BotActivityEvent) bool {
-	return (activity.Kind == "file_changed" || activity.Kind == "file_edited") && activity.Label == memoryFile
-}
-
-// Activity is one thing a bot is doing or did: a side chat, a routine run or
-// a change to its MEMORY.md.
+// Activity is a thread a bot started: a side chat, or a routine run in a
+// thread of its own. Runs in the bot's own thread show in its chat, and
+// messages between bots stay in its thread.
 type Activity struct {
-	// Kind is side_chat, routine, or the kind of the bot activity
-	// event.
+	// Kind is side_chat or routine.
 	Kind string `json:"kind"`
 	// At is when a running item started, or else when it happened or ended.
 	At      time.Time `json:"at"`
 	Running bool      `json:"running,omitempty"`
-	// Title is the side chat's or routine's name, or the file's name.
+	// Title is the side chat's or routine's name.
 	Title string `json:"title"`
 	// Text is a run's error.
 	Text     string `json:"text,omitempty"`
@@ -161,18 +153,9 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 				ThreadID: run.ThreadID,
 				LoopID:   routine.ID,
 			}
-			if item.Running || item.At.After(since) {
+			if run.ThreadID != "" && run.ThreadID != botID && (item.Running || item.At.After(since)) {
 				out = append(out, item)
 			}
-		}
-	}
-	events, err := s.store.LoadBotActivity(botID, since)
-	if err != nil {
-		return ActivityView{}, err
-	}
-	for _, event := range events {
-		if activity := event.BotActivity; activity != nil && listedActivity(activity) {
-			out = append(out, Activity{Kind: activity.Kind, At: event.At, Title: activity.Label})
 		}
 	}
 	slices.SortStableFunc(out, func(a, b Activity) int { return b.At.Compare(a.At) })

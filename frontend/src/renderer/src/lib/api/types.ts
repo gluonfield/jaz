@@ -800,43 +800,31 @@ export interface BotActivityEvent {
   text?: string
 }
 
-// One thing a bot is doing or did: a side chat, a routine run or a change to
-// its MEMORY.md. `at` is when a running item started, or else when it
-// happened or ended; `title` names the side chat, routine or file, and `text`
-// is a run's error.
+// A thread a bot started: a side chat, or a routine run in a thread of its
+// own. `at` is when a running thread started, or else when it ended; `text`
+// is a failed run's error.
 export interface BotActivity {
-  kind: 'side_chat' | 'routine' | 'file_changed' | 'file_edited'
+  kind: 'side_chat' | 'routine'
   at: string
   running?: boolean
   title: string
   text?: string
   status?: string
-  thread_id?: string
-  loop_id?: string
+  thread_id: string
 }
 
-// A side chat that another of the bot's side chats started, listed under it.
-export type BotStartedThread = BotActivity & { thread_id: string }
-
-// A commitment a bot has not closed: what was asked, who it is owed to (none
-// for you), its next step, what it waits on besides its threads, whether you
-// were told it stalled, and the threads serving it.
+// A commitment a bot has not closed: what was asked, where it was asked and
+// what it asks you, how it is going, and the threads serving it.
 export interface BotOwed {
   id: number
   name?: string
   request: string
-  for?: string
-  next?: string
   status: 'pending' | 'in_progress' | 'waiting_for_user' | 'stopped'
   question_seq?: number
-  question?: string
   opening_seq?: number
-  reply_seq?: number
-  depends_on?: number[]
   blocked?: boolean
   moving?: boolean
   stalled?: boolean
-  opened_at: string
   // Threads in linking order, oldest first.
   threads?: BotOwedThread[]
 }

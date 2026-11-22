@@ -385,15 +385,24 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, status := range []string{loops.RunStatusOK, loops.RunStatusError} {
+	// Runs in threads of their own are listed; a run in the bot's own thread
+	// shows in its chat instead.
+	runThread := func() string {
+		thread, err := store.CreateSession(storage.CreateSession{Slug: "morning-brief", Title: "Morning brief", ParentID: research.ID, SourceType: storage.SourceLoopRun, SourceID: routine.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return thread.ID
+	}
+	for thread, status := range map[string]string{runThread(): loops.RunStatusOK, runThread(): loops.RunStatusError, research.ID: loops.RunStatusOK} {
 		at := time.Now().UTC()
-		if err := store.SaveRun(loops.Run{ID: store.NewRunID(), LoopID: routine.ID, ThreadID: research.ID, ScheduledFor: at, StartedAt: at, FinishedAt: at, Status: status, Error: map[bool]string{true: "Gmail sign-in expired"}[status == loops.RunStatusError], CreatedAt: at}); err != nil {
+		if err := store.SaveRun(loops.Run{ID: store.NewRunID(), LoopID: routine.ID, ThreadID: thread, ScheduledFor: at, StartedAt: at, FinishedAt: at, Status: status, Error: map[bool]string{true: "Gmail sign-in expired"}[status == loops.RunStatusError], CreatedAt: at}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// A run older than Activity looks back is left out.
 	old := time.Now().Add(-40 * 24 * time.Hour).UTC()
-	if err := store.SaveRun(loops.Run{ID: store.NewRunID(), LoopID: routine.ID, ThreadID: research.ID, ScheduledFor: old, StartedAt: old, FinishedAt: old, Status: loops.RunStatusOK, CreatedAt: old}); err != nil {
+	if err := store.SaveRun(loops.Run{ID: store.NewRunID(), LoopID: routine.ID, ThreadID: runThread(), ScheduledFor: old, StartedAt: old, FinishedAt: old, Status: loops.RunStatusOK, CreatedAt: old}); err != nil {
 		t.Fatal(err)
 	}
 	// A bot writes to another and answers in a turn another bot gave it.
@@ -478,9 +487,9 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		got = append(got, line)
 	}
 	slices.Sort(got)
-	// Side chats that serve commitments show through them.
+	// Side chats that serve commitments show through them; a change to
+	// MEMORY.md is not a thread and is left out.
 	want := []string{
-		"file_changed:MEMORY.md::",
 		"routine:Morning brief::ok",
 		"routine:Morning brief:Gmail sign-in expired:error",
 		"side_chat:Errand for the team::idle",
@@ -519,11 +528,8 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		t.Fatalf("delivered work lost its nested threads: %+v", delivered.Started)
 	}
 	// What runs stays listed however much happened since it started.
-	for range activityShown {
-		if err := store.AppendSessionEvents(research.ID, sessionevents.Event{
-			SessionID: research.ID, Type: sessionevents.TypeBotActivity, At: time.Now().UTC(),
-			BotActivity: &sessionevents.BotActivityEvent{Kind: "file_edited", Label: memoryFile},
-		}); err != nil {
+	for i := range activityShown {
+		if _, err := store.CreateSession(storage.CreateSession{Slug: fmt.Sprint("later-", i), Title: "Later", ParentID: research.ID, SourceType: storage.SourceBotWorker, SourceID: research.ID}); err != nil {
 			t.Fatal(err)
 		}
 	}

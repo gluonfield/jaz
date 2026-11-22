@@ -42,12 +42,11 @@ export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'thinking' | 'work
 export function taskStateLabel(task: Pick<BotOwed, 'status' | 'moving' | 'blocked' | 'stalled' | 'threads'>): string {
   if (task.status === 'stopped') return 'Stopped'
   if (task.status === 'waiting_for_user') return 'Waiting for you'
-  if (task.blocked) return 'Waiting on prerequisites'
-  if (task.moving) return 'Worker active'
-  const workerEnded = task.threads?.some((thread) => thread.state === 'finished' || thread.state === 'failed')
-  if (workerEnded) return 'Worker ended · outcome open'
+  if (task.blocked) return 'Waiting on another task'
+  if (task.moving) return 'Working'
+  if (task.threads?.some((thread) => thread.state === 'finished' || thread.state === 'failed')) return 'Not delivered yet'
   if (task.stalled) return 'Needs follow-up'
-  return task.status === 'pending' ? 'Pending' : 'In progress'
+  return task.status === 'pending' ? 'Not started' : 'In progress'
 }
 
 export function taskName(task: Pick<BotOwed, 'name' | 'request'>): string {

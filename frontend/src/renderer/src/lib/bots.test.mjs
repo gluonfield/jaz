@@ -172,12 +172,12 @@ test('a drag previews where the bot lands and keeps it, hidden, where the drag b
 })
 
 test('a finished worker does not make an open task look complete', () => {
-  expect(taskStateLabel({ status: 'in_progress', threads: [{ state: 'finished' }] })).toBe('Worker ended · outcome open')
+  expect(taskStateLabel({ status: 'in_progress', threads: [{ state: 'finished' }] })).toBe('Not delivered yet')
 })
 
 test('task state distinguishes active work and blockers from worker completion', () => {
-  expect(taskStateLabel({ status: 'in_progress', moving: true, threads: [{ state: 'working' }] })).toBe('Worker active')
-  expect(taskStateLabel({ status: 'pending', blocked: true })).toBe('Waiting on prerequisites')
+  expect(taskStateLabel({ status: 'in_progress', moving: true, threads: [{ state: 'working' }] })).toBe('Working')
+  expect(taskStateLabel({ status: 'pending', blocked: true })).toBe('Waiting on another task')
   expect(taskStateLabel({ status: 'waiting_for_user' })).toBe('Waiting for you')
   expect(taskStateLabel({ status: 'stopped' })).toBe('Stopped')
 })

@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '@/lib/query/keys'
 import { del, get, patch, post, put } from './client'
-import type { Bot, BotActivity, BotAvatar, BotFile, BotFileName, BotOwed, BotStartedThread } from './types'
+import type { Bot, BotActivity, BotAvatar, BotFile, BotFileName, BotOwed } from './types'
 
 export type BotListEntry = Bot & { celebrate?: string }
 
@@ -43,7 +43,7 @@ export const botActivityQuery = (botId: string) =>
   queryOptions({
     queryKey: keys.botActivity(botId),
     queryFn: async () => {
-      const activity = await get<{ items: (BotActivity | { kind: 'commitment' })[] | null; owed: BotOwed[] | null; started: Record<string, BotStartedThread[]> | null }>(`/v1/bots/${botId}/activity`)
+      const activity = await get<{ items: (BotActivity | { kind: 'commitment' })[] | null; owed: BotOwed[] | null; started: Record<string, BotActivity[]> | null }>(`/v1/bots/${botId}/activity`)
       return { items: (activity.items ?? []).filter((item) => item.kind !== 'commitment'), owed: activity.owed ?? [], started: activity.started ?? {} }
     },
     refetchInterval: (query) => {

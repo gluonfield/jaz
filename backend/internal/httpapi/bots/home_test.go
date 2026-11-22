@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
@@ -38,7 +39,6 @@ func TestBotFilesSaveOnlyOverTheVersionRead(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/bots/{bot}/files", handler.Files)
 	mux.HandleFunc("PUT /v1/bots/{bot}/files/{name}", handler.SaveFile)
-	mux.HandleFunc("GET /v1/bots/{bot}/activity", handler.Activity)
 	call := func(method, path, body string, into any) int {
 		t.Helper()
 		recorder := httptest.NewRecorder()
@@ -70,8 +70,9 @@ func TestBotFilesSaveOnlyOverTheVersionRead(t *testing.T) {
 	if code := call("GET", "/v1/bots/missing/files", "", nil); code != http.StatusNotFound {
 		t.Fatalf("files of a missing bot = %d, want 404", code)
 	}
-	var activity struct{ Items []botcore.Activity }
-	if code := call("GET", "/v1/bots/"+bot.ID+"/activity", "", &activity); code != http.StatusOK || len(activity.Items) != 1 || activity.Items[0].Kind != "file_edited" || activity.Items[0].Title != "MEMORY.md" {
-		t.Fatalf("activity after the user's edit = %d %+v", code, activity)
+	// The user's edit is recorded in the bot's thread.
+	events, err := store.LoadBotActivity(bot.ID, time.Unix(0, 0))
+	if err != nil || len(events) != 1 || events[0].BotActivity.Kind != "file_edited" || events[0].BotActivity.Label != "MEMORY.md" {
+		t.Fatalf("events after the user's edit = %+v, %v", events, err)
 	}
 }
