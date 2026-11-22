@@ -437,13 +437,12 @@ func StartPluginRefresh(lc fx.Lifecycle, cfg Config, service *plugins.Service, l
 			ctx, stop := context.WithCancel(context.Background())
 			cancel = stop
 			go func() {
-				if added, err := service.EnsureDefaultSource(ctx); err != nil && ctx.Err() == nil {
-					logger.WithPrefix("plugins").Warn("default plugin marketplace sync failed", "error", err)
-				} else if !added {
-					if err := service.RefreshSources(ctx); err != nil && ctx.Err() == nil {
-						logger.WithPrefix("plugins").Warn("plugin source refresh failed", "error", err)
+				sync := func() {
+					if err := service.SyncSources(ctx); err != nil && ctx.Err() == nil {
+						logger.WithPrefix("plugins").Warn("plugin source sync failed", "error", err)
 					}
 				}
+				sync()
 				ticker := time.NewTicker(plugins.DefaultRefreshWait)
 				defer ticker.Stop()
 				for {
@@ -451,9 +450,7 @@ func StartPluginRefresh(lc fx.Lifecycle, cfg Config, service *plugins.Service, l
 					case <-ctx.Done():
 						return
 					case <-ticker.C:
-						if err := service.RefreshSources(ctx); err != nil && ctx.Err() == nil {
-							logger.WithPrefix("plugins").Warn("plugin source refresh failed", "error", err)
-						}
+						sync()
 					}
 				}
 			}()

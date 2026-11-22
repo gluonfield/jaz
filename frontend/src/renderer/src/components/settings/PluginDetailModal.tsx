@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowDownToLine, Check, Copy, ExternalLink, Loader2, Plug, Plus, QrCode, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowDownToLine, Check, Copy, ExternalLink, Loader2, Plug, Plus, QrCode, RefreshCw, Trash2, Unplug } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -7,7 +7,6 @@ import { Modal } from '@/components/ui/Modal'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import {
-  disconnectPluginAccount,
   savePluginConfig,
   type IntegrationConnectionAccount,
   type Plugin,
@@ -27,12 +26,14 @@ import { PluginAvatar } from './PluginVisuals'
 export function PluginDetailModal({
   plugin,
   connecting,
+  disconnectingAccountID,
   installing,
   updating,
   removing,
   toggling,
   onClose,
   onConnect,
+  onDisconnect,
   onInstall,
   onUpdate,
   onRemove,
@@ -40,12 +41,14 @@ export function PluginDetailModal({
 }: {
   plugin: Plugin | null
   connecting: boolean
+  disconnectingAccountID?: string
   installing: boolean
   updating: boolean
   removing: boolean
   toggling: boolean
   onClose: () => void
   onConnect: (plugin: Plugin) => void
+  onDisconnect: (accountID: string) => void
   onInstall: (plugin: Plugin) => void
   onUpdate: (plugin: Plugin) => void
   onRemove: (plugin: Plugin) => void
@@ -53,13 +56,16 @@ export function PluginDetailModal({
 }) {
   if (!plugin) return null
 
-  const canDisconnect = plugin.installed && plugin.origin !== 'builtin'
-  const hasAccounts = (plugin.auth?.accounts?.length ?? 0) > 0
+  const canRemove = plugin.installed && plugin.origin !== 'builtin'
+  const accounts = plugin.auth?.accounts ?? []
+  const hasAccounts = accounts.length > 0
   const hasConfig = (plugin.config_variables?.length ?? 0) > 0
   const hasPrompts = (plugin.suggested_prompts?.length ?? 0) > 0
   const hasSkills = (plugin.skills?.length ?? 0) > 0
   const hasTools = (plugin.tools?.length ?? 0) > 0
   const hasMCP = (plugin.mcp_servers?.length ?? 0) > 0
+  const singleConnectedAccount =
+    plugin.auth?.connected && !plugin.auth.multi_account && accounts.length === 1 ? accounts[0] : null
 
   return (
     <Modal open onClose={onClose} title={plugin.display_name} size="wide" chromeless>
@@ -84,7 +90,7 @@ export function PluginDetailModal({
                 {updating ? 'Updating…' : plugin.source.update_available ? 'Update' : 'Check update'}
               </Button>
             ) : null}
-            {canDisconnect ? (
+            {canRemove ? (
               <Button variant="ghost" size="sm" disabled={removing || updating} onClick={() => onRemove(plugin)}>
                 <Trash2 size={13} />
                 Remove
@@ -110,9 +116,27 @@ export function PluginDetailModal({
           </div>
 
           {!plugin.installed ? (
-            <Button variant="primary" size="lg" disabled={installing} onClick={() => onInstall(plugin)} className="shrink-0">
-              {installing ? <Loader2 size={14} className="animate-spin" /> : <ArrowDownToLine size={14} />}
-              {installing ? 'Installing…' : 'Install'}
+            plugin.auth && pluginCanConnect(plugin) ? (
+              <Button variant="primary" size="lg" disabled={connecting || installing} onClick={() => onConnect(plugin)} className="shrink-0">
+                {connecting ? <Loader2 size={14} className="animate-spin" /> : <Plug size={14} />}
+                {connecting ? 'Connecting…' : 'Connect'}
+              </Button>
+            ) : (
+              <Button variant="primary" size="lg" disabled={installing} onClick={() => onInstall(plugin)} className="shrink-0">
+                {installing ? <Loader2 size={14} className="animate-spin" /> : <ArrowDownToLine size={14} />}
+                {installing ? 'Installing…' : 'Install'}
+              </Button>
+            )
+          ) : singleConnectedAccount ? (
+            <Button
+              variant="secondary"
+              size="lg"
+              disabled={disconnectingAccountID === singleConnectedAccount.id}
+              onClick={() => onDisconnect(singleConnectedAccount.id)}
+              className="shrink-0"
+            >
+              {disconnectingAccountID === singleConnectedAccount.id ? <Loader2 size={14} className="animate-spin" /> : <Unplug size={14} />}
+              {disconnectingAccountID === singleConnectedAccount.id ? 'Disconnecting…' : 'Disconnect'}
             </Button>
           ) : plugin.auth ? (
             <ConnectButton plugin={plugin} connecting={connecting} onConnect={() => onConnect(plugin)} />
@@ -121,7 +145,13 @@ export function PluginDetailModal({
       </div>
 
       <div className="space-y-8 px-8 pb-9">
-        {hasAccounts ? <AccountsSection accounts={plugin.auth!.accounts!} /> : null}
+        {hasAccounts ? (
+          <AccountsSection
+            accounts={accounts}
+            disconnectingAccountID={disconnectingAccountID}
+            onDisconnect={onDisconnect}
+          />
+        ) : null}
         {hasConfig ? <ConfigSection key={plugin.id} plugin={plugin} variables={plugin.config_variables!} /> : null}
         {hasPrompts ? <SuggestedPromptsSection prompts={plugin.suggested_prompts!} /> : null}
         {hasSkills ? (
@@ -208,20 +238,15 @@ function ConnectButton({
   )
 }
 
-function AccountsSection({ accounts }: { accounts: IntegrationConnectionAccount[] }) {
-  const queryClient = useQueryClient()
-  const toast = useToast()
-  const disconnect = useMutation({
-    mutationFn: disconnectPluginAccount,
-    onSuccess: () => toast('Disconnected account'),
-    onError: (error: Error) => toast(`Couldn't disconnect account: ${error.message}`, 'danger'),
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.plugins })
-      void queryClient.invalidateQueries({ queryKey: keys.mcpServers })
-      void queryClient.invalidateQueries({ queryKey: keys.mcpApps })
-    },
-  })
-
+function AccountsSection({
+  accounts,
+  disconnectingAccountID,
+  onDisconnect,
+}: {
+  accounts: IntegrationConnectionAccount[]
+  disconnectingAccountID?: string
+  onDisconnect: (accountID: string) => void
+}) {
   return (
     <section className="space-y-2.5">
       <h3 className="text-[12px] font-medium uppercase tracking-wide text-ink-3">Connected accounts</h3>
@@ -237,10 +262,10 @@ function AccountsSection({ accounts }: { accounts: IntegrationConnectionAccount[
               <Button
                 variant="ghost"
                 size="sm"
-                disabled={disconnect.isPending && disconnect.variables === account.id}
-                onClick={() => disconnect.mutate(account.id)}
+                disabled={disconnectingAccountID === account.id}
+                onClick={() => onDisconnect(account.id)}
               >
-                Disconnect
+                {disconnectingAccountID === account.id ? 'Disconnecting…' : 'Disconnect'}
               </Button>
             </div>
           )

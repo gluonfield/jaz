@@ -1,16 +1,15 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowDownToLine, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, Settings2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { SearchField } from '@/components/ui/SearchField'
-import { Segmented } from '@/components/ui/Segmented'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import {
   addPluginSource,
+  disconnectPluginAccount,
   installPlugin,
   refreshPluginSources,
   removePlugin,
@@ -20,25 +19,23 @@ import {
   type Plugin,
   type PluginInstallInput,
   type PluginInstallResult,
-  type PluginSource,
 } from '@/lib/api/plugins'
 import { keys } from '@/lib/query/keys'
-import { AddPluginModal } from './AddPluginModal'
+import { AddPluginModal, type AddPluginMode } from './AddPluginModal'
 import { ConnectionQRModal } from './ConnectionQRModal'
+import { MarketplacesModal } from './MarketplacesModal'
 import { PluginDetailModal } from './PluginDetailModal'
-import { pluginActionLabel, pluginCanConnect, pluginSummary } from './pluginFormatting'
+import { categoryLabel, pluginActionLabel, pluginCanConnect, pluginSummary } from './pluginFormatting'
 import { PluginAvatar } from './PluginVisuals'
 import { usePluginSignIn } from './usePluginSignIn'
-
-type PluginsTab = 'installed' | 'browse' | 'sources'
 
 export function PluginsSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
-  const [tab, setTab] = useState<PluginsTab>('installed')
   const [query, setQuery] = useState('')
   const [selectedID, setSelectedID] = useState<string | null>(null)
-  const [adding, setAdding] = useState(false)
+  const [addMode, setAddMode] = useState<AddPluginMode | null>(null)
+  const [managingSources, setManagingSources] = useState(false)
 
   const signIn = usePluginSignIn({ onStartAccepted: () => setSelectedID(null) })
   const catalog = signIn.catalog
@@ -61,7 +58,7 @@ export function PluginsSettings() {
     mutationFn: (input: PluginInstallInput) => installPlugin(input),
     onSuccess: (result) => {
       reportInstall(result, 'Installed')
-      setAdding(false)
+      setAddMode(null)
     },
     onError: (error: Error) => toast(`Couldn't install: ${error.message}`, 'danger'),
     onSettled: invalidateAll,
@@ -84,6 +81,13 @@ export function PluginsSettings() {
     onSettled: invalidateAll,
   })
 
+  const disconnect = useMutation({
+    mutationFn: (accountID: string) => disconnectPluginAccount(accountID),
+    onSuccess: () => toast('Disconnected'),
+    onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
+    onSettled: invalidateAll,
+  })
+
   const toggleEnabled = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setPluginEnabled(id, enabled),
     onError: (error: Error) => toast(`Couldn't update plugin: ${error.message}`, 'danger'),
@@ -93,36 +97,39 @@ export function PluginsSettings() {
   const addSource = useMutation({
     mutationFn: (input: PluginInstallInput) => addPluginSource(input),
     onSuccess: (source) => {
-      setAdding(false)
-      setTab(source.is_marketplace ? 'browse' : 'sources')
-      toast(`Added source ${source.repository}`)
+      setAddMode(null)
+      toast(`Added marketplace ${source.repository}`)
     },
-    onError: (error: Error) => toast(`Couldn't add source: ${error.message}`, 'danger'),
+    onError: (error: Error) => toast(`Couldn't add marketplace: ${error.message}`, 'danger'),
     onSettled: invalidateAll,
   })
 
   const removeSource = useMutation({
     mutationFn: (id: string) => removePluginSource(id),
-    onSuccess: () => toast('Removed source'),
-    onError: (error: Error) => toast(`Couldn't remove source: ${error.message}`, 'danger'),
+    onSuccess: () => toast('Removed marketplace'),
+    onError: (error: Error) => toast(`Couldn't remove marketplace: ${error.message}`, 'danger'),
     onSettled: invalidateAll,
   })
 
   const refresh = useMutation({
     mutationFn: refreshPluginSources,
-    onSuccess: () => toast('Checked plugin sources for updates'),
-    onError: (error: Error) => toast(`Couldn't refresh sources: ${error.message}`, 'danger'),
+    onSuccess: () => toast('Checked plugin catalogs for updates'),
+    onError: (error: Error) => toast(`Couldn't refresh catalogs: ${error.message}`, 'danger'),
     onSettled: invalidateAll,
   })
 
-  const installedPlugins = useMemo(
-    () => filterPlugins(allPlugins.filter((plugin) => plugin.installed), query),
-    [allPlugins, query],
+  const filtered = useMemo(() => filterPlugins(allPlugins, query), [allPlugins, query])
+
+  const connectedPlugins = useMemo(
+    () => filtered.filter(isActivePlugin),
+    [filtered],
   )
-  const browsePlugins = useMemo(
-    () => filterPlugins(allPlugins.filter((plugin) => !plugin.installed), query),
-    [allPlugins, query],
-  )
+
+  const catalogGroups = useMemo(() => {
+    const available = filtered.filter((plugin) => !isActivePlugin(plugin))
+    return groupCatalogPlugins(available)
+  }, [filtered])
+
   const selected = useMemo(
     () => allPlugins.find((plugin) => plugin.id === selectedID) ?? null,
     [allPlugins, selectedID],
@@ -139,117 +146,126 @@ export function PluginsSettings() {
     })
   }
 
+  const quickAdd = (plugin: Plugin) => {
+    if (plugin.auth && pluginCanConnect(plugin)) {
+      signIn.start(plugin)
+      return
+    }
+    if (!plugin.installed) {
+      installMarketplacePlugin(plugin)
+      return
+    }
+    setSelectedID(plugin.id)
+  }
+
+  const disconnectingAccountID = disconnect.isPending ? disconnect.variables : undefined
+
   return (
-    <section className="pb-6">
-      <div className="flex flex-wrap items-start justify-between gap-4 py-4">
+    <section className="pb-10">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-6 pt-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-ink">Plugins</p>
+          <h2 className="text-[20px] font-semibold tracking-tight text-ink">Plugins</h2>
           <p className="mt-0.5 text-[13px] text-ink-2">
-            Connect built-in integrations or install skills, MCP servers, and views from Git.
+            Connect plugins to let Jaz work across your tools
           </p>
         </div>
+
         <div className="flex items-center gap-2">
-          {sources.length > 0 ? (
-            <Button variant="ghost" size="sm" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
-              <RefreshCw size={13} className={refresh.isPending ? 'animate-spin' : undefined} />
-              Refresh
-            </Button>
-          ) : null}
-          <Button variant="primary" size="sm" onClick={() => setAdding(true)}>
+          <SearchField
+            value={query}
+            onChange={setQuery}
+            placeholder="Search plugins"
+            className="h-8 w-48 max-sm:w-full"
+          />
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label="Refresh plugin catalogs"
+            title="Refresh plugin catalogs"
+            disabled={refresh.isPending}
+            onClick={() => refresh.mutate()}
+          >
+            <RefreshCw size={14} className={refresh.isPending ? 'animate-spin' : undefined} />
+          </IconButton>
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label="Manage Git marketplaces"
+            title="Manage Git marketplaces"
+            onClick={() => setManagingSources(true)}
+          >
+            <Settings2 size={14} />
+          </IconButton>
+          <Button variant="primary" size="sm" onClick={() => setAddMode('install')}>
             <Plus size={14} />
-            Add from Git
+            Add
           </Button>
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Segmented
-          layoutId="plugins-settings-tab"
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: 'installed', label: 'Installed' },
-            { value: 'browse', label: browsePlugins.length ? `Browse (${browsePlugins.length})` : 'Browse' },
-            { value: 'sources', label: sources.length ? `Sources (${sources.length})` : 'Sources' },
-          ]}
-        />
-        {tab !== 'sources' ? (
-          <SearchField
-            value={query}
-            onChange={setQuery}
-            placeholder="Filter plugins…"
-            className="h-8 w-52 max-sm:w-full"
-          />
-        ) : null}
-      </div>
-
       {catalog.isPending ? (
-        <SkeletonRows count={4} />
+        <SkeletonRows count={5} />
       ) : catalog.isError ? (
         <p className="py-2 text-[13px] text-danger" role="alert">
           {catalog.error.message}
         </p>
-      ) : tab === 'installed' ? (
-        installedPlugins.length === 0 ? (
-          <p className="rounded-card bg-surface px-4 py-8 text-center text-[13px] text-ink-3" role="status">
-            {query ? 'No installed plugins match your filter.' : 'No plugins installed yet.'}
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            {installedPlugins.map((plugin) => (
-              <InstalledPluginCard
-                key={plugin.id}
-                plugin={plugin}
-                connecting={signIn.isConnecting && signIn.connectingPluginID === plugin.id}
-                toggling={toggleEnabled.isPending && toggleEnabled.variables?.id === plugin.id}
-                onOpen={() => setSelectedID(plugin.id)}
-                onConnect={() => signIn.start(plugin)}
-                onToggle={(enabled) => toggleEnabled.mutate({ id: plugin.id, enabled })}
-              />
-            ))}
-          </div>
-        )
-      ) : tab === 'browse' ? (
-        browsePlugins.length === 0 ? (
-          <div className="rounded-card bg-surface px-4 py-8 text-center text-[13px] text-ink-3">
-            <p>{query ? 'No marketplace plugins match your filter.' : 'No marketplace catalogs added yet.'}</p>
-            {!query ? (
-              <Button variant="secondary" size="sm" className="mt-3" onClick={() => setAdding(true)}>
-                <Plus size={13} />
-                Add marketplace from Git
-              </Button>
-            ) : null}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            {browsePlugins.map((plugin) => (
-              <BrowsePluginCard
-                key={plugin.id}
-                plugin={plugin}
-                installing={install.isPending && install.variables?.plugin_id === plugin.id}
-                onOpen={() => setSelectedID(plugin.id)}
-                onInstall={() => installMarketplacePlugin(plugin)}
-              />
-            ))}
-          </div>
-        )
-      ) : sources.length === 0 ? (
-        <div className="rounded-card bg-surface px-4 py-8 text-center text-[13px] text-ink-3">
-          <p>No Git marketplace sources configured.</p>
-          <Button variant="secondary" size="sm" className="mt-3" onClick={() => setAdding(true)}>
-            <Plus size={13} />
-            Add Git source
-          </Button>
-        </div>
+      ) : filtered.length === 0 ? (
+        <p className="rounded-card bg-surface px-4 py-10 text-center text-[13px] text-ink-3" role="status">
+          {query ? 'No plugins match your search.' : 'No plugins available.'}
+        </p>
       ) : (
-        <div className="flex flex-col gap-2">
-          {sources.map((source) => (
-            <SourceRow
-              key={source.id}
-              source={source}
-              removing={removeSource.isPending && removeSource.variables === source.id}
-              onRemove={() => removeSource.mutate(source.id)}
-            />
+        <div className="space-y-8">
+          {connectedPlugins.length > 0 ? (
+            <section className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[13px] font-semibold text-ink">Connected</h3>
+                <span className="text-[12px] tabular-nums text-ink-3">{connectedPlugins.length}</span>
+              </div>
+              <div className="divide-y divide-border/50 rounded-card bg-surface">
+                {connectedPlugins.map((plugin) => {
+                  const accounts = plugin.auth?.accounts ?? []
+                  const singleAccount =
+                    plugin.auth?.connected && !plugin.auth.multi_account && accounts.length === 1 ? accounts[0] : null
+                  return (
+                    <ConnectedPluginRow
+                      key={plugin.id}
+                      plugin={plugin}
+                      connecting={signIn.isConnecting && signIn.connectingPluginID === plugin.id}
+                      disconnecting={Boolean(singleAccount && disconnect.isPending && disconnect.variables === singleAccount.id)}
+                      updating={update.isPending && update.variables === plugin.id}
+                      toggling={toggleEnabled.isPending && toggleEnabled.variables?.id === plugin.id}
+                      onOpen={() => setSelectedID(plugin.id)}
+                      onConnect={() => signIn.start(plugin)}
+                      onDisconnect={singleAccount ? () => disconnect.mutate(singleAccount.id) : undefined}
+                      onUpdate={() => update.mutate(plugin.id)}
+                      onToggle={(enabled) => toggleEnabled.mutate({ id: plugin.id, enabled })}
+                    />
+                  )
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          {catalogGroups.map((group) => (
+            <section key={group.label} className="space-y-2">
+              <h3 className="text-[13px] font-semibold text-ink">{group.label}</h3>
+              <div className="grid grid-cols-1 gap-x-8 gap-y-0.5 sm:grid-cols-2">
+                {group.plugins.map((plugin) => {
+                  const busy =
+                    (signIn.isConnecting && signIn.connectingPluginID === plugin.id) ||
+                    (install.isPending && install.variables?.plugin_id === plugin.id)
+                  return (
+                    <CatalogPluginRow
+                      key={plugin.id}
+                      plugin={plugin}
+                      busy={busy}
+                      onOpen={() => setSelectedID(plugin.id)}
+                      onAdd={() => quickAdd(plugin)}
+                    />
+                  )
+                })}
+              </div>
+            </section>
           ))}
         </div>
       )}
@@ -257,25 +273,42 @@ export function PluginsSettings() {
       <PluginDetailModal
         plugin={selected}
         connecting={signIn.isConnecting && signIn.connectingPluginID === selected?.id}
+        disconnectingAccountID={disconnectingAccountID}
         installing={install.isPending && install.variables?.plugin_id === selected?.id}
         updating={update.isPending && update.variables === selected?.id}
         removing={remove.isPending && remove.variables === selected?.id}
         toggling={toggleEnabled.isPending && toggleEnabled.variables?.id === selected?.id}
         onClose={() => setSelectedID(null)}
         onConnect={(plugin) => signIn.start(plugin)}
+        onDisconnect={(accountID) => disconnect.mutate(accountID)}
         onInstall={installMarketplacePlugin}
         onUpdate={(plugin) => update.mutate(plugin.id)}
         onRemove={(plugin) => remove.mutate(plugin.id)}
         onToggleEnabled={(plugin, enabled) => toggleEnabled.mutate({ id: plugin.id, enabled })}
       />
 
-      {adding ? (
+      {addMode ? (
         <AddPluginModal
+          key={addMode}
           open
+          initialMode={addMode}
           busy={install.isPending || addSource.isPending}
-          onClose={() => setAdding(false)}
+          onClose={() => setAddMode(null)}
           onInstall={(input) => install.mutate(input)}
           onAddSource={(input) => addSource.mutate(input)}
+        />
+      ) : null}
+
+      {managingSources ? (
+        <MarketplacesModal
+          sources={sources}
+          removingID={removeSource.isPending ? removeSource.variables : undefined}
+          onClose={() => setManagingSources(false)}
+          onAdd={() => {
+            setManagingSources(false)
+            setAddMode('marketplace')
+          }}
+          onRemove={(id) => removeSource.mutate(id)}
         />
       ) : null}
 
@@ -284,47 +317,68 @@ export function PluginsSettings() {
   )
 }
 
-function InstalledPluginCard({
+function ConnectedPluginRow({
   plugin,
   connecting,
+  disconnecting,
+  updating,
   toggling,
   onOpen,
   onConnect,
+  onDisconnect,
+  onUpdate,
   onToggle,
 }: {
   plugin: Plugin
   connecting: boolean
+  disconnecting: boolean
+  updating: boolean
   toggling: boolean
   onOpen: () => void
   onConnect: () => void
+  onDisconnect?: () => void
+  onUpdate: () => void
   onToggle: (enabled: boolean) => void
 }) {
   const connected = Boolean(plugin.auth?.connected)
   const needsConnect = Boolean(plugin.auth && !connected && pluginCanConnect(plugin))
-  const summary = pluginSummary(plugin)
+  const summary = needsConnect ? 'Not connected' : pluginSummary(plugin)
 
   return (
-    <SettingsCard className="flex flex-col justify-between gap-3 px-3.5 py-3 transition-colors hover:bg-surface-2/60">
-      <div className="flex items-start gap-3">
-        <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 text-left">
-          <PluginAvatar plugin={plugin} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <p className="truncate text-[13.5px] font-medium text-ink">{plugin.display_name}</p>
-              {connected ? (
-                <span className="size-1.5 shrink-0 rounded-full bg-ok" title="Connected" />
-              ) : null}
-              {plugin.source?.update_available ? (
-                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                  Update
-                </span>
-              ) : null}
-            </div>
-            {summary ? (
-              <p className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-2">{summary}</p>
+    <div className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/40">
+      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 text-left">
+        <PluginAvatar plugin={plugin} size="md" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="truncate text-[13.5px] font-medium text-ink">{plugin.display_name}</p>
+            {connected && plugin.enabled ? (
+              <span className="size-1.5 shrink-0 rounded-full bg-ok" title="Connected" />
+            ) : !plugin.enabled ? (
+              <span className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-ink-3">Paused</span>
             ) : null}
           </div>
-        </button>
+          {summary ? <p className="mt-0.5 truncate text-[12px] text-ink-2">{summary}</p> : null}
+        </div>
+      </button>
+
+      <div className="flex shrink-0 items-center gap-2">
+        {plugin.source?.update_available ? (
+          <Button size="sm" variant="secondary" disabled={updating} onClick={onUpdate}>
+            {updating ? <Loader2 size={12} className="animate-spin" /> : null}
+            Update
+          </Button>
+        ) : null}
+        {needsConnect ? (
+          <Button size="sm" variant="secondary" disabled={connecting} onClick={onConnect}>
+            {connecting ? <Loader2 size={12} className="animate-spin" /> : null}
+            {pluginActionLabel(plugin, connecting)}
+          </Button>
+        ) : onDisconnect ? (
+          <Button size="sm" variant="ghost" disabled={disconnecting} onClick={onDisconnect}>
+            {disconnecting ? <Loader2 size={12} className="animate-spin" /> : null}
+            Disconnect
+          </Button>
+        ) : null}
         <Switch
           checked={plugin.enabled}
           disabled={toggling}
@@ -332,83 +386,83 @@ function InstalledPluginCard({
           onChange={onToggle}
         />
       </div>
-
-      {needsConnect ? (
-        <div className="flex items-center justify-end border-t border-border/50 pt-2">
-          <Button size="sm" variant="secondary" disabled={connecting} onClick={onConnect}>
-            {connecting ? <Loader2 size={12} className="animate-spin" /> : null}
-            {pluginActionLabel(plugin, connecting)}
-          </Button>
-        </div>
-      ) : null}
-    </SettingsCard>
+    </div>
   )
 }
 
-function BrowsePluginCard({
+function CatalogPluginRow({
   plugin,
-  installing,
+  busy,
   onOpen,
-  onInstall,
+  onAdd,
 }: {
   plugin: Plugin
-  installing: boolean
+  busy: boolean
   onOpen: () => void
-  onInstall: () => void
+  onAdd: () => void
 }) {
   return (
-    <SettingsCard className="flex items-start gap-3 px-3.5 py-3 transition-colors hover:bg-surface-2/60">
-      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 text-left">
-        <PluginAvatar plugin={plugin} />
+    <div className="flex items-center gap-3 rounded-[10px] px-2 py-2.5 transition-colors hover:bg-surface">
+      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 text-left">
+        <PluginAvatar plugin={plugin} size="md" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13.5px] font-medium text-ink">{plugin.display_name}</p>
           {plugin.description ? (
-            <p className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-2">{plugin.description}</p>
+            <p className="mt-0.5 truncate text-[12.5px] text-ink-2">{plugin.description}</p>
           ) : null}
         </div>
       </button>
-      <Button size="sm" variant="secondary" disabled={installing} onClick={onInstall} className="shrink-0">
-        {installing ? <Loader2 size={12} className="animate-spin" /> : <ArrowDownToLine size={12} />}
-        {installing ? 'Installing…' : 'Install'}
-      </Button>
-    </SettingsCard>
+      <IconButton
+        variant="ghost"
+        size="sm"
+        aria-label={plugin.auth ? `Connect ${plugin.display_name}` : `Install ${plugin.display_name}`}
+        title={plugin.auth ? `Connect ${plugin.display_name}` : `Install ${plugin.display_name}`}
+        disabled={busy}
+        onClick={onAdd}
+      >
+        {busy ? <Loader2 size={15} className="animate-spin" /> : <Plus size={16} />}
+      </IconButton>
+    </div>
   )
 }
 
-function SourceRow({
-  source,
-  removing,
-  onRemove,
-}: {
-  source: PluginSource
-  removing: boolean
-  onRemove: () => void
-}) {
-  return (
-    <SettingsCard className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-      <div className="min-w-0">
-        <p className="truncate text-[13px] font-medium text-ink">
-          {source.repository}
-          {source.ref ? <span className="ml-1.5 font-normal text-ink-3">@{source.ref}</span> : null}
-        </p>
-        <p className="mt-0.5 truncate text-[12px] text-ink-3">
-          {source.is_marketplace ? 'Marketplace' : 'Repository'}
-          {source.commit_sha ? ` · ${source.commit_sha.slice(0, 8)}` : ''}
-          {source.auto_update ? ' · Auto-update' : ''}
-        </p>
-      </div>
-      <IconButton
-        variant="ghost"
-        size="xs"
-        aria-label={`Remove ${source.repository}`}
-        title={`Remove ${source.repository}`}
-        disabled={removing}
-        onClick={onRemove}
-      >
-        <Trash2 size={14} />
-      </IconButton>
-    </SettingsCard>
-  )
+function isActivePlugin(plugin: Plugin): boolean {
+  if (plugin.auth?.connected) return true
+  return plugin.installed && plugin.origin !== 'builtin'
+}
+
+function groupCatalogPlugins(plugins: Plugin[]): { label: string; plugins: Plugin[] }[] {
+  const popular: Plugin[] = []
+  const byCategory = new Map<string, Plugin[]>()
+
+  for (const plugin of plugins) {
+    if (plugin.origin === 'builtin') {
+      popular.push(plugin)
+      continue
+    }
+    const label = categoryLabel(plugin.category)
+    const bucket = byCategory.get(label)
+    if (bucket) bucket.push(plugin)
+    else byCategory.set(label, [plugin])
+  }
+
+  const groups: { label: string; plugins: Plugin[] }[] = []
+  if (popular.length > 0) {
+    groups.push({ label: 'Popular', plugins: popular })
+  }
+  const preferredOrder = ['Meetings', 'Productivity']
+  for (const label of preferredOrder) {
+    const items = byCategory.get(label)
+    if (items?.length) {
+      groups.push({ label, plugins: items })
+      byCategory.delete(label)
+    }
+  }
+  const rest = Array.from(byCategory.entries()).sort(([a], [b]) => a.localeCompare(b))
+  for (const [label, items] of rest) {
+    groups.push({ label, plugins: items })
+  }
+  return groups
 }
 
 function filterPlugins(plugins: Plugin[], query: string): Plugin[] {

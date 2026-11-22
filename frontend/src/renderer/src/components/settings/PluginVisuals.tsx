@@ -16,13 +16,13 @@ const pluginAssetUrls: Record<string, string> = {
 }
 
 export function PluginAvatar({ plugin, size = 'md' }: { plugin: Plugin; size?: 'sm' | 'md' | 'lg' }) {
-  const boxClass = size === 'sm' ? 'size-8 rounded-[8px]' : size === 'lg' ? 'size-11 rounded-[11px]' : 'size-9 rounded-[9px]'
-  const imgSize = size === 'sm' ? 20 : size === 'lg' ? 28 : 22
+  const boxClass = size === 'sm' ? 'size-8 rounded-[8px]' : size === 'lg' ? 'size-11 rounded-[11px]' : 'size-10 rounded-[10px]'
+  const imgSize = size === 'sm' ? 20 : size === 'lg' ? 28 : 24
   const src = pluginImageSrc(plugin)
 
   if (src) {
     return (
-      <span className={`grid ${boxClass} shrink-0 place-items-center bg-bg ring-1 ring-border/70`}>
+      <span className={`grid ${boxClass} shrink-0 place-items-center bg-surface ring-1 ring-border/70`}>
         <img src={src} alt="" className="object-contain" style={{ width: imgSize, height: imgSize }} />
       </span>
     )
@@ -31,7 +31,7 @@ export function PluginAvatar({ plugin, size = 'md' }: { plugin: Plugin; size?: '
   const initials = (plugin.icon.value || plugin.display_name.slice(0, 2)).toUpperCase()
   return (
     <span
-      className={`grid ${boxClass} shrink-0 place-items-center bg-bg text-[12px] font-semibold text-ink ring-1 ring-border/70`}
+      className={`grid ${boxClass} shrink-0 place-items-center bg-surface text-[12px] font-semibold text-ink ring-1 ring-border/70`}
       style={plugin.icon.background ? { background: plugin.icon.background } : undefined}
     >
       {initials}

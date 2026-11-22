@@ -27,6 +27,7 @@ type SessionDisconnecter interface {
 }
 
 type DisconnectResult struct {
+	Provider          string
 	MCPServersChanged bool
 }
 
@@ -76,6 +77,35 @@ func (s *Service) Plugin(ctx context.Context, id string, _ bool) (integrations.P
 	return plugin, true, err
 }
 
+type tokenDeleter interface {
+	DeleteToken(context.Context, string) error
+}
+
+func (s *Service) ClearMCPTokens(ctx context.Context, serverIDs ...string) error {
+	if s == nil || s.store == nil {
+		return nil
+	}
+	deleter, ok := s.store.(tokenDeleter)
+	if !ok {
+		return nil
+	}
+	var errs []error
+	for _, serverID := range serverIDs {
+		serverID = strings.TrimSpace(serverID)
+		if serverID == "" {
+			continue
+		}
+		tokenID := mcpconfig.OAuthConnectionID(serverID)
+		unlock := integrationoauth.LockToken(tokenID)
+		err := deleter.DeleteToken(ctx, tokenID)
+		unlock()
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 func (s *Service) ListAccounts(ctx context.Context, providerID string) ([]integrations.Connection, error) {
 	if s == nil || s.store == nil || providerID == "" {
 		return nil, nil
@@ -114,7 +144,7 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) (DisconnectR
 			return DisconnectResult{}, err
 		}
 	}
-	return DisconnectResult{MCPServersChanged: usesConnectionMCP}, nil
+	return DisconnectResult{Provider: connection.Provider, MCPServersChanged: usesConnectionMCP}, nil
 }
 
 // AgentConnections lists every connected account across native integrations.

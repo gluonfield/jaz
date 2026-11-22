@@ -152,7 +152,7 @@ export function SettingsOverlay({
                     <SectionContent section={current.id} onNavigate={onSectionChange} />
                   ) : (
                     <div className="h-full overflow-y-auto">
-                      <div className="mx-auto max-w-[760px] px-10 pb-8 max-sm:px-4">
+                      <div className={`mx-auto px-10 pb-8 max-sm:px-4 ${current.wide ? 'max-w-[920px]' : 'max-w-[760px]'}`}>
                         <SectionContent section={current.id} onNavigate={onSectionChange} />
                       </div>
                     </div>

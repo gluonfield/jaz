@@ -43,6 +43,7 @@ type SettingsNavItem = {
   // The menu heading this item sits under; consecutive items share it.
   group?: string
   fullHeight?: boolean
+  wide?: boolean
   experimental?: boolean
 }
 
@@ -57,7 +58,7 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'providers', label: 'Model Providers', icon: Boxes, group: 'Agents' },
   { id: 'agents', label: 'Agents (ACP)', icon: Bot, group: 'Agents' },
   { id: 'mcp', label: 'MCP servers', icon: Plug, group: 'Agents' },
-  { id: 'plugins', label: 'Plugins', icon: Puzzle, group: 'Agents' },
+  { id: 'plugins', label: 'Plugins', icon: Puzzle, group: 'Agents', wide: true },
   { id: 'browser', label: 'Browser', icon: Globe, group: 'Agents' },
   { id: 'computer', label: 'Computer Use', icon: MonitorSmartphone, group: 'Agents' },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn, group: 'Account' },

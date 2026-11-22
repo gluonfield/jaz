@@ -95,6 +95,7 @@ export interface PluginSource {
   commit_sha?: string
   auto_update?: boolean
   is_marketplace?: boolean
+  built_in?: boolean
   checked_at?: string
 }
 
