@@ -351,9 +351,7 @@ function ConnectedPluginRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="truncate text-[13.5px] font-medium text-ink">{plugin.display_name}</p>
-            {connected && plugin.enabled ? (
-              <span className="size-1.5 shrink-0 rounded-full bg-ok" title="Connected" />
-            ) : !plugin.enabled ? (
+            {!plugin.enabled ? (
               <span className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-ink-3">Paused</span>
             ) : null}
           </div>
