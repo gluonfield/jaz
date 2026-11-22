@@ -32,6 +32,8 @@ import type { PreviewTarget } from '@/lib/browserSessions'
 import type { SideBrowser } from '@/lib/sideBrowser'
 import { BrowserMenu } from '@/components/browser/BrowserMenu'
 import { BrowserAddressActions } from '@/components/browser/BrowserAddressActions'
+import { BrowserPasskeyNotice } from '@/components/browser/BrowserPasskeyNotice'
+import { BrowserProfileImportDialog } from '@/components/browser/BrowserProfileImportDialog'
 import { PREVIEW_PARTITION } from '@shared/preview'
 import { usePreviewFindControls } from './usePreviewFindControls'
 
@@ -76,6 +78,7 @@ export function PreviewPanel({
   const [canGoForward, setCanGoForward] = useState(false)
   const [annotating, setAnnotating] = useState(false)
   const [error, setError] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
   useEffect(() => {
     if (!visible || !webview || !annotating) return
     return () => {
@@ -294,6 +297,7 @@ export function PreviewPanel({
   }, [reloads])
 
   const canAnnotate = canUseWebview && !!onAddBrowserAnnotation
+  const webContentsId = webviewReady && webview ? webview.getWebContentsId() : null
 
   return (
     <SidePanelShell className={visible ? 'pointer-events-auto' : 'pointer-events-none'} onKeyDownCapture={find.handleKeyDownCapture}>
@@ -352,7 +356,11 @@ export function PreviewPanel({
         >
           {annotating ? <SquareStop size={14} /> : <MessageCirclePlus size={15} />}
         </IconButton>
-        <BrowserMenu webContentsId={webviewReady && webview ? webview.getWebContentsId() : null} visible={visible} />
+        <BrowserMenu
+          webContentsId={webContentsId}
+          visible={visible}
+          onOpenImport={() => setImportOpen(true)}
+        />
         {onClose ? <button
           type="button"
           aria-label="Hide side panel"
@@ -362,6 +370,14 @@ export function PreviewPanel({
           <X size={15} />
         </button> : null}
       </form>
+      {window.jaz?.browserPasskeyFallback ? (
+        <BrowserPasskeyNotice
+          webContentsId={webContentsId}
+          url={resolvedSourceUrl}
+          title={target.title}
+          onOpenImport={() => setImportOpen(true)}
+        />
+      ) : null}
       {error ? (
         <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">{error}</p>
       ) : null}
@@ -392,6 +408,9 @@ export function PreviewPanel({
           </div>
         )}
       </div>
+      {importOpen && visible && window.jaz?.browserProfiles ? (
+        <BrowserProfileImportDialog api={window.jaz.browserProfiles} onClose={() => setImportOpen(false)} />
+      ) : null}
     </SidePanelShell>
   )
 }

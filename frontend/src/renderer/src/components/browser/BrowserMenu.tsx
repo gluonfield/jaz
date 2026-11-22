@@ -3,15 +3,21 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
-import { BrowserProfileImportDialog } from '@/components/browser/BrowserProfileImportDialog'
 import { BrowserDownloads } from '@/components/browser/BrowserDownloads'
 import type { BrowserPasswordAction, BrowserPasswordState } from '@shared/browserPasswords'
 
-export function BrowserMenu({ webContentsId, visible }: { webContentsId: number | null; visible: boolean }) {
+export function BrowserMenu({
+  webContentsId,
+  visible,
+  onOpenImport,
+}: {
+  webContentsId: number | null
+  visible: boolean
+  onOpenImport: () => void
+}) {
   const api = window.jaz?.browserPasswords
   const [state, setState] = useState<BrowserPasswordState>({ origin: '', usernames: [], locked: true })
   const [view, setView] = useState<'menu' | 'passwords' | 'downloads' | null>(null)
-  const [importOpen, setImportOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const revision = useRef(0)
@@ -100,7 +106,7 @@ export function BrowserMenu({ webContentsId, visible }: { webContentsId: number 
       </MenuRow>
       <MenuRow disabled={!window.jaz?.browserProfiles} onClick={() => {
         close()
-        setImportOpen(true)
+        onOpenImport()
       }}>
         <span className="flex items-center gap-2"><Cookie size={13} />Import cookies and passwords</span>
       </MenuRow>
@@ -134,6 +140,5 @@ export function BrowserMenu({ webContentsId, visible }: { webContentsId: number 
     </section>
     )}
   </Popover>
-  {importOpen && visible && window.jaz?.browserProfiles ? <BrowserProfileImportDialog api={window.jaz.browserProfiles} onClose={() => setImportOpen(false)} /> : null}
   </>
 }

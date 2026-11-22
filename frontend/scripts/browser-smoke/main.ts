@@ -237,7 +237,10 @@ server.listen(0, '127.0.0.1', async () => {
     throw new Error('Missing test server address')
   }
   await app.whenReady()
-  configureBrowserSessions(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'chrome.js'))
+  configureBrowserSessions(
+    join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'chrome.js'),
+    join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'passkeyFallback.js'),
+  )
   ipcMain.handle('smoke:navigation-probe', (_event, enabled?: boolean) => {
     if (enabled !== undefined) {
       probingNavigation = enabled
@@ -248,9 +251,23 @@ server.listen(0, '127.0.0.1', async () => {
           protocol.handle(scheme, (request) => {
             const query = new URL(request.url).searchParams
             const title = googlePasskeys && query.has('cloud-fixture') ? 'Google Cloud Platform' : 'Address probe'
+            const popupScript = googlePasskeys && query.has('popup-passkey')
+              ? `<script>(async () => {
+                  const caps = await PublicKeyCredential.getClientCapabilities()
+                  const cma = await PublicKeyCredential.isConditionalMediationAvailable()
+                  let err = ''
+                  try {
+                    await navigator.credentials.get({ publicKey: { challenge: new Uint8Array(32), rpId: location.hostname, userVerification: 'preferred', timeout: 60000 } })
+                  } catch (e) {
+                    err = e.name
+                  }
+                  window.opener?.postMessage({ cma, passkeyPlatformAuthenticator: caps.passkeyPlatformAuthenticator, hybridTransport: caps.hybridTransport, err }, '*')
+                  window.close()
+                })()</script>`
+              : ''
             const hop = query.has('post')
               ? `<form method="post" action="${query.get('post')}"></form><script>document.forms[0].submit()</script>`
-              : query.has('replace') ? `<script>history.replaceState(null, '', ${JSON.stringify(query.get('replace'))})</script>` : ''
+              : query.has('replace') ? `<script>history.replaceState(null, '', ${JSON.stringify(query.get('replace'))})</script>` : popupScript
             return new Response(`<!doctype html><title>${title}</title>${hop}`, { headers: { 'Content-Type': 'text/html' } })
           })
         } else {
@@ -430,12 +447,14 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     await assertUntrustedProfileCaller(process.env.JAZ_BROWSER_SMOKE_DIR!)
     await exerciseBrowserPopups(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js'), openedURLs)
   }
-  app.on('web-contents-created', (_event, contents) => {
-    contents.on('did-create-window', (popup, { url }) => {
-      popupURLs.push(url)
-      popup.destroy()
+  if (!googlePasskeys) {
+    app.on('web-contents-created', (_event, contents) => {
+      contents.on('did-create-window', (popup, { url }) => {
+        popupURLs.push(url)
+        popup.destroy()
+      })
     })
-  })
+  }
   ipcMain.handle('smoke:capture', async (_event, name = 'browser') => {
     if (!/^[a-z-]+$/.test(name)) {
       throw new Error('Invalid screenshot name')

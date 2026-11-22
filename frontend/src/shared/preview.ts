@@ -3,6 +3,17 @@ import { parseFileReference } from './fileReader'
 export const PREVIEW_PARTITION = 'persist:jaz-preview'
 export const BROWSER_PRELOAD_ARGUMENT = '--jaz-side-browser'
 export const BROWSER_PASSKEY_FALLBACK_ARGUMENT = '--jaz-browser-passkey-fallback'
+export const BROWSER_PASSKEY_FALLBACK_CHANNEL = 'jaz:browser-passkey-fallback'
+
+const GOOGLE_PASSKEY_CHALLENGE = /^\/(?:v3\/signin|signin\/v2)\/challenge\/pk(?:\/|$)/
+
+export function googlePasskeyDestination(url: string, title?: string): string | null {
+  const page = URL.parse(url)
+  if (page?.origin !== 'https://accounts.google.com' || !GOOGLE_PASSKEY_CHALLENGE.test(page.pathname)) {
+    return null
+  }
+  return title === 'Google Cloud Platform' ? 'https://console.cloud.google.com/' : 'https://accounts.google.com/'
+}
 
 const SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i
 
