@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { normalizePreviewURL, shouldProxyPreview } from './preview'
+import { googlePasskeyDestination, normalizePreviewURL, shouldProxyPreview } from './preview'
 import { findFileReferences, resolveFileLink } from './fileReader'
 
 test('browser input preserves local paths and file URIs', () => {
@@ -74,5 +74,16 @@ describe('shouldProxyPreview', () => {
     expect(shouldProxyPreview('http://127.0.0.1:3000/')).toBeTrue()
     expect(shouldProxyPreview('http://jaz-preview-capability.localhost:5299/')).toBeFalse()
     expect(shouldProxyPreview('https://preview.example.test/')).toBeFalse()
+  })
+})
+
+describe('googlePasskeyDestination', () => {
+  test('sanitizes Google passkey challenge URLs and ignores non-challenges or lookalikes', () => {
+    expect(googlePasskeyDestination('https://accounts.google.com/v3/signin/challenge/pk/presend?TL=secret', 'Google Cloud Platform')).toBe('https://console.cloud.google.com/')
+    expect(googlePasskeyDestination('https://accounts.google.com/v3/signin/challenge/pk/presend?TL=secret')).toBe('https://accounts.google.com/')
+    expect(googlePasskeyDestination('https://accounts.google.com/signin/v2/challenge/pk?TL=secret')).toBe('https://accounts.google.com/')
+    expect(googlePasskeyDestination('https://accounts.google.com/v3/signin/challenge/pwd/presend')).toBeNull()
+    expect(googlePasskeyDestination('https://accounts.google.com.example.test/v3/signin/challenge/pk/presend')).toBeNull()
+    expect(googlePasskeyDestination('http://accounts.google.com/v3/signin/challenge/pk/presend')).toBeNull()
   })
 })
