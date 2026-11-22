@@ -30,15 +30,15 @@ type ContextStore interface {
 }
 
 type ContextRequest struct {
-	Session      string `json:"threadId" jsonschema:"Jaz thread ID or slug from list_threads, search_threads, or create_thread"`
-	Query        string `json:"query,omitempty" jsonschema:"optional search query; returns matching message neighborhoods when set"`
-	Limit        int    `json:"limit,omitempty" jsonschema:"maximum returned messages, 1-60; defaults to 16"`
-	Context      int    `json:"context,omitempty" jsonschema:"messages before and after each query hit, 0-4; defaults to 0"`
-	BeforeSeq    int64  `json:"before_seq,omitempty" jsonschema:"return the page before this sequence from a previous read_thread result"`
-	AfterSeq     int64  `json:"after_seq,omitempty" jsonschema:"return the page after this sequence from a previous read_thread result"`
-	AroundSeq    int64  `json:"around_seq,omitempty" jsonschema:"return a page centered near this sequence from a previous read_thread result"`
-	IncludeTools string `json:"include_tools,omitempty" jsonschema:"none or summary; defaults to summary"`
-	MaxTextChars int    `json:"max_text_chars,omitempty" jsonschema:"per-message text limit; max 8000; defaults to 2000"`
+	Session      string `json:"threadId"`
+	Query        string `json:"query,omitempty"`
+	Limit        int    `json:"limit,omitempty" jsonschema:"1-60; default 16."`
+	Context      int    `json:"context,omitempty" jsonschema:"Query neighbors: 0-4."`
+	BeforeSeq    int64  `json:"before_seq,omitempty"`
+	AfterSeq     int64  `json:"after_seq,omitempty"`
+	AroundSeq    int64  `json:"around_seq,omitempty"`
+	IncludeTools string `json:"include_tools,omitempty" jsonschema:"none or summary."`
+	MaxTextChars int    `json:"max_text_chars,omitempty" jsonschema:"Max 8000; default 2000."`
 }
 
 type ContextResponse struct {
