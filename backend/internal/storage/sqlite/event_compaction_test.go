@@ -657,3 +657,97 @@ func TestAgentSessionEventsKeepOnlyTheLatest(t *testing.T) {
 		t.Fatalf("agent session events = %v, want only the newest", names)
 	}
 }
+
+func TestPostTurnTextRunRepairMigrationCoalescesFragments(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "post-turn-fragments"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSession(storage.CreateSession{Slug: "untouched"}); err != nil {
+		t.Fatal(err)
+	}
+	idleACP := fmt.Sprintf(`{"id":%q,"agent":"antigravity","state":"idle"}`, session.ID)
+	runningACP := fmt.Sprintf(`{"id":%q,"agent":"antigravity","state":"running"}`, session.ID)
+	toolACP := fmt.Sprintf(`{"id":%q,"agent":"antigravity","state":"idle","tool_calls":[{"id":"tool-1","title":"Deploy","status":"completed"}]}`, session.ID)
+	seq := 0
+	insert := func(eventType, content, acp string) {
+		seq++
+		if _, err := store.db.Exec(`
+			INSERT INTO session_events (thread_id, seq, type, content, acp, created_at_ms, coalesce_key, projection_key, projection_op)
+			VALUES (?, ?, ?, ?, ?, ?, '', '', 'append')`,
+			session.ID, seq, eventType, content, acp, seq,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Legacy running text without run id must stay untouched.
+	insert("acp_message", "run-a", runningACP)
+	insert("acp_message", "run-b", runningACP)
+	// Post-turn fragmented message spanning more than one compaction page.
+	var firstMessage strings.Builder
+	for i := range eventCompactionPageRows + 3 {
+		part := fmt.Sprintf("part-%d ", i)
+		firstMessage.WriteString(part)
+		insert("acp_message", part, idleACP)
+		if i == 2 {
+			insert("agent_session", `{"commands":[{"name":"review"}]}`, "")
+		}
+	}
+	// Tool boundary separates a second post-turn message.
+	insert("acp_tool", "", toolACP)
+	insert("acp_message", "after ", idleACP)
+	insert("acp_message", "tool.", idleACP)
+
+	raw, err := sqliteMigrations.ReadFile("migrations/0092_repair_post_turn_text_runs.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(strings.SplitN(string(raw), "-- +goose Down", 2)[0]); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"run-a", "run-b", firstMessage.String(), "after tool."}
+	collectMessages := func(events []sessionevents.Event) []string {
+		var out []string
+		for _, event := range sessionevents.CompactTranscript(events) {
+			if event.Type == sessionevents.TypeACPMessage {
+				out = append(out, event.Content)
+			}
+		}
+		return out
+	}
+	// Reads must render the full message immediately before background compaction runs.
+	beforeCompaction, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := collectMessages(beforeCompaction); !slices.Equal(got, want) {
+		t.Fatalf("messages before compaction = %#v, want %#v", got, want)
+	}
+	for {
+		result, err := store.CompactNextSessionEvents(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.ThreadID == "" {
+			break
+		}
+		if result.ThreadID != session.ID {
+			t.Fatalf("compacted %s, want only %s", result.ThreadID, session.ID)
+		}
+	}
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) >= len(beforeCompaction) {
+		t.Fatalf("compaction did not shrink stored rows: before=%d after=%d", len(beforeCompaction), len(stored))
+	}
+	if got := collectMessages(stored); !slices.Equal(got, want) {
+		t.Fatalf("messages after compaction = %#v, want %#v", got, want)
+	}
+}

@@ -129,7 +129,7 @@ func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun, turnKey st
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	run.textRunID = b.textRunIDLocked(run.eventType, run.upstreamMessageID, turnKey)
-	if n := len(b.runs); n > 0 && run.textRunID != "" && b.runs[n-1].eventType == run.eventType && b.runs[n-1].textRunID == run.textRunID {
+	if n := len(b.runs); n > 0 && b.runs[n-1].eventType == run.eventType && b.runs[n-1].textRunID == run.textRunID {
 		b.runs[n-1].chunks = append(b.runs[n-1].chunks, run.chunks...)
 	} else {
 		b.runs = append(b.runs, run)
@@ -161,12 +161,8 @@ func (b *acpTranscriptBuffer) textRunIDLocked(eventType, upstreamMessageID, turn
 		b.currentRunID = ""
 		return textRunID(upstreamMessageID)
 	}
-	if turnKey == "" {
-		return ""
-	}
 	if b.turnKey != turnKey {
 		b.turnKey = turnKey
-		b.runSeq = 0
 		b.currentRunType = ""
 		b.currentRunID = ""
 	}
@@ -175,7 +171,11 @@ func (b *acpTranscriptBuffer) textRunIDLocked(eventType, upstreamMessageID, turn
 	}
 	b.runSeq++
 	b.currentRunType = eventType
-	b.currentRunID = "turn:" + turnKey + ":" + strconv.Itoa(b.runSeq)
+	if turnKey != "" {
+		b.currentRunID = "turn:" + turnKey + ":" + strconv.Itoa(b.runSeq)
+	} else {
+		b.currentRunID = "post:" + strconv.FormatInt(time.Now().UTC().UnixNano(), 10) + ":" + strconv.Itoa(b.runSeq)
+	}
 	return b.currentRunID
 }
 
