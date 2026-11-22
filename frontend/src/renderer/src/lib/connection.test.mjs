@@ -55,7 +55,7 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, authMe, authExchange, discovery, storedValues = [], sessionStoredValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
+async function fixture({ auth, authMe, authExchange, authLogout, discovery, storedValues = [], sessionStoredValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
   const stored = new Map(storedValues)
   const sessionStored = new Map(sessionStoredValues)
   const configured = []
@@ -170,6 +170,9 @@ async function fixture({ auth, authMe, authExchange, discovery, storedValues = [
     }
     if (target.pathname === '/v1/auth/me' && authMe) {
       return authMe(init)
+    }
+    if (target.pathname === '/v1/auth/logout') {
+      return authLogout ? authLogout(init) : new Response(null, { status: 204 })
     }
     if (target.pathname === '/v1/auth/check') {
       return auth(init)
@@ -803,12 +806,13 @@ test('unsolicited web #token= or ?token= never hijacks connection, while pending
 
   // Valid pending sessionStorage state + #code= callback exchanges code once and stores resource_ticket.
   const pendingState = 'state-valid-123'
+  const pendingVerifier = 'verifier-web-123'
   const valid = await fixture({
     web: true,
     locationHref: `https://app.jaz.chat/#code=one-time-code&state=${pendingState}`,
     sessionStoredValues: [[
       'jaz.oidc.pending',
-      JSON.stringify({ server: cloudUrl, state: pendingState, startedAt: Date.now() }),
+      JSON.stringify({ server: cloudUrl, state: pendingState, codeVerifier: pendingVerifier, startedAt: Date.now() }),
     ]],
     discovery: () => Response.json({
       ok: true,
@@ -820,7 +824,7 @@ test('unsolicited web #token= or ?token= never hijacks connection, while pending
     authExchange: (init) => {
       exchangeHits += 1
       expect(init.method).toBe('POST')
-      expect(JSON.parse(String(init.body))).toEqual({ code: 'one-time-code' })
+      expect(JSON.parse(String(init.body))).toEqual({ code: 'one-time-code', code_verifier: pendingVerifier })
       return Response.json({
         token: 'exchanged-session-token',
         user: {
@@ -850,6 +854,7 @@ test('unsolicited web #token= or ?token= never hijacks connection, while pending
 
 test('Electron OIDC flow invokes beginOidcSignIn, opens jaz://auth/callback login URL with state, and completes via onOidcCallback', async () => {
   const cloudUrl = 'https://jaz-cloud.example'
+  let capturedExchangeBody = null
   const f = await fixture({
     discovery: () => Response.json({
       ok: true,
@@ -859,7 +864,10 @@ test('Electron OIDC flow invokes beginOidcSignIn, opens jaz://auth/callback logi
       capabilities: { spaces: true, connected_machines: true },
     }),
     authExchange: (init) => {
-      expect(JSON.parse(String(init.body))).toEqual({ code: 'desktop-code-1' })
+      capturedExchangeBody = JSON.parse(String(init.body))
+      expect(capturedExchangeBody.code).toBe('desktop-code-1')
+      expect(typeof capturedExchangeBody.code_verifier).toBe('string')
+      expect(capturedExchangeBody.code_verifier.length).toBeGreaterThanOrEqual(32)
       return Response.json({
         token: 'desktop-oidc-token',
         user: {
@@ -882,6 +890,7 @@ test('Electron OIDC flow invokes beginOidcSignIn, opens jaz://auth/callback logi
   expect(loginUrl.origin).toBe(cloudUrl)
   expect(loginUrl.pathname).toBe('/v1/auth/login')
   expect(loginUrl.searchParams.get('client_redirect')).toBe('jaz://auth/callback')
+  expect(loginUrl.searchParams.get('code_challenge')).toBeTruthy()
   const state = loginUrl.searchParams.get('state')
   expect(state).toBeTruthy()
 
@@ -895,4 +904,44 @@ test('Electron OIDC flow invokes beginOidcSignIn, opens jaz://auth/callback logi
     user: { id: 'usr_desk', org_name: 'Desk Org', role: 'admin' },
   })
   expect(f.connection.apiEmbeddedGetUrl('/v1/runs/r1/files/doc.pdf')).toContain('ticket=rt_desk_1')
+})
+
+test('web Cloud sign-in uses root client_redirect with PKCE from nested routes and disconnect revokes session', async () => {
+  const cloudUrl = 'https://jaz-cloud.example'
+  const logoutAuthHeaders = []
+  const f = await fixture({
+    web: true,
+    locationHref: 'https://app.jaz.chat/new',
+    discovery: () => Response.json({
+      ok: true,
+      mode: 'cloud',
+      auth: 'oidc',
+      oidc_login_url: '/v1/auth/login',
+    }),
+    authMe: () => Response.json({
+      id: 'usr_web',
+      org_id: 'org_web',
+      email: 'web@example.com',
+      display_name: 'Web User',
+      role: 'member',
+    }),
+    authLogout: (init) => {
+      logoutAuthHeaders.push(new Headers(init?.headers).get('Authorization'))
+      return new Response(null, { status: 204 })
+    },
+  })
+
+  expect(await f.connection.startCloudSignIn(cloudUrl)).toBeNull()
+  expect(f.openedExternal).toHaveLength(1)
+  const loginUrl = new URL(f.openedExternal[0])
+  expect(loginUrl.searchParams.get('client_redirect')).toBe('https://app.jaz.chat/')
+  expect(loginUrl.searchParams.get('code_challenge')).toBeTruthy()
+  const pending = JSON.parse(f.sessionStored.get('jaz.oidc.pending'))
+  expect(pending.codeVerifier).toBeTruthy()
+  expect(loginUrl.searchParams.get('code_challenge')).toBe(await f.connection.pkceS256Challenge(pending.codeVerifier))
+
+  expect(await f.connection.connectRemote(`${cloudUrl}#token=oidc-live-tok`)).toBeNull()
+  f.connection.disconnectBackend()
+  await settle()
+  expect(logoutAuthHeaders).toEqual(['Bearer oidc-live-tok'])
 })

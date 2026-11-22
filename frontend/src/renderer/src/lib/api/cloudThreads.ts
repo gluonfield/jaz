@@ -6,6 +6,8 @@ import { apiFetch, apiSessionRevision, get, onApiSessionChange, post } from './c
 import type { ConnectedMachine } from './serverTypes'
 import type { Attachment, ChatMessage, MessageBlock, Session, SessionEvent, SessionMessages } from './types'
 
+export type RawCloudModelOption = string | ModelPickerOption
+
 export interface CloudModelProfile {
   profile_id: string
   provider: string
@@ -15,6 +17,10 @@ export interface CloudModelProfile {
   default_model?: string
   default_effort?: string
   models?: ModelPickerOption[]
+}
+
+type RawCloudModelProfile = Omit<CloudModelProfile, 'models'> & {
+  models?: RawCloudModelOption[] | null
 }
 
 export interface CloudThread {
@@ -121,6 +127,14 @@ const CLOUD_PROVIDER_DEFAULTS: Record<
       { value: 'grok-4', label: 'Grok 4', reasoning: { status: 'ready', efforts: ['low', 'high'], default_effort: 'high' } },
     ],
   },
+  vertex: {
+    label: 'Vertex AI',
+    logoAgent: 'codex',
+    models: [
+      { value: 'google/gemini-3-flash-preview', label: 'Gemini 3 Flash', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
+      { value: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
+    ],
+  },
   openrouter: {
     label: 'OpenRouter',
     logoAgent: 'codex',
@@ -128,10 +142,34 @@ const CLOUD_PROVIDER_DEFAULTS: Record<
   },
 }
 
-function normalizeModelOption(option: ModelPickerOption): ModelPickerOption {
-  if (!option.reasoning) return option
+function normalizeModelOption(
+  option: RawCloudModelOption,
+  defaults?: { models: ModelPickerOption[] },
+  fallbackEffort?: string,
+): ModelPickerOption | null {
+  if (typeof option === 'string') {
+    const value = option.trim()
+    if (!value) return null
+    const known = defaults?.models.find((item) => item.value === value)
+    if (known) return known
+    return {
+      value,
+      label: value.includes('/') ? value.slice(value.indexOf('/') + 1) : value,
+      ...(fallbackEffort
+        ? { reasoning: { status: 'ready' as const, efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: fallbackEffort } }
+        : {}),
+    }
+  }
+  if (!option || typeof option !== 'object' || typeof option.value !== 'string' || !option.value.trim()) {
+    return null
+  }
+  if (!option.reasoning) {
+    return { ...option, value: option.value.trim(), label: option.label?.trim() || option.value.trim() }
+  }
   return {
     ...option,
+    value: option.value.trim(),
+    label: option.label?.trim() || option.value.trim(),
     reasoning: {
       ...option.reasoning,
       status: option.reasoning.status ?? 'ready',
@@ -139,21 +177,22 @@ function normalizeModelOption(option: ModelPickerOption): ModelPickerOption {
   }
 }
 
-function normalizeCloudModelProfile(raw: CloudModelProfile): CloudModelProfile {
+function normalizeCloudModelProfile(raw: RawCloudModelProfile): CloudModelProfile {
   const provider = (raw.provider ?? '').trim().toLowerCase()
   const defaults = CLOUD_PROVIDER_DEFAULTS[provider]
-  const providedModels = Array.isArray(raw.models) && raw.models.length > 0
-    ? raw.models.map(normalizeModelOption)
-    : undefined
+  const fallbackEffort = raw.default_effort?.trim()
+  const parsedModels = Array.isArray(raw.models)
+    ? raw.models
+        .map((item) => normalizeModelOption(item, defaults, fallbackEffort))
+        .filter((item): item is ModelPickerOption => item !== null)
+    : []
+  const providedModels = parsedModels.length > 0 ? parsedModels : undefined
   const models: ModelPickerOption[] = providedModels
     ?? (raw.default_model
       ? [
-          {
+          normalizeModelOption(raw.default_model, defaults, fallbackEffort) ?? {
             value: raw.default_model,
             label: raw.default_model,
-            ...(raw.default_effort
-              ? { reasoning: { status: 'ready' as const, efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: raw.default_effort } }
-              : {}),
           },
           ...(defaults?.models.filter((item) => item.value !== raw.default_model) ?? []),
         ]
@@ -161,7 +200,7 @@ function normalizeCloudModelProfile(raw: CloudModelProfile): CloudModelProfile {
         ? defaults.models
         : [{ value: raw.profile_id, label: raw.display_name?.trim() || raw.profile_id }])
   const defaultModel = raw.default_model?.trim() || models[0]?.value || ''
-  const defaultEffort = raw.default_effort?.trim() || models.find((m) => m.value === defaultModel)?.reasoning?.default_effort || ''
+  const defaultEffort = fallbackEffort || models.find((m) => m.value === defaultModel)?.reasoning?.default_effort || ''
   return {
     ...raw,
     provider,
@@ -188,8 +227,8 @@ export function cloudProfileToAgentOption(profile: CloudModelProfile): PickerAge
 export async function listCloudModelProfiles(signal?: AbortSignal): Promise<CloudModelProfile[]> {
   try {
     const response = await get<
-      | { models?: CloudModelProfile[] | null; profiles?: CloudModelProfile[] | null; model_profiles?: CloudModelProfile[] | null }
-      | CloudModelProfile[]
+      | { models?: RawCloudModelProfile[] | null; profiles?: RawCloudModelProfile[] | null; model_profiles?: RawCloudModelProfile[] | null }
+      | RawCloudModelProfile[]
     >('/v1/models', { signal })
     const raw = Array.isArray(response)
       ? response
@@ -356,6 +395,25 @@ function parseSseFrame(frame: string): CloudSessionEvent | null {
   }
 }
 
+function isCloudUserEvent(type: string): boolean {
+  return type === 'user_message' || type === 'turn.user' || type === 'turn_user' || type === 'turn.started' || type === 'turn_started'
+}
+
+function isCloudAssistantDeltaEvent(type: string): boolean {
+  return type === 'assistant_delta' || type === 'assistant.delta' || type === 'agent_message_chunk'
+}
+
+function isCloudAssistantMessageEvent(type: string): boolean {
+  return type === 'assistant_message' || type === 'assistant.message' || type === 'turn.assistant' || type === 'turn_assistant'
+}
+
+function cloudTerminalEventState(type: string): 'idle' | 'failed' | 'cancelled' | null {
+  if (type === 'turn_completed' || type === 'turn.completed') return 'idle'
+  if (type === 'turn_failed' || type === 'turn.failed') return 'failed'
+  if (type === 'turn_interrupted' || type === 'turn.interrupted') return 'cancelled'
+  return null
+}
+
 export function cloudEventToSessionEvent(threadId: string, ev: CloudSessionEvent): SessionEvent {
   const payload = ev.payload && typeof ev.payload === 'object' ? ev.payload : {}
   const base: SessionEvent = {
@@ -367,7 +425,7 @@ export function cloudEventToSessionEvent(threadId: string, ev: CloudSessionEvent
   if (ev.type === 'acp' && payload.acp && typeof payload.acp === 'object') {
     return { ...base, ...(payload as Partial<SessionEvent>) }
   }
-  if (ev.type === 'assistant.delta' || ev.type === 'agent_message_chunk' || ev.type === 'assistant.message') {
+  if (isCloudAssistantDeltaEvent(ev.type) || isCloudAssistantMessageEvent(ev.type)) {
     const text = typeof payload.text === 'string'
       ? payload.text
       : typeof payload.delta === 'string'
@@ -387,8 +445,8 @@ export function cloudEventToSessionEvent(threadId: string, ev: CloudSessionEvent
       },
     }
   }
-  if (ev.type === 'turn.completed' || ev.type === 'turn.failed' || ev.type === 'turn.interrupted') {
-    const state = ev.type === 'turn.completed' ? 'idle' : ev.type === 'turn.failed' ? 'failed' : 'cancelled'
+  const terminalState = cloudTerminalEventState(ev.type)
+  if (terminalState) {
     const error = typeof payload.error === 'string' ? payload.error : undefined
     return {
       ...base,
@@ -398,7 +456,7 @@ export function cloudEventToSessionEvent(threadId: string, ev: CloudSessionEvent
         slug: threadId,
         agent: 'codex',
         session_id: threadId,
-        state,
+        state: terminalState,
         ...(error ? { error } : {}),
         last_event_at: ev.created_at,
       },
@@ -413,6 +471,7 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
   const events: SessionEvent[] = []
   let latestSeq = 0
   let acpState = session.status === 'running' ? 'running' : 'idle'
+  let acpError: string | undefined
   let pendingAssistantText = ''
   let pendingAssistantSeq = 0
   let pendingAssistantAt = ''
@@ -444,8 +503,9 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
             ? payload.delta
             : ''
 
-    if ((ev.type === 'turn.user' || ev.type === 'user_message' || ev.type === 'turn.started') && text) {
+    if (isCloudUserEvent(ev.type) && text) {
       flushPendingAssistant()
+      acpError = undefined
       const blocks: MessageBlock[] = [{ type: 'text', text }]
       messages.push({
         seq: ev.seq,
@@ -461,7 +521,7 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
       continue
     }
 
-    if (ev.type === 'assistant.delta' || ev.type === 'agent_message_chunk') {
+    if (isCloudAssistantDeltaEvent(ev.type)) {
       if (text) {
         pendingAssistantText += text
         pendingAssistantSeq = ev.seq
@@ -470,7 +530,7 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
       continue
     }
 
-    if ((ev.type === 'assistant.message' || ev.type === 'turn.assistant') && text) {
+    if (isCloudAssistantMessageEvent(ev.type) && text) {
       pendingAssistantText = ''
       messages.push({
         seq: ev.seq,
@@ -482,21 +542,22 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
       continue
     }
 
-    if (ev.type === 'turn.completed') {
+    const terminalState = cloudTerminalEventState(ev.type)
+    if (terminalState) {
       flushPendingAssistant()
-      acpState = 'idle'
-    } else if (ev.type === 'turn.failed') {
-      flushPendingAssistant()
-      acpState = 'failed'
-    } else if (ev.type === 'turn.interrupted') {
-      flushPendingAssistant()
-      acpState = 'cancelled'
+      acpState = terminalState
+      acpError = typeof payload.error === 'string' && payload.error.trim() ? payload.error.trim() : undefined
     }
 
     events.push(cloudEventToSessionEvent(thread.id, ev))
   }
 
-  flushPendingAssistant()
+  let acpAssistant: string | undefined
+  if (acpState === 'running' && pendingAssistantText) {
+    acpAssistant = pendingAssistantText
+  } else {
+    flushPendingAssistant()
+  }
 
   return {
     session,
@@ -506,6 +567,8 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
     history_revision: Math.max(1, latestSeq),
     latest_event_seq: latestSeq,
     acp_state: acpState,
+    ...(acpAssistant ? { acp_assistant: acpAssistant } : {}),
+    ...(acpError ? { acp_error: acpError } : {}),
   }
 }
 
@@ -535,9 +598,9 @@ export function openCloudThreadEvents(
   const revision = apiSessionRevision()
 
   function emitCloudEvent(parsed: CloudSessionEvent): void {
-    if (parsed.type === 'turn.started' || parsed.type === 'turn.user' || parsed.type === 'user_message') {
+    if (isCloudUserEvent(parsed.type)) {
       streamedAssistant = ''
-    } else if (parsed.type === 'assistant.delta' || parsed.type === 'agent_message_chunk') {
+    } else if (isCloudAssistantDeltaEvent(parsed.type)) {
       const payload = parsed.payload && typeof parsed.payload === 'object' ? parsed.payload : {}
       const chunk = typeof payload.text === 'string'
         ? payload.text
@@ -550,7 +613,7 @@ export function openCloudThreadEvents(
         payload: { ...payload, text: streamedAssistant },
       }))
       return
-    } else if (parsed.type === 'turn.completed' || parsed.type === 'turn.failed' || parsed.type === 'turn.interrupted') {
+    } else if (cloudTerminalEventState(parsed.type)) {
       streamedAssistant = ''
     }
     onEvent(cloudEventToSessionEvent(threadId, parsed))

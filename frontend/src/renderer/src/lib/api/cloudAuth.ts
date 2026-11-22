@@ -16,6 +16,7 @@ export const PENDING_OIDC_TTL_MS = 10 * 60_000
 export interface PendingOidcLogin {
   server: string
   state: string
+  codeVerifier?: string
   startedAt: number
 }
 
@@ -27,7 +28,7 @@ export interface ParsedOidcCallback {
 }
 
 export type ValidatedOidcCallback =
-  | { ok: true; server: string; code: string; token: string }
+  | { ok: true; server: string; code: string; token: string; codeVerifier?: string }
   | { ok: false; error: string }
 
 export interface AuthMeResult {
@@ -41,13 +42,22 @@ export interface AuthExchangeResult {
   ticket?: ResourceTicket
 }
 
-function generateOidcState(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  const bytes = new Uint8Array(16)
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = ''
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function generateRandomUrlSafe(byteLength = 32): string {
+  const bytes = new Uint8Array(byteLength)
   crypto.getRandomValues(bytes)
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  return base64UrlEncode(bytes)
+}
+
+export async function pkceS256Challenge(verifier: string): Promise<string> {
+  const data = new TextEncoder().encode(verifier)
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return base64UrlEncode(new Uint8Array(digest))
 }
 
 export function beginPendingOidcLogin(server: string, now: () => number = Date.now): PendingOidcLogin {
@@ -57,7 +67,8 @@ export function beginPendingOidcLogin(server: string, now: () => number = Date.n
   }
   const record: PendingOidcLogin = {
     server: origin,
-    state: generateOidcState(),
+    state: generateRandomUrlSafe(24),
+    codeVerifier: generateRandomUrlSafe(32),
     startedAt: now(),
   }
   try {
@@ -91,7 +102,15 @@ function parsePendingRecord(raw: string | null, now: () => number): PendingOidcL
     if (!secureBackendConnection(server)) {
       return null
     }
-    return { server, state: parsed.state.trim(), startedAt: parsed.startedAt }
+    const codeVerifier = typeof parsed.codeVerifier === 'string' && parsed.codeVerifier.trim()
+      ? parsed.codeVerifier.trim()
+      : undefined
+    return {
+      server,
+      state: parsed.state.trim(),
+      ...(codeVerifier ? { codeVerifier } : {}),
+      startedAt: parsed.startedAt,
+    }
   } catch {
     return null
   }
@@ -131,7 +150,7 @@ export function clearPendingOidcLogin(): void {
 export function buildOidcLoginUrl(
   baseUrl: string,
   oidcLoginUrl = '/v1/auth/login',
-  options: { clientRedirect?: string; state?: string } = {},
+  options: { clientRedirect?: string; state?: string; codeChallenge?: string } = {},
 ): string {
   const origin = normalizeBaseUrl(baseUrl)
   if (!secureBackendConnection(origin)) {
@@ -155,6 +174,9 @@ export function buildOidcLoginUrl(
   }
   if (options.state?.trim()) {
     url.searchParams.set('state', options.state.trim())
+  }
+  if (options.codeChallenge?.trim()) {
+    url.searchParams.set('code_challenge', options.codeChallenge.trim())
   }
   return url.toString()
 }
@@ -220,13 +242,21 @@ export function validateOidcCallback(
   if (!parsed.state || parsed.state !== pending.state) {
     return { ok: false, error: 'OIDC state mismatch. Please start sign-in again.' }
   }
-  return { ok: true, server: expectedServer, code: parsed.code, token: parsed.token }
+  return {
+    ok: true,
+    server: expectedServer,
+    code: parsed.code,
+    token: parsed.token,
+    ...(pending.codeVerifier ? { codeVerifier: pending.codeVerifier } : {}),
+  }
 }
 
-type RawResourceTicket = {
-  token?: string
-  expires_at?: string
-}
+type RawResourceTicket =
+  | string
+  | {
+      token?: string
+      expires_at?: string
+    }
 
 type RawAuthMe = {
   id?: string
@@ -241,10 +271,34 @@ type RawAuthMe = {
   resource_ticket?: RawResourceTicket
 }
 
+function jwtExpiresAtISO(token: string): string {
+  try {
+    const parts = token.split('.')
+    if (parts.length === 3 && parts[1]) {
+      const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((parts[1].length + 3) % 4)
+      const parsed = JSON.parse(atob(padded)) as { exp?: unknown }
+      if (typeof parsed.exp === 'number' && Number.isFinite(parsed.exp) && parsed.exp > 0) {
+        return new Date(parsed.exp * 1000).toISOString()
+      }
+    }
+  } catch {
+    // Fallback below if token is opaque.
+  }
+  return new Date(Date.now() + 55 * 60_000).toISOString()
+}
+
 export function extractResourceTicket(raw: { resource_ticket?: RawResourceTicket } | null | undefined): ResourceTicket | undefined {
   const ticket = raw?.resource_ticket
-  if (ticket && typeof ticket.token === 'string' && ticket.token.trim() && typeof ticket.expires_at === 'string' && ticket.expires_at.trim()) {
-    return { token: ticket.token.trim(), expires_at: ticket.expires_at.trim() }
+  if (typeof ticket === 'string' && ticket.trim()) {
+    const trimmed = ticket.trim()
+    return { token: trimmed, expires_at: jwtExpiresAtISO(trimmed) }
+  }
+  if (ticket && typeof ticket === 'object' && typeof ticket.token === 'string' && ticket.token.trim()) {
+    const token = ticket.token.trim()
+    const expiresAt = typeof ticket.expires_at === 'string' && ticket.expires_at.trim()
+      ? ticket.expires_at.trim()
+      : jwtExpiresAtISO(token)
+    return { token, expires_at: expiresAt }
   }
   return undefined
 }
@@ -305,6 +359,7 @@ export async function exchangeOidcCode(
   baseUrl: string,
   code: string,
   signal?: AbortSignal,
+  codeVerifier?: string,
 ): Promise<AuthExchangeResult> {
   const origin = normalizeBaseUrl(baseUrl)
   if (!secureBackendConnection(origin)) {
@@ -314,13 +369,17 @@ export async function exchangeOidcCode(
   if (!trimmedCode) {
     throw new Error('Authorization code is required')
   }
+  const payload: { code: string; code_verifier?: string } = { code: trimmedCode }
+  if (codeVerifier?.trim()) {
+    payload.code_verifier = codeVerifier.trim()
+  }
   const response = await backendFetch(`${origin}/v1/auth/exchange`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM,
     },
-    body: JSON.stringify({ code: trimmedCode }),
+    body: JSON.stringify(payload),
     redirect: 'error',
     signal,
   })
@@ -336,5 +395,25 @@ export async function exchangeOidcCode(
     token,
     user,
     ticket: extractResourceTicket(raw),
+  }
+}
+
+export async function logoutCloudSession(baseUrl: string, token?: string): Promise<void> {
+  const origin = normalizeBaseUrl(baseUrl)
+  if (!secureBackendConnection(origin)) return
+  const headers = new Headers({ [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM })
+  if (token?.trim()) {
+    headers.set('Authorization', `Bearer ${token.trim()}`)
+  }
+  try {
+    await backendFetch(`${origin}/v1/auth/logout`, {
+      method: 'POST',
+      headers,
+      credentials: !token?.trim() && typeof window !== 'undefined' ? 'include' : undefined,
+      redirect: 'error',
+      signal: AbortSignal.timeout(3000),
+    })
+  } catch {
+    // Best-effort revocation; local session still clears immediately.
   }
 }

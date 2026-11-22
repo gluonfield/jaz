@@ -103,13 +103,13 @@ test('buildConnectCloudCommand omits --token, supports POSIX and PowerShell quot
   const ps = buildConnectCloudCommand({
     cloudUrl: 'https://cloud.jaz.example',
     deviceId: 'win-1',
-    displayName: "Dev's PC",
+    displayName: "Dev's \u2019PC",
     grants: [{ id: 'proj', root_path: "C:\\Users\\Dev's\\Repo", mode: 'ro' }],
     allowExec: false,
     shell: 'powershell',
   })
   expect(ps).not.toContain('--token')
-  expect(ps).toContain("--name 'Dev''s PC'")
+  expect(ps).toContain("--name 'Dev''s \u2019\u2019PC'")
   expect(ps).toContain("--grant 'proj=ro:C:\\Users\\Dev''s\\Repo'")
   expect(ps).toContain(' `\n  ')
   expect(ps).not.toContain('--allow-exec')

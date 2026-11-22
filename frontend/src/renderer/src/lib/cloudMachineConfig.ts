@@ -139,7 +139,8 @@ function quoteArg(value: string, shell: CommandShellKind): string {
   }
   if (/^[a-zA-Z0-9._/:=@-]+$/.test(value)) return value
   if (shell === 'powershell') {
-    return `'${value.replace(/'/g, "''")}'`
+    // PowerShell treats curly single quotes (U+2018..U+201B) as single-quote string delimiters too.
+    return `'${value.replace(/['\u2018\u2019\u201a\u201b]/g, (q) => q + q)}'`
   }
   return `'${value.replace(/'/g, `'\\''`)}'`
 }

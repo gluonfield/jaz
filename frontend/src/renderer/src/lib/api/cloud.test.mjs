@@ -222,19 +222,30 @@ test('OIDC URL builder enforces same-origin HTTPS, callback parser ignores query
 
   const consumed = api.consumePendingOidcLogin(() => 15_000)
   expect(consumed).toEqual(pending)
+  expect(consumed.codeVerifier).toBeTruthy()
   expect(api.consumePendingOidcLogin(() => 15_000)).toBeNull()
   expect(api.validateOidcCallback(`jaz://auth/callback#code=one_time&state=${pending.state}`, consumed, () => 15_000)).toEqual({
     ok: true,
     server: 'https://cloud.jaz.example',
     code: 'one_time',
     token: '',
+    codeVerifier: consumed.codeVerifier,
   })
+
+  const challenge = await api.pkceS256Challenge(consumed.codeVerifier)
+  expect(
+    api.buildOidcLoginUrl('https://cloud.jaz.example', '/v1/auth/login', {
+      clientRedirect: 'jaz://auth/callback',
+      state: pending.state,
+      codeChallenge: challenge,
+    }),
+  ).toContain(`code_challenge=${encodeURIComponent(challenge)}`)
 
   replace('fetch', async (url, init) => {
     expect(String(url)).toBe('https://cloud.jaz.example/v1/auth/exchange')
     expect(init.method).toBe('POST')
     expect(init.redirect).toBe('error')
-    expect(JSON.parse(String(init.body))).toEqual({ code: 'one_time' })
+    expect(JSON.parse(String(init.body))).toEqual({ code: 'one_time', code_verifier: consumed.codeVerifier })
     return Response.json({
       token: 'session_jwt_1',
       user: {
@@ -248,7 +259,7 @@ test('OIDC URL builder enforces same-origin HTTPS, callback parser ignores query
       resource_ticket: { token: 'rt_exchanged', expires_at: '2099-01-01T00:00:00Z' },
     })
   })
-  const exchanged = await api.exchangeOidcCode('https://cloud.jaz.example', 'one_time')
+  const exchanged = await api.exchangeOidcCode('https://cloud.jaz.example', 'one_time', undefined, consumed.codeVerifier)
   expect(exchanged).toEqual({
     token: 'session_jwt_1',
     user: {
@@ -261,6 +272,10 @@ test('OIDC URL builder enforces same-origin HTTPS, callback parser ignores query
     },
     ticket: { token: 'rt_exchanged', expires_at: '2099-01-01T00:00:00Z' },
   })
+  // Plain JWT string resource_ticket is also accepted for backward compatibility.
+  const stringTicket = api.extractResourceTicket({ resource_ticket: 'rt_plain_jwt_string' })
+  expect(stringTicket?.token).toBe('rt_plain_jwt_string')
+  expect(stringTicket?.expires_at).toBeTruthy()
 })
 
 test('Spaces, Thread User State, Instructions body_md + 409 conflict, RBAC, and Connected Machines match real jaz-cloud contracts', async () => {
@@ -525,7 +540,7 @@ test('renameBackend derives managed from cloudUrl without persisting managed: tr
   expect(api.knownBackend('https://cloud.acme.example')?.managed).toBe(true)
 })
 
-test('cloud model profiles read /v1/models { models } and map into grouped Cloud vs Local picker options', async () => {
+test('cloud model profiles read /v1/models { models } including string[] models (Vertex AI) and map into grouped Cloud vs Local picker options', async () => {
   const { api } = fixture()
   replace('fetch', async (url) => {
     expect(new URL(String(url)).pathname).toBe('/v1/models')
@@ -534,23 +549,37 @@ test('cloud model profiles read /v1/models { models } and map into grouped Cloud
         { profile_id: 'openai-prod', provider: 'openai', default_model: 'gpt-5.4', default_effort: 'high' },
         { profile_id: 'anthropic-prod', provider: 'anthropic', default_model: 'claude-opus-4-6' },
         { profile_id: 'xai-prod', provider: 'xai', default_model: 'grok-4' },
+        {
+          profile_id: 'vertex-gemini',
+          provider: 'vertex',
+          display_name: 'Vertex AI',
+          agent: 'codex',
+          default_model: 'google/gemini-3-flash-preview',
+          default_effort: 'high',
+          models: ['google/gemini-3-flash-preview', 'google/gemini-3.1-pro-preview'],
+        },
       ],
     })
   })
   const profiles = await api.listCloudModelProfiles()
   expect(profiles[0].models?.[0].reasoning?.status).toBe('ready')
+  expect(profiles[3].models?.map((m) => [m.value, m.label])).toEqual([
+    ['google/gemini-3-flash-preview', 'Gemini 3 Flash'],
+    ['google/gemini-3.1-pro-preview', 'Gemini 3.1 Pro'],
+  ])
   const cloudItems = profiles.map(api.cloudProfileToAgentOption)
   expect(cloudItems).toEqual([
     { id: 'openai-prod', label: 'Codex', logoAgent: 'codex', location: 'cloud', provider: 'openai' },
     { id: 'anthropic-prod', label: 'Claude', logoAgent: 'claude', location: 'cloud', provider: 'anthropic' },
     { id: 'xai-prod', label: 'Grok', logoAgent: 'grok', location: 'cloud', provider: 'xai' },
+    { id: 'vertex-gemini', label: 'Vertex AI', logoAgent: 'codex', location: 'cloud', provider: 'vertex' },
   ])
   const grouped = api.groupPickerAgents([
     ...cloudItems,
     { id: 'codex', location: 'local' },
   ])
   expect(grouped.map((group) => [group.location, group.label, group.items.length])).toEqual([
-    ['cloud', 'Cloud', 3],
+    ['cloud', 'Cloud', 4],
     ['local', 'Local', 1],
   ])
 })
@@ -598,10 +627,10 @@ test('Cloud mode routes session listing, creation, messages, and turns to /v1/th
     }
     if (parsed.pathname === '/v1/threads/thr_2/events') {
       const sse = [
-        'id: 1\nevent: turn.user\ndata: {"seq":1,"thread_id":"thr_2","type":"turn.user","payload":{"text":"Hello cloud"},"created_at":"2026-11-22T12:05:01Z"}\n\n',
-        'id: 2\nevent: assistant.delta\ndata: {"seq":2,"thread_id":"thr_2","type":"assistant.delta","payload":{"delta":"Hi "},"created_at":"2026-11-22T12:05:02Z"}\n\n',
-        'id: 3\nevent: assistant.delta\ndata: {"seq":3,"thread_id":"thr_2","type":"assistant.delta","payload":{"delta":"there"},"created_at":"2026-11-22T12:05:03Z"}\n\n',
-        'id: 4\nevent: turn.completed\ndata: {"seq":4,"thread_id":"thr_2","type":"turn.completed","payload":{},"created_at":"2026-11-22T12:05:04Z"}\n\n',
+        'id: 1\nevent: user_message\ndata: {"seq":1,"thread_id":"thr_2","type":"user_message","payload":{"text":"Hello cloud"},"created_at":"2026-11-22T12:05:01Z"}\n\n',
+        'id: 2\nevent: assistant_delta\ndata: {"seq":2,"thread_id":"thr_2","type":"assistant_delta","payload":{"delta":"Hi "},"created_at":"2026-11-22T12:05:02Z"}\n\n',
+        'id: 3\nevent: assistant_delta\ndata: {"seq":3,"thread_id":"thr_2","type":"assistant_delta","payload":{"delta":"there"},"created_at":"2026-11-22T12:05:03Z"}\n\n',
+        'id: 4\nevent: turn_completed\ndata: {"seq":4,"thread_id":"thr_2","type":"turn_completed","payload":{"status":"completed"},"created_at":"2026-11-22T12:05:04Z"}\n\n',
       ].join('')
       return new Response(sse, { headers: { 'content-type': 'text/event-stream' } })
     }

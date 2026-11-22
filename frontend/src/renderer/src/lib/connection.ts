@@ -4,8 +4,10 @@ import {
   buildOidcLoginUrl,
   consumePendingOidcLogin,
   exchangeOidcCode,
+  logoutCloudSession,
   parseOidcCallbackUrl,
   peekPendingOidcLogin,
+  pkceS256Challenge,
   validateOidcCallback,
 } from '@/lib/api/cloudAuth'
 import type {
@@ -491,10 +493,15 @@ export async function startCloudSignIn(baseUrl: string, oidcLoginUrl?: string): 
     loginPath = discovery.oidcLoginUrl || '/v1/auth/login'
   }
   const pending = beginPendingOidcLogin(origin)
+  const codeChallenge = pending.codeVerifier ? await pkceS256Challenge(pending.codeVerifier) : undefined
   if (clientRuntime.kind === 'web') {
     const sameOrigin = window.location.origin === origin
-    const clientRedirect = sameOrigin ? undefined : `${window.location.origin}${window.location.pathname}`
-    const target = buildOidcLoginUrl(origin, loginPath, { clientRedirect, state: pending.state })
+    const clientRedirect = sameOrigin ? undefined : `${window.location.origin}/`
+    const target = buildOidcLoginUrl(origin, loginPath, {
+      clientRedirect,
+      state: pending.state,
+      ...(clientRedirect && codeChallenge ? { codeChallenge } : {}),
+    })
     if (typeof window.location.assign === 'function') {
       window.location.assign(target)
     } else {
@@ -506,6 +513,7 @@ export async function startCloudSignIn(baseUrl: string, oidcLoginUrl?: string): 
   const target = buildOidcLoginUrl(origin, loginPath, {
     clientRedirect: 'jaz://auth/callback',
     state: pending.state,
+    ...(codeChallenge ? { codeChallenge } : {}),
   })
   openExternal(target)
   return null
@@ -535,7 +543,7 @@ export async function completeOidcCallback(
   clearConnectionPreference()
   try {
     if (validated.code) {
-      const exchanged = await exchangeOidcCode(validated.server, validated.code, value.controller.signal)
+      const exchanged = await exchangeOidcCode(validated.server, validated.code, value.controller.signal, validated.codeVerifier)
       if (!current(value)) return null
       const discovery = await discoverServer(validated.server, value.controller.signal, { useCache: true })
       if (!current(value)) return null
@@ -637,6 +645,9 @@ export async function startLocal(): Promise<string | null> {
 }
 
 export function disconnectBackend(): void {
+  if (state.status === 'connected' && state.mode === 'cloud' && state.auth === 'oidc' && state.url) {
+    void logoutCloudSession(state.url, cachedApiAuthToken(state.url))
+  }
   block(null)
 }
 
