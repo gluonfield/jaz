@@ -1,3 +1,4 @@
+import { useRef, type WheelEvent } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { agentLabel } from '@/lib/agentLabel'
 
@@ -13,6 +14,32 @@ export interface AgentChoice {
 
 export function agentTabsWidth(count: number): number {
   return NAMED + (count - 1) * STEP
+}
+
+// A horizontal touchpad swipe moves one agent along, once per gesture.
+export function useAgentSwipe(agent?: AgentChoice) {
+  const gesture = useRef({ travel: 0, at: 0, done: false })
+  return (event: WheelEvent<HTMLElement>) => {
+    if (!agent || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) {
+      return
+    }
+    const swipe = gesture.current
+    if (event.timeStamp - swipe.at > 120) {
+      swipe.travel = 0
+      swipe.done = false
+    }
+    swipe.at = event.timeStamp
+    swipe.travel += event.deltaX
+    if (swipe.done || Math.abs(swipe.travel) < 40) {
+      return
+    }
+    swipe.done = true
+    const next = agent.options.indexOf(agent.value) + Math.sign(swipe.travel)
+    if (agent.options[next]) {
+      agent.onChange(agent.options[next])
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+    }
+  }
 }
 
 // One logo per agent; the selected one widens to show its name.
