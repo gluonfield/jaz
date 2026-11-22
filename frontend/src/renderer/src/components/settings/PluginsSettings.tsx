@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus, RefreshCw, Settings2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { SearchField } from '@/components/ui/SearchField'
@@ -113,10 +113,29 @@ export function PluginsSettings() {
 
   const refresh = useMutation({
     mutationFn: refreshPluginSources,
-    onSuccess: () => toast('Checked plugin catalogs for updates'),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(keys.plugins, updated)
+      toast('Checked plugin catalogs for updates')
+    },
     onError: (error: Error) => toast(`Couldn't refresh catalogs: ${error.message}`, 'danger'),
     onSettled: invalidateAll,
   })
+
+  const autoRefreshed = useRef(false)
+  useEffect(() => {
+    if (autoRefreshed.current || !catalog.isSuccess) return
+    const staleBefore = Date.now() - 60_000
+    const isStale =
+      sources.length === 0 ||
+      sources.some((source) => !source.checked_at || Date.parse(source.checked_at) < staleBefore)
+    if (!isStale) return
+    autoRefreshed.current = true
+    void refreshPluginSources()
+      .then((updated) => {
+        queryClient.setQueryData(keys.plugins, updated)
+      })
+      .catch(() => undefined)
+  }, [catalog.isSuccess, queryClient, sources])
 
   const filtered = useMemo(() => filterPlugins(allPlugins, query), [allPlugins, query])
 

@@ -43,22 +43,24 @@ export function accountsSummary(plugin: Plugin): string {
 export function pluginSummary(plugin: Plugin): string {
   const parts: string[] = []
   const accounts = plugin.auth?.accounts ?? []
-  if (accounts.length > 0) {
-    parts.push(accounts.length === 1 ? accountAddress(accounts[0]) : `${accounts.length} accounts`)
+  if (accounts.length > 1) {
+    parts.push(`${accounts.length} accounts`)
+  } else if (accounts.length === 1) {
+    const address = accountAddress(accounts[0])
+    if (address && !/^https?:\/\//i.test(address)) {
+      parts.push(address)
+    }
   }
   const skillCount = plugin.skills?.length ?? 0
   if (skillCount > 0) {
     parts.push(`${skillCount} ${skillCount === 1 ? 'skill' : 'skills'}`)
-  }
-  const mcpCount = plugin.mcp_servers?.length ?? 0
-  if (mcpCount > 0) {
-    parts.push(`${mcpCount} MCP`)
   }
   const viewCount = plugin.views?.length ?? 0
   if (viewCount > 0) {
     parts.push(`${viewCount} ${viewCount === 1 ? 'view' : 'views'}`)
   }
   if (parts.length > 0) return parts.join(' · ')
+  if (accounts.length > 0) return 'Connected'
   return plugin.description || ''
 }
 
