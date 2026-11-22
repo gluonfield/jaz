@@ -1,4 +1,5 @@
-Changes since v0.0.295:
+Changes since v0.0.296:
 
-- The bot sidebar is one line per row. A task shows its name and state and opens where its work is: its question in the chat when it waits on you, otherwise the thread working on it. Tasks no longer expand into details.
-- Below the tasks, each day lists the threads the bot started, nested under the thread that started them, and each opens its thread. Memory updates and routine runs in the bot's own chat no longer appear there; failed routine runs stay in Routines.
+- Bot tasks open a modal with their description and linked threads. Completed and dropped tasks stay in the sidebar history for 30 days.
+- Automatically retries Antigravity network and capacity failures up to three times after the agent gives up, instead of treating the failure as a completed answer.
+- Preserves the selected Antigravity thought level and Codex model across reloads and gaps in the available model list.
