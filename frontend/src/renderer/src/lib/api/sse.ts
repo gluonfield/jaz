@@ -1,3 +1,5 @@
+import { isCloudApiSession } from '@/lib/api/client'
+import { openCloudThreadEvents } from '@/lib/api/cloudThreads'
 import { openEventStream } from '@/lib/api/eventStream'
 import type { SessionEvent } from './types'
 
@@ -7,6 +9,9 @@ export function openSessionEvents(
   onEvent: (event: SessionEvent) => void,
   onConnection?: (connected: boolean) => void,
 ): () => void {
+  if (isCloudApiSession()) {
+    return openCloudThreadEvents(sessionId, afterSeq, onEvent, onConnection)
+  }
   const suffix = afterSeq > 0 ? `?after_seq=${afterSeq}` : ''
 
   const handle = (ev: MessageEvent) => {

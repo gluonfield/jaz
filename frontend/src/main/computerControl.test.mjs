@@ -18,6 +18,8 @@ if (process.env.JAZ_COMPUTER_IPC_TEST_CHILD === '1') {
     ipcMain: { handle: (name, handler) => handlers.set(name, handler) },
   }))
   mock.module('@trycua/cua-driver', () => sdk)
+  const { setTrustedRendererPath } = await import('./permissions')
+  setTrustedRendererPath('/Applications/Jaz.app/Contents/Resources/app.asar/out/renderer/index.html')
   const { installComputerControl } = await import('./computerControl')
   installComputerControl()
   afterAll(() => mock.restore())

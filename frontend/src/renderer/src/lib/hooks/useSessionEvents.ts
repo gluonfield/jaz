@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
+import { isCloudApiSession } from '@/lib/api/client'
 import { openSessionEvents } from '@/lib/api/sse'
 import type { SessionEvent } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
@@ -27,8 +28,12 @@ export function useSessionEvents(
   useEffect(() => {
     if (afterSeq === undefined) return
     const refetchMessages = () => {
-      queryClient.invalidateQueries({ queryKey: keys.usage })
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+      if (isCloudApiSession()) {
+        queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
+        return
+      }
+      queryClient.invalidateQueries({ queryKey: keys.usage })
       queryClient.invalidateQueries({ queryKey: keys.sessionOverview(sessionId) })
       // Turn boundaries are when the working tree changes — refresh repo
       // state and the changes summary here instead of polling for them.

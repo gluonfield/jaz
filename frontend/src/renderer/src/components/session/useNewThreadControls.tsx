@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
-import { cloudModelProfilesQuery, cloudProfileToAgentOption } from '@/lib/api/cloud'
+import { cloudModelProfilesQuery, cloudProfileToAgentOption } from '@/lib/api/cloudThreads'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { useIsCloud } from '@/lib/connection'
@@ -19,24 +19,21 @@ import { NEW_SESSION_AGENT_KEY, NEW_SESSION_MODELS_KEY } from '@/lib/newSessionC
 
 export function useNewThreadControls() {
   const isCloud = useIsCloud()
-  const settingsQuery = useQuery(agentSettingsQuery)
+  const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !isCloud })
   const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: isCloud })
-  const agentSettings = settingsQuery.data
+  const agentSettings = isCloud ? undefined : settingsQuery.data
   const cloudProfiles = isCloud ? (cloudProfilesQuery.data ?? []) : []
-  const usingCloudProfiles = isCloud && cloudProfiles.length > 0
+  const usingCloudProfiles = isCloud
 
   const agentItems: PickerAgentOption[] = useMemo(() => {
     if (usingCloudProfiles) {
       return cloudProfiles.map(cloudProfileToAgentOption)
     }
-    const location = isCloud ? 'cloud' : 'local'
-    return enabledACPAgents(agentSettings).map((id) => ({ id, location }))
-  }, [agentSettings, cloudProfiles, isCloud, usingCloudProfiles])
+    return enabledACPAgents(agentSettings).map((id) => ({ id, location: 'local' as const }))
+  }, [agentSettings, cloudProfiles, usingCloudProfiles])
 
   const agents = useMemo(() => agentItems.map((item) => item.id), [agentItems])
-  const runtimeReady = usingCloudProfiles
-    ? cloudProfilesQuery.isSuccess
-    : settingsQuery.isSuccess || (isCloud && cloudProfilesQuery.isSuccess)
+  const runtimeReady = isCloud ? cloudProfilesQuery.isSuccess : settingsQuery.isSuccess
   const runtimeAvailable = runtimeReady && agents.length > 0
 
   const [runtime, setRuntime] = useState(() => localStorage.getItem(NEW_SESSION_AGENT_KEY) || '')
@@ -126,7 +123,7 @@ export function useNewThreadControls() {
     // Picker visibility lives here so the controls and the mobile summary agree.
     showAgentPicker: agents.length > 1 || isCloud,
     showModelPicker: !composer.hideModelPicker,
-    showProjectPicker: !composer.hideProjectPicker,
+    showProjectPicker: !composer.hideProjectPicker && !isCloud,
     runtime,
     selectRuntime,
     model: selectedModel,

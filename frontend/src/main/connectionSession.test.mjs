@@ -104,7 +104,7 @@ test('handoff accepts actual app windows and exact documents, with owner-only pu
   expect(() => owner.call({ operation: 'commit', document, revision: pending.revision,
     session: { url: 'https://other.example', token: 'bearer-other', remembered: false } })).toThrow('replaced')
   board.navigate('file:///wrong/renderer/index.html')
-  expect(() => board.read()).toThrow('document')
+  expect(() => board.read()).toThrow('trusted')
   const count = board.messages.length
   owner.call({ operation: 'clear', document, error: null })
   expect(board.messages).toHaveLength(count)

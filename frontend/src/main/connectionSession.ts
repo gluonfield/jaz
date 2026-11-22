@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { ipcMain, type BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from 'electron'
-import { trustedWindow } from '@main/permissions'
+import { setTrustedRendererPath, trustedWindow } from '@main/permissions'
 import {
   CONNECTION_SESSION_CHANNEL,
   LOCAL_SESSION_CHANNEL,
@@ -22,6 +22,7 @@ type Dependencies = {
 }
 
 export function createConnectionSession(deps: Dependencies) {
+  setTrustedRendererPath(deps.rendererPath)
   const windows = new Map<number, WindowDocument>()
   let owner: BrowserWindow | null = null
   let nextDocument = 0

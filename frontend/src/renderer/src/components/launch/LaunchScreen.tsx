@@ -5,10 +5,11 @@ import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { parseOidcCallbackHash } from '@/lib/api/cloud'
+import { parseOidcCallbackUrl } from '@/lib/api/cloudAuth'
 import { useKnownBackends } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
 import {
+  completeOidcCallback,
   connectionPreference,
   connectRemote,
   currentConnection,
@@ -151,10 +152,13 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
     if (!ssoTarget) return
     const raw = callbackInput.trim()
     if (!raw) return
-    const parsed = parseOidcCallbackHash(raw)
+    const parsed = parseOidcCallbackUrl(raw)
+    if (parsed.code || (parsed.token && parsed.state)) {
+      void run(`token:${ssoTarget.url}`, () => completeOidcCallback(raw))
+      return
+    }
     const token = parsed.token || raw
-    const targetUrl = parsed.server || ssoTarget.url
-    void run(`token:${targetUrl}`, () => connectRemote(`${targetUrl}#token=${encodeURIComponent(token)}`))
+    void run(`token:${ssoTarget.url}`, () => connectRemote(`${ssoTarget.url}#token=${encodeURIComponent(token)}`))
   }
 
   const isCurrent = (target: string) => manual && sameBackend(currentUrl, target)
@@ -300,7 +304,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                           <Input
                             value={callbackInput}
                             onChange={(event) => setCallbackInput(event.target.value)}
-                            placeholder="#token=… or session token"
+                            placeholder="jaz://auth/callback#code=… or session token"
                             spellCheck={false}
                             className="rounded-full font-mono text-[12px]"
                           />

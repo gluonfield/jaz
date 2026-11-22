@@ -46,6 +46,8 @@ declare global {
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
       setWindowButtonsVisible: (visible: boolean) => void
       startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
+      beginOidcSignIn?: () => Promise<void>
+      onOidcCallback?: (handler: (url: string) => void) => () => void
       pickDirectory?: () => Promise<string | null>
       configureNotifications: (config: NotificationConfig) => Promise<boolean>
       notchAccess: () => Promise<NotchAccess>

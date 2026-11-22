@@ -163,6 +163,14 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
     setWindowButtonsVisible: (visible: boolean) => ipcRenderer.send('jaz:set-window-buttons-visible', visible),
     startLocalBackend: (): Promise<{ ok: boolean; url?: string; key?: string; error?: string }> =>
       ipcRenderer.invoke('jaz:start-local-backend'),
+    beginOidcSignIn: (): Promise<void> => ipcRenderer.invoke('jaz:oidc-begin'),
+    onOidcCallback: (handler: (url: string) => void): (() => void) => {
+      const listener = (_event: unknown, url: unknown): void => {
+        if (typeof url === 'string') handler(url)
+      }
+      ipcRenderer.on('jaz:oidc-callback', listener)
+      return () => ipcRenderer.removeListener('jaz:oidc-callback', listener)
+    },
     pickDirectory: (): Promise<string | null> => ipcRenderer.invoke('jaz:pick-directory'),
     configureNotifications: (config: NotificationConfig): Promise<boolean> =>
       ipcRenderer.invoke('jaz:configure-notifications', config),

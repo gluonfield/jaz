@@ -14,8 +14,17 @@ const bundle = await build({
       builder.onResolve({ filter: /^\//, namespace: 'fixture' }, (args) => ({ path: args.path, namespace: 'file' }))
       builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
         contents: [
-          `export * from ${JSON.stringify(new URL('./cloud.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./serverTypes.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./cloudAuth.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./cloudSpaces.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./cloudInstructions.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./cloudUploads.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./cloudUsage.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./cloudThreads.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./sessions.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./sse.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./client.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('../cloudMachineConfig.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('../connectionProbe.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('../backends.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('../modelPicker.ts', import.meta.url).pathname)}`,
@@ -53,7 +62,6 @@ afterEach(() => {
 function fixture({ web = false, cloudUrl = '', locationHref = 'https://app.jaz.chat/', storedValues = [] } = {}) {
   const stored = new Map(storedValues)
   const sessionStored = new Map()
-  const historyUpdates = []
   const loc = new URL(locationHref)
   replace('window', {
     location: {
@@ -65,9 +73,7 @@ function fixture({ web = false, cloudUrl = '', locationHref = 'https://app.jaz.c
     },
     history: {
       state: null,
-      replaceState(_state, _title, next) {
-        historyUpdates.push(String(next))
-      },
+      replaceState() {},
     },
     addEventListener() {},
     jaz: web ? undefined : {
@@ -94,8 +100,12 @@ function fixture({ web = false, cloudUrl = '', locationHref = 'https://app.jaz.c
   evaluate(require, module, module.exports)
   const api = module.exports
   api.setApiBaseUrl('https://cloud.jaz.example')
-  api.setApiAuthToken('https://cloud.jaz.example', 'oidc-session-token')
-  return { api, stored, sessionStored, historyUpdates }
+  api.setApiServerMode('cloud')
+  api.setApiAuthToken('https://cloud.jaz.example', 'oidc-session-token', {
+    token: 'rt_signed_abc',
+    expires_at: '2099-01-01T00:00:00Z',
+  })
+  return { api, stored, sessionStored }
 }
 
 test('fetchServerDiscovery parses Cloud OIDC discovery payload', async () => {
@@ -155,23 +165,6 @@ test('fetchServerDiscovery parses Local bearer discovery and falls back to /heal
   const legacy = await api.fetchServerDiscovery('http://127.0.0.1:5299')
   expect(requested).toEqual(['/.well-known/jaz-server', '/health'])
   expect(legacy).toMatchObject({ ok: true, mode: 'local', auth: 'none', authRequired: false })
-
-  const spa = fixture({ web: true })
-  replace('fetch', async (url) => {
-    if (String(url).endsWith('/.well-known/jaz-server')) {
-      return new Response('<!doctype html><html></html>', {
-        status: 200,
-        headers: { 'content-type': 'text/html' },
-      })
-    }
-    return Response.json({ ok: true, auth_required: true })
-  })
-  expect(await spa.api.fetchServerDiscovery('https://legacy.example')).toMatchObject({
-    ok: true,
-    mode: 'local',
-    auth: 'bearer',
-    authRequired: true,
-  })
 })
 
 test('fetchServerDiscovery rejects non-HTTPS remote URLs without network calls', async () => {
@@ -186,34 +179,91 @@ test('fetchServerDiscovery rejects non-HTTPS remote URLs without network calls',
   expect(hits).toBe(0)
 })
 
-test('OIDC URL builder, #token= hash parser, and startup callback consumption', () => {
-  const { api, historyUpdates } = fixture({
-    web: true,
-    locationHref: 'https://app.jaz.chat/login#token=oidc_tok_123',
-  })
+test('OIDC URL builder enforces same-origin HTTPS, callback parser ignores query params, and state + single-use exchange work', async () => {
+  const { api } = fixture({ web: true })
   expect(api.buildOidcLoginUrl('https://cloud.jaz.example/', '/v1/auth/login')).toBe(
     'https://cloud.jaz.example/v1/auth/login',
   )
   expect(
-    api.buildOidcLoginUrl('https://cloud.jaz.example', '/v1/auth/login', 'jaz://auth/callback'),
-  ).toBe('https://cloud.jaz.example/v1/auth/login?client_redirect=jaz%3A%2F%2Fauth%2Fcallback')
+    api.buildOidcLoginUrl('https://cloud.jaz.example', '/v1/auth/login', {
+      clientRedirect: 'jaz://auth/callback',
+      state: 'st_123',
+    }),
+  ).toBe('https://cloud.jaz.example/v1/auth/login?client_redirect=jaz%3A%2F%2Fauth%2Fcallback&state=st_123')
 
-  expect(api.parseOidcCallbackHash('#token=abc123&server=https://cloud.jaz.example')).toEqual({
-    token: 'abc123',
-    server: 'https://cloud.jaz.example',
+  expect(() => api.buildOidcLoginUrl('https://cloud.jaz.example', 'https://evil.example/phish')).toThrow('origin')
+  expect(() => api.buildOidcLoginUrl('https://cloud.jaz.example', '//evil.example/phish')).toThrow('origin')
+  expect(() => api.buildOidcLoginUrl('https://cloud.jaz.example', '/\\evil.example/phish')).toThrow('origin')
+  expect(() => api.buildOidcLoginUrl('http://cloud.jaz.example', '/v1/auth/login')).toThrow('HTTPS')
+
+  // Query-string credentials/codes are never parsed.
+  expect(api.parseOidcCallbackUrl('https://app.jaz.chat/?token=leaked&code=leaked&state=s1')).toEqual({
+    code: '',
+    token: '',
+    state: '',
+    server: '',
   })
-  expect(api.parseOidcCallbackHash('https://app.jaz.chat/#token=xyz789')).toEqual({
-    token: 'xyz789',
+  expect(api.parseOidcCallbackUrl('jaz://auth/callback#code=one_time&state=st_123')).toEqual({
+    code: 'one_time',
+    token: '',
+    state: 'st_123',
     server: '',
   })
 
-  api.rememberPendingOidcServer('https://cloud.jaz.example')
-  const consumed = api.consumeStartupConnectUrl()
-  expect(consumed).toBe('https://cloud.jaz.example/#key=oidc_tok_123')
-  expect(historyUpdates).toEqual(['https://app.jaz.chat/login'])
+  // Unsolicited callback without pending sessionStorage state fails.
+  expect(api.validateOidcCallback('#code=one_time&state=st_123', null).ok).toBe(false)
+
+  // Single-use pending state validates exact server & state and rejects mismatched state/server or replay.
+  const pending = api.beginPendingOidcLogin('https://cloud.jaz.example', () => 10_000)
+  expect(api.validateOidcCallback(`#code=one_time&state=wrong`, pending, () => 15_000).ok).toBe(false)
+  expect(api.validateOidcCallback(`#token=raw_tok`, pending, () => 15_000).ok).toBe(false)
+  expect(api.validateOidcCallback(`#code=one_time&state=${pending.state}&server=https://evil.example`, pending, () => 15_000).ok).toBe(false)
+  expect(api.validateOidcCallback(`#code=one_time&state=${pending.state}`, pending, () => 10_000 + api.PENDING_OIDC_TTL_MS + 1).ok).toBe(false)
+
+  const consumed = api.consumePendingOidcLogin(() => 15_000)
+  expect(consumed).toEqual(pending)
+  expect(api.consumePendingOidcLogin(() => 15_000)).toBeNull()
+  expect(api.validateOidcCallback(`jaz://auth/callback#code=one_time&state=${pending.state}`, consumed, () => 15_000)).toEqual({
+    ok: true,
+    server: 'https://cloud.jaz.example',
+    code: 'one_time',
+    token: '',
+  })
+
+  replace('fetch', async (url, init) => {
+    expect(String(url)).toBe('https://cloud.jaz.example/v1/auth/exchange')
+    expect(init.method).toBe('POST')
+    expect(init.redirect).toBe('error')
+    expect(JSON.parse(String(init.body))).toEqual({ code: 'one_time' })
+    return Response.json({
+      token: 'session_jwt_1',
+      user: {
+        id: 'usr_1',
+        org_id: 'org_acme',
+        org_name: 'Acme',
+        email: 'member@acme.example',
+        display_name: 'Alex',
+        role: 'member',
+      },
+      resource_ticket: { token: 'rt_exchanged', expires_at: '2099-01-01T00:00:00Z' },
+    })
+  })
+  const exchanged = await api.exchangeOidcCode('https://cloud.jaz.example', 'one_time')
+  expect(exchanged).toEqual({
+    token: 'session_jwt_1',
+    user: {
+      id: 'usr_1',
+      org_id: 'org_acme',
+      org_name: 'Acme',
+      email: 'member@acme.example',
+      display_name: 'Alex',
+      role: 'member',
+    },
+    ticket: { token: 'rt_exchanged', expires_at: '2099-01-01T00:00:00Z' },
+  })
 })
 
-test('Spaces, Thread User State, Instructions 409 conflict, and Connected Machines API calls', async () => {
+test('Spaces, Thread User State, Instructions body_md + 409 conflict, RBAC, and Connected Machines match real jaz-cloud contracts', async () => {
   const { api } = fixture()
   const calls = []
   replace('fetch', async (url, init) => {
@@ -223,12 +273,13 @@ test('Spaces, Thread User State, Instructions 409 conflict, and Connected Machin
 
     if (parsed.pathname === '/v1/auth/me') {
       return Response.json({
-        user_id: 'usr_1',
+        id: 'usr_1',
         org_id: 'org_acme',
         org_name: 'Acme',
         email: 'member@acme.example',
         display_name: 'Alex',
         role: 'member',
+        resource_ticket: { token: 'rt_me_1', expires_at: '2099-01-01T00:00:00Z' },
       })
     }
     if (parsed.pathname === '/v1/spaces' && (init?.method || 'GET') === 'GET') {
@@ -238,20 +289,39 @@ test('Spaces, Thread User State, Instructions 409 conflict, and Connected Machin
       return Response.json({ id: 'spc_2', name: body.name })
     }
     if (parsed.pathname === '/v1/spaces/spc_2/members' && init?.method === 'POST') {
-      return Response.json({ space_id: 'spc_2', user_id: 'usr_2', email: body.email, role: body.role })
+      expect(body).toEqual({ email: 'teammate@acme.example', role: 'admin' })
+      return Response.json({ ok: true, space_id: 'spc_2', user_id: 'usr_2', email: body.email, role: body.role })
     }
     if (parsed.pathname === '/v1/threads/thr_1/user-state' && init?.method === 'PUT') {
-      return Response.json({ thread_id: 'thr_1', personal_sources_enabled: body.personal_sources_enabled })
+      expect(body).toEqual({ personal_sources_enabled: true })
+      return Response.json({ ok: true, thread_id: 'thr_1', personal_sources_enabled: true })
     }
     if (parsed.pathname === '/v1/instructions/org/org_acme/agents' && (init?.method || 'GET') === 'GET') {
       return Response.json({
-        key: { scope: 'org', scope_id: 'org_acme', kind: 'agents' },
-        content: '# Org Rules',
-        version: 'abc1234567890def',
+        org_id: 'org_acme',
+        scope: 'org',
+        scope_id: 'org_acme',
+        kind: 'agents',
+        body_md: '# Org Rules',
+        version: 'v1_sha256',
       })
     }
     if (parsed.pathname === '/v1/instructions/org/org_acme/agents' && init?.method === 'PUT') {
-      return Response.json({ error: 'the file changed since it was read' }, { status: 409 })
+      expect(body).toEqual({ body_md: '# Updated', expected_version: 'v1_sha256' })
+      return Response.json(
+        {
+          error: 'version conflict',
+          current: {
+            org_id: 'org_acme',
+            scope: 'org',
+            scope_id: 'org_acme',
+            kind: 'agents',
+            body_md: '# Concurrent Org Rules',
+            version: 'v2_sha256',
+          },
+        },
+        { status: 409 },
+      )
     }
     if (parsed.pathname === '/v1/machines') {
       return Response.json({
@@ -271,58 +341,59 @@ test('Spaces, Thread User State, Instructions 409 conflict, and Connected Machin
 
   const me = await api.fetchAuthMe()
   expect(me).toEqual({
-    id: 'usr_1',
-    org_id: 'org_acme',
-    org_name: 'Acme',
-    email: 'member@acme.example',
-    display_name: 'Alex',
-    role: 'member',
+    user: {
+      id: 'usr_1',
+      org_id: 'org_acme',
+      org_name: 'Acme',
+      email: 'member@acme.example',
+      display_name: 'Alex',
+      role: 'member',
+    },
+    ticket: { token: 'rt_me_1', expires_at: '2099-01-01T00:00:00Z' },
   })
+
+  expect(api.INSTRUCTION_SCOPE_KINDS.user).toEqual(['agents', 'soul'])
+  expect(api.canEditCloudInstruction({ id: 'u', org_id: 'o', email: 'v@x', display_name: 'V', role: 'viewer' }, 'user')).toBe(false)
+  expect(api.canEditCloudInstruction({ id: 'u', org_id: 'o', email: 'm@x', display_name: 'M', role: 'member' }, 'org')).toBe(false)
+  expect(api.canEditCloudInstruction({ id: 'u', org_id: 'o', email: 'm@x', display_name: 'M', role: 'member' }, 'bot')).toBe(false)
+  expect(api.canEditCloudInstruction({ id: 'u', org_id: 'o', email: 'm@x', display_name: 'M', role: 'member' }, 'user')).toBe(true)
+  expect(api.canEditCloudInstruction({ id: 'u', org_id: 'o', email: 'a@x', display_name: 'A', role: 'admin' }, 'org')).toBe(true)
 
   expect(await api.listSpaces()).toEqual([{ id: 'spc_1', name: 'Engineering', member_count: 4 }])
   expect(await api.createSpace({ name: 'Platform' })).toEqual({ id: 'spc_2', name: 'Platform' })
-  expect(await api.addSpaceMember('spc_2', { email: 'teammate@acme.example', role: 'admin' })).toEqual({
+  expect(await api.addSpaceMember('spc_2', { email: 'teammate@acme.example', role: 'admin' })).toMatchObject({
     space_id: 'spc_2',
     user_id: 'usr_2',
     email: 'teammate@acme.example',
     role: 'admin',
   })
-  expect(await api.updateThreadUserState('thr_1', { personal_sources_enabled: true })).toEqual({
+  expect(await api.updateThreadUserState('thr_1', { personal_sources_enabled: true })).toMatchObject({
     thread_id: 'thr_1',
     personal_sources_enabled: true,
   })
 
   const doc = await api.getInstruction('org', 'org_acme', 'agents')
-  expect(doc.content).toBe('# Org Rules')
-  expect(doc.version).toBe('abc1234567890def')
+  expect(doc.body_md).toBe('# Org Rules')
+  expect(doc.version).toBe('v1_sha256')
 
   let conflictError
   try {
-    await api.saveInstruction('org', 'org_acme', 'agents', { content: '# Updated', expected_version: doc.version })
+    await api.saveInstruction('org', 'org_acme', 'agents', { body_md: '# Updated', expected_version: doc.version })
   } catch (error) {
     conflictError = error
   }
   expect(conflictError).toBeInstanceOf(api.ApiError)
   expect(conflictError.status).toBe(409)
+  const currentDoc = api.extractInstructionConflictCurrent(conflictError, 'org', 'org_acme', 'agents')
+  expect(currentDoc?.body_md).toBe('# Concurrent Org Rules')
+  expect(currentDoc?.version).toBe('v2_sha256')
 
   const machines = await api.listMachines()
   expect(machines).toHaveLength(1)
   expect(machines[0].folder_grants).toEqual([{ id: 'repo', root_path: '/Users/dev/acme', mode: 'rw' }])
-
-  const cmd = api.buildConnectCloudCommand({
-    cloudUrl: 'https://cloud.jaz.example/',
-    deviceId: 'mac-1',
-    displayName: 'Studio Mac',
-    grants: [{ id: 'proj', root_path: '/Users/dev/My Repo', mode: 'rw' }],
-    allowExec: true,
-  })
-  expect(cmd).toContain('--url https://cloud.jaz.example')
-  expect(cmd).toContain("--name 'Studio Mac'")
-  expect(cmd).toContain("--grant 'proj=rw:/Users/dev/My Repo'")
-  expect(cmd).toContain('--allow-exec')
 })
 
-test('uploadCloudFile executes presign -> direct PUT without Jaz auth -> commit with SHA-256', async () => {
+test('uploadCloudFile uses put_url, credentials: omit, ArrayBuffer body, SHA-256 commit, and resource_ticket file URL', async () => {
   const { api } = fixture()
   const steps = []
   const progress = []
@@ -332,11 +403,12 @@ test('uploadCloudFile executes presign -> direct PUT without Jaz auth -> commit 
       const body = JSON.parse(String(init.body))
       steps.push({ step: 'presign', body, auth: new Headers(init.headers).get('Authorization') })
       return Response.json({
-        upload_url: 'https://storage.googleapis.com/jaz-bucket/signed-put?sig=1',
+        put_url: 'https://storage.googleapis.com/jaz-bucket/signed-put?sig=1',
         headers: { 'x-goog-content-length-range': '0,1048576' },
         object_key: 'org_acme/u1/run_42/objects/deadbeef',
         input_id: 'inp_99',
         relpath: body.relpath,
+        content_type: body.content_type,
       })
     }
     if (rawUrl.startsWith('https://storage.googleapis.com/')) {
@@ -344,6 +416,8 @@ test('uploadCloudFile executes presign -> direct PUT without Jaz auth -> commit 
       steps.push({
         step: 'put',
         method: init.method,
+        credentials: init.credentials,
+        isArrayBuffer: init.body instanceof ArrayBuffer,
         auth: headers.get('Authorization'),
         contentType: headers.get('Content-Type'),
         googHeader: headers.get('x-goog-content-length-range'),
@@ -354,6 +428,7 @@ test('uploadCloudFile executes presign -> direct PUT without Jaz auth -> commit 
       const body = JSON.parse(String(init.body))
       steps.push({ step: 'commit', body })
       return Response.json({
+        run_id: 'run_42',
         upload_seq: 1,
         input_id: body.input_id,
         relpath: body.relpath,
@@ -370,10 +445,13 @@ test('uploadCloudFile executes presign -> direct PUT without Jaz auth -> commit 
   const attachment = await api.uploadCloudFile('run_42', file, { onProgress: (p) => progress.push(p) })
   expect(steps.map((s) => s.step)).toEqual(['presign', 'put', 'commit'])
   expect(steps[0].auth).toBe('Bearer oidc-session-token')
+  expect(Object.keys(steps[0].body).sort()).toEqual(['content_type', 'relpath', 'sha256'])
   expect(steps[0].body.sha256).toHaveLength(64)
   expect(steps[1]).toEqual({
     step: 'put',
     method: 'PUT',
+    credentials: 'omit',
+    isArrayBuffer: true,
     auth: null,
     contentType: file.type,
     googHeader: '0,1048576',
@@ -383,22 +461,52 @@ test('uploadCloudFile executes presign -> direct PUT without Jaz auth -> commit 
   expect(attachment).toEqual({
     id: 'inp_99',
     name: 'notes.txt',
-    uri: 'https://cloud.jaz.example/v1/runs/run_42/files/notes.txt',
+    uri: 'https://cloud.jaz.example/v1/runs/run_42/files/notes.txt?ticket=rt_signed_abc',
     mime_type: file.type,
     size: 11,
   })
   expect(progress.at(-1)).toBe(1)
 })
 
-test('evaluateSpendStatus and isSpendCapError handle warning, cap reached, and HTTP 402', async () => {
+test('fetchUsageSummary, evaluateSpendStatus, and isSpendCapError match real org_spent_usd/org_monthly_cap_usd schema', async () => {
   const { api } = fixture()
-  expect(api.evaluateSpendStatus({ org_spend_usd: 20, org_cap_usd: 100 })).toBeNull()
-  expect(api.evaluateSpendStatus({ org_spend_usd: 85, org_cap_usd: 100 })).toMatchObject({
+  replace('fetch', async (url) => {
+    expect(new URL(String(url)).pathname).toBe('/v1/usage/summary')
+    return Response.json({
+      month_start: '2026-11-01T00:00:00Z',
+      org_spent_usd: 85,
+      org_monthly_cap_usd: 100,
+      user_spent_usd: 12.5,
+      user_monthly_cap_usd: 50,
+    })
+  })
+  const summary = await api.fetchUsageSummary()
+  expect(summary).toEqual({
+    month_start: '2026-11-01T00:00:00Z',
+    org_spent_usd: 85,
+    org_monthly_cap_usd: 100,
+    user_spent_usd: 12.5,
+    user_monthly_cap_usd: 50,
+  })
+  expect(api.evaluateSpendStatus(summary)).toMatchObject({
     level: 'warning',
     scope: 'org',
     percent: 85,
   })
-  expect(api.evaluateSpendStatus({ org_spend_usd: 50, org_cap_usd: 200, user_spend_usd: 25, user_cap_usd: 25 })).toMatchObject({
+  expect(api.evaluateSpendStatus({
+    month_start: '2026-11-01T00:00:00Z',
+    org_spent_usd: 20,
+    org_monthly_cap_usd: 100,
+    user_spent_usd: 0,
+    user_monthly_cap_usd: null,
+  })).toBeNull()
+  expect(api.evaluateSpendStatus({
+    month_start: '2026-11-01T00:00:00Z',
+    org_spent_usd: 50,
+    org_monthly_cap_usd: 200,
+    user_spent_usd: 25,
+    user_monthly_cap_usd: 25,
+  })).toMatchObject({
     level: 'exceeded',
     scope: 'user',
     percent: 100,
@@ -417,19 +525,20 @@ test('renameBackend derives managed from cloudUrl without persisting managed: tr
   expect(api.knownBackend('https://cloud.acme.example')?.managed).toBe(true)
 })
 
-test('cloud model profiles map OpenAI, Anthropic, and xAI into grouped Cloud vs Local picker options', async () => {
+test('cloud model profiles read /v1/models { models } and map into grouped Cloud vs Local picker options', async () => {
   const { api } = fixture()
   replace('fetch', async (url) => {
     expect(new URL(String(url)).pathname).toBe('/v1/models')
     return Response.json({
-      model_profiles: [
-        { profile_id: 'openai-prod', provider: 'openai', default_model: 'gpt-6.1-sol', default_effort: 'high' },
-        { profile_id: 'anthropic-prod', provider: 'anthropic', default_model: 'claude-opus-5.5' },
+      models: [
+        { profile_id: 'openai-prod', provider: 'openai', default_model: 'gpt-5.4', default_effort: 'high' },
+        { profile_id: 'anthropic-prod', provider: 'anthropic', default_model: 'claude-opus-4-6' },
         { profile_id: 'xai-prod', provider: 'xai', default_model: 'grok-4' },
       ],
     })
   })
   const profiles = await api.listCloudModelProfiles()
+  expect(profiles[0].models?.[0].reasoning?.status).toBe('ready')
   const cloudItems = profiles.map(api.cloudProfileToAgentOption)
   expect(cloudItems).toEqual([
     { id: 'openai-prod', label: 'Codex', logoAgent: 'codex', location: 'cloud', provider: 'openai' },
@@ -444,4 +553,82 @@ test('cloud model profiles map OpenAI, Anthropic, and xAI into grouped Cloud vs 
     ['cloud', 'Cloud', 3],
     ['local', 'Local', 1],
   ])
+})
+
+test('Cloud mode routes session listing, creation, messages, and turns to /v1/threads endpoints instead of /v1/sessions', async () => {
+  const { api } = fixture()
+  const paths = []
+  replace('fetch', async (url, init) => {
+    const parsed = new URL(String(url))
+    paths.push(`${init?.method || 'GET'} ${parsed.pathname}${parsed.search}`)
+    if (parsed.pathname === '/v1/threads' && (init?.method || 'GET') === 'GET') {
+      return Response.json({
+        threads: [{
+          id: 'thr_1',
+          run_id: 'run_1',
+          visibility: 'space',
+          space_id: 'spc_1',
+          title: 'Q4 Audit',
+          status: 'idle',
+          updated_at: '2026-11-22T12:00:00Z',
+        }],
+      })
+    }
+    if (parsed.pathname === '/v1/threads' && init?.method === 'POST') {
+      const body = JSON.parse(String(init.body))
+      return Response.json({
+        id: 'thr_2',
+        run_id: 'run_2',
+        visibility: body.space_id ? 'space' : 'private',
+        space_id: body.space_id ?? null,
+        title: body.title ?? '',
+        status: 'idle',
+        updated_at: '2026-11-22T12:05:00Z',
+      })
+    }
+    if (parsed.pathname === '/v1/threads/thr_2' && (init?.method || 'GET') === 'GET') {
+      return Response.json({
+        id: 'thr_2',
+        run_id: 'run_2',
+        visibility: 'private',
+        title: 'Cloud Check',
+        status: 'idle',
+        updated_at: '2026-11-22T12:05:00Z',
+      })
+    }
+    if (parsed.pathname === '/v1/threads/thr_2/events') {
+      const sse = [
+        'id: 1\nevent: turn.user\ndata: {"seq":1,"thread_id":"thr_2","type":"turn.user","payload":{"text":"Hello cloud"},"created_at":"2026-11-22T12:05:01Z"}\n\n',
+        'id: 2\nevent: assistant.delta\ndata: {"seq":2,"thread_id":"thr_2","type":"assistant.delta","payload":{"delta":"Hi "},"created_at":"2026-11-22T12:05:02Z"}\n\n',
+        'id: 3\nevent: assistant.delta\ndata: {"seq":3,"thread_id":"thr_2","type":"assistant.delta","payload":{"delta":"there"},"created_at":"2026-11-22T12:05:03Z"}\n\n',
+        'id: 4\nevent: turn.completed\ndata: {"seq":4,"thread_id":"thr_2","type":"turn.completed","payload":{},"created_at":"2026-11-22T12:05:04Z"}\n\n',
+      ].join('')
+      return new Response(sse, { headers: { 'content-type': 'text/event-stream' } })
+    }
+    if (parsed.pathname === '/v1/threads/thr_2/turns' && init?.method === 'POST') {
+      return Response.json({
+        turn: { id: 'trn_1', thread_id: 'thr_2', status: 'queued' },
+        replayed: false,
+      })
+    }
+    throw new Error(`Unexpected ${init?.method || 'GET'} ${parsed.pathname}`)
+  })
+
+  const created = await api.createSession({ title: 'Cloud Check', model_profile_id: 'openai-prod' })
+  expect(created.id).toBe('thr_2')
+  expect(created.run_id).toBe('run_2')
+
+  const listed = await api.sidebarSessionsQuery.queryFn({ signal: new AbortController().signal })
+  expect(listed.map((s) => s.id)).toEqual(['thr_1'])
+
+  const page = await api.getSessionMessagesPage('thr_2')
+  expect(page.messages.map((m) => [m.role, m.content])).toEqual([
+    ['user', 'Hello cloud'],
+    ['assistant', 'Hi there'],
+  ])
+  expect(page.latest_event_seq).toBe(4)
+
+  const turn = await api.createCloudTurn('thr_2', { text: 'Follow up' })
+  expect(turn.turn.id).toBe('trn_1')
+  expect(paths.every((p) => !p.includes('/v1/sessions'))).toBe(true)
 })

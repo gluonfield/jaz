@@ -8,7 +8,7 @@ import { ModelBreakdown, UsageShareCharts } from '@/components/settings/UsageMod
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { agentSettingsQuery } from '@/lib/api/settings'
-import { evaluateSpendStatus, usageSummaryQuery } from '@/lib/api/cloud'
+import { evaluateSpendStatus, formatUsageMonth, usageSummaryQuery } from '@/lib/api/cloudUsage'
 import { dailyUsageQuery } from '@/lib/api/sessions'
 import type { AgentSettings, DailyUsage } from '@/lib/api/types'
 import { useIsCloud } from '@/lib/connection'
@@ -42,64 +42,77 @@ const usageGapPx = 3
 export function UsageSettings() {
   const isCloud = useIsCloud()
   const [window, setWindow] = useState<UsageWindow>({ days: 30 })
-  const usage = useQuery(dailyUsageQuery(window))
+  const usage = useQuery({ ...dailyUsageQuery(window), enabled: !isCloud })
   const cloudSummary = useQuery({ ...usageSummaryQuery, enabled: isCloud })
-  const agentSettings = useQuery(agentSettingsQuery)
-  const openRouter = useQuery(openRouterModelsQuery)
+  const agentSettings = useQuery({ ...agentSettingsQuery, enabled: !isCloud })
+  const openRouter = useQuery({ ...openRouterModelsQuery, enabled: !isCloud })
   const pricing = useMemo(() => buildPricingIndex(openRouter.data?.models ?? []), [openRouter.data])
   const spendStatus = evaluateSpendStatus(cloudSummary.data)
+  const monthLabel = cloudSummary.data ? formatUsageMonth(cloudSummary.data.month_start) : ''
 
   return (
     <section className="py-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-ink">Usage</p>
-          <p className="mt-0.5 text-[13px] text-ink-2">Daily input and output tokens across all agent sessions, excluding cache reads.</p>
+          <p className="mt-0.5 text-[13px] text-ink-2">
+            {isCloud
+              ? 'Monthly cloud spend and active organization caps.'
+              : 'Daily input and output tokens across all agent sessions, excluding cache reads.'}
+          </p>
         </div>
       </div>
 
-      {isCloud && cloudSummary.data ? (
-        <SettingsCard className="mt-4 p-3.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-[12px] font-medium text-ink">
-                Monthly cloud spend{cloudSummary.data.month ? ` · ${cloudSummary.data.month}` : ''}
-              </p>
-              {spendStatus ? (
-                <p className={`mt-0.5 text-[12px] ${spendStatus.level === 'exceeded' ? 'text-danger' : 'text-accent-strong'}`}>
-                  {spendStatus.message}
+      {isCloud ? (
+        cloudSummary.isPending ? (
+          <SettingsCard className="mt-4 p-3.5">
+            <Skeleton className="h-14" />
+          </SettingsCard>
+        ) : cloudSummary.isError ? (
+          <p className="mt-4 py-2 text-[13px] text-danger">{cloudSummary.error.message}</p>
+        ) : cloudSummary.data ? (
+          <SettingsCard className="mt-4 p-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[12px] font-medium text-ink">
+                  Monthly cloud spend{monthLabel ? ` · ${monthLabel}` : ''}
                 </p>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-4 font-mono text-[13px] tabular-nums">
-              {typeof cloudSummary.data.user_spend_usd === 'number' ? (
+                {spendStatus ? (
+                  <p className={`mt-0.5 text-[12px] ${spendStatus.level === 'exceeded' ? 'text-danger' : 'text-accent-strong'}`}>
+                    {spendStatus.message}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-4 font-mono text-[13px] tabular-nums">
                 <span className="text-ink-2">
-                  You <span className="text-ink">${cloudSummary.data.user_spend_usd.toFixed(2)}</span>
-                  {cloudSummary.data.user_cap_usd ? ` / $${cloudSummary.data.user_cap_usd.toFixed(2)}` : ''}
+                  You <span className="text-ink">${cloudSummary.data.user_spent_usd.toFixed(2)}</span>
+                  {cloudSummary.data.user_monthly_cap_usd ? ` / $${cloudSummary.data.user_monthly_cap_usd.toFixed(2)}` : ''}
                 </span>
-              ) : null}
-              <span className="text-ink-2">
-                Org <span className="text-ink">${cloudSummary.data.org_spend_usd.toFixed(2)}</span>
-                {cloudSummary.data.org_cap_usd ? ` / $${cloudSummary.data.org_cap_usd.toFixed(2)}` : ''}
-              </span>
+                <span className="text-ink-2">
+                  Org <span className="text-ink">${cloudSummary.data.org_spent_usd.toFixed(2)}</span>
+                  {cloudSummary.data.org_monthly_cap_usd ? ` / $${cloudSummary.data.org_monthly_cap_usd.toFixed(2)}` : ''}
+                </span>
+              </div>
             </div>
-          </div>
-        </SettingsCard>
-      ) : null}
-
-      <UsageWindowFilter window={window} onChange={setWindow} />
-
-      {usage.isPending ? (
-        <UsageSkeleton />
-      ) : usage.isError ? (
-        <p className="mt-4 py-2 text-[13px] text-danger">{usage.error.message}</p>
+          </SettingsCard>
+        ) : null
       ) : (
-        <UsagePanel
-          key={JSON.stringify(window)}
-          days={usage.data}
-          pricing={pricing}
-          agentSettings={agentSettings.data}
-        />
+        <>
+          <UsageWindowFilter window={window} onChange={setWindow} />
+
+          {usage.isPending ? (
+            <UsageSkeleton />
+          ) : usage.isError ? (
+            <p className="mt-4 py-2 text-[13px] text-danger">{usage.error.message}</p>
+          ) : (
+            <UsagePanel
+              key={JSON.stringify(window)}
+              days={usage.data}
+              pricing={pricing}
+              agentSettings={agentSettings.data}
+            />
+          )}
+        </>
       )}
     </section>
   )

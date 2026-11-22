@@ -4,7 +4,15 @@ import { queryOptions } from '@tanstack/react-query'
 import type { MessageContextInput } from '@/lib/messageContext'
 import { telemetry } from '@/lib/telemetry'
 import { keys } from '../query/keys'
-import { apiEmbeddedGetUrl, apiFetch, del, get, post, put } from './client'
+import { apiEmbeddedGetUrl, apiFetch, del, get, isCloudApiSession, post, put } from './client'
+import { updateThreadUserState } from './cloudSpaces'
+import {
+  cloudThreadToSession,
+  createCloudThread,
+  fetchCloudThreadMessages,
+  getCloudThread,
+  listCloudThreads,
+} from './cloudThreads'
 import {
   fileKey,
   type Attachment,
@@ -44,6 +52,17 @@ export interface CreateSessionInput {
 }
 
 export async function createSession(input: CreateSessionInput = {}): Promise<Session> {
+  if (isCloudApiSession()) {
+    const thread = await createCloudThread({
+      title: input.title,
+      space_id: input.space_id,
+      model_profile_id: input.model_profile_id,
+      model: input.model,
+      reasoning_effort: input.reasoning_effort,
+      executor_target: input.machine_id,
+    })
+    return cloudThreadToSession(thread)
+  }
   const { config_options, ...request } = input
   const session = await post<Session>('/v1/sessions', request)
   for (const [id, value] of Object.entries(config_options ?? {})) {
@@ -59,7 +78,10 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
   return session
 }
 
-export function getSession(id: string, signal?: AbortSignal): Promise<Session> {
+export async function getSession(id: string, signal?: AbortSignal): Promise<Session> {
+  if (isCloudApiSession()) {
+    return cloudThreadToSession(await getCloudThread(id, signal))
+  }
   return get<Session>(`/v1/sessions/${id}`, { signal })
 }
 
@@ -368,11 +390,21 @@ export function restoreSessionWorktree(id: string): Promise<RepoInfo> {
   return post<RepoInfo>(`/v1/sessions/${id}/repo/restore-worktree`)
 }
 
-export function setSessionArchived(id: string, archived: boolean): Promise<Session> {
+export async function setSessionArchived(id: string, archived: boolean): Promise<Session> {
+  if (isCloudApiSession()) {
+    await updateThreadUserState(id, { archived })
+    const session = await getSession(id)
+    return { ...session, archived }
+  }
   return post<Session>(`/v1/sessions/${id}/${archived ? 'archive' : 'unarchive'}`)
 }
 
-export function setSessionPinned(id: string, pinned: boolean): Promise<Session> {
+export async function setSessionPinned(id: string, pinned: boolean): Promise<Session> {
+  if (isCloudApiSession()) {
+    await updateThreadUserState(id, { pinned })
+    const session = await getSession(id)
+    return { ...session, pinned }
+  }
   return post<Session>(`/v1/sessions/${id}/${pinned ? 'pin' : 'unpin'}`)
 }
 
@@ -420,8 +452,11 @@ export function answerSessionInteractiveResponse(
 
 export const sidebarSessionsQuery = queryOptions({
   queryKey: keys.sidebarSessions,
-  queryFn: async () => {
-    const { sessions } = await get<{ sessions: Session[] | null }>('/v1/sessions?include_children=true')
+  queryFn: async ({ signal }) => {
+    if (isCloudApiSession()) {
+      return (await listCloudThreads(undefined, signal)).map(cloudThreadToSession)
+    }
+    const { sessions } = await get<{ sessions: Session[] | null }>('/v1/sessions?include_children=true', { signal })
     return sessions ?? []
   },
   // Tighten the poll while a thread is running so status dots stay live.
@@ -475,6 +510,9 @@ export async function getSessionMessagesPage(
   page: SessionMessagesPageRequest = {},
   signal?: AbortSignal,
 ): Promise<SessionMessages> {
+  if (isCloudApiSession()) {
+    return fetchCloudThreadMessages(id, signal)
+  }
   const params = new URLSearchParams()
   if (page.beforeMessageSeq) params.set('before_message_seq', String(page.beforeMessageSeq))
   if (page.beforeEventSeq) params.set('before_event_seq', String(page.beforeEventSeq))

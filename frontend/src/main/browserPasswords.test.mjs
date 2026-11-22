@@ -19,7 +19,8 @@ const result = await build({
       builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
         contents: `export { installBrowserPasswords } from ${JSON.stringify(new URL('./browserPasswords.ts', import.meta.url).pathname)}
 export { BrowserPasswordStore, getBrowserPasswordStore } from ${JSON.stringify(new URL('./browserPasswordStore.ts', import.meta.url).pathname)}
-export { BrowserProfileImporter } from ${JSON.stringify(new URL('./browserProfileImport.ts', import.meta.url).pathname)}`,
+export { BrowserProfileImporter } from ${JSON.stringify(new URL('./browserProfileImport.ts', import.meta.url).pathname)}
+export { setTrustedRendererPath } from ${JSON.stringify(new URL('./permissions.ts', import.meta.url).pathname)}`,
         loader: 'js',
       }))
     },
@@ -109,7 +110,8 @@ function fixture() {
   }
   const module = { exports: {} }
   evaluate((name) => name === 'electron' ? electron : name === 'node:sqlite' ? { DatabaseSync } : require(name), module, module.exports)
-  const { installBrowserPasswords, BrowserPasswordStore, getBrowserPasswordStore, BrowserProfileImporter } = module.exports
+  const { installBrowserPasswords, BrowserPasswordStore, getBrowserPasswordStore, BrowserProfileImporter, setTrustedRendererPath } = module.exports
+  setTrustedRendererPath('/fixture/renderer/index.html')
   installBrowserPasswords()
   const store = getBrowserPasswordStore()
   const origin = 'https://login.test'

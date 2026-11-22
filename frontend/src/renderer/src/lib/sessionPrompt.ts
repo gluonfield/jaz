@@ -1,3 +1,6 @@
+import { isCloudApiSession } from '@/lib/api/client'
+import { createCloudTurn } from '@/lib/api/cloudThreads'
+import { uploadCloudFile } from '@/lib/api/cloudUploads'
 import {
   mutateSessionQueue,
   type QueueMutation,
@@ -17,17 +20,28 @@ export interface AppendedSessionPrompt {
   attachments: Attachment[]
 }
 
+export interface AppendPromptCloudContext {
+  runId?: string
+  modelProfileId?: string
+  executorTarget?: string
+}
+
 export async function appendSessionPrompt(
   sessionId: string,
   text: string,
   options: SendMessageOptions,
   kind: PromptKind,
-  append: Append = async (mutation) => {
-    await mutateSessionQueue(sessionId, mutation)
-  },
+  append?: Append,
+  cloud?: AppendPromptCloudContext,
 ): Promise<AppendedSessionPrompt | null> {
+  const isCloud = isCloudApiSession()
+  const runId = cloud?.runId || sessionId
   const uploaded = options.files?.length
-    ? await Promise.all(options.files.map((file) => uploadSessionAttachment(sessionId, file)))
+    ? await Promise.all(
+        options.files.map((file) =>
+          isCloud ? uploadCloudFile(runId, file) : uploadSessionAttachment(sessionId, file),
+        ),
+      )
     : []
   const prepared = preparedSendMessage(options, uploaded)
   const prompt = normalizeQueuedMessageInput({
@@ -38,12 +52,25 @@ export async function appendSessionPrompt(
     goal_requested: options.goalRequested,
   })
   if (!prompt) return null
-  await append({ op: 'append', message: prompt })
+  const attachments = [...(options.attachments ?? []), ...uploaded]
+  if (isCloud) {
+    await createCloudTurn(sessionId, {
+      text: prompt.text,
+      model_profile_id: cloud?.modelProfileId,
+      executor_target: cloud?.executorTarget,
+      uploads: attachments,
+    })
+  } else {
+    const submit: Append = append ?? (async (mutation) => {
+      await mutateSessionQueue(sessionId, mutation)
+    })
+    await submit({ op: 'append', message: prompt })
+  }
   telemetry.messageSent({
     queued: kind === 'queued',
     planRequested: Boolean(prompt.plan_requested),
     goalRequested: Boolean(prompt.goal_requested),
     attachmentCount: prompt.attachment_ids?.length ?? 0,
   })
-  return { message: prompt, attachments: [...(options.attachments ?? []), ...uploaded] }
+  return { message: prompt, attachments }
 }

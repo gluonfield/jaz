@@ -1,10 +1,10 @@
-import {
-  fetchAuthMe,
-  type CloudUser,
-  type ServerAuthMethod,
-  type ServerCapabilities,
-  type ServerMode,
-} from '@/lib/api/cloud'
+import { fetchAuthMe } from '@/lib/api/cloudAuth'
+import type {
+  CloudUser,
+  ServerAuthMethod,
+  ServerCapabilities,
+  ServerMode,
+} from '@/lib/api/serverTypes'
 import { CLIENT_PLATFORM, CLIENT_PLATFORM_HEADER, normalizeBaseUrl, secureBackendConnection } from '@/lib/api/client'
 import { ApiError } from '@/lib/api/response'
 import { backendFetch, clientRuntime } from '@/lib/clientRuntime'
@@ -169,12 +169,12 @@ export async function readCloudAccess(url: string, token: string, signal?: Abort
     return { ok: false, error: 'Sign in with SSO to connect to this server', recoverable: false, code: 'oidc_required' }
   }
   try {
-    const user = await fetchAuthMe(origin, {
+    const { user, ticket } = await fetchAuthMe(origin, {
       token: token || undefined,
       credentials: !token && clientRuntime.kind === 'web' ? 'include' : undefined,
       signal: probeSignal(signal),
     })
-    return { ok: true, kind: 'oidc', user }
+    return { ok: true, kind: 'oidc', user, ticket }
   } catch (error) {
     if (error instanceof ApiError) {
       if (error.status === 401 || error.status === 403) {

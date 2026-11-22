@@ -9,16 +9,18 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { botsQuery } from '@/lib/api/bots'
 import {
+  canEditCloudInstruction,
   cloudInstructionQuery,
+  extractInstructionConflictCurrent,
   getInstruction,
   INSTRUCTION_KIND_FILENAME,
   INSTRUCTION_SCOPE_KINDS,
   saveInstruction,
-  spacesQuery,
   type CloudInstructionDocument,
   type InstructionKind,
   type InstructionScope,
-} from '@/lib/api/cloud'
+} from '@/lib/api/cloudInstructions'
+import { spacesQuery } from '@/lib/api/cloudSpaces'
 import { ApiError } from '@/lib/api/response'
 import { useConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
@@ -38,6 +40,15 @@ const KIND_DESCRIPTIONS: Record<InstructionKind, string> = {
   memory: 'Durable working memory for this bot.',
 }
 
+interface SaveVariables {
+  scope: InstructionScope
+  scopeId: string
+  kind: InstructionKind
+  docKey: string
+  body_md: string
+  expected_version: string
+}
+
 export function CloudInstructionsEditor() {
   const { user } = useConnection()
   const queryClient = useQueryClient()
@@ -52,7 +63,7 @@ export function CloudInstructionsEditor() {
   const [editorResetSeq, setEditorResetSeq] = useState(0)
 
   const spaces = useQuery({ ...spacesQuery, enabled: scope === 'space' })
-  const bots = useQuery({ ...botsQuery, enabled: scope === 'bot' })
+  const bots = useQuery({ ...botsQuery, enabled: scope === 'bot', retry: false })
 
   const validKinds = INSTRUCTION_SCOPE_KINDS[scope]
   const kind: InstructionKind = validKinds.includes(selectedKind) ? selectedKind : validKinds[0]
@@ -68,48 +79,76 @@ export function CloudInstructionsEditor() {
 
   const docKey = `${scope}:${scopeId}:${kind}`
   const docQuery = useQuery(cloudInstructionQuery(scope, scopeId, kind))
-  const readOnly = (scope === 'org' && user?.role !== 'admin') || docQuery.data?.read_only === true
+  const readOnly = !canEditCloudInstruction(user, scope) || docQuery.data?.read_only === true
+  const readOnlyBadge = user?.role.trim().toLowerCase() === 'viewer'
+    ? 'Read-only · Viewer'
+    : scope === 'org' || scope === 'bot'
+      ? 'Read-only · Org admin required'
+      : 'Read-only'
 
   const save = useMutation({
-    mutationFn: ({ content, expectedVersion }: { content: string; expectedVersion: string }) =>
-      saveInstruction(scope, scopeId, kind, { content, expected_version: expectedVersion }),
-    onSuccess: (saved: CloudInstructionDocument) => {
-      queryClient.setQueryData(keys.cloudInstruction(scope, scopeId, kind), saved)
+    mutationFn: (vars: SaveVariables) =>
+      saveInstruction(vars.scope, vars.scopeId, vars.kind, {
+        body_md: vars.body_md,
+        expected_version: vars.expected_version,
+      }),
+    onSuccess: (saved: CloudInstructionDocument, vars) => {
+      queryClient.setQueryData(keys.cloudInstruction(vars.scope, vars.scopeId, vars.kind), saved)
       setDrafts((prev) => {
+        if (prev[vars.docKey] !== vars.body_md) return prev
         const next = { ...prev }
-        delete next[docKey]
+        delete next[vars.docKey]
         return next
       })
-      setConflictKey(null)
-      toast(`Saved ${INSTRUCTION_KIND_FILENAME[kind]}`)
+      setConflictKey((prev) => (prev === vars.docKey ? null : prev))
+      toast(`Saved ${INSTRUCTION_KIND_FILENAME[vars.kind]}`)
     },
-    onError: (error: Error) => {
+    onError: (error: Error, vars) => {
       if (error instanceof ApiError && error.status === 409) {
-        setConflictKey(docKey)
+        const current = extractInstructionConflictCurrent(error, vars.scope, vars.scopeId, vars.kind)
+        if (current) {
+          queryClient.setQueryData(keys.cloudInstruction(vars.scope, vars.scopeId, vars.kind), current)
+        }
+        setConflictKey(vars.docKey)
         return
       }
-      toast(`Couldn't save ${INSTRUCTION_KIND_FILENAME[kind]}: ${error.message}`, 'danger')
+      toast(`Couldn't save ${INSTRUCTION_KIND_FILENAME[vars.kind]}: ${error.message}`, 'danger')
     },
   })
 
   const reloadLatest = async () => {
+    const targetScope = scope
+    const targetScopeId = scopeId
+    const targetKind = kind
+    const targetDocKey = docKey
     setConflictKey(null)
     setDrafts((prev) => {
       const next = { ...prev }
-      delete next[docKey]
+      delete next[targetDocKey]
       return next
     })
-    await queryClient.invalidateQueries({ queryKey: keys.cloudInstruction(scope, scopeId, kind) })
+    await queryClient.invalidateQueries({ queryKey: keys.cloudInstruction(targetScope, targetScopeId, targetKind) })
     setEditorResetSeq((n) => n + 1)
   }
 
   const overwriteWithMine = async () => {
-    const draft = drafts[docKey]
-    if (draft === undefined || save.isPending) return
+    const targetScope = scope
+    const targetScopeId = scopeId
+    const targetKind = kind
+    const targetDocKey = docKey
+    const draftBody = drafts[targetDocKey]
+    if (draftBody === undefined || save.isPending) return
     try {
-      const latest = await getInstruction(scope, scopeId, kind)
-      queryClient.setQueryData(keys.cloudInstruction(scope, scopeId, kind), latest)
-      save.mutate({ content: draft, expectedVersion: latest.version })
+      const latest = await getInstruction(targetScope, targetScopeId, targetKind)
+      queryClient.setQueryData(keys.cloudInstruction(targetScope, targetScopeId, targetKind), latest)
+      save.mutate({
+        scope: targetScope,
+        scopeId: targetScopeId,
+        kind: targetKind,
+        docKey: targetDocKey,
+        body_md: draftBody,
+        expected_version: latest.version,
+      })
     } catch (error) {
       toast((error as Error).message || 'Could not reload version', 'danger')
     }
@@ -117,13 +156,20 @@ export function CloudInstructionsEditor() {
 
   const doc = docQuery.data
   const draft = drafts[docKey]
-  const value = draft ?? doc?.content ?? ''
-  const dirty = !readOnly && draft !== undefined && draft !== (doc?.content ?? '')
+  const value = draft ?? doc?.body_md ?? ''
+  const dirty = !readOnly && draft !== undefined && draft !== (doc?.body_md ?? '')
   const hasConflict = conflictKey === docKey
 
   const handleSave = () => {
     if (readOnly || save.isPending || !doc) return
-    save.mutate({ content: value, expectedVersion: doc.version })
+    save.mutate({
+      scope,
+      scopeId,
+      kind,
+      docKey,
+      body_md: value,
+      expected_version: doc.version,
+    })
   }
 
   return (
@@ -135,7 +181,7 @@ export function CloudInstructionsEditor() {
             {readOnly ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">
                 <Lock size={11} />
-                Read-only · Org admin required
+                {readOnlyBadge}
               </span>
             ) : null}
           </div>
@@ -208,7 +254,7 @@ export function CloudInstructionsEditor() {
         <EmptyState title="No spaces yet">
           <p>Create a Space in the sidebar to manage shared Space instructions.</p>
         </EmptyState>
-      ) : scope === 'bot' && !bots.isPending && (bots.data?.length ?? 0) === 0 ? (
+      ) : scope === 'bot' && !bots.isPending && (bots.isError || (bots.data?.length ?? 0) === 0) ? (
         <EmptyState title="No bots yet">
           <p>Create a bot to edit its BOTS.md and MEMORY.md instructions.</p>
         </EmptyState>
@@ -230,8 +276,8 @@ export function CloudInstructionsEditor() {
               const itemDraft = drafts[key]
               return {
                 name: INSTRUCTION_KIND_FILENAME[item],
-                dirty: itemDraft !== undefined && item === kind ? itemDraft !== (doc?.content ?? '') : itemDraft !== undefined,
-                badge: scope === 'org' && readOnly ? 'locked' : undefined,
+                dirty: itemDraft !== undefined && item === kind ? itemDraft !== (doc?.body_md ?? '') : itemDraft !== undefined,
+                badge: readOnly ? 'locked' : undefined,
               }
             })}
           />
@@ -274,11 +320,11 @@ export function CloudInstructionsEditor() {
                 key={`${docKey}:${doc?.version ?? 'empty'}:${editorResetSeq}`}
                 initialValue={value}
                 readOnly={readOnly}
-                placeholder={readOnly ? 'No organization instructions configured.' : KIND_DESCRIPTIONS[kind]}
+                placeholder={readOnly ? 'No instructions configured.' : KIND_DESCRIPTIONS[kind]}
                 onChange={(nextDoc) => {
                   if (readOnly) return
                   setDrafts((prev) => {
-                    if (nextDoc === (doc?.content ?? '')) {
+                    if (nextDoc === (doc?.body_md ?? '')) {
                       if (!(docKey in prev)) return prev
                       const next = { ...prev }
                       delete next[docKey]

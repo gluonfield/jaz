@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { build } from 'bun'
+import { createRequire } from 'node:module'
 
 const result = await build({
   entrypoints: [new URL('./credentialEncryption.ts', import.meta.url).pathname],
@@ -11,6 +12,7 @@ if (!result.success) {
   throw new AggregateError(result.logs)
 }
 const evaluate = new Function('require', 'module', 'exports', await result.outputs[0].text())
+const require = createRequire(import.meta.url)
 const previousURL = process.env.ELECTRON_RENDERER_URL
 afterEach(() => {
   if (previousURL === undefined) {
@@ -36,7 +38,7 @@ function fixture({ available = true, trusted = true, child = false } = {}) {
   }
   const electron = { ipcMain: { on: (_name, callback) => { handler = callback } }, safeStorage: provider }
   const module = { exports: {} }
-  evaluate(() => electron, module, module.exports)
+  evaluate((name) => name === 'electron' ? electron : require(name), module, module.exports)
   module.exports.installCredentialEncryption()
   process.env.ELECTRON_RENDERER_URL = 'https://jaz.test'
   const frame = { url: trusted ? 'https://jaz.test/app' : 'https://untrusted.example' }

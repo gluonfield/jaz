@@ -2,12 +2,14 @@ import { readAPIResponse } from '@/lib/api/response'
 import { DEFAULT_API_BASE_URL, backendFetch, backendTransportUrl, clientRuntime } from '@/lib/clientRuntime'
 import { isPreviewProxyTargetHostname } from '@shared/preview'
 import type { ResourceTicket } from '@shared/connectionSession'
+import type { ServerMode } from './serverTypes'
 
 export { ApiError } from '@/lib/api/response'
 
 const AUTH_KEY_PREFIX = 'jaz.backendAuth.'
 const authTokens = new Map<string, string>()
 const resourceTickets = new Map<string, ResourceTicket>()
+let serverMode: ServerMode = 'local'
 let credentialRevision = 0
 const sessionListeners = new Set<() => void>()
 let sessionRequests = new AbortController()
@@ -46,8 +48,8 @@ export function isLocalBackendUrl(url: string): boolean {
   }
 }
 
-export const PENDING_OIDC_SERVER_KEY = 'jaz.oidc.pendingServer'
-
+// Parses a manually entered backend connect URL. Secrets are read strictly from
+// the URL fragment (#key= or #token=) and never from query parameters (?key=/?token=).
 export function parseBackendConnectUrl(input: string): { url: string; key: string } {
   let raw = input.trim()
   if (raw && !/^https?:\/\//i.test(raw)) {
@@ -56,96 +58,13 @@ export function parseBackendConnectUrl(input: string): { url: string; key: strin
   try {
     const parsed = new URL(raw)
     const hashParams = new URLSearchParams(parsed.hash.replace(/^#\??/, ''))
-    const key = (
-      parsed.searchParams.get('key') ||
-      parsed.searchParams.get('token') ||
-      hashParams.get('key') ||
-      hashParams.get('token')
-    )?.trim() ?? ''
-    parsed.searchParams.delete('key')
-    parsed.searchParams.delete('token')
+    const key = (hashParams.get('key') || hashParams.get('token'))?.trim() ?? ''
     parsed.pathname = ''
     parsed.hash = ''
     parsed.search = ''
     return { url: parsed.origin, key }
   } catch {
     return { url: normalizeBaseUrl(input), key: '' }
-  }
-}
-
-export function rememberPendingOidcServer(url: string): void {
-  try {
-    sessionStorage.setItem(PENDING_OIDC_SERVER_KEY, normalizeBaseUrl(url))
-  } catch {
-    // sessionStorage may be unavailable in restricted contexts.
-  }
-}
-
-export function consumePendingOidcServer(): string {
-  try {
-    const value = sessionStorage.getItem(PENDING_OIDC_SERVER_KEY)?.trim() ?? ''
-    if (value) sessionStorage.removeItem(PENDING_OIDC_SERVER_KEY)
-    return value ? normalizeBaseUrl(value) : ''
-  } catch {
-    return ''
-  }
-}
-
-export function consumeStartupConnectUrl(): string {
-  if (clientRuntime.kind !== 'web') {
-    return ''
-  }
-  const { params, source } = startupConnectParams()
-  const key = (params.get('token') || params.get('key'))?.trim() ?? ''
-  if (!key) {
-    return ''
-  }
-  const pending = consumePendingOidcServer()
-  const target =
-    params.get('server')?.trim() ||
-    params.get('url')?.trim() ||
-    pending ||
-    clientRuntime.cloudUrl ||
-    clientRuntime.defaultApiBaseUrl()
-  if (!target) {
-    return ''
-  }
-  const raw = connectUrlWithKey(target, key)
-  const next = new URL(window.location.href)
-  if (source === 'hash') {
-    next.hash = ''
-  } else {
-    next.searchParams.delete('server')
-    next.searchParams.delete('url')
-    next.searchParams.delete('key')
-    next.searchParams.delete('token')
-  }
-  window.history.replaceState(window.history.state, '', next)
-  return raw
-}
-
-function startupConnectParams(): { params: URLSearchParams; source: 'search' | 'hash' } {
-  const search = new URLSearchParams(window.location.search)
-  if (hasStartupConnectParams(search)) {
-    return { params: search, source: 'search' }
-  }
-  const hash = new URLSearchParams(window.location.hash.replace(/^#\??/, ''))
-  return { params: hash, source: 'hash' }
-}
-
-function hasStartupConnectParams(params: URLSearchParams): boolean {
-  const secret = (params.get('token') || params.get('key'))?.trim()
-  return Boolean((params.get('server')?.trim() || params.get('url')?.trim()) && secret)
-}
-
-function connectUrlWithKey(target: string, key: string): string {
-  const raw = target.trim()
-  try {
-    const parsed = new URL(/^https?:\/\//i.test(raw) ? raw : defaultConnectionScheme(raw))
-    parsed.hash = new URLSearchParams({ key }).toString()
-    return parsed.toString()
-  } catch {
-    return `${raw}#key=${encodeURIComponent(key)}`
   }
 }
 
@@ -156,12 +75,11 @@ export function apiBaseUrl(): string {
 }
 
 export function apiUrl(path: string): string {
-  return `${apiBaseUrl()}${path}`
+  return resolveBackendUrl(path, apiBaseUrl(), 'apiUrl')
 }
 
 export function apiWebSocketUrl(path: string): string {
-  assertBackendRelativePath(path, 'apiWebSocketUrl')
-  const url = new URL(path, `${apiBaseUrl()}/`)
+  const url = new URL(resolveBackendUrl(path, apiBaseUrl(), 'apiWebSocketUrl'))
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return url.toString()
 }
@@ -182,8 +100,7 @@ export function apiWebSocket(path: string): WebSocket {
 }
 
 export function apiEmbeddedGetUrl(path: string): string {
-  assertBackendRelativePath(path, 'apiEmbeddedGetUrl')
-  return backendTransportUrl(appendAuthQuery(apiUrl(path)))
+  return backendTransportUrl(appendAuthQuery(resolveBackendUrl(path, apiBaseUrl(), 'apiEmbeddedGetUrl')))
 }
 
 export function setApiBaseUrl(url: string): void {
@@ -239,9 +156,22 @@ export function setApiAuthToken(url: string, token?: string | null, ticket?: Res
   }
 }
 
+export function apiServerMode(): ServerMode {
+  return serverMode
+}
+
+export function isCloudApiSession(): boolean {
+  return serverMode === 'cloud'
+}
+
+export function setApiServerMode(mode: ServerMode): void {
+  serverMode = mode
+}
+
 export function clearApiSession(): void {
   authTokens.clear()
   resourceTickets.clear()
+  serverMode = 'local'
   notifySessionChange()
 }
 
@@ -302,15 +232,16 @@ function appendAuthQuery(rawUrl: string, url = apiBaseUrl()): string {
 }
 
 export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): Promise<Response> {
-  assertBackendRelativePath(path, 'apiFetch')
+  const targetUrl = resolveBackendUrl(path, url, 'apiFetch')
+  const origin = normalizeBaseUrl(url)
   const signal = init?.signal ? AbortSignal.any([init.signal, sessionRequests.signal]) : sessionRequests.signal
   const revision = credentialRevision
-  const options = withAPIHeaders({ ...init, signal }, url)
+  const options = withAPIHeaders({ ...init, signal }, origin)
   const bearer = new Headers(options.headers).get('Authorization')
-  return backendFetch(`${url}${path}`, options).then(async (response) => {
-    if ((response.status === 401 || response.status === 403) && bearer === `Bearer ${cachedApiAuthToken(url)}`) {
+  return backendFetch(targetUrl, options).then(async (response) => {
+    if ((response.status === 401 || response.status === 403) && bearer === `Bearer ${cachedApiAuthToken(origin)}`) {
       const body = await response.clone().json().catch(() => null) as { code?: string } | null
-      if (revision === credentialRevision && url === apiBaseUrl() && body?.code === 'unauthorized') {
+      if (revision === credentialRevision && origin === apiBaseUrl() && body?.code === 'unauthorized') {
         for (const handler of rejectionListeners) {
           handler()
         }
@@ -321,7 +252,7 @@ export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): 
 }
 
 export function apiEventSourceUrl(path: string): string {
-  return backendTransportUrl(appendAuthQuery(apiUrl(path)))
+  return backendTransportUrl(appendAuthQuery(resolveBackendUrl(path, apiBaseUrl(), 'apiEventSourceUrl')))
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -361,10 +292,25 @@ export function del<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' })
 }
 
-function assertBackendRelativePath(path: string, helper: string): void {
-  if (/^(?:https?|wss?):\/\//i.test(path)) {
+export function assertBackendRelativePath(path: string, helper: string): void {
+  if (!path.startsWith('/') || path.startsWith('//') || path.startsWith('/\\') || path.includes('\\')) {
     throw new Error(`${helper} only accepts backend-relative paths`)
   }
+}
+
+function resolveBackendUrl(path: string, base: string, helper: string): string {
+  assertBackendRelativePath(path, helper)
+  const origin = normalizeBaseUrl(base)
+  let resolved: URL
+  try {
+    resolved = new URL(path, `${origin}/`)
+  } catch {
+    throw new Error(`${helper} received an invalid path`)
+  }
+  if (resolved.origin !== origin) {
+    throw new Error(`${helper} only accepts backend-relative paths`)
+  }
+  return resolved.toString()
 }
 
 export function setResourceTicket(url: string, ticket?: { token: string; expires_at: string }): void {

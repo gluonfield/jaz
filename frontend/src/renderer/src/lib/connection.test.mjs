@@ -15,7 +15,7 @@ const bundle = await build({
       builder.onResolve({ filter: /^connection-fixture$/ }, () => ({ path: 'entry', namespace: 'fixture' }))
       builder.onResolve({ filter: /^\//, namespace: 'fixture' }, (args) => ({ path: args.path, namespace: 'file' }))
       builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
-        contents: `export * from ${JSON.stringify(new URL('./connection.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./api/client.ts', import.meta.url).pathname)}\nexport { DesktopNotifications } from ${JSON.stringify(new URL('../components/notifications/DesktopNotifications.tsx', import.meta.url).pathname)}`,
+        contents: `export * from ${JSON.stringify(new URL('./connection.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./api/client.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./api/cloudAuth.ts', import.meta.url).pathname)}\nexport { DesktopNotifications } from ${JSON.stringify(new URL('../components/notifications/DesktopNotifications.tsx', import.meta.url).pathname)}`,
         loader: 'ts',
       }))
     },
@@ -55,10 +55,14 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, authMe, discovery, storedValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
+async function fixture({ auth, authMe, authExchange, discovery, storedValues = [], sessionStoredValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
   const stored = new Map(storedValues)
-  const sessionStored = new Map()
+  const sessionStored = new Map(sessionStoredValues)
   const configured = []
+  const openedExternal = []
+  let oidcBeginCalls = 0
+  let oidcCallbackHandler = null
+  const windowListeners = new Map()
   const timers = new Map()
   let nextTimer = 0
   const loc = new URL(locationHref)
@@ -89,6 +93,9 @@ async function fixture({ auth, authMe, discovery, storedValues = [], encryptCred
       pathname: loc.pathname,
       search: loc.search,
       hash: loc.hash,
+      assign(target) {
+        openedExternal.push(String(target))
+      },
     },
     history: {
       state: null,
@@ -99,7 +106,14 @@ async function fixture({ auth, authMe, discovery, storedValues = [], encryptCred
         window.location.hash = updated.hash
       },
     },
-    addEventListener() {},
+    addEventListener(name, handler) {
+      const list = windowListeners.get(name) ?? []
+      list.push(handler)
+      windowListeners.set(name, list)
+    },
+    open(target) {
+      openedExternal.push(String(target))
+    },
     jaz: web ? undefined : {
       apiBaseUrl: 'http://127.0.0.1:5299',
       cloudUrl,
@@ -109,6 +123,16 @@ async function fixture({ auth, authMe, discovery, storedValues = [], encryptCred
       encryptCredential,
       decryptCredential,
       startLocalBackend,
+      beginOidcSignIn: async () => {
+        oidcBeginCalls += 1
+      },
+      onOidcCallback: (handler) => {
+        oidcCallbackHandler = handler
+        return () => {
+          if (oidcCallbackHandler === handler) oidcCallbackHandler = null
+        }
+      },
+      openExternalURL: (target) => openedExternal.push(String(target)),
       ...(notifications ? { configureNotifications: (config) => configured.push(config) } : {}),
     },
   })
@@ -141,6 +165,9 @@ async function fixture({ auth, authMe, discovery, storedValues = [], encryptCred
     if (target.pathname === '/health') {
       return health ? health() : Response.json({ ok: true, auth_required: true })
     }
+    if (target.pathname === '/v1/auth/exchange' && authExchange) {
+      return authExchange(init)
+    }
     if (target.pathname === '/v1/auth/me' && authMe) {
       return authMe(init)
     }
@@ -172,7 +199,18 @@ async function fixture({ auth, authMe, discovery, storedValues = [], encryptCred
   return {
     connection,
     stored,
+    sessionStored,
     configured,
+    openedExternal,
+    oidcBeginCalls: () => oidcBeginCalls,
+    triggerElectronOidcCallback: (url) => oidcCallbackHandler?.(url),
+    triggerHashChange: (hash) => {
+      const updated = new URL(window.location.href)
+      updated.hash = hash
+      window.location.href = updated.href
+      window.location.hash = updated.hash
+      for (const fn of windowListeners.get('hashchange') ?? []) fn()
+    },
     timers,
     session,
     browserCredentials,
@@ -743,11 +781,35 @@ test('Cloud OIDC endpoint verifies via /v1/auth/me, stores user identity, and su
   expect(authCheckHits).toBe(0)
 })
 
-test('web #token= OIDC callback connects on startup and clears fragment from URL', async () => {
+test('unsolicited web #token= or ?token= never hijacks connection, while pending #code= exchanges once with state verification', async () => {
   const cloudUrl = 'https://jaz-cloud.example'
-  const { connection } = await fixture({
+  let exchangeHits = 0
+  // Unsolicited #token= and #server= without a pending sessionStorage record must be ignored and scrubbed.
+  const unsolicited = await fixture({
     web: true,
-    locationHref: `https://app.jaz.chat/#token=web-oidc-token&server=${encodeURIComponent(cloudUrl)}`,
+    locationHref: `https://app.jaz.chat/#token=attacker-token&server=${encodeURIComponent(cloudUrl)}`,
+    discovery: () => Response.json({ ok: true, mode: 'cloud', auth: 'oidc', oidc_login_url: '/v1/auth/login' }),
+    authMe: () => Response.json({ id: 'usr_evil', org_id: 'org_evil', email: 'evil@example.com', display_name: 'Evil', role: 'admin' }),
+  })
+  expect(unsolicited.connection.useConnection().status).toBe('disconnected')
+  expect(window.location.hash).toBe('')
+  unsolicited.connection.disconnectBackend()
+
+  // Unsolicited hashchange hijack is also ignored.
+  unsolicited.triggerHashChange(`#token=attacker-token&server=${encodeURIComponent(cloudUrl)}`)
+  await settle()
+  expect(unsolicited.connection.useConnection().status).toBe('disconnected')
+  expect(window.location.hash).toBe('')
+
+  // Valid pending sessionStorage state + #code= callback exchanges code once and stores resource_ticket.
+  const pendingState = 'state-valid-123'
+  const valid = await fixture({
+    web: true,
+    locationHref: `https://app.jaz.chat/#code=one-time-code&state=${pendingState}`,
+    sessionStoredValues: [[
+      'jaz.oidc.pending',
+      JSON.stringify({ server: cloudUrl, state: pendingState, startedAt: Date.now() }),
+    ]],
     discovery: () => Response.json({
       ok: true,
       mode: 'cloud',
@@ -755,23 +817,82 @@ test('web #token= OIDC callback connects on startup and clears fragment from URL
       oidc_login_url: '/v1/auth/login',
       capabilities: { spaces: true },
     }),
-    authMe: (init) => {
-      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer web-oidc-token')
+    authExchange: (init) => {
+      exchangeHits += 1
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(String(init.body))).toEqual({ code: 'one-time-code' })
       return Response.json({
-        id: 'usr_web',
-        org_id: 'org_web',
-        email: 'web@example.com',
-        display_name: 'Web User',
-        role: 'member',
+        token: 'exchanged-session-token',
+        user: {
+          id: 'usr_web',
+          org_id: 'org_web',
+          email: 'web@example.com',
+          display_name: 'Web User',
+          role: 'member',
+        },
+        resource_ticket: { token: 'rt_web_1', expires_at: '2099-01-01T00:00:00Z' },
       })
     },
   })
-  expect(connection.useConnection()).toMatchObject({
+  expect(exchangeHits).toBe(1)
+  expect(valid.connection.useConnection()).toMatchObject({
     status: 'connected',
     url: cloudUrl,
     mode: 'cloud',
     auth: 'oidc',
     user: { id: 'usr_web', email: 'web@example.com' },
   })
+  expect(valid.connection.isCloudApiSession()).toBe(true)
+  expect(valid.connection.apiEmbeddedGetUrl('/v1/runs/r1/files/a.txt')).toContain('ticket=rt_web_1')
   expect(window.location.hash).toBe('')
+  expect(valid.sessionStored.has('jaz.oidc.pending')).toBe(false)
+})
+
+test('Electron OIDC flow invokes beginOidcSignIn, opens jaz://auth/callback login URL with state, and completes via onOidcCallback', async () => {
+  const cloudUrl = 'https://jaz-cloud.example'
+  const f = await fixture({
+    discovery: () => Response.json({
+      ok: true,
+      mode: 'cloud',
+      auth: 'oidc',
+      oidc_login_url: '/v1/auth/login',
+      capabilities: { spaces: true, connected_machines: true },
+    }),
+    authExchange: (init) => {
+      expect(JSON.parse(String(init.body))).toEqual({ code: 'desktop-code-1' })
+      return Response.json({
+        token: 'desktop-oidc-token',
+        user: {
+          id: 'usr_desk',
+          org_id: 'org_desk',
+          org_name: 'Desk Org',
+          email: 'desk@example.com',
+          display_name: 'Desk User',
+          role: 'admin',
+        },
+        resource_ticket: { token: 'rt_desk_1', expires_at: '2099-01-01T00:00:00Z' },
+      })
+    },
+  })
+
+  expect(await f.connection.startCloudSignIn(cloudUrl)).toBeNull()
+  expect(f.oidcBeginCalls()).toBe(1)
+  expect(f.openedExternal).toHaveLength(1)
+  const loginUrl = new URL(f.openedExternal[0])
+  expect(loginUrl.origin).toBe(cloudUrl)
+  expect(loginUrl.pathname).toBe('/v1/auth/login')
+  expect(loginUrl.searchParams.get('client_redirect')).toBe('jaz://auth/callback')
+  const state = loginUrl.searchParams.get('state')
+  expect(state).toBeTruthy()
+
+  f.triggerElectronOidcCallback(`jaz://auth/callback#code=desktop-code-1&state=${state}`)
+  await settle()
+  expect(f.connection.useConnection()).toMatchObject({
+    status: 'connected',
+    url: cloudUrl,
+    mode: 'cloud',
+    auth: 'oidc',
+    user: { id: 'usr_desk', org_name: 'Desk Org', role: 'admin' },
+  })
+  expect(f.connection.apiEmbeddedGetUrl('/v1/runs/r1/files/doc.pdf')).toContain('ticket=rt_desk_1')
 })

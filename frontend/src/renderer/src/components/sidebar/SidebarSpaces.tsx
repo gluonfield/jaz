@@ -5,7 +5,7 @@ import { Link } from '@tanstack/react-router'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/toast'
-import { addSpaceMember, createSpace, spacesQuery, type CloudSpace } from '@/lib/api/cloud'
+import { addSpaceMember, createSpace, spacesQuery, type CloudSpace } from '@/lib/api/cloudSpaces'
 import { keys } from '@/lib/query/keys'
 
 export function SidebarSpaces({

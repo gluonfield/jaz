@@ -191,3 +191,30 @@ test('write acknowledgements keep their null-body status when Chromium exposes a
   replace('fetch', async () => Object.defineProperty(new Response(null, { status: 204 }), 'body', { value: new ReadableStream() }))
   expect(await api.post('/v1/sessions/thread/voice/transcript', [])).toBeUndefined()
 })
+
+test('assertBackendRelativePath and apiFetch reject protocol-relative and backslash paths before attaching Authorization', () => {
+  const { api } = fixture()
+  let hits = 0
+  replace('fetch', async () => {
+    hits += 1
+    return Response.json({ ok: true })
+  })
+  for (const badPath of ['//evil.example/v1/steal', '/\\evil.example/v1/steal', 'https://evil.example/v1/steal', '/v1/a\\b']) {
+    expect(() => api.apiFetch(badPath)).toThrow('backend-relative')
+    expect(() => api.apiUrl(badPath)).toThrow('backend-relative')
+    expect(() => api.apiEmbeddedGetUrl(badPath)).toThrow('backend-relative')
+  }
+  expect(hits).toBe(0)
+})
+
+test('parseBackendConnectUrl reads credentials only from fragment and ignores query params', () => {
+  const { api } = fixture()
+  expect(api.parseBackendConnectUrl('https://jaz.example/?token=leaked-query&key=leaked-key')).toEqual({
+    url: 'https://jaz.example',
+    key: '',
+  })
+  expect(api.parseBackendConnectUrl('https://jaz.example/#key=frag-secret')).toEqual({
+    url: 'https://jaz.example',
+    key: 'frag-secret',
+  })
+})

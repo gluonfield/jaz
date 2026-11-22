@@ -1,6 +1,9 @@
-import type { FolderAccessMode, MachineFolderGrant } from './api/cloud'
+import type { FolderAccessMode, MachineFolderGrant } from './api/serverTypes'
 
-const STORAGE_KEY = 'jaz.cloud.machineConfig'
+const STORAGE_KEY_PREFIX = 'jaz.cloud.machineConfig.'
+const CONTROL_CHAR_RE = /[\x00-\x1f\x7f]/
+
+export type CommandShellKind = 'posix' | 'powershell'
 
 export interface LocalMachineShareConfig {
   deviceId: string
@@ -9,8 +12,28 @@ export interface LocalMachineShareConfig {
   grants: MachineFolderGrant[]
 }
 
+function normalizeOrigin(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, '')
+  if (!trimmed) return ''
+  try {
+    return new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`).origin
+  } catch {
+    return trimmed
+  }
+}
+
+function storageKey(cloudUrl: string): string {
+  const origin = normalizeOrigin(cloudUrl)
+  return `${STORAGE_KEY_PREFIX}${origin || 'default'}`
+}
+
 function defaultDeviceId(): string {
-  return `desktop-${Math.random().toString(36).slice(2, 10)}`
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `desktop-${crypto.randomUUID().slice(0, 8)}`
+  }
+  const bytes = new Uint8Array(4)
+  crypto.getRandomValues(bytes)
+  return `desktop-${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`
 }
 
 function defaultConfig(): LocalMachineShareConfig {
@@ -22,19 +45,55 @@ function defaultConfig(): LocalMachineShareConfig {
   }
 }
 
-export function loadLocalMachineConfig(): LocalMachineShareConfig {
+export function defaultCommandShell(): CommandShellKind {
+  if (typeof navigator !== 'undefined' && /Win/i.test(navigator.platform || navigator.userAgent || '')) {
+    return 'powershell'
+  }
+  return 'posix'
+}
+
+export function validateGrantPath(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return 'Folder path is required'
+  if (CONTROL_CHAR_RE.test(trimmed)) return 'Folder path cannot contain control or newline characters'
+  return null
+}
+
+export function validateGrantId(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return 'Grant ID is required'
+  if (CONTROL_CHAR_RE.test(trimmed) || /[=:]/.test(trimmed)) {
+    return 'Grant ID cannot contain "=", ":", or control characters'
+  }
+  return null
+}
+
+export function loadLocalMachineConfig(cloudUrl = ''): LocalMachineShareConfig {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<LocalMachineShareConfig> | null
+    const parsed = JSON.parse(localStorage.getItem(storageKey(cloudUrl)) ?? 'null') as Partial<LocalMachineShareConfig> | null
     if (!parsed || typeof parsed !== 'object') return defaultConfig()
     const grants = Array.isArray(parsed.grants)
       ? parsed.grants.filter(
           (g): g is MachineFolderGrant =>
-            Boolean(g && typeof g.id === 'string' && typeof g.root_path === 'string' && (g.mode === 'ro' || g.mode === 'rw' || g.mode === 'rwd')),
+            Boolean(
+              g &&
+              typeof g.id === 'string' &&
+              typeof g.root_path === 'string' &&
+              !validateGrantId(g.id) &&
+              !validateGrantPath(g.root_path) &&
+              (g.mode === 'ro' || g.mode === 'rw' || g.mode === 'rwd'),
+            ),
         )
       : []
+    const deviceId = typeof parsed.deviceId === 'string' && parsed.deviceId.trim() && !CONTROL_CHAR_RE.test(parsed.deviceId)
+      ? parsed.deviceId.trim()
+      : defaultDeviceId()
+    const displayName = typeof parsed.displayName === 'string' && !CONTROL_CHAR_RE.test(parsed.displayName)
+      ? parsed.displayName
+      : ''
     return {
-      deviceId: typeof parsed.deviceId === 'string' && parsed.deviceId.trim() ? parsed.deviceId.trim() : defaultDeviceId(),
-      displayName: typeof parsed.displayName === 'string' ? parsed.displayName : '',
+      deviceId,
+      displayName,
       allowExec: parsed.allowExec === true,
       grants,
     }
@@ -43,9 +102,9 @@ export function loadLocalMachineConfig(): LocalMachineShareConfig {
   }
 }
 
-export function saveLocalMachineConfig(config: LocalMachineShareConfig): void {
+export function saveLocalMachineConfig(cloudUrl: string, config: LocalMachineShareConfig): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+    localStorage.setItem(storageKey(cloudUrl), JSON.stringify(config))
   } catch {
     // Preference storage failure should not break Settings.
   }
@@ -72,4 +131,57 @@ export const FOLDER_ACCESS_LABELS: Record<FolderAccessMode, string> = {
   ro: 'Read-only',
   rw: 'Read & write',
   rwd: 'Read, write & delete',
+}
+
+function quoteArg(value: string, shell: CommandShellKind): string {
+  if (CONTROL_CHAR_RE.test(value)) {
+    throw new Error('Command argument cannot contain control characters')
+  }
+  if (/^[a-zA-Z0-9._/:=@-]+$/.test(value)) return value
+  if (shell === 'powershell') {
+    return `'${value.replace(/'/g, "''")}'`
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
+// Generates a copyable `jaz connect-cloud` invocation. Intentionally omits `--token`
+// because the CLI reads `JAZ_CLOUD_TOKEN` from the process environment without leaking it to argv.
+export function buildConnectCloudCommand(input: {
+  cloudUrl: string
+  deviceId: string
+  displayName: string
+  grants: MachineFolderGrant[]
+  allowExec: boolean
+  shell?: CommandShellKind
+}): string {
+  const shell = input.shell ?? defaultCommandShell()
+  const targetUrl = normalizeOrigin(input.cloudUrl) || input.cloudUrl.trim()
+  if (!targetUrl || CONTROL_CHAR_RE.test(targetUrl)) {
+    throw new Error('Invalid cloud URL')
+  }
+  const deviceId = input.deviceId.trim() || 'workstation-1'
+  const parts = [
+    'jaz connect-cloud',
+    `--url ${quoteArg(targetUrl, shell)}`,
+    `--device-id ${quoteArg(deviceId, shell)}`,
+  ]
+  const displayName = input.displayName.trim()
+  if (displayName) {
+    parts.push(`--name ${quoteArg(displayName, shell)}`)
+  }
+  for (const grant of input.grants) {
+    const id = grant.id.trim()
+    const path = grant.root_path.trim()
+    if (!id && !path) continue
+    const idErr = validateGrantId(id)
+    if (idErr) throw new Error(idErr)
+    const pathErr = validateGrantPath(path)
+    if (pathErr) throw new Error(pathErr)
+    parts.push(`--grant ${quoteArg(`${id}=${grant.mode}:${path}`, shell)}`)
+  }
+  if (input.allowExec) {
+    parts.push('--allow-exec')
+  }
+  const continuation = shell === 'powershell' ? ' `\n  ' : ' \\\n  '
+  return parts.join(continuation)
 }

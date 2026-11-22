@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import {
   BrowserWindow,
   Menu,
@@ -22,7 +22,8 @@ import { attachWindowOpenHandler } from '@main/browserPopups'
 import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { installCredentialEncryption } from './credentialEncryption'
 import { registerDictation } from './dictation'
-import { configureAppPermissions } from './permissions'
+import { configureAppPermissions, setTrustedRendererPath, trustedWindow } from './permissions'
+import { OIDC_BEGIN_CHANNEL, createOidcCallbackGate, extractOidcCallbackArg } from './oidcProtocol'
 import { createNotifications } from './notifications'
 import { notchAccess, shareFocus } from './notchHelper'
 import { attachPreviewFindShortcuts } from './previewFind'
@@ -63,16 +64,49 @@ if (process.platform === 'darwin') {
 installBrowserProfileImport()
 installBrowserPasswords()
 
+const rendererPath = join(__dirname, '../renderer/index.html')
+setTrustedRendererPath(rendererPath)
+
+const singleInstanceLock = app.requestSingleInstanceLock()
+if (!singleInstanceLock) {
+  app.quit()
+}
+
+if (process.defaultApp && process.argv.length >= 2) {
+  app.setAsDefaultProtocolClient('jaz', process.execPath, [resolve(process.argv[1])])
+} else {
+  app.setAsDefaultProtocolClient('jaz')
+}
+
 let mainWindow: BrowserWindow | null = null
+const oidcGate = createOidcCallbackGate()
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
 const notifications = createNotifications(openInMain)
 const cloudConfig = readNodeCloudConfig(process.env)
 const connectionSession = createConnectionSession({
-  rendererPath: join(__dirname, '../renderer/index.html'),
+  rendererPath,
   localEnabled: cloudConfig.localEnabled,
   startLocal: startLocalBackend,
   stopConsumers: () => notifications.stop(),
+})
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  oidcGate.consume(url, mainWindow)
+})
+
+app.on('second-instance', (_event, argv) => {
+  const callback = extractOidcCallbackArg(argv)
+  if (callback) {
+    oidcGate.consume(callback, mainWindow)
+    return
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
 })
 
 function installApplicationMenu(): void {
@@ -289,7 +323,8 @@ function openBoardWindow(boardId: string): void {
   }
 }
 
-app.whenReady().then(() => {
+if (singleInstanceLock) {
+  app.whenReady().then(() => {
   configureBrowserSessions(join(__dirname, '../preload/chrome.js'))
   installBrowserDownloads()
   installFileActions(connectionSession)
@@ -325,7 +360,12 @@ app.whenReady().then(() => {
       return result
     })
   })
+  ipcMain.handle(OIDC_BEGIN_CHANNEL, (event) => {
+    const record = connectionSession.authorizeOwner(event)
+    oidcGate.begin(record.window.webContents.id)
+  })
   ipcMain.handle('jaz:pick-directory', async (event) => {
+    trustedWindow(event)
     const win = BrowserWindow.fromWebContents(event.sender)
     const result = win
       ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
@@ -391,7 +431,8 @@ app.whenReady().then(() => {
     mainWindow.show()
     mainWindow.focus()
   })
-})
+  })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

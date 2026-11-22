@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { uploadCloudFile } from '@/lib/api/cloud'
+import { createCloudTurn } from '@/lib/api/cloudThreads'
+import { uploadCloudFile } from '@/lib/api/cloudUploads'
 import { uploadSessionAttachment } from '@/lib/api/sessions'
 import { streamSessionMessage, type AgentStreamEvent } from '@/lib/api/stream'
 import type { SessionMessages } from '@/lib/api/types'
@@ -62,12 +63,13 @@ export function useLiveSessionSend({
     })
     setStreaming(true)
 
+    const runId = history?.session.run_id || sessionId
     const started = (async () => {
-      const runId = history?.session.run_id || sessionId
+      const isCloud = isCloudConnection()
       const attachments = files.length
         ? await Promise.all(
             files.map((file) =>
-              isCloudConnection()
+              isCloud
                 ? uploadCloudFile(runId, file, { signal: controller.signal })
                 : uploadSessionAttachment(sessionId, file, controller.signal),
             ),
@@ -77,6 +79,14 @@ export function useLiveSessionSend({
         setLive((prev) =>
           prev ? { ...prev, attachments: [...draftAttachments, ...contextAttachments, ...attachments] } : prev,
         )
+      }
+      if (isCloud) {
+        await createCloudTurn(sessionId, {
+          text,
+          uploads: [...draftAttachments, ...attachments],
+          signal: controller.signal,
+        })
+        return { accepted: Promise.resolve(), finished: Promise.resolve() }
       }
       const prepared = preparedSendMessage(options, attachments)
       return streamSessionMessage({
@@ -112,8 +122,12 @@ export function useLiveSessionSend({
       .finally(async () => {
         await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        queryClient.invalidateQueries({ queryKey: keys.usage })
-        queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
+        if (isCloudConnection()) {
+          queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
+        } else {
+          queryClient.invalidateQueries({ queryKey: keys.usage })
+          queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
+        }
         if (sendRef.current?.controller === controller) {
           setStreaming(false)
           sendRef.current = null
@@ -121,7 +135,7 @@ export function useLiveSessionSend({
         }
       })
     return accepted
-  }, [onCriticalError, queryClient, sessionId])
+  }, [history?.session.run_id, onCriticalError, queryClient, sessionId])
 
   const abort = useCallback(() => {
     const pending = sendRef.current

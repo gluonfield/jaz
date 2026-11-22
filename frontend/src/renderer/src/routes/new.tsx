@@ -14,7 +14,9 @@ import { FastModeOption } from '@/components/session/NativeModelOptions'
 import { TaskWorkspaceControl } from '@/components/session/TaskWorkspaceControl'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
-import { isSpendCapError, machinesQuery, spacesQuery } from '@/lib/api/cloud'
+import { spacesQuery } from '@/lib/api/cloudSpaces'
+import { machinesQuery } from '@/lib/api/cloudThreads'
+import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
 import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { agentLabel } from '@/lib/agentLabel'
@@ -58,12 +60,12 @@ export const Route = createFileRoute('/new')({
 // first message is on its way.
 function NewSessionPage() {
   const voice = useGlobalVoice()
-  const voiceAvailable = useQuery(voiceAvailableQuery).data
+  const isCloud = useIsCloud()
+  const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !isCloud }).data
   const navigate = useNavigate()
   const search = Route.useSearch()
   const queryClient = useQueryClient()
   const toast = useToast()
-  const isCloud = useIsCloud()
   const [creating, setCreating] = useState(false)
   const [spendCapError, setSpendCapError] = useState<string | null>(null)
   const [spaceId, setSpaceId] = useState(() => search.space ?? '')
@@ -80,9 +82,9 @@ function NewSessionPage() {
   )
   // Canvas threads show a board instead of a transcript; fixed at creation.
   const [canvas, setCanvas] = useState(false)
-  const projects = useQuery(projectsQuery)
+  const projects = useQuery({ ...projectsQuery, enabled: !isCloud })
   const project = projects.data?.find((item) => item.path === directory)
-  const workspace = useTaskWorkspace(directory)
+  const workspace = useTaskWorkspace(isCloud ? '' : directory)
   const { source: directoryInfo, ready: workspaceReady, worktree } = workspace
   const directoryIsGit = directoryInfo.data?.git === true
 
@@ -129,7 +131,10 @@ function NewSessionPage() {
     setCreating(true)
     setSpendCapError(null)
     try {
-      const baseInput = controls.sessionConfig({ directory, worktree, canvas }, text?.trim() || undefined)
+      const baseInput = controls.sessionConfig(
+        { directory: isCloud ? '' : directory, worktree: isCloud ? false : worktree, canvas },
+        text?.trim() || undefined,
+      )
       const input = isCloud
         ? {
             ...baseInput,

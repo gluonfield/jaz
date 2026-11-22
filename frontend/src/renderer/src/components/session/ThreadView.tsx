@@ -1,5 +1,5 @@
 import { useComputerControl } from '@/lib/hooks/useComputerControl'
-import { usePrefetchQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { ArrowDown, Play } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -45,7 +45,8 @@ import { HorizontalResizeHandle } from '@/components/ui/HorizontalResizeHandle'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
-import { isSpendCapError, uploadCloudFile } from '@/lib/api/cloud'
+import { uploadCloudFile } from '@/lib/api/cloudUploads'
+import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
 import { useIsCloud } from '@/lib/connection'
 import {
@@ -172,7 +173,7 @@ export function ThreadView({
   useComputerControl(sessionId)
   const detail = useSessionHistory(sessionId, reportHistoryError)
   const voice = useVoiceMode(sessionId)
-  const voiceAvailable = useQuery(voiceAvailableQuery).data
+  const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !isCloud }).data
   const { start: startVoiceConversation } = voice
   const startVoice = useLocation({ select: (location) => location.state.startVoice })
   const navigate = useNavigate()
@@ -181,8 +182,10 @@ export function ThreadView({
     void navigate({ replace: true, state: (previous) => ({ ...previous, startVoice: undefined }) })
     startVoiceConversation()
   }, [navigate, startVoice, startVoiceConversation])
-  const overview = useQuery(sessionOverviewQuery(sessionId))
-  usePrefetchQuery(sessionRepoQuery(sessionId))
+  const overview = useQuery({ ...sessionOverviewQuery(sessionId), enabled: !isCloud })
+  useEffect(() => {
+    if (!isCloud) void queryClient.prefetchQuery(sessionRepoQuery(sessionId))
+  }, [isCloud, queryClient, sessionId])
   const events = useQuery(sessionEventsQuery(sessionId))
   const shownCriticalErrors = useRef(new Set<string>())
   const [lastSessionEventAt, setLastSessionEventAt] = useState<string>()
@@ -408,10 +411,10 @@ export function ThreadView({
 
 
   useEffect(() => {
-    if (seenRequestedRef.current) return
+    if (seenRequestedRef.current || isCloud) return
     seenRequestedRef.current = true
     void markThreadSeen(sessionId).finally(() => invalidateSessionLists(queryClient))
-  }, [sessionId, queryClient])
+  }, [isCloud, sessionId, queryClient])
 
   // A deep link jumps once. Without this the effect re-fires on every streamed
   // update and drags the reader back to the linked message after they have

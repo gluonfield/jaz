@@ -327,7 +327,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
   const isCloud = useIsCloud()
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null)
   const sessions = useQuery(sidebarSessionsQuery)
-  const projects = useQuery(projectsQuery)
+  const projects = useQuery({ ...projectsQuery, enabled: !isCloud })
   const [organization, setOrganization] = useSidebarOrganization()
   const [visibleRecentCount, setVisibleRecentCount] = useState(SESSION_PAGE_SIZE)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
@@ -412,7 +412,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
     reorder.mutate(next.map((project) => project.path))
   }
 
-  if (sessions.isPending || organization === 'project' && projects.isPending) {
+  if (sessions.isPending || (!isCloud && organization === 'project' && projects.isPending)) {
     return <SkeletonRows count={4} />
   }
   if (sessions.isError && !sessions.data) {

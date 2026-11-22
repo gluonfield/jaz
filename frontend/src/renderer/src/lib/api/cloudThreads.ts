@@ -1,0 +1,613 @@
+import { queryOptions } from '@tanstack/react-query'
+import { ApiError } from '@/lib/api/response'
+import type { ModelPickerOption, PickerAgentOption } from '@/lib/modelPicker'
+import { keys } from '@/lib/query/keys'
+import { apiFetch, apiSessionRevision, get, onApiSessionChange, post } from './client'
+import type { ConnectedMachine } from './serverTypes'
+import type { Attachment, ChatMessage, MessageBlock, Session, SessionEvent, SessionMessages } from './types'
+
+export interface CloudModelProfile {
+  profile_id: string
+  provider: string
+  base_url?: string
+  display_name?: string
+  agent?: string
+  default_model?: string
+  default_effort?: string
+  models?: ModelPickerOption[]
+}
+
+export interface CloudThread {
+  id: string
+  org_id?: string
+  owner_user_id?: string
+  space_id?: string | null
+  run_id: string
+  visibility: 'private' | 'space'
+  source_type?: string
+  source_id?: string
+  title: string
+  status: string
+  turn_epoch?: number
+  turn_actor_user_id?: string | null
+  model_profile_id?: string
+  model?: string
+  reasoning_effort?: string
+  runtime_ref_json?: Record<string, unknown> | null
+  personal_sources_enabled?: boolean
+  created_at?: string
+  updated_at: string
+}
+
+export interface CloudTurn {
+  id: string
+  thread_id: string
+  org_id?: string
+  actor_user_id?: string
+  client_request_id?: string
+  turn_epoch?: number
+  status: string
+  created_at?: string
+}
+
+export interface CloudSessionEvent {
+  thread_id: string
+  seq: number
+  org_id?: string
+  turn_epoch?: number
+  actor_user_id?: string | null
+  type: string
+  payload?: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface CreateCloudThreadInput {
+  title?: string
+  space_id?: string
+  model_profile_id?: string
+  model?: string
+  reasoning_effort?: string
+  executor_target?: string
+}
+
+export interface CreateCloudTurnInput {
+  text: string
+  client_request_id?: string
+  model_profile_id?: string
+  executor_target?: string
+  require_sandbox?: boolean
+  uploads?: Attachment[]
+  signal?: AbortSignal
+}
+
+const CLOUD_PROVIDER_DEFAULTS: Record<
+  string,
+  { label: string; logoAgent: string; models: ModelPickerOption[] }
+> = {
+  openai: {
+    label: 'Codex',
+    logoAgent: 'codex',
+    models: [
+      { value: 'gpt-5.4', label: 'GPT-5.4', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: 'high' } },
+      { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: 'high' } },
+    ],
+  },
+  azure_openai: {
+    label: 'Codex Azure',
+    logoAgent: 'codex',
+    models: [
+      { value: 'gpt-5.4', label: 'GPT-5.4', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: 'high' } },
+    ],
+  },
+  anthropic: {
+    label: 'Claude',
+    logoAgent: 'claude',
+    models: [
+      { value: 'claude-opus-4-6', label: 'Claude Opus 4.6', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high', 'max'], default_effort: 'high' } },
+      { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'medium' } },
+    ],
+  },
+  bedrock: {
+    label: 'Claude Bedrock',
+    logoAgent: 'claude',
+    models: [
+      { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'medium' } },
+    ],
+  },
+  xai: {
+    label: 'Grok',
+    logoAgent: 'grok',
+    models: [
+      { value: 'grok-4', label: 'Grok 4', reasoning: { status: 'ready', efforts: ['low', 'high'], default_effort: 'high' } },
+    ],
+  },
+  openrouter: {
+    label: 'OpenRouter',
+    logoAgent: 'codex',
+    models: [],
+  },
+}
+
+function normalizeModelOption(option: ModelPickerOption): ModelPickerOption {
+  if (!option.reasoning) return option
+  return {
+    ...option,
+    reasoning: {
+      ...option.reasoning,
+      status: option.reasoning.status ?? 'ready',
+    },
+  }
+}
+
+function normalizeCloudModelProfile(raw: CloudModelProfile): CloudModelProfile {
+  const provider = (raw.provider ?? '').trim().toLowerCase()
+  const defaults = CLOUD_PROVIDER_DEFAULTS[provider]
+  const providedModels = Array.isArray(raw.models) && raw.models.length > 0
+    ? raw.models.map(normalizeModelOption)
+    : undefined
+  const models: ModelPickerOption[] = providedModels
+    ?? (raw.default_model
+      ? [
+          {
+            value: raw.default_model,
+            label: raw.default_model,
+            ...(raw.default_effort
+              ? { reasoning: { status: 'ready' as const, efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: raw.default_effort } }
+              : {}),
+          },
+          ...(defaults?.models.filter((item) => item.value !== raw.default_model) ?? []),
+        ]
+      : defaults?.models.length
+        ? defaults.models
+        : [{ value: raw.profile_id, label: raw.display_name?.trim() || raw.profile_id }])
+  const defaultModel = raw.default_model?.trim() || models[0]?.value || ''
+  const defaultEffort = raw.default_effort?.trim() || models.find((m) => m.value === defaultModel)?.reasoning?.default_effort || ''
+  return {
+    ...raw,
+    provider,
+    display_name: raw.display_name?.trim() || defaults?.label || raw.provider || raw.profile_id,
+    agent: raw.agent?.trim() || defaults?.logoAgent || 'codex',
+    default_model: defaultModel,
+    default_effort: defaultEffort,
+    models,
+  }
+}
+
+export function cloudProfileToAgentOption(profile: CloudModelProfile): PickerAgentOption {
+  const provider = profile.provider.trim().toLowerCase()
+  const defaults = CLOUD_PROVIDER_DEFAULTS[provider]
+  return {
+    id: profile.profile_id,
+    label: profile.display_name?.trim() || defaults?.label || profile.provider || profile.profile_id,
+    logoAgent: profile.agent?.trim() || defaults?.logoAgent || 'codex',
+    location: 'cloud',
+    provider,
+  }
+}
+
+export async function listCloudModelProfiles(signal?: AbortSignal): Promise<CloudModelProfile[]> {
+  try {
+    const response = await get<
+      | { models?: CloudModelProfile[] | null; profiles?: CloudModelProfile[] | null; model_profiles?: CloudModelProfile[] | null }
+      | CloudModelProfile[]
+    >('/v1/models', { signal })
+    const raw = Array.isArray(response)
+      ? response
+      : (response.models ?? response.profiles ?? response.model_profiles ?? [])
+    return raw.filter((item) => Boolean(item?.profile_id)).map(normalizeCloudModelProfile)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return []
+    throw error
+  }
+}
+
+export const cloudModelProfilesQuery = queryOptions({
+  queryKey: keys.cloudModelProfiles,
+  queryFn: ({ signal }) => listCloudModelProfiles(signal),
+  staleTime: 60_000,
+  retry: false,
+})
+
+export async function listMachines(signal?: AbortSignal): Promise<ConnectedMachine[]> {
+  const response = await get<{ machines?: ConnectedMachine[] | null } | ConnectedMachine[]>('/v1/machines', { signal })
+  const items = Array.isArray(response) ? response : (response.machines ?? [])
+  return items.map((machine) => ({
+    ...machine,
+    capabilities: machine.capabilities ?? {},
+    folder_grants: machine.folder_grants ?? [],
+  }))
+}
+
+export const machinesQuery = queryOptions({
+  queryKey: keys.cloudMachines,
+  queryFn: ({ signal }) => listMachines(signal),
+  refetchInterval: 15_000,
+})
+
+function mapCloudThreadStatus(status: string | undefined): Session['status'] {
+  switch ((status ?? '').toLowerCase()) {
+    case 'running':
+    case 'queued':
+      return 'running'
+    case 'error':
+    case 'failed':
+      return 'error'
+    case 'interrupted':
+      return 'interrupted'
+    default:
+      return 'idle'
+  }
+}
+
+export function cloudThreadToSession(thread: CloudThread): Session {
+  const ref = thread.runtime_ref_json && typeof thread.runtime_ref_json === 'object' ? thread.runtime_ref_json : {}
+  const updatedAt = thread.updated_at || thread.created_at || new Date().toISOString()
+  return {
+    id: thread.id,
+    slug: thread.id,
+    title: thread.title || undefined,
+    source_type: thread.source_type || undefined,
+    status: mapCloudThreadStatus(thread.status),
+    runtime: 'acp',
+    runtime_ref: {
+      type: 'acp',
+      agent: typeof ref.agent === 'string' && ref.agent ? ref.agent : 'codex',
+      ...(typeof ref.cwd === 'string' ? { cwd: ref.cwd } : {}),
+    },
+    model_provider: thread.model_profile_id || undefined,
+    model: thread.model || undefined,
+    reasoning_effort: thread.reasoning_effort || undefined,
+    space_id: thread.space_id || undefined,
+    visibility: thread.visibility === 'space' || thread.space_id ? 'space' : 'private',
+    run_id: thread.run_id || thread.id,
+    personal_sources_enabled: thread.personal_sources_enabled,
+    created_at: thread.created_at || updatedAt,
+    updated_at: updatedAt,
+    last_attention_at: updatedAt,
+  }
+}
+
+export async function listCloudThreads(spaceId?: string, signal?: AbortSignal): Promise<CloudThread[]> {
+  const query = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : ''
+  const response = await get<{ threads?: CloudThread[] | null } | CloudThread[]>(`/v1/threads${query}`, { signal })
+  if (Array.isArray(response)) return response
+  return response.threads ?? []
+}
+
+export function createCloudThread(input: CreateCloudThreadInput): Promise<CloudThread> {
+  return post<CloudThread>('/v1/threads', {
+    ...(input.title ? { title: input.title } : {}),
+    ...(input.space_id ? { space_id: input.space_id } : {}),
+    ...(input.model_profile_id ? { model_profile_id: input.model_profile_id } : {}),
+    ...(input.model ? { model: input.model } : {}),
+    ...(input.reasoning_effort ? { reasoning_effort: input.reasoning_effort } : {}),
+    ...(input.executor_target ? { executor_target: input.executor_target } : {}),
+  })
+}
+
+export function getCloudThread(threadId: string, signal?: AbortSignal): Promise<CloudThread> {
+  return get<CloudThread>(`/v1/threads/${encodeURIComponent(threadId)}`, { signal })
+}
+
+export function createCloudTurn(
+  threadId: string,
+  input: CreateCloudTurnInput,
+): Promise<{ turn: CloudTurn; replayed: boolean }> {
+  const clientRequestId =
+    input.client_request_id?.trim() ||
+    (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  return post<{ turn: CloudTurn; replayed: boolean }>(
+    `/v1/threads/${encodeURIComponent(threadId)}/turns`,
+    {
+      client_request_id: clientRequestId,
+      text: input.text,
+      prompt: input.text,
+      ...(input.model_profile_id ? { model_profile_id: input.model_profile_id } : {}),
+      ...(input.executor_target ? { executor_target: input.executor_target } : {}),
+      ...(input.require_sandbox !== undefined ? { require_sandbox: input.require_sandbox } : {}),
+      ...(input.uploads?.length ? { uploads: input.uploads } : {}),
+    },
+    input.signal,
+  )
+}
+
+export function parseCloudSseText(rawText: string): CloudSessionEvent[] {
+  const events: CloudSessionEvent[] = []
+  const normalized = rawText.replace(/\r\n/g, '\n')
+  for (const block of normalized.split('\n\n')) {
+    const parsed = parseSseFrame(block)
+    if (parsed) events.push(parsed)
+  }
+  return events
+}
+
+function parseSseFrame(frame: string): CloudSessionEvent | null {
+  let eventName = ''
+  let eventId = ''
+  const dataLines: string[] = []
+  for (const line of frame.split('\n')) {
+    if (!line || line.startsWith(':')) continue
+    if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim()
+    } else if (line.startsWith('id:')) {
+      eventId = line.slice(3).trim()
+    } else if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trimStart())
+    }
+  }
+  if (dataLines.length === 0) return null
+  try {
+    const parsed = JSON.parse(dataLines.join('\n')) as Partial<CloudSessionEvent>
+    const seq = typeof parsed.seq === 'number' ? parsed.seq : Number.parseInt(eventId, 10) || 0
+    return {
+      thread_id: parsed.thread_id ?? '',
+      seq,
+      org_id: parsed.org_id,
+      turn_epoch: parsed.turn_epoch,
+      actor_user_id: parsed.actor_user_id,
+      type: parsed.type || eventName || 'message',
+      payload: parsed.payload ?? null,
+      created_at: parsed.created_at || new Date().toISOString(),
+    }
+  } catch {
+    return null
+  }
+}
+
+export function cloudEventToSessionEvent(threadId: string, ev: CloudSessionEvent): SessionEvent {
+  const payload = ev.payload && typeof ev.payload === 'object' ? ev.payload : {}
+  const base: SessionEvent = {
+    seq: ev.seq,
+    session_id: ev.thread_id || threadId,
+    type: ev.type,
+    at: ev.created_at,
+  }
+  if (ev.type === 'acp' && payload.acp && typeof payload.acp === 'object') {
+    return { ...base, ...(payload as Partial<SessionEvent>) }
+  }
+  if (ev.type === 'assistant.delta' || ev.type === 'agent_message_chunk' || ev.type === 'assistant.message') {
+    const text = typeof payload.text === 'string'
+      ? payload.text
+      : typeof payload.delta === 'string'
+        ? payload.delta
+        : ''
+    return {
+      ...base,
+      type: 'acp',
+      acp: {
+        id: threadId,
+        slug: threadId,
+        agent: 'codex',
+        session_id: threadId,
+        state: 'running',
+        assistant: text,
+        last_event_at: ev.created_at,
+      },
+    }
+  }
+  if (ev.type === 'turn.completed' || ev.type === 'turn.failed' || ev.type === 'turn.interrupted') {
+    const state = ev.type === 'turn.completed' ? 'idle' : ev.type === 'turn.failed' ? 'failed' : 'cancelled'
+    const error = typeof payload.error === 'string' ? payload.error : undefined
+    return {
+      ...base,
+      type: 'acp',
+      acp: {
+        id: threadId,
+        slug: threadId,
+        agent: 'codex',
+        session_id: threadId,
+        state,
+        ...(error ? { error } : {}),
+        last_event_at: ev.created_at,
+      },
+    }
+  }
+  return { ...base, ...(payload as Partial<SessionEvent>), seq: ev.seq, session_id: ev.thread_id || threadId, at: ev.created_at }
+}
+
+export function projectCloudThreadMessages(thread: CloudThread, rawEvents: CloudSessionEvent[]): SessionMessages {
+  const session = cloudThreadToSession(thread)
+  const messages: ChatMessage[] = []
+  const events: SessionEvent[] = []
+  let latestSeq = 0
+  let acpState = session.status === 'running' ? 'running' : 'idle'
+  let pendingAssistantText = ''
+  let pendingAssistantSeq = 0
+  let pendingAssistantAt = ''
+
+  const flushPendingAssistant = () => {
+    if (!pendingAssistantText) return
+    messages.push({
+      seq: pendingAssistantSeq,
+      role: 'assistant',
+      content: pendingAssistantText,
+      blocks: [{ type: 'text', text: pendingAssistantText }],
+      created_at: pendingAssistantAt,
+    })
+    pendingAssistantText = ''
+    pendingAssistantSeq = 0
+    pendingAssistantAt = ''
+  }
+
+  for (const ev of rawEvents) {
+    if (ev.seq > latestSeq) latestSeq = ev.seq
+    const payload = ev.payload && typeof ev.payload === 'object' ? ev.payload : {}
+    const text = typeof payload.text === 'string'
+      ? payload.text
+      : typeof payload.prompt === 'string'
+        ? payload.prompt
+        : typeof payload.content === 'string'
+          ? payload.content
+          : typeof payload.delta === 'string'
+            ? payload.delta
+            : ''
+
+    if ((ev.type === 'turn.user' || ev.type === 'user_message' || ev.type === 'turn.started') && text) {
+      flushPendingAssistant()
+      const blocks: MessageBlock[] = [{ type: 'text', text }]
+      messages.push({
+        seq: ev.seq,
+        role: 'user',
+        from_user: true,
+        actor_user_id: ev.actor_user_id ?? undefined,
+        actor_display_name: typeof payload.actor_display_name === 'string' ? payload.actor_display_name : undefined,
+        actor_email: typeof payload.actor_email === 'string' ? payload.actor_email : undefined,
+        content: text,
+        blocks,
+        created_at: ev.created_at,
+      })
+      continue
+    }
+
+    if (ev.type === 'assistant.delta' || ev.type === 'agent_message_chunk') {
+      if (text) {
+        pendingAssistantText += text
+        pendingAssistantSeq = ev.seq
+        pendingAssistantAt = ev.created_at
+      }
+      continue
+    }
+
+    if ((ev.type === 'assistant.message' || ev.type === 'turn.assistant') && text) {
+      pendingAssistantText = ''
+      messages.push({
+        seq: ev.seq,
+        role: 'assistant',
+        content: text,
+        blocks: [{ type: 'text', text }],
+        created_at: ev.created_at,
+      })
+      continue
+    }
+
+    if (ev.type === 'turn.completed') {
+      flushPendingAssistant()
+      acpState = 'idle'
+    } else if (ev.type === 'turn.failed') {
+      flushPendingAssistant()
+      acpState = 'failed'
+    } else if (ev.type === 'turn.interrupted') {
+      flushPendingAssistant()
+      acpState = 'cancelled'
+    }
+
+    events.push(cloudEventToSessionEvent(thread.id, ev))
+  }
+
+  flushPendingAssistant()
+
+  return {
+    session,
+    messages,
+    events,
+    has_earlier: false,
+    history_revision: Math.max(1, latestSeq),
+    latest_event_seq: latestSeq,
+    acp_state: acpState,
+  }
+}
+
+export async function fetchCloudThreadMessages(threadId: string, signal?: AbortSignal): Promise<SessionMessages> {
+  const [thread, eventsRes] = await Promise.all([
+    getCloudThread(threadId, signal),
+    apiFetch(`/v1/threads/${encodeURIComponent(threadId)}/events?once=1`, {
+      headers: { Accept: 'text/event-stream' },
+      signal,
+    }),
+  ])
+  const rawEvents = eventsRes.ok ? parseCloudSseText(await eventsRes.text()) : []
+  return projectCloudThreadMessages(thread, rawEvents)
+}
+
+export function openCloudThreadEvents(
+  threadId: string,
+  afterSeq: number,
+  onEvent: (event: SessionEvent) => void,
+  onConnection?: (connected: boolean) => void,
+): () => void {
+  let closed = false
+  let lastSeq = afterSeq
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let activeController: AbortController | null = null
+  let streamedAssistant = ''
+  const revision = apiSessionRevision()
+
+  function emitCloudEvent(parsed: CloudSessionEvent): void {
+    if (parsed.type === 'turn.started' || parsed.type === 'turn.user' || parsed.type === 'user_message') {
+      streamedAssistant = ''
+    } else if (parsed.type === 'assistant.delta' || parsed.type === 'agent_message_chunk') {
+      const payload = parsed.payload && typeof parsed.payload === 'object' ? parsed.payload : {}
+      const chunk = typeof payload.text === 'string'
+        ? payload.text
+        : typeof payload.delta === 'string'
+          ? payload.delta
+          : ''
+      streamedAssistant += chunk
+      onEvent(cloudEventToSessionEvent(threadId, {
+        ...parsed,
+        payload: { ...payload, text: streamedAssistant },
+      }))
+      return
+    } else if (parsed.type === 'turn.completed' || parsed.type === 'turn.failed' || parsed.type === 'turn.interrupted') {
+      streamedAssistant = ''
+    }
+    onEvent(cloudEventToSessionEvent(threadId, parsed))
+  }
+
+  async function connect(): Promise<void> {
+    if (closed || apiSessionRevision() !== revision) return
+    const controller = new AbortController()
+    activeController = controller
+    const suffix = lastSeq > 0 ? `?after_seq=${lastSeq}` : ''
+    try {
+      const response = await apiFetch(`/v1/threads/${encodeURIComponent(threadId)}/events${suffix}`, {
+        headers: { Accept: 'text/event-stream' },
+        signal: controller.signal,
+      })
+      if (!response.ok || !response.body) {
+        throw new Error(`Cloud event stream failed (${response.status})`)
+      }
+      if (closed || apiSessionRevision() !== revision) return
+      onConnection?.(true)
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (closed || apiSessionRevision() !== revision) return
+        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
+        let sep = buffer.indexOf('\n\n')
+        while (sep !== -1) {
+          const parsed = parseSseFrame(buffer.slice(0, sep))
+          buffer = buffer.slice(sep + 2)
+          if (parsed) {
+            if (parsed.seq > lastSeq) lastSeq = parsed.seq
+            emitCloudEvent(parsed)
+          }
+          sep = buffer.indexOf('\n\n')
+        }
+      }
+    } catch {
+      // Reconnect below unless closed.
+    }
+    if (!closed && apiSessionRevision() === revision) {
+      onConnection?.(false)
+      retryTimer = setTimeout(() => void connect(), 2_000)
+    }
+  }
+
+  const unsubscribe = onApiSessionChange(close)
+  function close(): void {
+    closed = true
+    clearTimeout(retryTimer)
+    activeController?.abort()
+    activeController = null
+    unsubscribe()
+  }
+
+  void connect()
+  return close
+}

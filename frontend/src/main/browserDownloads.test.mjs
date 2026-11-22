@@ -32,6 +32,8 @@ if (process.env.JAZ_DOWNLOAD_TEST_CHILD === '1') {
       showItemInFolder: (path) => revealed.push(path),
     },
   }))
+  const { setTrustedRendererPath } = await import('./permissions')
+  setTrustedRendererPath('/app/out/renderer/index.html')
   const { installBrowserDownloads } = await import('./browserDownloads')
   const invoke = (action, request = event) => handlers.get('jaz:browser-downloads')(request, action)
   const reload = () => {

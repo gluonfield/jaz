@@ -1,16 +1,35 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import {
+  beginPendingOidcLogin,
   buildOidcLoginUrl,
-  type CloudUser,
-  type ServerAuthMethod,
-  type ServerCapabilities,
-  type ServerMode,
-} from '@/lib/api/cloud'
+  consumePendingOidcLogin,
+  exchangeOidcCode,
+  parseOidcCallbackUrl,
+  peekPendingOidcLogin,
+  validateOidcCallback,
+} from '@/lib/api/cloudAuth'
+import type {
+  CloudUser,
+  ServerAuthMethod,
+  ServerCapabilities,
+  ServerMode,
+} from '@/lib/api/serverTypes'
 import {
-  apiBaseUrl, cachedApiAuthToken, clearApiSession,
-  consumeStartupConnectUrl, isLocalBackendUrl, localBaseUrl, normalizeBaseUrl,
-  parseBackendConnectUrl, rememberApiAuthToken, rememberPendingOidcServer, restoreApiAuthToken,
-  secureBackendConnection, setApiAuthToken, setApiBaseUrl, onApiAuthRejected,
+  apiBaseUrl,
+  cachedApiAuthToken,
+  clearApiSession,
+  isLocalBackendUrl,
+  localBaseUrl,
+  normalizeBaseUrl,
+  onApiAuthRejected,
+  parseBackendConnectUrl,
+  rememberApiAuthToken,
+  restoreApiAuthToken,
+  secureBackendConnection,
+  setApiAuthToken,
+  setApiBaseUrl,
+  setApiServerMode,
+  setResourceTicket,
 } from '@/lib/api/client'
 import { rememberBackend, removeKnownBackend, updateBackendMetadata } from '@/lib/backends'
 import { clientRuntime, openExternal } from '@/lib/clientRuntime'
@@ -44,7 +63,21 @@ type ServerMeta = {
 }
 type Candidate = VerifiedSession & { ticket?: ResourceTicket; user?: CloudUser; meta?: ServerMeta }
 type SavedCredential = { token: string }
+type DiscoverySuccess = Extract<ServerDiscovery, { ok: true }>
+type ProbeOptions = {
+  explicitToken?: string
+  resolveSaved?: () => Promise<SavedCredential>
+  onSavedError?: () => string
+  remembered: boolean
+  allowWebCookie?: boolean
+  retryOnRecoverable?: boolean
+  useCachedDiscovery?: boolean
+  fallbackMeta?: ServerMeta
+  missingCredentialError?: (meta: ServerMeta) => string
+}
+
 const DEFAULT_META: ServerMeta = { mode: 'local', auth: 'none', oidcLoginUrl: '', capabilities: {} }
+const CLOUD_FALLBACK_META: ServerMeta = { mode: 'cloud', auth: 'oidc', oidcLoginUrl: '/v1/auth/login', capabilities: {} }
 const PREFERENCE_KEY = 'jaz.connection'
 const bridge = ['main', 'board', 'launcher'].includes(clientRuntime.windowKind) ? clientRuntime.connectionSession : undefined
 const desktop = bridge?.read()
@@ -52,6 +85,7 @@ export const ownsConnection = desktop?.owner ?? clientRuntime.windowKind === 'ma
 let authoritative = desktop?.snapshot
 let attempt: Attempt | null = null
 let pollTimer: ReturnType<typeof setTimeout> | undefined
+const discoveryCache = new Map<string, DiscoverySuccess>()
 let state: ConnectionState = {
   status: 'checking',
   url: apiBaseUrl(),
@@ -144,13 +178,35 @@ function current(value: Attempt): boolean {
   return attempt === value && !value.controller.signal.aborted && (!authoritative || authoritative.revision === value.revision)
 }
 
-function discoveryMeta(discovery: Extract<ServerDiscovery, { ok: true }>): ServerMeta {
+function discoveryMeta(discovery: DiscoverySuccess): ServerMeta {
   return {
     mode: discovery.mode,
     auth: discovery.auth,
     oidcLoginUrl: discovery.oidcLoginUrl,
     capabilities: discovery.capabilities,
   }
+}
+
+async function discoverServer(
+  url: string,
+  signal?: AbortSignal,
+  options: { useCache?: boolean } = {},
+): Promise<ServerDiscovery> {
+  const origin = normalizeBaseUrl(url)
+  if (options.useCache) {
+    const cached = discoveryCache.get(origin)
+    if (cached) return cached
+  }
+  const result = await fetchServerDiscovery(origin, signal)
+  if (result.ok) {
+    discoveryCache.set(origin, result)
+    updateBackendMetadata(origin, {
+      mode: result.mode,
+      auth: result.auth,
+      oidcLoginUrl: result.oidcLoginUrl,
+    })
+  }
+  return result
 }
 
 function begin(url: string, announce = true): Attempt {
@@ -206,6 +262,7 @@ function activate(value: Attempt, candidate: Candidate): void {
     })
     value.revision = authoritative.revision
   }
+  setApiServerMode(meta.mode)
   setApiAuthToken(candidate.url, candidate.token, candidate.ticket)
   setState({
     status: 'connected',
@@ -253,27 +310,116 @@ async function verifyCandidate(
   return readAccess(url, token, signal)
 }
 
-async function verify(value: Attempt, candidate: Candidate): Promise<string | null> {
-  const discovery = await fetchServerDiscovery(value.url, value.controller.signal)
-  if (!current(value)) {
-    return null
+async function savedCredential(url: string): Promise<SavedCredential> {
+  if (clientRuntime.kind === 'web') {
+    return await loadBrowserCredential(url) || { token: '' }
   }
-  const meta = discovery.ok ? discoveryMeta(discovery) : (candidate.meta ?? DEFAULT_META)
-  const access = await verifyCandidate(value.url, candidate.token, meta, value.controller.signal)
-  if (!current(value)) {
-    return null
-  }
-  if (!access.ok) {
-    if (access.recoverable) {
-      setState({ status: 'disconnected', error: access.error })
-      pollTimer = setTimeout(() => void verify(value, { ...candidate, meta }), 5000)
+  return { token: restoreApiAuthToken(url) }
+}
+
+async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<string | null> {
+  let cachedSaved: SavedCredential | undefined
+
+  const run = async (useCache: boolean): Promise<string | null> => {
+    const discovery = await discoverServer(value.url, value.controller.signal, { useCache })
+    if (!current(value)) {
+      return null
+    }
+    if (!discovery.ok) {
+      if (options.retryOnRecoverable && discovery.recoverable) {
+        setState({ status: 'disconnected', error: discovery.error })
+        pollTimer = setTimeout(() => void run(false), 5000)
+        return discovery.error
+      }
+      if (!options.fallbackMeta) {
+        block(discovery.error)
+        return discovery.error
+      }
+    }
+
+    const meta = discovery.ok ? discoveryMeta(discovery) : (options.fallbackMeta ?? DEFAULT_META)
+    if (discovery.ok && !discovery.authRequired) {
+      activate(value, { url: value.url, token: '', remembered: false, meta })
+      return null
+    }
+
+    let token = options.explicitToken ?? ''
+    let remembered = options.remembered
+    if (!token && options.resolveSaved) {
+      try {
+        if (cachedSaved === undefined) {
+          cachedSaved = await options.resolveSaved()
+        }
+        token = cachedSaved.token
+        remembered = remembered || Boolean(token)
+      } catch (error) {
+        if (!current(value)) return null
+        if (options.onSavedError) {
+          const message = options.onSavedError()
+          block(message, false, meta)
+          return message
+        }
+        if (clientRuntime.kind !== 'web') {
+          const message = error instanceof Error ? error.message : 'Could not unlock the saved connection.'
+          block(message, false, meta)
+          return message
+        }
+        cachedSaved = { token: '' }
+        token = ''
+      }
+      if (!current(value)) return null
+    }
+
+    if (!token) {
+      if (options.allowWebCookie && meta.auth === 'oidc' && clientRuntime.kind === 'web') {
+        const cookieAccess = await readCloudAccess(value.url, '', value.controller.signal)
+        if (!current(value)) return null
+        if (cookieAccess.ok) {
+          activate(value, {
+            url: value.url,
+            token: '',
+            ticket: cookieAccess.ticket,
+            user: cookieAccess.user,
+            remembered,
+            meta,
+          })
+          return null
+        }
+      }
+      const error = options.missingCredentialError
+        ? options.missingCredentialError(meta)
+        : meta.auth === 'oidc'
+          ? 'Sign in with SSO to connect to this server'
+          : 'Authentication required to connect to this server'
+      block(error, false, meta)
+      return error
+    }
+
+    const access = await verifyCandidate(value.url, token, meta, value.controller.signal)
+    if (!current(value)) {
+      return null
+    }
+    if (!access.ok) {
+      if (options.retryOnRecoverable && access.recoverable) {
+        setState({ status: 'disconnected', error: access.error })
+        pollTimer = setTimeout(() => void run(false), 5000)
+        return access.error
+      }
+      block(access.error, false, meta)
       return access.error
     }
-    block(access.error, false, meta)
-    return access.error
+    activate(value, {
+      url: value.url,
+      token,
+      ticket: access.ticket,
+      user: access.user,
+      remembered,
+      meta,
+    })
+    return null
   }
-  activate(value, { ...candidate, ticket: access.ticket, user: access.user, meta })
-  return null
+
+  return run(Boolean(options.useCachedDiscovery))
 }
 
 // A single missed probe is usually a busy client or backend, not an outage.
@@ -283,7 +429,7 @@ function schedulePoll(value: Attempt, candidate: Candidate, missed = false): voi
     if (!current(value)) {
       return
     }
-    const discovery = await fetchServerDiscovery(value.url, value.controller.signal)
+    const discovery = await discoverServer(value.url, value.controller.signal)
     if (!current(value)) {
       return
     }
@@ -304,6 +450,9 @@ function schedulePoll(value: Attempt, candidate: Candidate, missed = false): voi
         setState({ status: 'reconnecting', error: access.error })
       }
     } else {
+      if ('ticket' in access && access.ticket) {
+        setResourceTicket(value.url, access.ticket)
+      }
       const nextUser = 'user' in access && access.user ? access.user : state.user
       setState({ status: 'connected', error: null, user: nextUser })
     }
@@ -311,11 +460,20 @@ function schedulePoll(value: Attempt, candidate: Candidate, missed = false): voi
   }, 5000)
 }
 
-async function savedCredential(url: string): Promise<SavedCredential> {
-  if (clientRuntime.kind === 'web') {
-    return await loadBrowserCredential(url) || { token: '' }
+function consumeWebOidcCallback(): string | null {
+  if (clientRuntime.kind !== 'web') return null
+  const hash = window.location.hash
+  if (!hash) return null
+  const parsed = parseOidcCallbackUrl(hash)
+  if (!parsed.code && !parsed.token) return null
+  try {
+    const clean = new URL(window.location.href)
+    clean.hash = ''
+    window.history.replaceState(window.history.state, '', clean.toString())
+  } catch {
+    // Clearing the fragment is best-effort.
   }
-  return { token: restoreApiAuthToken(url) }
+  return hash
 }
 
 export async function startCloudSignIn(baseUrl: string, oidcLoginUrl?: string): Promise<string | null> {
@@ -325,23 +483,18 @@ export async function startCloudSignIn(baseUrl: string, oidcLoginUrl?: string): 
   }
   let loginPath = oidcLoginUrl?.trim() ?? ''
   if (!loginPath) {
-    const discovery = await fetchServerDiscovery(origin)
+    const discovery = await discoverServer(origin, undefined, { useCache: true })
     if (!discovery.ok) return discovery.error
-    updateBackendMetadata(origin, {
-      mode: discovery.mode,
-      auth: discovery.auth,
-      oidcLoginUrl: discovery.oidcLoginUrl,
-    })
     if (discovery.auth !== 'oidc') {
       return connectRemote(origin)
     }
     loginPath = discovery.oidcLoginUrl || '/v1/auth/login'
   }
-  rememberPendingOidcServer(origin)
+  const pending = beginPendingOidcLogin(origin)
   if (clientRuntime.kind === 'web') {
     const sameOrigin = window.location.origin === origin
-    const callback = sameOrigin ? undefined : `${window.location.origin}${window.location.pathname}`
-    const target = buildOidcLoginUrl(origin, loginPath, callback)
+    const clientRedirect = sameOrigin ? undefined : `${window.location.origin}${window.location.pathname}`
+    const target = buildOidcLoginUrl(origin, loginPath, { clientRedirect, state: pending.state })
     if (typeof window.location.assign === 'function') {
       window.location.assign(target)
     } else {
@@ -349,11 +502,68 @@ export async function startCloudSignIn(baseUrl: string, oidcLoginUrl?: string): 
     }
     return null
   }
-  const desktopCallback = window.location.origin && /^https?:/i.test(window.location.origin)
-    ? `${window.location.origin}${window.location.pathname}`
-    : 'jaz://auth/callback'
-  openExternal(buildOidcLoginUrl(origin, loginPath, desktopCallback))
+  await clientRuntime.beginOidcSignIn?.()
+  const target = buildOidcLoginUrl(origin, loginPath, {
+    clientRedirect: 'jaz://auth/callback',
+    state: pending.state,
+  })
+  openExternal(target)
   return null
+}
+
+export async function completeOidcCallback(
+  rawCallbackUrl: string,
+  options: { passive?: boolean } = {},
+): Promise<string | null> {
+  const parsed = parseOidcCallbackUrl(rawCallbackUrl)
+  if (!parsed.code && !parsed.token) {
+    return options.passive ? null : 'Callback did not include an authorization code or session token'
+  }
+  const pending = consumePendingOidcLogin()
+  if (!pending && options.passive) {
+    return null
+  }
+  const validated = validateOidcCallback(rawCallbackUrl, pending)
+  if (!validated.ok) {
+    if (!options.passive) {
+      block(validated.error)
+    }
+    return validated.error
+  }
+
+  const value = begin(validated.server)
+  clearConnectionPreference()
+  try {
+    if (validated.code) {
+      const exchanged = await exchangeOidcCode(validated.server, validated.code, value.controller.signal)
+      if (!current(value)) return null
+      const discovery = await discoverServer(validated.server, value.controller.signal, { useCache: true })
+      if (!current(value)) return null
+      const meta = discovery.ok ? discoveryMeta(discovery) : CLOUD_FALLBACK_META
+      activate(value, {
+        url: validated.server,
+        token: exchanged.token,
+        ticket: exchanged.ticket,
+        user: exchanged.user,
+        remembered: false,
+        meta,
+      })
+      return null
+    }
+    return await probeAndVerify(value, {
+      explicitToken: validated.token,
+      remembered: false,
+      allowWebCookie: false,
+      retryOnRecoverable: false,
+      useCachedDiscovery: true,
+      fallbackMeta: CLOUD_FALLBACK_META,
+    })
+  } catch (error) {
+    if (!current(value)) return null
+    const message = error instanceof Error ? error.message : 'Cloud sign-in failed'
+    block(message)
+    return message
+  }
 }
 
 export async function connectRemote(input: string): Promise<string | null> {
@@ -363,63 +573,17 @@ export async function connectRemote(input: string): Promise<string | null> {
     return 'Remote connections require HTTPS'
   }
   const cached = cachedApiAuthToken(url)
-  let remembered = !parsed.key && authoritative?.session?.url === url && authoritative.session.token === cached && authoritative.session.remembered === true
+  const remembered = !parsed.key && authoritative?.session?.url === url && authoritative.session.token === cached && authoritative.session.remembered === true
   const value = begin(url)
   clearConnectionPreference()
   try {
-    const discovery = await fetchServerDiscovery(url, value.controller.signal)
-    if (!current(value)) {
-      return null
-    }
-    if (!discovery.ok) {
-      block(discovery.error)
-      return discovery.error
-    }
-    const meta = discoveryMeta(discovery)
-    updateBackendMetadata(url, { mode: meta.mode, auth: meta.auth, oidcLoginUrl: meta.oidcLoginUrl })
-
-    if (!discovery.authRequired) {
-      activate(value, { url, token: '', remembered: false, meta })
-      return null
-    }
-
-    let token = parsed.key || cached
-    if (!token) {
-      const saved = await savedCredential(url).catch((error): SavedCredential => {
-        if (clientRuntime.kind !== 'web') throw error
-        return { token: '' }
-      })
-      token = saved.token
-      remembered = Boolean(token)
-    }
-    if (!current(value)) return null
-
-    if (!token) {
-      if (meta.auth === 'oidc' && clientRuntime.kind === 'web') {
-        const cookieAccess = await readCloudAccess(url, '', value.controller.signal)
-        if (!current(value)) return null
-        if (cookieAccess.ok) {
-          activate(value, { url, token: '', remembered: false, user: cookieAccess.user, meta })
-          return null
-        }
-      }
-      const error = meta.auth === 'oidc'
-        ? 'Sign in with SSO to connect to this server'
-        : 'Authentication required to connect to this server'
-      block(error, false, meta)
-      return error
-    }
-
-    const access = await verifyCandidate(url, token, meta, value.controller.signal)
-    if (!current(value)) {
-      return null
-    }
-    if (!access.ok) {
-      block(access.error, false, meta)
-      return access.error
-    }
-    activate(value, { url, token, ticket: access.ticket, user: access.user, remembered, meta })
-    return null
+    return await probeAndVerify(value, {
+      explicitToken: parsed.key || cached,
+      resolveSaved: () => savedCredential(url),
+      remembered,
+      allowWebCookie: true,
+      retryOnRecoverable: false,
+    })
   } catch (error) {
     if (!current(value)) {
       return null
@@ -446,7 +610,12 @@ export async function startLocal(): Promise<string | null> {
       if (!local?.ok || local.url !== LOCAL_URL) {
         throw new Error('Local backend did not start at its trusted origin')
       }
-      return await verify(value, { url: LOCAL_URL, token: cached, remembered: false })
+      return await probeAndVerify(value, {
+        explicitToken: cached,
+        remembered: false,
+        retryOnRecoverable: true,
+        fallbackMeta: DEFAULT_META,
+      })
     }
     if (!bridge || !desktop) {
       throw new Error('Local authenticated startup requires the desktop app')
@@ -472,15 +641,17 @@ export function disconnectBackend(): void {
 }
 
 export function forgetBackend(url: string): void {
-  if (normalizeBaseUrl(url) === state.url) {
+  const origin = normalizeBaseUrl(url)
+  discoveryCache.delete(origin)
+  if (origin === state.url) {
     disconnectBackend()
   }
   if (clientRuntime.kind === 'web') {
-    void forgetBrowserCredential(normalizeBaseUrl(url)).catch(() => setState({ error: 'Could not remove the saved browser login. Check site storage access.' }))
+    void forgetBrowserCredential(origin).catch(() => setState({ error: 'Could not remove the saved browser login. Check site storage access.' }))
   }
   removeKnownBackend(url)
   const preference = connectionPreference()
-  if (preference?.mode === 'remote' && preference.remoteUrl === normalizeBaseUrl(url)) {
+  if (preference?.mode === 'remote' && preference.remoteUrl === origin) {
     clearConnectionPreference()
   }
 }
@@ -519,7 +690,7 @@ export function rememberConnection(): string | null {
 }
 
 export async function checkHealth(url: string): Promise<boolean> {
-  return (await fetchServerDiscovery(url)).ok
+  return (await discoverServer(url)).ok
 }
 
 async function hydrate(snapshot: SessionSnapshot): Promise<void> {
@@ -538,7 +709,13 @@ async function hydrate(snapshot: SessionSnapshot): Promise<void> {
   if (snapshot.phase === 'connected' && snapshot.session) {
     const value = begin(snapshot.url, false)
     if (snapshot.session.token) {
-      await verify(value, snapshot.session)
+      await probeAndVerify(value, {
+        explicitToken: snapshot.session.token,
+        remembered: snapshot.session.remembered,
+        retryOnRecoverable: true,
+        useCachedDiscovery: true,
+        fallbackMeta: DEFAULT_META,
+      })
     } else {
       activate(value, snapshot.session)
     }
@@ -566,9 +743,9 @@ async function init(): Promise<void> {
   if (!ownsConnection) {
     return
   }
-  const startup = consumeStartupConnectUrl()
-  if (startup) {
-    await connectRemote(startup)
+  const webCallback = consumeWebOidcCallback()
+  if (webCallback && peekPendingOidcLogin()) {
+    await completeOidcCallback(webCallback, { passive: true })
     return
   }
   const preference = connectionPreference()
@@ -590,7 +767,7 @@ async function init(): Promise<void> {
   }
   const url = normalizeBaseUrl(localBaseUrl())
   const value = begin(url)
-  const discovery = await fetchServerDiscovery(url, value.controller.signal)
+  const discovery = await discoverServer(url, value.controller.signal)
   if (!current(value)) {
     return
   }
@@ -603,80 +780,32 @@ async function init(): Promise<void> {
 
 async function restore(url: string): Promise<void> {
   const value = begin(url)
-  let token: string | undefined
-  const retry = async (): Promise<void> => {
-    const discovery = await fetchServerDiscovery(url, value.controller.signal)
-    if (!current(value)) {
-      return
-    }
-    if (!discovery.ok) {
-      if (discovery.recoverable) {
-        setState({ status: 'disconnected', error: discovery.error })
-        pollTimer = setTimeout(() => void retry(), 5000)
-      } else {
-        block(discovery.error)
-      }
-      return
-    }
-    const meta = discoveryMeta(discovery)
-    if (!discovery.authRequired) {
-      activate(value, { url, token: '', remembered: false, meta })
-      return
-    }
-    try {
-      if (token === undefined) {
-        const saved = await savedCredential(url)
-        token = saved.token
-      }
-    } catch {
-      if (!current(value)) return
-      block(clientRuntime.kind === 'web'
-        ? 'Could not restore the saved browser login. Check site storage access, then connect again.'
-        : 'Could not unlock the saved connection. Allow Jaz access to your system keychain, then restart Jaz.', false, meta)
-      return
-    }
-    if (!current(value)) return
-    if (!token) {
-      if (meta.auth === 'oidc' && clientRuntime.kind === 'web') {
-        const cookieAccess = await readCloudAccess(url, '', value.controller.signal)
-        if (!current(value)) return
-        if (cookieAccess.ok) {
-          activate(value, { url, token: '', remembered: true, user: cookieAccess.user, meta })
-          return
-        }
-      }
-      block(
-        meta.auth === 'oidc'
-          ? 'Sign in with SSO to connect to this server'
-          : 'Connect again with an authorized credential',
-        false,
-        meta,
-      )
-      return
-    }
-    const access = await verifyCandidate(url, token, meta, value.controller.signal)
-    if (!current(value)) {
-      return
-    }
-    if (!access.ok) {
-      if (access.recoverable) {
-        pollTimer = setTimeout(() => void retry(), 5000)
-      } else {
-        block(access.error, false, meta)
-      }
-      return
-    }
-    activate(value, { url, token, ticket: access.ticket, user: access.user, remembered: true, meta })
-  }
-  await retry()
+  await probeAndVerify(value, {
+    resolveSaved: () => savedCredential(url),
+    onSavedError: () => clientRuntime.kind === 'web'
+      ? 'Could not restore the saved browser login. Check site storage access, then connect again.'
+      : 'Could not unlock the saved connection. Allow Jaz access to your system keychain, then restart Jaz.',
+    remembered: true,
+    allowWebCookie: true,
+    retryOnRecoverable: true,
+    missingCredentialError: (meta) => meta.auth === 'oidc'
+      ? 'Sign in with SSO to connect to this server'
+      : 'Connect again with an authorized credential',
+  })
 }
 
 if (clientRuntime.kind === 'web' && ownsConnection) {
   window.addEventListener('hashchange', () => {
-    const incoming = consumeStartupConnectUrl()
-    if (incoming) {
-      void connectRemote(incoming)
+    const incoming = consumeWebOidcCallback()
+    if (incoming && peekPendingOidcLogin()) {
+      void completeOidcCallback(incoming, { passive: true })
     }
+  })
+}
+
+if (clientRuntime.kind === 'electron' && ownsConnection && clientRuntime.onOidcCallback) {
+  clientRuntime.onOidcCallback((rawUrl) => {
+    void completeOidcCallback(rawUrl)
   })
 }
 

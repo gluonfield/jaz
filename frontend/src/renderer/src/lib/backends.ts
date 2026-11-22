@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { ServerAuthMethod, ServerMode } from './api/cloud'
+import type { ServerAuthMethod, ServerMode } from './api/serverTypes'
 import { normalizeBaseUrl, forgetApiAuthToken } from './api/client'
 import { clientRuntime } from './clientRuntime'
 

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, X } from 'lucide-react'
 import { useState } from 'react'
-import { evaluateSpendStatus, usageSummaryQuery } from '@/lib/api/cloud'
+import { evaluateSpendStatus, usageSummaryQuery } from '@/lib/api/cloudUsage'
 import { useIsCloud } from '@/lib/connection'
 
 // Subtle spend-cap indicator above the Cloud composer. Stays silent on local
@@ -24,7 +24,7 @@ export function CloudSpendBanner({
 
   const exceeded = Boolean(capError) || status?.level === 'exceeded'
   const message = capError || status?.message || 'Monthly spend cap reached.'
-  const dismissKey = `${summary.data?.month ?? ''}:${status?.percent ?? 0}`
+  const dismissKey = `${summary.data?.month_start ?? ''}:${status?.percent ?? 0}`
   if (!exceeded && dismissedKey === dismissKey) return null
 
   return (
