@@ -46,7 +46,7 @@ type ACPManager interface {
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
 	CheckSpawn(acp.SpawnRequest) error
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
-	Input(context.Context, acp.SteerRequest) (acp.Job, error)
+	SendNow(context.Context, acp.SendRequest) (acp.Job, error)
 	ResumeInterruptedTurn(context.Context, string) error
 	StartInternalTurn(context.Context, acp.InternalTurnRequest) (acp.Job, error)
 	ContinueGoal(context.Context, string) (acp.Job, error)
@@ -472,7 +472,6 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	input := acp.SendRequest{
 		Session:       session.ID,
 		Message:       req.Message,
-		Completion:    acp.CompletionAsync,
 		FromUser:      true,
 		PlanRequested: req.PlanRequested,
 		GoalRequested: req.GoalRequested,

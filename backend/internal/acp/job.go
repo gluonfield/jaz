@@ -513,17 +513,16 @@ func (j *jobState) turnDoneAndPlan() (chan struct{}, bool) {
 	return j.turn.done, j.turn.planRequested
 }
 
-func (j *jobState) requestCancel() (bool, chan struct{}) {
-	return j.requestTurnCancel(StopReasonCancelled)
-}
-
 func (j *jobState) requestShutdown() (bool, chan struct{}) {
-	return j.requestTurnCancel(StopReasonServerShutdown)
+	return j.requestTurnCancel(StopReasonServerShutdown, nil)
 }
 
-func (j *jobState) requestTurnCancel(reason string) (bool, chan struct{}) {
+func (j *jobState) requestTurnCancel(reason string, expected <-chan struct{}) (bool, chan struct{}) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if expected != nil && (j.turn == nil || j.turn.done != expected) {
+		return false, nil
+	}
 	running := j.State == StateRunning || j.State == StateStarting
 	if j.turn == nil {
 		return running, j.finishing

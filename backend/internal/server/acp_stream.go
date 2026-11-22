@@ -101,16 +101,7 @@ func (s *Server) sendChatPrompt(ctx context.Context, input acp.SendRequest) (acp
 		unlock()
 		s.drainQueueSoon(input.Session)
 	}()
-	job, err := s.ACP.Input(ctx, input)
-	if !errors.Is(err, acp.ErrSteeringUnsupported) {
-		return job, err
-	}
-	if active, err := s.ACP.Status(input.Session); err == nil && (active.State == acp.StateRunning || active.State == acp.StateStarting) {
-		if _, err := s.ACP.Cancel(ctx, input.Session); err != nil {
-			return acp.Job{}, err
-		}
-	}
-	return s.ACP.Send(ctx, input)
+	return s.ACP.SendNow(ctx, input)
 }
 
 func (s *Server) beginACPTurn(ctx context.Context, session storage.Session, message string) (storage.Session, error) {

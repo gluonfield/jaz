@@ -9,6 +9,14 @@ import (
 )
 
 func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
+	return m.input(ctx, req, false)
+}
+
+func (m *Manager) SendNow(ctx context.Context, req SendRequest) (Job, error) {
+	return m.input(ctx, req, true)
+}
+
+func (m *Manager) input(ctx context.Context, req SendRequest, interrupt bool) (Job, error) {
 	req.Completion = CompletionAsync
 	if req.Commitment != 0 {
 		if err := m.store.LinkCommitmentThread(req.From, req.Session, req.Commitment); err != nil {
@@ -57,7 +65,9 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 			return job, err
 		}
 		job, err = m.Steer(ctx, req)
-		if errors.Is(err, errPromptPending) {
+		switch {
+		case errors.Is(err, errTurnEnded):
+		case errors.Is(err, errPromptPending):
 			// The message joins the turn once its next prompt reaches the
 			// agent, or starts a new one if the turn ends first, even if the
 			// caller, such as a voice call, has gone by then.
@@ -65,9 +75,13 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 			if err := m.waitPromptSent(ctx, req.Session); err != nil {
 				return Job{}, err
 			}
-			continue
-		}
-		if !errors.Is(err, errTurnEnded) {
+		case interrupt && (errors.Is(err, ErrSteeringUnsupported) || errors.Is(err, errPlanChange)):
+			if active.done != nil {
+				if _, err := m.cancel(ctx, req.Session, "user_input", active.done); err != nil {
+					return Job{}, err
+				}
+			}
+		default:
 			return job, err
 		}
 	}

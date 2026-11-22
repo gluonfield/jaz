@@ -21,6 +21,7 @@ var errTurnEnded = fmt.Errorf("%w: agent turn ended before steering", ErrSteerin
 var errPromptPending = fmt.Errorf("%w: the turn's next prompt has not reached the agent", ErrSteeringUnsupported)
 
 var errQuestionPending = errors.New("the turn is waiting for an answer")
+var errPlanChange = errors.New("cannot switch a running turn to plan mode")
 
 type turnInProgressError struct {
 	done      <-chan struct{}
@@ -309,16 +310,16 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		return Job{}, errTurnEnded
 	}
 	if req.PlanRequested && !planRequested {
-		return Job{}, fmt.Errorf("%w: cannot switch a running turn to plan mode", ErrSteeringUnsupported)
+		return Job{}, errPlanChange
+	}
+	if method == steerUnsupported {
+		return Job{}, ErrSteeringUnsupported
 	}
 	if retrying {
 		return Job{}, errPromptPending
 	}
 	if asking && req.transcript == sendTranscriptHidden {
 		return Job{}, errQuestionPending
-	}
-	if method == steerUnsupported {
-		return Job{}, ErrSteeringUnsupported
 	}
 	local := m.localAgent(job.ACPAgent)
 	if m.configuredLocal(job.ACPAgent) && local == nil {
