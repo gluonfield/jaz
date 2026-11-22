@@ -180,3 +180,15 @@ sql:
         emit_interface: true
         emit_empty_slices: true
         omit_unused_structs: true
+  - engine: "sqlite"
+    schema: "internal/storage/sqlite/migrations"
+    queries: "internal/storage/sqlite/queries/plugins"
+    gen:
+      go:
+        package: "plugins"
+        out: "internal/storage/sqlite/generated/plugins"
+        sql_package: "database/sql"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        omit_unused_structs: true

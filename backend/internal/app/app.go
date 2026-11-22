@@ -39,7 +39,6 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
-	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/threads"
@@ -82,11 +81,6 @@ type DevicesConfig struct {
 type SkillsConfig struct {
 	DisableSync bool
 }
-
-const (
-	defaultSkillsManifestURL    = "https://github.com/gluonfield/jaz-skills/releases/download/jaz-v0.0.103/manifest.json"
-	defaultSkillsManifestSHA256 = "f32bc770bb1beb4c113651703973179e083cbfcac5c946d85468393d07843a74"
-)
 
 type VoiceConfig struct {
 	TTS     SpeechConfig
@@ -151,6 +145,8 @@ type Stores struct {
 	SessionEvents   storage.SessionEventAppender
 	UsageEventStore storage.UsageEventStore
 	FeedStore       storage.FeedStore
+	PluginStore     storage.PluginStore
+	PluginSessions  plugins.SessionStore
 }
 
 func NewRuntimeLayout(cfg Config) (runtimefiles.Layout, error) {
@@ -187,6 +183,8 @@ func NewStore(layout runtimefiles.Layout, catalog acp.AgentCatalog) (Stores, err
 		SessionEvents:   store,
 		UsageEventStore: store,
 		FeedStore:       store,
+		PluginStore:     store,
+		PluginSessions:  store,
 	}, nil
 }
 
@@ -210,11 +208,12 @@ func NewMemory(cfg Config, layout runtimefiles.Layout) (*jazmem.Memory, error) {
 	return jazmem.Open(jazmem.Config{Root: memoryRoot, DBPath: dbPath, DisableProviderDreams: true})
 }
 
-func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *memoryservice.Service, connections *connections.Service, agents acp.AgentConfigSource) *coordinator.Builder {
+func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *memoryservice.Service, connections *connections.Service, agents acp.AgentConfigSource, installed *plugins.Store) *coordinator.Builder {
 	return coordinator.NewBuilder(store.RootDir(), string(workspace), memory.Root(), memory.Enabled).
 		WithConnections(connections).
 		WithAgents(agents).
-		WithBrowserEnabled(func() bool { return agentsettings.BrowserEnabled(store) })
+		WithBrowserEnabled(func() bool { return agentsettings.BrowserEnabled(store) }).
+		WithPluginFilter(func(id string) bool { return installed.IsEnabled(context.Background(), id) })
 }
 
 func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
@@ -428,7 +427,7 @@ func StartMCPManager(lc fx.Lifecycle, manager *mcpruntime.Manager, agents *acp.M
 	})
 }
 
-func StartSkillSync(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout, logger *log.Logger) {
+func StartPluginRefresh(lc fx.Lifecycle, cfg Config, service *plugins.Service, logger *log.Logger) {
 	if cfg.Skills.DisableSync {
 		return
 	}
@@ -438,12 +437,17 @@ func StartSkillSync(lc fx.Lifecycle, cfg Config, layout runtimefiles.Layout, log
 			ctx, stop := context.WithCancel(context.Background())
 			cancel = stop
 			go func() {
-				syncCfg := skills.RemoteSyncConfig{
-					ManifestURL:    defaultSkillsManifestURL,
-					ManifestSHA256: defaultSkillsManifestSHA256,
-				}
-				if err := skills.SyncRemote(ctx, layout.Root, syncCfg); err != nil && ctx.Err() == nil {
-					logger.WithPrefix("skills").Warn("skill sync failed", "url", defaultSkillsManifestURL, "error", err)
+				ticker := time.NewTicker(plugins.DefaultRefreshWait)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						if err := service.RefreshSources(ctx); err != nil && ctx.Err() == nil {
+							logger.WithPrefix("plugins").Warn("plugin source refresh failed", "error", err)
+						}
+					}
 				}
 			}()
 			return nil

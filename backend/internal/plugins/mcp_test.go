@@ -9,15 +9,16 @@ import (
 
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-func TestPortableMCPDiscoveryPreservesVariablesAndIsolatesBadEntries(t *testing.T) {
+func TestMCPDiscoveryPreservesVariablesAndIsolatesBadEntries(t *testing.T) {
 	layout := runtimefiles.New(filepath.Join(t.TempDir(), "literal-${PLUGIN_DATA}"))
 	store := New(layout)
-	installed, err := store.Install(archive(t, map[string]string{
-		"fixture/plugin.json":       portable(t, "fixture", map[string]any{"page": map[string]string{"view": "status"}}),
+	installed, err := installFiles(t, store, map[string]string{
+		"fixture/plugin.json":       `{"name":"fixture","page":{"view":"status"}}`,
 		"fixture/views/status.html": "<p>status</p>",
-		"fixture/mcp.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{
+		"fixture/mcp.json": `{"mcpServers":{
 "local":{"type":"stdio","command":"printf","cwd":"${PLUGIN_DATA}","args":["${PLUGIN_ROOT}","${PLUGIN_DATA}","${UNKNOWN}","${UNKNOWN:-literal}"],"env":{"VALUE":"${PLUGIN_ROOT}"}},
 "default":{"type":"stdio","command":"printf"},
 "remote":{"type":"streamable-http","url":"https://example.test/${PLUGIN_ROOT}","headers":{"X-Value":"${PLUGIN_ROOT}"}},
@@ -29,7 +30,7 @@ func TestPortableMCPDiscoveryPreservesVariablesAndIsolatesBadEntries(t *testing.
 "http":{"type":"streamable-http","url":"http://example.test/mcp"},
 "headers":{"type":"sse","url":"https://example.test","headers":{"X-Value":"one","x-value":"two"}}
 }}`,
-	}))
+	})
 	if err != nil || len(installed) != 1 || len(installed[0].MCPServers) != 4 || len(installed[0].Warnings) != 6 {
 		t.Fatalf("inventory = %+v, %v", installed, err)
 	}
@@ -45,7 +46,7 @@ func TestPortableMCPDiscoveryPreservesVariablesAndIsolatesBadEntries(t *testing.
 		}
 		switch server.Name {
 		case "fixture:local":
-			if server.Cwd != data || server.Args[0] != root || server.Args[1] != data || server.Args[2] != "${UNKNOWN}" || server.Args[3] != "${UNKNOWN:-literal}" || server.Env["VALUE"] != root || server.Env["PLUGIN_ROOT"] != root || server.Env["PLUGIN_DATA"] != data {
+			if server.Cwd != data || server.Args[0] != root || server.Args[1] != data || server.Args[2] != "${UNKNOWN}" || server.Args[3] != "literal" || server.Env["VALUE"] != root || server.Env["PLUGIN_ROOT"] != root || server.Env["PLUGIN_DATA"] != data {
 				t.Fatalf("portable expansion = %+v", server)
 			}
 		case "fixture:default":
@@ -53,17 +54,14 @@ func TestPortableMCPDiscoveryPreservesVariablesAndIsolatesBadEntries(t *testing.
 				t.Fatalf("default cwd = %q", server.Cwd)
 			}
 		case "fixture:remote":
-			if server.Headers[0].Value != "${PLUGIN_ROOT}" || !strings.Contains(server.URL, "%7BPLUGIN_ROOT%7D") {
-				t.Fatal("portable headers were expanded")
+			if server.Headers[0].Value != root {
+				t.Fatalf("remote header expansion = %+v", server.Headers)
 			}
 		case "fixture:events":
 			if server.Transport != mcpconfig.TransportSSE {
 				t.Fatal("SSE transport changed")
 			}
 		}
-	}
-	if _, err := store.List(); err != nil {
-		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "mcp.json"), []byte("{invalid"), 0600); err != nil {
 		t.Fatal(err)
@@ -82,16 +80,16 @@ func TestPortableMCPDiscoveryPreservesVariablesAndIsolatesBadEntries(t *testing.
 	}
 }
 
-func TestNativeMCPDefaultsPathsAndInlineOverrides(t *testing.T) {
+func TestNativeMCPDefaultsPathsAndAntigravityMCPConfigVariables(t *testing.T) {
 	t.Setenv("JAZ_PLUGIN_TEST", "configured")
 	t.Setenv("MISSING_PLUGIN_VAR", "")
-	for _, layout := range []string{".claude-plugin", ".codex-plugin"} {
+	for _, layoutDir := range []string{".claude-plugin", ".codex-plugin"} {
 		store := New(runtimefiles.New(t.TempDir()))
-		installed, err := store.Install(archive(t, map[string]string{
-			"fixture/" + layout + "/plugin.json": `{"name":"fixture","mcpServers":["./extra.json",{"shared":{"type":"http","url":"https://example.test/${JAZ_PLUGIN_TEST}","headers":{"X-Default":"${MISSING_PLUGIN_VAR:-fallback}"}}}]}`,
-			"fixture/.mcp.json":                  `{"mcpServers":{"local":{"command":"${CLAUDE_PLUGIN_ROOT}/server","args":["${JAZ_PLUGIN_TEST}"],"env":{"VALUE":"${MISSING_PLUGIN_VAR:-fallback}"}},"shared":{"type":"http","url":"https://default.test"}}}`,
-			"fixture/extra.json":                 `{"mcpServers":{"extra":{"type":"sse","url":"https://example.test/events"}}}`,
-		}))
+		installed, err := installFiles(t, store, map[string]string{
+			"fixture/" + layoutDir + "/plugin.json": `{"name":"fixture","mcpServers":["./extra.json",{"shared":{"type":"http","url":"https://example.test/${JAZ_PLUGIN_TEST}","headers":{"X-Default":"${MISSING_PLUGIN_VAR:-fallback}"}}}]}`,
+			"fixture/.mcp.json":                     `{"mcpServers":{"local":{"command":"${CLAUDE_PLUGIN_ROOT}/server","args":["${JAZ_PLUGIN_TEST}"],"env":{"VALUE":"${MISSING_PLUGIN_VAR:-fallback}"}},"shared":{"type":"http","url":"https://default.test"}}}`,
+			"fixture/extra.json":                    `{"mcpServers":{"extra":{"type":"sse","url":"https://example.test/events"}}}`,
+		})
 		if err != nil || len(installed) != 1 || len(installed[0].Warnings) != 0 {
 			t.Fatalf("native inventory = %+v, %v", installed, err)
 		}
@@ -111,5 +109,51 @@ func TestNativeMCPDefaultsPathsAndInlineOverrides(t *testing.T) {
 		if err != nil || strings.Contains(string(encoded), "configured") || strings.Contains(string(encoded), "fallback") {
 			t.Fatal("inventory exposed MCP configuration values")
 		}
+	}
+
+	// Antigravity mcp_config.json with serverUrl + variables[] + saved config + disable toggle.
+	layout := runtimefiles.New(t.TempDir())
+	db, err := sqlitestore.New(layout.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := New(layout)
+	svc := NewService(store, db, nil, nil, nil, nil)
+	if _, err := installFiles(t, store, map[string]string{
+		"agy-demo/plugin.json": `{"name":"agy-demo","displayName":"AGY Demo"}`,
+		"agy-demo/mcp_config.json": `{
+			"mcpServers": {
+				"api": {
+					"serverUrl": "https://api.example.com/mcp",
+					"headers": {"Authorization": "Bearer ${API_TOKEN}"},
+					"variables": [{"name":"API_TOKEN","label":"API Token","secret":true,"required":true}]
+				}
+			}
+		}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SaveConfig(t.Context(), "agy-demo", map[string]string{"API_TOKEN": "tok-123"}); err != nil {
+		t.Fatal(err)
+	}
+	servers, err := svc.ListMCPServers()
+	if err != nil || len(servers) != 1 || servers[0].URL != "https://api.example.com/mcp" || len(servers[0].Headers) != 1 || servers[0].Headers[0].Value != "Bearer tok-123" {
+		t.Fatalf("agy mcp servers = %+v, %v", servers, err)
+	}
+	got, err := svc.Get(t.Context(), "agy-demo", false)
+	if err != nil || len(got.ConfigVariables) != 1 || !got.ConfigSet["API_TOKEN"] {
+		t.Fatalf("config variables or configured flag missing: %+v, %v", got, err)
+	}
+	if _, err := svc.SetEnabled(t.Context(), "agy-demo", false); err != nil {
+		t.Fatal(err)
+	}
+	servers, err = svc.ListMCPServers()
+	if err != nil || len(servers) != 0 {
+		t.Fatalf("disabled plugin still exposed MCP servers: %+v, %v", servers, err)
+	}
+	claudeDirs, err := svc.ClaudePlugins()
+	if err != nil || len(claudeDirs) != 0 {
+		t.Fatalf("disabled plugin still exposed Claude plugin dir: %+v, %v", claudeDirs, err)
 	}
 }

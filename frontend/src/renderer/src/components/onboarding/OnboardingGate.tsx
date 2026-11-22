@@ -5,7 +5,7 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
 import { useToast } from '@/components/ui/toast'
 import { authProviderLabel } from '@/lib/agentLabel'
-import { connectionPluginsQuery } from '@/lib/api/connections'
+import { pluginsQuery } from '@/lib/api/plugins'
 import { completeOnboarding, onboardingQuery, onboardingStateQuery } from '@/lib/api/onboarding'
 import { cloneAgentSettings, compactKeys } from '@/lib/agentSettings'
 import { prepareACPAgent, startACPAuthLogin } from '@/lib/api/settings'
@@ -105,8 +105,8 @@ function OnboardingScreen({
       probe.managed_adapter?.state === 'downloading' || probe.managed_tool?.state === 'downloading',
   )
   // Only for the connections slide's action label; shares the list's cache.
-  const plugins = useQuery(connectionPluginsQuery)
-  const anyConnected = (plugins.data ?? []).some((plugin) => plugin.connection?.status === 'connected')
+  const plugins = useQuery(pluginsQuery)
+  const anyConnected = (plugins.data ?? []).some((plugin) => plugin.auth?.connected)
 
   useEffect(() => {
     setDraft(draftFromStatus(status))

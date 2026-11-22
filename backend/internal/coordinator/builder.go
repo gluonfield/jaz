@@ -24,6 +24,7 @@ type Builder struct {
 	memoryRoot     string
 	memoryEnabled  func() bool
 	browserEnabled func() bool
+	pluginFilter   func(string) bool
 	connections    ConnectionSource
 	agents         AgentNameSource
 }
@@ -44,6 +45,11 @@ func (b *Builder) WithAgents(agents AgentNameSource) *Builder {
 
 func (b *Builder) WithBrowserEnabled(enabled func() bool) *Builder {
 	b.browserEnabled = enabled
+	return b
+}
+
+func (b *Builder) WithPluginFilter(allow func(string) bool) *Builder {
+	b.pluginFilter = allow
 	return b
 }
 
@@ -90,7 +96,7 @@ func (b *Builder) ACPPromptForContext(ctx context.Context, cwd, surface string) 
 	if cwd == "" {
 		cwd = defaultWorkspace(b.root)
 	}
-	catalog, err := skills.LoadForWorkspace(b.root, cwd)
+	catalog, err := skills.LoadForWorkspaceFiltered(b.root, cwd, b.pluginFilter)
 	if err != nil {
 		return "", err
 	}
@@ -108,7 +114,7 @@ func (b *Builder) build(ctx context.Context, workspace string, surface visualize
 	if strings.TrimSpace(workspace) == "" {
 		workspace = b.workspace
 	}
-	catalog, err := skills.LoadForWorkspace(b.root, workspace)
+	catalog, err := skills.LoadForWorkspaceFiltered(b.root, workspace, b.pluginFilter)
 	if err != nil {
 		return "", "", err
 	}

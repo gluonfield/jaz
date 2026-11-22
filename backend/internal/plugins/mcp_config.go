@@ -1,9 +1,9 @@
 package plugins
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/url"
 	"os"
 	"regexp"
@@ -16,82 +16,87 @@ import (
 
 var variable = regexp.MustCompile(`\$\{([^}]+)\}`)
 
-func expandLegacy(value, root, data string) (string, error) {
-	var missing string
+func expandValue(value, root, data string, configValues map[string]string) (string, error) {
 	value = variable.ReplaceAllStringFunc(value, func(token string) string {
 		name, fallback, hasDefault := strings.Cut(token[2:len(token)-1], ":-")
 		switch name {
-		case "CLAUDE_PLUGIN_ROOT":
+		case "PLUGIN_ROOT", "CLAUDE_PLUGIN_ROOT":
 			return root
-		case "CLAUDE_PLUGIN_DATA":
+		case "PLUGIN_DATA", "CLAUDE_PLUGIN_DATA":
 			return data
 		}
-		if value, ok := os.LookupEnv(name); ok && (value != "" || !hasDefault) {
-			return value
+		if configValues != nil {
+			if configured, ok := configValues[name]; ok && (configured != "" || !hasDefault) {
+				return configured
+			}
+		}
+		if envValue, ok := os.LookupEnv(name); ok && (envValue != "" || !hasDefault) {
+			return envValue
 		}
 		if hasDefault {
 			return fallback
 		}
-		missing = name
 		return token
 	})
-	if missing != "" {
-		return "", fmt.Errorf("environment variable %s is not set", missing)
-	}
 	return value, nil
 }
 
-func normalizeMCP(root, data string, raw json.RawMessage, portable bool) (mcpconfig.Server, error) {
-	var kind struct {
-		Type string `json:"type"`
+func normalizeMCP(root, data string, raw json.RawMessage, configValues map[string]string) (mcpconfig.Server, error) {
+	var probe struct {
+		Type      string `json:"type"`
+		URL       string `json:"url"`
+		ServerURL string `json:"serverUrl"`
+		Command   string `json:"command"`
 	}
-	if err := json.Unmarshal(raw, &kind); err != nil {
+	if err := json.Unmarshal(raw, &probe); err != nil {
 		return mcpconfig.Server{}, err
 	}
-	if kind.Type == "stdio" || !portable && kind.Type == "" {
-		return normalizeStdioMCP(root, data, raw, portable)
+	if probe.Command != "" && (probe.URL != "" || probe.ServerURL != "") {
+		return mcpconfig.Server{}, fmt.Errorf("MCP server cannot specify both command and url")
 	}
-	return normalizeRemoteMCP(root, data, raw, portable)
+	if probe.Type == "stdio" || (probe.Command != "" && probe.URL == "" && probe.ServerURL == "") {
+		return normalizeStdioMCP(root, data, raw, configValues)
+	}
+	return normalizeRemoteMCP(root, data, raw, configValues)
 }
 
-func normalizeRemoteMCP(root, data string, raw json.RawMessage, portable bool) (mcpconfig.Server, error) {
+func normalizeRemoteMCP(root, data string, raw json.RawMessage, configValues map[string]string) (mcpconfig.Server, error) {
 	input := mcpconfig.ServerInput{Name: "plugin", Enabled: true}
 	var config remoteConfig
-	var err error
-	if portable {
-		err = decodeStrict(raw, &config)
-	} else {
-		err = json.Unmarshal(raw, &config)
-		if err == nil {
-			config.URL, err = expandLegacy(config.URL, root, data)
-		}
-		for name, value := range config.Headers {
-			if err == nil {
-				config.Headers[name], err = expandLegacy(value, root, data)
-			}
-		}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return mcpconfig.Server{}, err
 	}
+	rawURL := cmp.Or(strings.TrimSpace(config.URL), strings.TrimSpace(config.ServerURL))
+	if rawURL == "" {
+		return mcpconfig.Server{}, fmt.Errorf("MCP endpoint url is required")
+	}
+	expandedURL, err := expandValue(rawURL, root, data, configValues)
 	if err != nil {
 		return mcpconfig.Server{}, err
 	}
-	switch config.Type {
-	case "streamable-http", "http":
-		if portable && config.Type == "http" {
-			return mcpconfig.Server{}, fmt.Errorf("unknown transport %q", config.Type)
+	for name, value := range config.Headers {
+		expanded, err := expandValue(value, root, data, configValues)
+		if err != nil {
+			return mcpconfig.Server{}, err
 		}
+		config.Headers[name] = expanded
+	}
+	switch config.Type {
+	case "", "streamable-http", "http":
 		input.Transport = mcpconfig.TransportStreamableHTTP
 	case "sse":
 		input.Transport = mcpconfig.TransportSSE
 	default:
 		return mcpconfig.Server{}, fmt.Errorf("unknown transport %q", config.Type)
 	}
-	input.URL = config.URL
-	endpoint, err := url.Parse(config.URL)
+	input.URL = expandedURL
+	parsedURL, err := url.Parse(expandedURL)
 	if err != nil {
 		return mcpconfig.Server{}, fmt.Errorf("invalid MCP endpoint")
 	}
-	if portable && strings.EqualFold(endpoint.Scheme, "http") && endpoint.Hostname() != "localhost" && !net.ParseIP(endpoint.Hostname()).IsLoopback() {
-		return mcpconfig.Server{}, fmt.Errorf("non-loopback MCP endpoints require HTTPS")
+	host := parsedURL.Hostname()
+	if parsedURL.Scheme == "http" && host != "localhost" && host != "127.0.0.1" && host != "::1" {
+		return mcpconfig.Server{}, fmt.Errorf("remote MCP endpoints must use HTTPS")
 	}
 	seen := map[string]bool{}
 	for name, value := range config.Headers {

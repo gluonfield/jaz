@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/plugins"
@@ -39,10 +41,13 @@ func (h *ViewHandler) Open(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ViewHandler) State(w http.ResponseWriter, r *http.Request) {
-	state, err := h.service.State(r.Context(), r.PathValue("session"), r.URL.Query().Get("reference"), r.URL.Query().Get("file"))
+	state, rev, err := h.service.StateWithRevision(r.Context(), r.PathValue("session"), r.URL.Query().Get("reference"), r.URL.Query().Get("file"))
 	if err != nil {
 		httpapi.WriteError(w, statusFor(err), err)
 		return
+	}
+	if rev > 0 {
+		w.Header().Set("ETag", strconv.Quote(strconv.FormatInt(rev, 10)))
 	}
 	httpapi.WriteJSON(w, http.StatusOK, state)
 }
@@ -53,9 +58,22 @@ func (h *ViewHandler) SaveState(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusRequestEntityTooLarge, err)
 		return
 	}
-	if err := h.service.SaveState(r.Context(), r.PathValue("session"), r.URL.Query().Get("reference"), r.URL.Query().Get("file"), state); err != nil {
+	var expectedRev *int64
+	if raw := strings.Trim(strings.TrimSpace(r.Header.Get("If-Match")), `"`); raw != "" {
+		parsed, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil {
+			httpapi.WriteError(w, http.StatusBadRequest, parseErr)
+			return
+		}
+		expectedRev = &parsed
+	}
+	rev, err := h.service.SaveStateWithRevision(r.Context(), r.PathValue("session"), r.URL.Query().Get("reference"), r.URL.Query().Get("file"), state, expectedRev)
+	if err != nil {
 		httpapi.WriteError(w, statusFor(err), err)
 		return
+	}
+	if rev > 0 {
+		w.Header().Set("ETag", strconv.Quote(strconv.FormatInt(rev, 10)))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

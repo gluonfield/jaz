@@ -1,6 +1,6 @@
 -- name: UpsertBot :exec
-INSERT INTO bots (thread_id, kind, prompt, shape, color, members, main, workspaces)
-VALUES (sqlc.arg(thread_id), sqlc.arg(kind), sqlc.arg(prompt), sqlc.arg(shape), sqlc.arg(color), sqlc.arg(members), sqlc.arg(main), sqlc.arg(workspaces))
+INSERT INTO bots (thread_id, kind, prompt, shape, color, members, main, workspaces, plugins)
+VALUES (sqlc.arg(thread_id), sqlc.arg(kind), sqlc.arg(prompt), sqlc.arg(shape), sqlc.arg(color), sqlc.arg(members), sqlc.arg(main), sqlc.arg(workspaces), sqlc.arg(plugins))
 ON CONFLICT(thread_id) DO UPDATE SET
   kind = excluded.kind,
   main = excluded.main,
@@ -8,16 +8,17 @@ ON CONFLICT(thread_id) DO UPDATE SET
   shape = excluded.shape,
   color = excluded.color,
   members = excluded.members,
-  workspaces = excluded.workspaces;
+  workspaces = excluded.workspaces,
+  plugins = excluded.plugins;
 
 -- name: GetBot :one
-SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces
+SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins
 FROM bots
 WHERE thread_id = sqlc.arg(thread_id)
 LIMIT 1;
 
 -- name: ListBots :many
-SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces
+SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins
 FROM bots;
 
 -- name: UnpinBots :exec

@@ -44,7 +44,7 @@ func DeclareMCPServers(cfg Config, store *sqlitestore.Store) error {
 }
 
 func NewMCPManager(installed *plugins.Store, store *sqlitestore.Store, catalog *connections.Catalog, registry *tools.Registry, jaz *jaztools.Service, events *sessionevents.Bus, broker oauthbroker.Broker, logger *log.Logger) *mcpruntime.Manager {
-	reader := connectionMCPServerReader{store: store, catalog: catalog, plugins: installed}
+	reader := connectionMCPServerReader{store: store, catalog: catalog, plugins: installed, enabled: installed.IsEnabled}
 	return mcpruntime.NewManager(reader, store, registry, logger,
 		mcpruntime.WithBuiltinServerProvider(jaztools.ServerConfig(jaz.URL()), jaz.Server),
 		mcpruntime.WithSessionEvents(store, events),
@@ -59,6 +59,7 @@ type connectionTokenStore interface {
 
 type connectionMCPServerReader struct {
 	plugins mcpconfig.ServerReader
+	enabled func(context.Context, string) bool
 	store   connectionTokenStore
 	catalog *connections.Catalog
 }
@@ -77,6 +78,9 @@ func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) 
 	}
 	ctx := context.Background()
 	for _, plugin := range r.catalog.ListPlugins() {
+		if r.enabled != nil && !r.enabled(ctx, plugin.ID) {
+			continue
+		}
 		remote := plugin.RemoteMCP
 		if !plugin.UsesConnectionMCP() {
 			continue
@@ -105,18 +109,6 @@ func (r connectionMCPServerReader) connectionBackedServers(ctx context.Context, 
 	}
 	var out []mcpconfig.Server
 	for _, account := range accounts {
-		if plugin.PrimaryAuthKind() == integrations.AuthKindMCPConnection {
-			out = append(out, mcpconfig.Server{
-				ID:        account.ID,
-				Name:      remoteServerName(account),
-				Transport: mcpconfig.TransportStreamableHTTP,
-				URL:       url,
-				Enabled:   true,
-				Source:    mcpconfig.SourceConnection,
-				OAuth:     r.catalog.MCPOAuthClient(plugin),
-			})
-			continue
-		}
 		token, ok, err := r.store.LoadToken(ctx, account.ID)
 		if err != nil {
 			return nil, err

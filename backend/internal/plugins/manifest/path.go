@@ -11,7 +11,7 @@ func Resolve(root, path string) (string, error) {
 	relative := strings.TrimSuffix(strings.TrimPrefix(path, "./"), "/")
 	if path == "." || path == "./" {
 		relative = "."
-	} else if !strings.HasPrefix(path, "./") || !fs.ValidPath(relative) || strings.Contains(relative, `\`) {
+	} else if relative == "" || strings.HasPrefix(path, "/") || !fs.ValidPath(relative) || strings.Contains(relative, `\`) {
 		return "", fmt.Errorf("invalid plugin-relative path %q", path)
 	}
 	root, err := filepath.Abs(root)

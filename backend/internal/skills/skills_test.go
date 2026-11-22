@@ -1,16 +1,8 @@
 package skills
 
 import (
-	"archive/zip"
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -95,208 +87,18 @@ func TestLoadForWorkspaceMergesLocalSkillDirs(t *testing.T) {
 	}
 }
 
-func TestSyncRemoteInstallsManifestSkills(t *testing.T) {
+func TestLoadFilteredSkipsDisabledPluginSkills(t *testing.T) {
 	root := t.TempDir()
-	archive := skillArchive(t, "create-animated-video", map[string]string{
-		"SKILL.md":                          "---\nname: create-animated-video\ndescription: Video skill\n---\nbody",
-		"template/scripts/export-video.mjs": "export",
-		"references/finalize_playback.md":   "finalize",
-	})
-	sum := sha256.Sum256(archive)
-	var serverURL string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/manifest.json":
-			_ = json.NewEncoder(w).Encode(RemoteManifest{Skills: []RemoteSkill{{
-				Name:       "create-animated-video",
-				Version:    "2026.06.20",
-				ArchiveURL: serverURL + "/create-animated-video.zip",
-				SHA256:     hex.EncodeToString(sum[:]),
-			}}})
-		case "/create-animated-video.zip":
-			_, _ = w.Write(archive)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-	serverURL = server.URL
+	writeFile(t, filepath.Join(root, "plugins", "alpha", "plugin.json"), `{"name":"alpha","description":"Alpha"}`)
+	writeFile(t, filepath.Join(root, "plugins", "alpha", "skills", "one", "SKILL.md"), "---\nname: one\ndescription: One\n---\nbody")
+	writeFile(t, filepath.Join(root, "plugins", "beta", "skills", "two", "SKILL.md"), "---\nname: two\ndescription: Two\n---\nbody")
 
-	if err := SyncRemote(t.Context(), root, RemoteSyncConfig{ManifestURL: server.URL + "/manifest.json"}); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(UserRoot(root), "create-animated-video", "template", "scripts", "export-video.mjs")
-	if data, err := os.ReadFile(path); err != nil || string(data) != "export" {
-		t.Fatalf("synced file = %q, %v", data, err)
-	}
-	info, err := os.Stat(filepath.Join(UserRoot(root), "create-animated-video"))
+	catalog, err := LoadFiltered(root, func(name string) bool { return name == "beta" })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
-		t.Fatalf("installed skill directory mode = %v", info.Mode().Perm())
-	}
-	state, err := loadSyncState(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state["create-animated-video"].Source != firstPartySkillSource {
-		t.Fatalf("sync state = %#v", state)
-	}
-}
-
-func TestSyncRemoteVerifiesManifestHash(t *testing.T) {
-	root := t.TempDir()
-	manifest := []byte(`{"version":"test","skills":[]}` + "\n")
-	sum := sha256.Sum256(manifest)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(manifest)
-	}))
-	defer server.Close()
-
-	if err := SyncRemote(t.Context(), root, RemoteSyncConfig{
-		ManifestURL:    server.URL + "/manifest.json",
-		ManifestSHA256: hex.EncodeToString(sum[:]),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	err := SyncRemote(t.Context(), root, RemoteSyncConfig{
-		ManifestURL:    server.URL + "/manifest.json",
-		ManifestSHA256: strings.Repeat("0", sha256.Size*2),
-	})
-	if err == nil || !strings.Contains(err.Error(), "manifest sha256 mismatch") {
-		t.Fatalf("err = %v, want manifest sha mismatch", err)
-	}
-}
-
-func TestInstallRemoteArchivePreservesRootFiles(t *testing.T) {
-	root := t.TempDir()
-	var archive bytes.Buffer
-	writer := zip.NewWriter(&archive)
-	for name, body := range map[string]string{
-		"SKILL.md":          "---\nname: alpha\ndescription: Alpha skill\n---\nbody",
-		"references/run.sh": "#!/bin/sh\nprintf ready\n",
-	} {
-		header := &zip.FileHeader{Name: name}
-		header.SetMode(0o755)
-		file, err := writer.CreateHeader(header)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := file.Write([]byte(body)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	sum := sha256.Sum256(archive.Bytes())
-	if err := installRemoteArchive(root, RemoteSkill{Name: "alpha"}, archive.Bytes(), hex.EncodeToString(sum[:])); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(UserRoot(root), "alpha", "references", "run.sh")
-	if data, err := os.ReadFile(path); err != nil || string(data) != "#!/bin/sh\nprintf ready\n" {
-		t.Fatalf("installed script = %q, %v", data, err)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// File creation applies the process umask to archive permissions.
-	probe := filepath.Join(root, "mode-probe")
-	if err := os.WriteFile(probe, nil, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	expected, err := os.Stat(probe)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if runtime.GOOS != "windows" && info.Mode().Perm() != expected.Mode().Perm() {
-		t.Fatalf("installed script mode = %v, want %v", info.Mode().Perm(), expected.Mode().Perm())
-	}
-	entries, err := os.ReadDir(UserRoot(root))
-	if err != nil || len(entries) != 1 || entries[0].Name() != "alpha" {
-		t.Fatalf("skill directory contains staging files: %v, %v", entries, err)
-	}
-}
-
-func TestSyncRemoteRefreshesManagedSkill(t *testing.T) {
-	root := t.TempDir()
-	body := "first"
-	var archive []byte
-	var sha string
-	refreshArchive := func() {
-		archive = skillArchive(t, "alpha", map[string]string{
-			"SKILL.md": "---\nname: alpha\ndescription: Alpha skill\n---\n" + body,
-		})
-		sum := sha256.Sum256(archive)
-		sha = hex.EncodeToString(sum[:])
-	}
-	refreshArchive()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/manifest.json":
-			_ = json.NewEncoder(w).Encode(RemoteManifest{Skills: []RemoteSkill{{
-				Name:       "alpha",
-				ArchiveURL: "http://" + r.Host + "/alpha.zip",
-				SHA256:     sha,
-			}}})
-		case "/alpha.zip":
-			_, _ = w.Write(archive)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	if err := SyncRemote(t.Context(), root, RemoteSyncConfig{ManifestURL: server.URL + "/manifest.json"}); err != nil {
-		t.Fatal(err)
-	}
-	stale := filepath.Join(UserRoot(root), "alpha", "stale.md")
-	writeFile(t, stale, "old version")
-	body = "second"
-	refreshArchive()
-	if err := SyncRemote(t.Context(), root, RemoteSyncConfig{ManifestURL: server.URL + "/manifest.json"}); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(filepath.Join(UserRoot(root), "alpha", "SKILL.md"))
-	if err != nil || !strings.Contains(string(data), "second") {
-		t.Fatalf("managed skill = %q, %v", data, err)
-	}
-	if _, err := os.Stat(stale); !os.IsNotExist(err) {
-		t.Fatalf("stale skill file remains: %v", err)
-	}
-}
-
-func TestSyncRemoteLeavesUserOwnedSkill(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, filepath.Join(UserRoot(root), "create-animated-video", "SKILL.md"), "---\nname: create-animated-video\ndescription: User skill\n---\nuser-owned")
-	archive := skillArchive(t, "create-animated-video", map[string]string{
-		"SKILL.md": "---\nname: create-animated-video\ndescription: Video skill\n---\nremote",
-	})
-	sum := sha256.Sum256(archive)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/manifest.json":
-			_ = json.NewEncoder(w).Encode(RemoteManifest{Skills: []RemoteSkill{{
-				Name:       "create-animated-video",
-				ArchiveURL: "http://" + r.Host + "/create-animated-video.zip",
-				SHA256:     hex.EncodeToString(sum[:]),
-			}}})
-		case "/create-animated-video.zip":
-			_, _ = w.Write(archive)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	if err := SyncRemote(t.Context(), root, RemoteSyncConfig{ManifestURL: server.URL + "/manifest.json"}); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(filepath.Join(UserRoot(root), "create-animated-video", "SKILL.md"))
-	if err != nil || !strings.Contains(string(data), "user-owned") {
-		t.Fatalf("user-owned skill = %q, %v", data, err)
+	if len(catalog.Skills) != 1 || catalog.Skills[0].Name != "beta:two" {
+		t.Fatalf("filtered skills = %#v", catalog.Skills)
 	}
 }
 
@@ -318,23 +120,4 @@ func writeFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func skillArchive(t *testing.T, name string, files map[string]string) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
-	for rel, content := range files {
-		w, err := zw.Create(filepath.ToSlash(filepath.Join(name, rel)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := w.Write([]byte(content)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
 }

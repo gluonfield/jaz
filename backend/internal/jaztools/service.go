@@ -75,6 +75,7 @@ type Service struct {
 	whatsAppTools   *connections.WhatsAppMCPTools
 	telegramTools   *connections.TelegramMCPTools
 	connections     *connections.Service
+	pluginStore     *plugins.Store
 	visualizeTools  *visualize.Service
 	pluginTools     *plugins.MCPTools
 	widgetPublisher *widgets.SessionPublisher
@@ -152,6 +153,7 @@ func New(
 		whatsAppTools:   whatsAppTools,
 		telegramTools:   telegramTools,
 		connections:     connectionService,
+		pluginStore:     installed,
 		visualizeTools:  visualizeTools,
 		pluginTools:     &plugins.MCPTools{Plugins: installed, Presenter: visualizeTools},
 		goalTools:       newGoalTools(events, sessions, usage),
@@ -285,7 +287,7 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 	s.gmailTools.AddTo(server)
 	s.whatsAppTools.AddTo(server)
 	s.telegramTools.AddTo(server)
-	s.connections.AddSearchTo(server)
+	plugins.AddSearchTools(server, s.pluginStore, s.connections)
 	switch surface {
 	case widgetSurface:
 		s.visualizeTools.AddReadMeTo(server)

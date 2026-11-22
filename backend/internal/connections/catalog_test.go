@@ -1,38 +1,23 @@
 package connections
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/wins/jaz/backend/pkg/integrations"
-)
-
-func TestCatalogIncludesGmail(t *testing.T) {
+func TestCatalogIncludesOnlyNativeIntegrations(t *testing.T) {
 	catalog := NewCatalog(nil)
-	for _, id := range []string{"deployink", "gmail", "google_calendar", "slack", "telegram", "whatsapp"} {
+	want := []string{"gmail", "google_calendar", "google_drive", "slack", "telegram", "whatsapp"}
+	if got := catalog.ListPlugins(); len(got) != len(want) {
+		t.Fatalf("catalog count = %d, want %d", len(got), len(want))
+	}
+	for _, id := range want {
 		plugin, ok := catalog.Plugin(id)
-		if !ok || plugin.ID != id {
+		if !ok || plugin.ID != id || !catalog.IsNative(id) {
 			t.Fatalf("%s plugin = %#v ok=%v", id, plugin, ok)
 		}
 	}
-
-	deployink, ok := catalog.Plugin("deployink")
-	if !ok {
-		t.Fatal("deployink plugin missing")
-	}
-	if deployink.Name != "Deployink" {
-		t.Fatalf("deployink name = %q", deployink.Name)
-	}
-	if deployink.Icon.Kind != integrations.PluginIconKindAsset || deployink.Icon.Value != "ink" {
-		t.Fatalf("deployink icon = %#v", deployink.Icon)
-	}
-	if len(deployink.Auth) == 0 || deployink.Auth[0].Kind != integrations.AuthKindMCPConnection {
-		t.Fatalf("deployink auth = %#v", deployink.Auth)
-	}
-	if deployink.RemoteMCP == nil || !deployink.UsesConnectionMCP() || deployink.RemoteMCP.TokenAuth {
-		t.Fatalf("deployink remote mcp = %#v", deployink.RemoteMCP)
-	}
-	if len(deployink.Tools) == 0 {
-		t.Fatal("deployink tools missing")
+	for _, removed := range []string{"deployink", "granola", "zoom", "tasks", "crm"} {
+		if _, ok := catalog.Plugin(removed); ok || catalog.IsNative(removed) {
+			t.Fatalf("%s should no longer be hardcoded in native catalog", removed)
+		}
 	}
 }
 

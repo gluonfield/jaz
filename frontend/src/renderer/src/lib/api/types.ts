@@ -268,57 +268,6 @@ export interface HealthResponse {
   }
 }
 
-export type IntegrationAuthKind =
-  | 'oauth'
-  | 'session'
-  | 'bridge'
-  | 'remote_mcp'
-  | 'mcp_connection'
-  | 'browser_local'
-export type IntegrationCapability = 'sync' | 'act' | 'materialize' | 'mcp' | 'browser'
-export type IntegrationActionRisk = 'read' | 'draft' | 'write' | 'bulk_write' | 'delete'
-
-export interface IntegrationProvider {
-  id: string
-  name: string
-}
-
-export interface IntegrationAuthOption {
-  kind: IntegrationAuthKind
-  description?: string
-  scopes?: string[]
-  requires?: string[]
-}
-
-export interface IntegrationRemoteMCP {
-  url: string
-  status: string
-  requires?: string[]
-  oauth_secrets: boolean
-  token_auth?: boolean
-}
-
-export interface IntegrationTool {
-  name: string
-  description: string
-  capability: IntegrationCapability
-  risk: IntegrationActionRisk
-  required_scopes?: string[]
-}
-
-export interface IntegrationSkill {
-  id: string
-  name: string
-  description?: string
-  status: string
-}
-
-export interface IntegrationImplementation {
-  status: string
-  owner: string
-  reason?: string
-}
-
 export interface IntegrationConnectionAccount {
   id: string
   provider: string
@@ -327,39 +276,6 @@ export interface IntegrationConnectionAccount {
   alias?: string
   scopes?: string[]
   last_synced_at?: string
-}
-
-export interface IntegrationConnection {
-  status: 'connected' | 'not_connected'
-  accounts?: IntegrationConnectionAccount[]
-}
-
-export type IntegrationPluginIconKind = 'asset' | 'url' | 'initials'
-
-export interface IntegrationPluginIcon {
-  kind: IntegrationPluginIconKind
-  value: string
-  background?: string
-}
-
-export interface IntegrationPlugin {
-  id: string
-  name: string
-  description?: string
-  examples?: string[]
-  provider: IntegrationProvider
-  category?: string
-  icon: IntegrationPluginIcon
-  auth: IntegrationAuthOption[]
-  capabilities: IntegrationCapability[]
-  multi_account: boolean
-  source_lanes?: string[]
-  tools?: IntegrationTool[]
-  skills?: IntegrationSkill[]
-  remote_mcp?: IntegrationRemoteMCP
-  connection_notes?: string[]
-  implementation: IntegrationImplementation
-  connection?: IntegrationConnection
 }
 
 export type ConnectionQRStatusName = 'pending' | 'scanned' | 'password_required' | 'connected' | 'expired' | 'failed'
@@ -781,6 +697,7 @@ export interface Bot {
   agent?: string
   model?: string
   reasoning_effort?: string
+  plugins?: string[]
   members?: string[]
   // The members taking a turn in a group.
   working?: string[]

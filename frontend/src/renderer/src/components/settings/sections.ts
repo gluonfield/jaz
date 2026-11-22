@@ -7,7 +7,6 @@ import {
   ChartNoAxesColumn,
   Globe,
   Keyboard,
-  Link2,
   type LucideIcon,
   MonitorSmartphone,
   AudioLines,
@@ -25,7 +24,6 @@ export type SettingsSection =
   | 'appearance'
   | 'personalization'
   | 'memory'
-  | 'connections'
   | 'browser'
   | 'computer'
   | 'usage'
@@ -60,7 +58,6 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'agents', label: 'Agents (ACP)', icon: Bot, group: 'Agents' },
   { id: 'mcp', label: 'MCP servers', icon: Plug, group: 'Agents' },
   { id: 'plugins', label: 'Plugins', icon: Puzzle, group: 'Agents' },
-  { id: 'connections', label: 'Connections', icon: Link2, group: 'Agents', experimental: true },
   { id: 'browser', label: 'Browser', icon: Globe, group: 'Agents' },
   { id: 'computer', label: 'Computer Use', icon: MonitorSmartphone, group: 'Agents' },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn, group: 'Account' },

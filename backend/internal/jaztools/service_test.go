@@ -130,7 +130,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, fakeWhatsAppProvider{}, fakeWhatsAppProvider{}),
 		connections.NewTelegramMCPTools(store, fakeTelegramProvider{}, fakeTelegramProvider{}),
-		connections.NewService(connections.NewCatalog(nil), store, nil),
+		connections.NewService(connections.NewCatalog(nil), store),
 		plugins.New(runtimefiles.New(t.TempDir())),
 		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
@@ -351,7 +351,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
-		connections.NewService(connections.NewCatalog(nil), store, nil),
+		connections.NewService(connections.NewCatalog(nil), store),
 		plugins.New(runtimefiles.New(t.TempDir())),
 		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
@@ -464,7 +464,7 @@ func TestCanvasThreadsGetThreadToolsWithoutInlineArtifacts(t *testing.T) {
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
-		connections.NewService(connections.NewCatalog(nil), store, nil),
+		connections.NewService(connections.NewCatalog(nil), store),
 		plugins.New(runtimefiles.New(t.TempDir())),
 		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
@@ -515,7 +515,7 @@ func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
-		connections.NewService(connections.NewCatalog(nil), store, nil),
+		connections.NewService(connections.NewCatalog(nil), store),
 		plugins.New(runtimefiles.New(t.TempDir())),
 		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
@@ -583,7 +583,7 @@ func TestBotOnlyToolsStayOnTheBotSurface(t *testing.T) {
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
-		connections.NewService(connections.NewCatalog(nil), store, nil),
+		connections.NewService(connections.NewCatalog(nil), store),
 		plugins.New(runtimefiles.New(t.TempDir())),
 		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
@@ -668,7 +668,7 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
-		connections.NewService(connections.NewCatalog(nil), store, nil),
+		connections.NewService(connections.NewCatalog(nil), store),
 		plugins.New(runtimefiles.New(t.TempDir())),
 		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
@@ -710,7 +710,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
-		connections.NewService(connections.NewCatalog(nil), store, nil),
+		connections.NewService(connections.NewCatalog(nil), store),
 		plugins.New(runtimefiles.New(t.TempDir())),
 		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
@@ -774,7 +774,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
-		connections.NewService(connections.NewCatalog(nil), store, nil),
+		connections.NewService(connections.NewCatalog(nil), store),
 		plugins.New(runtimefiles.New(t.TempDir())),
 		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)
@@ -844,7 +844,7 @@ func TestBrowserToolsUseDirectThreadSurface(t *testing.T) {
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
 		connections.NewTelegramMCPTools(store, nil, nil),
-		connections.NewService(connections.NewCatalog(nil), store, nil),
+		connections.NewService(connections.NewCatalog(nil), store),
 		plugins.New(runtimefiles.New(t.TempDir())),
 		visualize.NewService(store, store, events, canvas.NewService(runtimefiles.New(store.RootDir()))),
 	)

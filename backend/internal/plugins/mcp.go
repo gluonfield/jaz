@@ -1,29 +1,34 @@
 package plugins
 
 import (
-	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/plugins/manifest"
 )
 
-const mcpSchema = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
-
 func MCPServerID(plugin, name string) string {
 	return "plugin:" + plugin + ":" + base64.RawURLEncoding.EncodeToString([]byte(name))
 }
 
+type ConfigVariable struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+	Secret      bool   `json:"secret,omitempty"`
+}
+
 type mcpDocument struct {
-	Schema  string                     `json:"$schema"`
-	Servers map[string]json.RawMessage `json:"mcpServers"`
+	Servers   map[string]json.RawMessage `json:"mcpServers"`
+	Variables []ConfigVariable           `json:"variables"`
 }
 
 type stdioConfig struct {
@@ -35,54 +40,38 @@ type stdioConfig struct {
 }
 
 type remoteConfig struct {
-	Type    string            `json:"type"`
-	URL     string            `json:"url"`
-	Headers map[string]string `json:"headers"`
+	Type      string            `json:"type"`
+	URL       string            `json:"url"`
+	ServerURL string            `json:"serverUrl"`
+	Headers   map[string]string `json:"headers"`
 }
 
-func decodeStrict(data []byte, target any) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if decoder.Decode(new(any)) != io.EOF {
-		return fmt.Errorf("invalid trailing JSON")
-	}
-	return nil
-}
-
-func readMCP(root, path string, portable bool) (map[string]json.RawMessage, error) {
+func readMCPFile(root, path string) (mcpDocument, error) {
 	held, err := os.OpenRoot(root)
 	if err != nil {
-		return nil, err
+		return mcpDocument{}, err
 	}
 	defer held.Close()
 	data, err := held.ReadFile(path)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return mcpDocument{}, nil
 	}
 	if err != nil {
-		return nil, err
+		return mcpDocument{}, err
 	}
 	var document mcpDocument
-	if portable {
-		err = decodeStrict(data, &document)
-		if err == nil && (document.Schema != mcpSchema || document.Servers == nil) {
-			err = fmt.Errorf("requires the Agent Plugins MCP schema and mcpServers object")
-		}
-	} else {
-		err = json.Unmarshal(data, &document)
+	if err := json.Unmarshal(data, &document); err != nil {
+		return mcpDocument{}, err
 	}
-	return document.Servers, err
+	return document, nil
 }
 
-func collectNativeMCP(root string, raw json.RawMessage, entries map[string]json.RawMessage) []string {
+func collectManifestMCP(root string, raw json.RawMessage, entries map[string]json.RawMessage, variables *[]ConfigVariable) []string {
 	var path string
 	var list []json.RawMessage
 	var inline map[string]json.RawMessage
 	switch {
-	case json.Unmarshal(raw, &path) == nil:
+	case json.Unmarshal(raw, &path) == nil && path != "":
 		resolved, err := manifest.Resolve(root, path)
 		if err != nil {
 			return []string{fmt.Sprintf("MCP %s: %v", path, err)}
@@ -91,15 +80,16 @@ func collectNativeMCP(root string, raw json.RawMessage, entries map[string]json.
 		if err != nil {
 			return []string{fmt.Sprintf("MCP %s: %v", path, err)}
 		}
-		loaded, err := readMCP(root, relative, false)
+		doc, err := readMCPFile(root, filepath.ToSlash(relative))
 		if err != nil {
 			return []string{fmt.Sprintf("MCP %s: %v", filepath.Base(path), err)}
 		}
-		maps.Copy(entries, loaded)
+		maps.Copy(entries, doc.Servers)
+		*variables = mergeVariables(*variables, doc.Variables)
 	case json.Unmarshal(raw, &list) == nil && list != nil:
 		var warnings []string
 		for _, item := range list {
-			warnings = append(warnings, collectNativeMCP(root, item, entries)...)
+			warnings = append(warnings, collectManifestMCP(root, item, entries, variables)...)
 		}
 		return warnings
 	case json.Unmarshal(raw, &inline) == nil && inline != nil:
@@ -110,59 +100,110 @@ func collectNativeMCP(root string, raw json.RawMessage, entries map[string]json.
 	return nil
 }
 
-func loadMCP(root, dataDir string, definition manifest.Manifest) ([]mcpconfig.Server, []string) {
+func loadMCP(root, dataDir string, definition manifest.Manifest, configValues map[string]string) ([]mcpconfig.Server, []ConfigVariable, []string) {
 	root, err := filepath.Abs(root)
 	if err != nil {
-		return nil, []string{err.Error()}
+		return nil, nil, []string{err.Error()}
 	}
 	info, err := os.Stat(root)
 	if err != nil {
-		return nil, []string{err.Error()}
+		return nil, nil, []string{err.Error()}
 	}
-	portable := definition.ManifestPath == "plugin.json"
-	path := ".mcp.json"
-	if portable {
-		path = "mcp.json"
-	}
-	loaded, err := readMCP(root, path, portable)
 	entries := map[string]json.RawMessage{}
+	var variables []ConfigVariable
 	var warnings []string
-	if err != nil {
-		warnings = append(warnings, fmt.Sprintf("MCP %s: %v", path, err))
-	} else {
-		maps.Copy(entries, loaded)
+	for _, candidate := range []string{"mcp.json", ".mcp.json", "mcp_config.json"} {
+		doc, err := readMCPFile(root, candidate)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("MCP %s: %v", candidate, err))
+			continue
+		}
+		maps.Copy(entries, doc.Servers)
+		variables = mergeVariables(variables, doc.Variables)
 	}
-	if !portable && len(definition.MCPServers) != 0 {
-		warnings = append(warnings, collectNativeMCP(root, definition.MCPServers, entries)...)
+	if len(definition.MCPServers) != 0 {
+		warnings = append(warnings, collectManifestMCP(root, definition.MCPServers, entries, &variables)...)
 	}
-
 	names := make([]string, 0, len(entries))
-	for name := range entries {
-		names = append(names, name)
+	for serverName := range entries {
+		names = append(names, serverName)
 	}
 	slices.Sort(names)
 	var servers []mcpconfig.Server
-	for _, name := range names {
-		if name == "" {
+	for _, serverName := range names {
+		if serverName == "" {
 			warnings = append(warnings, "MCP server name must not be empty")
 			continue
 		}
-		server, err := normalizeMCP(root, filepath.Join(dataDir, definition.Name), entries[name], portable)
+		var entryVars struct {
+			Variables []ConfigVariable `json:"variables"`
+		}
+		if json.Unmarshal(entries[serverName], &entryVars) == nil && len(entryVars.Variables) > 0 {
+			variables = mergeVariables(variables, entryVars.Variables)
+		}
+		server, err := normalizeMCP(root, filepath.Join(dataDir, definition.Name), entries[serverName], configValues)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("MCP %s: %v", name, err))
+			warnings = append(warnings, fmt.Sprintf("MCP %s: %v", serverName, err))
 			continue
 		}
-		server.ID = MCPServerID(definition.Name, name)
-		server.Name = definition.Name + ":" + name
+		server.ID = MCPServerID(definition.Name, serverName)
+		server.Name = definition.Name + ":" + serverName
 		server.Source = mcpconfig.SourcePlugin
 		server.UpdatedAt = info.ModTime()
 		server.Enabled = true
 		servers = append(servers, server)
 	}
-	return servers, warnings
+	return servers, variables, warnings
+}
+
+func mergeVariables(base, extra []ConfigVariable) []ConfigVariable {
+	if len(extra) == 0 {
+		return base
+	}
+	seen := make(map[string]int, len(base))
+	for i, v := range base {
+		seen[v.Name] = i
+	}
+	for _, v := range extra {
+		if v.Name == "" {
+			continue
+		}
+		if idx, ok := seen[v.Name]; ok {
+			base[idx] = v
+			continue
+		}
+		seen[v.Name] = len(base)
+		base = append(base, v)
+	}
+	return base
 }
 
 func (s *Store) ListMCPServers() ([]mcpconfig.Server, error) {
+	states := s.loadStates(context.Background())
+	servers, err := s.ListMCPServersWithConfig(
+		func(id string) bool {
+			st, ok := states[id]
+			return !ok || st.Enabled
+		},
+		func(id string) map[string]string {
+			return states[id].Config
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if s.oauthClients != nil {
+		for i := range servers {
+			pluginID, _, _ := strings.Cut(servers[i].Name, ":")
+			if client := s.oauthClients(pluginID); client.ClientID != "" || client.ClientSecretEnvVar != "" {
+				servers[i].OAuth = client
+			}
+		}
+	}
+	return servers, nil
+}
+
+func (s *Store) ListMCPServersWithConfig(enabled func(string) bool, configFor func(string) map[string]string) ([]mcpconfig.Server, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	entries, err := os.ReadDir(s.dir)
@@ -174,12 +215,22 @@ func (s *Store) ListMCPServers() ([]mcpconfig.Server, error) {
 	}
 	var servers []mcpconfig.Server
 	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
 		root := filepath.Join(s.dir, entry.Name())
 		definition, err := manifest.Read(root)
 		if err != nil || definition.Name != entry.Name() {
 			continue
 		}
-		loaded, _ := loadMCP(root, s.dataDir, definition)
+		if enabled != nil && !enabled(definition.Name) {
+			continue
+		}
+		var values map[string]string
+		if configFor != nil {
+			values = configFor(definition.Name)
+		}
+		loaded, _, _ := loadMCP(root, s.dataDir, definition, values)
 		servers = append(servers, loaded...)
 	}
 	return servers, nil

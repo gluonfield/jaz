@@ -27,12 +27,36 @@ func NewMCPConnectionConnector(store MCPConnectionStore, authorizer MCPConnectio
 	return &MCPConnectionConnector{store: store, authorizer: authorizer}
 }
 
-func (c *MCPConnectionConnector) Connect(ctx context.Context, plugin integrations.Plugin, client mcpconfig.OAuthConfig, opts mcpconfig.AuthorizeOptions) (OAuthStart, error) {
-	connection, server, err := mcpConnectionSpec(plugin)
+func (c *MCPConnectionConnector) ConnectServer(ctx context.Context, pluginID, serverID, displayName, rawURL string, client mcpconfig.OAuthConfig, opts mcpconfig.AuthorizeOptions) (OAuthStart, error) {
+	input, err := mcpconfig.ValidateInput(mcpconfig.ServerInput{
+		Name:    displayName,
+		URL:     rawURL,
+		Enabled: true,
+	})
 	if err != nil {
 		return OAuthStart{}, err
 	}
-	server.OAuth = client
+	connID, err := integrations.ConnectionID(pluginID, input.URL)
+	if err != nil {
+		return OAuthStart{}, err
+	}
+	if serverID == "" {
+		serverID = connID
+	}
+	connection := integrations.Connection{
+		ID:          connID,
+		Provider:    pluginID,
+		AccountID:   input.URL,
+		AccountName: cmp.Or(displayName, pluginID),
+	}
+	server := mcpconfig.Server{
+		ID:        serverID,
+		Name:      input.Name,
+		Transport: mcpconfig.TransportStreamableHTTP,
+		URL:       input.URL,
+		Enabled:   true,
+		OAuth:     client,
+	}
 	opts.ReplacePending = true
 	status := c.authorizer.AuthorizeWithHook(ctx, server, opts, func(ctx context.Context) error {
 		return c.store.SaveConnection(ctx, connection)
@@ -43,46 +67,5 @@ func (c *MCPConnectionConnector) Connect(ctx context.Context, plugin integration
 	if status.Error != "" {
 		return OAuthStart{}, errors.New(status.Error)
 	}
-	return OAuthStart{}, fmt.Errorf("connection plugin %q did not return an authorization URL", plugin.ID)
-}
-
-func mcpConnectionSpec(plugin integrations.Plugin) (integrations.Connection, mcpconfig.Server, error) {
-	if !mcpConnectionPlugin(plugin) {
-		return integrations.Connection{}, mcpconfig.Server{}, fmt.Errorf("connection plugin %q is not an MCP-backed connection", plugin.ID)
-	}
-	input, err := mcpconfig.ValidateInput(mcpconfig.ServerInput{
-		Name:    plugin.Name,
-		URL:     plugin.RemoteMCP.URL,
-		Enabled: true,
-	})
-	if err != nil {
-		return integrations.Connection{}, mcpconfig.Server{}, err
-	}
-	providerID := cmp.Or(plugin.Provider.ID, plugin.ID)
-	id, err := integrations.ConnectionID(providerID, input.URL)
-	if err != nil {
-		return integrations.Connection{}, mcpconfig.Server{}, err
-	}
-	name := plugin.Provider.Name
-	if name == "" {
-		name = plugin.Name
-	}
-	connection := integrations.Connection{
-		ID:          id,
-		Provider:    providerID,
-		AccountID:   input.URL,
-		AccountName: name,
-	}
-	server := mcpconfig.Server{
-		ID:        id,
-		Name:      input.Name,
-		Transport: mcpconfig.TransportStreamableHTTP,
-		URL:       input.URL,
-		Enabled:   true,
-	}
-	return connection, server, nil
-}
-
-func mcpConnectionPlugin(plugin integrations.Plugin) bool {
-	return plugin.PrimaryAuthKind() == integrations.AuthKindMCPConnection && plugin.RemoteMCP != nil
+	return OAuthStart{}, fmt.Errorf("plugin %q did not return an authorization URL", pluginID)
 }

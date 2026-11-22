@@ -39,13 +39,13 @@ func (p storedPresentation) PresentMCP(id string, presentation *sessionevents.Pr
 func TestPageFollowsStoredShowViewPresentations(t *testing.T) {
 	layout := runtimefiles.New(t.TempDir())
 	store := New(layout)
-	if _, err := store.Install(archive(t, map[string]string{
-		"tenders/plugin.json":       portable(t, "tenders", map[string]any{"page": map[string]string{"view": "status"}}),
+	if _, err := installFiles(t, store, map[string]string{
+		"tenders/plugin.json":       `{"name":"tenders","page":{"view":"status"}}`,
 		"tenders/views/status.html": "<p>status</p>",
 		"tenders/views/other.html":  "<p>other</p>",
-		"other/plugin.json":         portable(t, "other", nil),
+		"other/plugin.json":         `{"name":"other"}`,
 		"other/views/status.html":   "<p>other plugin</p>",
-	})); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := sqlite.New(t.TempDir())
@@ -164,18 +164,35 @@ func TestPageFollowsStoredShowViewPresentations(t *testing.T) {
 func TestInstallRejectsInvalidPageViews(t *testing.T) {
 	for _, view := range []string{"../status", "status.html", "missing"} {
 		store := New(runtimefiles.New(t.TempDir()))
-		definition := portable(t, "tenders", map[string]any{"page": Page{View: view}})
-		if _, err := store.Install(archive(t, map[string]string{"tenders/plugin.json": definition, "tenders/views/status.html": "<p>status</p>"})); !errors.Is(err, ErrInvalid) {
+		definition := manifestJSON(t, map[string]any{"name": "tenders", "page": Page{View: view}})
+		if _, err := installFiles(t, store, map[string]string{"tenders/plugin.json": definition, "tenders/views/status.html": "<p>status</p>"}); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("accepted page view %q: %v", view, err)
 		}
 	}
 }
 
-func TestInstallRejectsInvalidIconPaths(t *testing.T) {
-	for _, icon := range []string{"assets/icon.svg", "./../icon.svg", "./assets/../icon.svg", "./assets/./icon.svg", "./assets//icon.svg", `./assets\icon.svg`, "/assets/icon.svg", "https://example.com/icon.svg", "./assets/icon.png", "./missing.svg"} {
+func TestInstallAcceptsSVGAndPNGAndHTTPSIconsAndRejectsUnsafePaths(t *testing.T) {
+	store := New(runtimefiles.New(t.TempDir()))
+	installed, err := installFiles(t, store, map[string]string{
+		"svg-plugin/plugin.json":  `{"name":"svg-plugin","logo":"./assets/icon.svg"}`,
+		"svg-plugin/assets/icon.svg": `<svg xmlns="http://www.w3.org/2000/svg"/>`,
+		"url-plugin/plugin.json":  `{"name":"url-plugin","logo":"https://example.com/icon.png"}`,
+	})
+	if err != nil || len(installed) != 2 {
+		t.Fatalf("valid icons failed = %+v %v", installed, err)
+	}
+	for _, p := range installed {
+		if p.Name == "svg-plugin" && !strings.HasPrefix(p.IconDataURL, "data:image/svg+xml;base64,") {
+			t.Fatalf("svg icon = %+v", p.Icon)
+		}
+		if p.Name == "url-plugin" && p.Icon.Kind != "url" {
+			t.Fatalf("url icon = %+v", p.Icon)
+		}
+	}
+	for _, icon := range []string{"./../icon.svg", "./assets/../icon.svg", `./assets\icon.svg`, "/assets/icon.svg", "http://example.com/icon.svg", "./missing.svg"} {
 		t.Run(icon, func(t *testing.T) {
 			store := New(runtimefiles.New(t.TempDir()))
-			if _, err := store.Install(archive(t, map[string]string{"tenders/plugin.json": portable(t, "tenders", map[string]any{"icon": icon})})); !errors.Is(err, ErrInvalid) {
+			if _, err := installFiles(t, store, map[string]string{"tenders/plugin.json": manifestJSON(t, map[string]any{"name": "tenders", "logo": icon})}); !errors.Is(err, ErrInvalid) {
 				t.Fatalf("accepted icon %q: %v", icon, err)
 			}
 		})
@@ -185,11 +202,11 @@ func TestInstallRejectsInvalidIconPaths(t *testing.T) {
 func TestIconCannotFollowASymlinkOutsideThePlugin(t *testing.T) {
 	layout := runtimefiles.New(t.TempDir())
 	store := New(layout)
-	installed, err := store.Install(archive(t, map[string]string{
-		"tenders/plugin.json":       `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tenders","icon":"./icon.svg","page":{"view":"status"}}}}`,
+	installed, err := installFiles(t, store, map[string]string{
+		"tenders/plugin.json":       `{"name":"tenders","displayName":"Tenders","logo":"./icon.svg","page":{"view":"status"}}`,
 		"tenders/icon.svg":          `<svg xmlns="http://www.w3.org/2000/svg"/>`,
 		"tenders/views/status.html": "<p>status</p>",
-	}))
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,6 @@ import (
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	voiceapi "github.com/wins/jaz/backend/internal/httpapi/voice"
-	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/sessionoverview"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -48,10 +47,10 @@ func HTTPModule() fx.Option {
 		sessionsapi.NewOverviewHandler,
 		fx.Annotate(sessionsapi.NewGoalHandler, fx.From(new(*acp.Manager))),
 		canvas.NewService,
-		plugins.New,
+		plugins.NewStore,
+		plugins.NewService,
 		fx.Annotate(plugins.NewViewService, fx.From(new(*sqlitestore.Store), new(*visualize.Service))),
 		pluginsapi.NewViewHandler,
-		fx.Annotate(pluginsapi.NewHandler, fx.From(new(*sqlitestore.Store), new(*mcpruntime.Manager))),
 		fx.Annotate(canvasapi.NewHandler, fx.From(new(*sqlitestore.Store))),
 		m365copilotapi.NewHandler,
 		NewRoutes,

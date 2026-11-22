@@ -7,7 +7,6 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/computercontrol"
-	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	feedcore "github.com/wins/jaz/backend/internal/feed"
 	agentsessionsapi "github.com/wins/jaz/backend/internal/httpapi/agentsessions"
@@ -15,7 +14,6 @@ import (
 	browserapi "github.com/wins/jaz/backend/internal/httpapi/browser"
 	canvasapi "github.com/wins/jaz/backend/internal/httpapi/canvas"
 	computerapi "github.com/wins/jaz/backend/internal/httpapi/computer"
-	connectionsapi "github.com/wins/jaz/backend/internal/httpapi/connections"
 	deviceapi "github.com/wins/jaz/backend/internal/httpapi/devices"
 	feedapi "github.com/wins/jaz/backend/internal/httpapi/feed"
 	filesystemapi "github.com/wins/jaz/backend/internal/httpapi/filesystem"
@@ -34,6 +32,7 @@ import (
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/mobilepush"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -56,12 +55,9 @@ type routeDeps struct {
 	Computer         *computercontrol.DesktopBackend   `optional:"true"`
 	ComputerSettings *ComputerSettingsHandler          `optional:"true"`
 	BrowserSettings  *BrowserSettingsHandler           `optional:"true"`
-	Connections      *connections.Service              `optional:"true"`
-	ConnectionStart  *connections.ConnectService       `optional:"true"`
-	ConnectionOAuth  *connections.OAuthService         `optional:"true"`
-	ConnectionQR     *connections.QRService            `optional:"true"`
 	MCP              *mcpruntime.Manager               `optional:"true"`
-	Plugins          *pluginsapi.Handler
+	Plugins          *plugins.Service                  `optional:"true"`
+	PluginSessions   plugins.SessionStore              `optional:"true"`
 	PluginViews      *pluginsapi.ViewHandler
 	Preview          *previewapi.Handler
 	SessionMessages  *sessionsapi.MessagesHandler
@@ -114,18 +110,9 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "DELETE /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.Unregister)},
 		server.Route{Pattern: "GET /v1/notifications/stream", Handler: http.HandlerFunc(push.Stream)},
 	)
-	installed := deps.Plugins
-	routes = append(routes,
-		server.Route{Pattern: "GET /v1/plugins", Handler: http.HandlerFunc(installed.List)},
-		server.Route{Pattern: "GET /v1/plugins/{plugin}/page", Handler: http.HandlerFunc(installed.Page)},
-		server.Route{Pattern: "POST /v1/plugins", Handler: http.HandlerFunc(installed.Install)},
-		server.Route{Pattern: "POST /v1/plugins/repository", Handler: http.HandlerFunc(installed.InstallRepository)},
-		server.Route{Pattern: "POST /v1/plugins/{plugin}/update", Handler: http.HandlerFunc(installed.Update)},
-		server.Route{Pattern: "DELETE /v1/plugins/{plugin}", Handler: http.HandlerFunc(installed.Remove)},
-	)
+	routes = appendPluginRoutes(routes, deps.Plugins, deps.PluginSessions, deps.MCP, deps.Config)
 	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
-	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.MCP, deps.Config)
 	routes = appendDeviceRoutes(routes, deps.Devices, deps.Store, deps.Config, deps.Jaz.Devices.DisablePairing)
 	if deps.Computer != nil && deps.ComputerSettings != nil {
 		routes = append(routes,
@@ -188,32 +175,31 @@ func usageRoutes(usage usagecore.Service) server.Routes {
 	}
 }
 
-func appendConnectionRoutes(routes server.Routes, service *connections.Service, connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService, mcp connectionsapi.MCPRefresher, cfg serverconfig.Config) server.Routes {
+func appendPluginRoutes(routes server.Routes, service *plugins.Service, sessions plugins.SessionStore, mcp pluginsapi.MCPRuntime, cfg serverconfig.Config) server.Routes {
 	if service == nil {
 		return routes
 	}
-	callbackBaseURL := cfg.PublicBaseURL()
-	handler := connectionsapi.NewPluginHandler(service, mcp, callbackBaseURL)
-	routes = append(routes,
-		server.Route{Pattern: "GET /v1/connections/plugins", Handler: httpHandlerFunc(handler.List)},
-		server.Route{Pattern: "GET /v1/connections/plugins/{id}", Handler: httpHandlerFunc(handler.Get)},
-		server.Route{Pattern: "DELETE /v1/connections/accounts/{id}", Handler: httpHandlerFunc(handler.Disconnect)},
+	handler := pluginsapi.NewHandler(service, sessions, mcp, cfg.PublicBaseURL())
+	return append(routes,
+		server.Route{Pattern: "GET /v1/plugins", Handler: httpHandlerFunc(handler.List)},
+		server.Route{Pattern: "GET /v1/plugins/sources", Handler: httpHandlerFunc(handler.ListSources)},
+		server.Route{Pattern: "POST /v1/plugins/sources", Handler: httpHandlerFunc(handler.AddSource)},
+		server.Route{Pattern: "DELETE /v1/plugins/sources/{id}", Handler: httpHandlerFunc(handler.RemoveSource)},
+		server.Route{Pattern: "POST /v1/plugins/sources/refresh", Handler: httpHandlerFunc(handler.RefreshSources)},
+		server.Route{Pattern: "POST /v1/plugins/install", Handler: httpHandlerFunc(handler.Install)},
+		server.Route{Pattern: "GET " + plugins.OAuthCallbackPath, Handler: httpHandlerFunc(handler.OAuthCallback)},
+		server.Route{Pattern: "DELETE /v1/plugins/accounts/{id}", Handler: httpHandlerFunc(handler.DisconnectAccount)},
+		server.Route{Pattern: "GET /v1/plugins/qr/{id}/status", Handler: httpHandlerFunc(handler.QRStatus)},
+		server.Route{Pattern: "POST /v1/plugins/qr/{id}/password", Handler: httpHandlerFunc(handler.QRPassword)},
+		server.Route{Pattern: "DELETE /v1/plugins/qr/{id}", Handler: httpHandlerFunc(handler.CloseQR)},
+		server.Route{Pattern: "GET /v1/plugins/{plugin}", Handler: httpHandlerFunc(handler.Get)},
+		server.Route{Pattern: "PUT /v1/plugins/{plugin}/enabled", Handler: httpHandlerFunc(handler.SetEnabled)},
+		server.Route{Pattern: "PUT /v1/plugins/{plugin}/config", Handler: httpHandlerFunc(handler.SaveConfig)},
+		server.Route{Pattern: "POST /v1/plugins/{plugin}/connect", Handler: httpHandlerFunc(handler.Connect)},
+		server.Route{Pattern: "GET /v1/plugins/{plugin}/page", Handler: httpHandlerFunc(handler.Page)},
+		server.Route{Pattern: "POST /v1/plugins/{plugin}/update", Handler: httpHandlerFunc(handler.Update)},
+		server.Route{Pattern: "DELETE /v1/plugins/{plugin}", Handler: httpHandlerFunc(handler.Remove)},
 	)
-	if connect != nil || oauth != nil || qr != nil {
-		connectHandler := connectionsapi.NewConnectHandler(connect, oauth, qr, mcp, callbackBaseURL)
-		if connect != nil {
-			routes = append(routes, server.Route{Pattern: "POST /v1/connections/plugins/{id}/connect", Handler: httpHandlerFunc(connectHandler.Start)})
-		}
-		if qr != nil {
-			routes = append(routes, server.Route{Pattern: "GET /v1/connections/qr/{id}", Handler: httpHandlerFunc(connectHandler.QRStatus)})
-			routes = append(routes, server.Route{Pattern: "POST /v1/connections/qr/{id}/password", Handler: httpHandlerFunc(connectHandler.QRPassword)})
-			routes = append(routes, server.Route{Pattern: "DELETE /v1/connections/qr/{id}", Handler: httpHandlerFunc(connectHandler.CloseQR)})
-		}
-		if oauth != nil {
-			routes = append(routes, server.Route{Pattern: "GET " + connectionsapi.OAuthCallbackPath, Handler: httpHandlerFunc(connectHandler.Callback)})
-		}
-	}
-	return routes
 }
 
 func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, settings storage.SettingsStorage, cfg serverconfig.Config, disablePairing bool) server.Routes {

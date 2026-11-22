@@ -16,7 +16,6 @@ import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { ComputerSettings } from '@/components/settings/ComputerSettings'
 import { NotificationsSettings } from '@/components/settings/NotificationsSettings'
 import { BrowserSettings } from './BrowserSettings'
-import { ConnectionsSettings } from './ConnectionsSettings'
 import { DevicesSettings } from './DevicesSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
@@ -200,8 +199,6 @@ function SectionContent({
       return <PersonalizationSettings />
     case 'memory':
       return <MemorySettings />
-    case 'connections':
-      return <ConnectionsSettings />
     case 'computer':
       return <ComputerSettings />
     case 'browser':

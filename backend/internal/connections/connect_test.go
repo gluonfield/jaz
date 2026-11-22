@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wins/jaz/backend/internal/connectors/deployink"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
@@ -14,7 +13,7 @@ import (
 )
 
 func TestConnectServiceReportsMissingQRProviderForSessionPlugin(t *testing.T) {
-	service := NewConnectService(NewCatalog(nil), nil, NewQRService(), nil, nil)
+	service := NewConnectService(NewCatalog(nil), nil, NewQRService(), nil)
 
 	_, err := service.Start(context.Background(), whatsapp.ProviderID, StartOptions{})
 	if !errors.Is(err, ErrQRProviderUnavailable) {
@@ -35,7 +34,7 @@ func TestConnectServiceDelegatesSessionAuthToQRService(t *testing.T) {
 			Status: "available",
 		},
 	}}}
-	service := NewConnectService(catalog, nil, qr, nil, nil)
+	service := NewConnectService(catalog, nil, qr, nil)
 
 	_, err := service.Start(context.Background(), "matrix", StartOptions{})
 	if !errors.Is(err, ErrQRProviderUnavailable) {
@@ -47,7 +46,7 @@ func TestConnectServiceStartsChatQRProviders(t *testing.T) {
 	service := NewConnectService(NewCatalog(nil), nil, NewQRService(
 		fakeQRProvider{provider: telegram.ProviderID, expires: time.Now().Add(time.Minute)},
 		fakeQRProvider{provider: whatsapp.ProviderID, expires: time.Now().Add(time.Minute)},
-	), nil, nil)
+	), nil)
 
 	for _, provider := range []string{telegram.ProviderID, whatsapp.ProviderID} {
 		result, err := service.Start(context.Background(), provider, StartOptions{})
@@ -62,40 +61,22 @@ func TestConnectServiceStartsChatQRProviders(t *testing.T) {
 }
 
 func TestConnectServiceRejectsUnknownProvider(t *testing.T) {
-	service := NewConnectService(NewCatalog(nil), nil, NewQRService(), nil, nil)
+	service := NewConnectService(NewCatalog(nil), nil, NewQRService(), nil)
 	if _, err := service.Start(context.Background(), "missing", StartOptions{}); err == nil {
 		t.Fatal("expected error")
 	}
 }
 
-func TestConnectServiceAddsRemoteMCPServer(t *testing.T) {
-	store := &remoteMCPStore{}
-	catalog := &Catalog{plugins: []integrations.Plugin{remoteMCPPlugin()}}
-	service := NewConnectService(catalog, nil, nil, NewRemoteMCPConnector(store), nil)
-
-	result, err := service.Start(context.Background(), "docs", StartOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	start := result.Start
-	if start.Type != "mcp" || start.MCP == nil || start.MCP.URL != "https://mcp.example.com" {
-		t.Fatalf("start = %#v", start)
-	}
-	if !result.MCPServersChanged {
-		t.Fatalf("result = %#v, want MCPServersChanged", result)
-	}
-	if len(store.servers) != 1 {
-		t.Fatalf("servers = %#v", store.servers)
-	}
-}
-
-func TestConnectServiceStartsDeployinkAsConnectionBackedMCP(t *testing.T) {
+func TestConnectServiceStartsGitPluginMCPAuthorization(t *testing.T) {
 	store := &mcpConnectionStore{}
-	authorizer := &fakeMCPConnectionAuthorizer{authURL: "https://deployink.com/oauth"}
-	service := NewConnectService(NewCatalog(nil), nil, nil, nil, NewMCPConnectionConnector(store, authorizer))
+	authorizer := &fakeMCPConnectionAuthorizer{authURL: "https://zoom.us/oauth/authorize"}
+	client := mcpconfig.OAuthConfig{ClientID: "registered-client", ClientSecretEnvVar: "ZOOM_TEST_SECRET", UseAppScopes: true}
+	t.Setenv(client.ClientSecretEnvVar, "registered-secret")
+	catalog := NewCatalog(map[string]mcpconfig.OAuthConfig{"zoom": client})
+	service := NewConnectService(catalog, nil, nil, NewMCPConnectionConnector(store, authorizer))
 
-	result, err := service.Start(context.Background(), deployink.ProviderID, StartOptions{
-		MCP: mcpconfig.AuthorizeOptions{RedirectURL: "https://jaz.example.com/v1/mcp/oauth/callback"},
+	result, err := service.StartMCP(context.Background(), "zoom", "plugin:zoom:bWFpbg", "Zoom", "https://mcp.zoom.us/mcp/zoom/streamable", mcpconfig.AuthorizeOptions{
+		RedirectURL: "https://jaz.example.com/v1/mcp/oauth/callback",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -103,45 +84,14 @@ func TestConnectServiceStartsDeployinkAsConnectionBackedMCP(t *testing.T) {
 	if result.Start.Type != "oauth" || result.Start.AuthURL != authorizer.authURL || result.MCPServersChanged {
 		t.Fatalf("result = %#v", result)
 	}
-	if len(store.connections) != 0 {
-		t.Fatalf("connections before callback = %#v", store.connections)
-	}
-	if authorizer.onAuthorized == nil {
-		t.Fatal("missing authorization callback")
+	if authorizer.server.ID != "plugin:zoom:bWFpbg" || authorizer.server.OAuth != client || authorizer.server.URL != "https://mcp.zoom.us/mcp/zoom/streamable" {
+		t.Fatalf("server = %#v", authorizer.server)
 	}
 	if err := authorizer.onAuthorized(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(store.connections) != 1 {
-		t.Fatalf("connections after callback = %#v", store.connections)
-	}
-	connection := store.connections[0]
-	if connection.Provider != deployink.ProviderID || connection.AccountName != deployink.ProviderName {
-		t.Fatalf("connection = %#v", connection)
-	}
-	if authorizer.server.ID != connection.ID || authorizer.server.URL != deployink.RemoteMCPURL {
-		t.Fatalf("server = %#v connection = %#v", authorizer.server, connection)
-	}
-	if authorizer.options.RedirectURL != "https://jaz.example.com/v1/mcp/oauth/callback" {
-		t.Fatalf("authorize options = %#v", authorizer.options)
-	}
-}
-
-func remoteMCPPlugin() integrations.Plugin {
-	return integrations.Plugin{
-		ID:   "docs",
-		Name: "Docs",
-		Provider: integrations.Provider{
-			ID:   "docs",
-			Name: "Docs",
-		},
-		Auth: []integrations.AuthOption{{Kind: integrations.AuthKindRemoteMCP}},
-		RemoteMCP: &integrations.RemoteMCP{
-			URL: "https://mcp.example.com",
-		},
-		Implementation: integrations.Implementation{
-			Status: "available",
-		},
+	if len(store.connections) != 1 || store.connections[0].Provider != "zoom" || store.connections[0].AccountName != "Zoom" {
+		t.Fatalf("connections = %#v", store.connections)
 	}
 }
 
@@ -166,60 +116,4 @@ func (a *fakeMCPConnectionAuthorizer) AuthorizeWithHook(_ context.Context, serve
 	a.options = options
 	a.onAuthorized = onAuthorized
 	return mcpconfig.ServerStatus{Status: "needs_auth", AuthURL: a.authURL}
-}
-
-func TestZoomConnectionRequiresDeploymentClient(t *testing.T) {
-	ctx := t.Context()
-	authorizer := &fakeMCPConnectionAuthorizer{authURL: "https://zoom.us/oauth/authorize"}
-	store := &mcpConnectionStore{}
-	connector := NewMCPConnectionConnector(store, authorizer)
-	client := mcpconfig.OAuthConfig{ClientID: "registered-client", PublicClientID: "registered-public", ClientSecretEnvVar: "ZOOM_TEST_SECRET", UseAppScopes: true}
-	clients := map[string]mcpconfig.OAuthConfig{"zoom": client}
-	t.Setenv(client.ClientSecretEnvVar, "")
-	for _, config := range []map[string]mcpconfig.OAuthConfig{nil, clients} {
-		catalog := NewCatalog(config)
-		plugin, ok, err := NewService(catalog, &serviceStore{}, nil).Plugin(ctx, "zoom", false)
-		if err != nil || !ok || plugin.Available() || plugin.Implementation.Reason == "" {
-			t.Fatalf("unconfigured Zoom plugin = %#v, %v, %v", plugin, ok, err)
-		}
-		service := NewConnectService(catalog, nil, nil, nil, connector)
-		if _, err := service.Start(ctx, "zoom", StartOptions{}); err == nil || err.Error() != plugin.Implementation.Reason {
-			t.Fatalf("unconfigured Zoom start error = %v", err)
-		}
-		if authorizer.server.ID != "" || len(store.connections) != 0 {
-			t.Fatal("unconfigured connection attempted authorization or persisted an account")
-		}
-	}
-
-	t.Setenv(client.ClientSecretEnvVar, "registered-secret")
-	catalog := NewCatalog(clients)
-	plugin, ok, err := NewService(catalog, &serviceStore{}, nil).Plugin(ctx, "zoom", false)
-	if err != nil || !ok || !plugin.Available() || plugin.Implementation.Reason != "" {
-		t.Fatalf("configured Zoom plugin = %#v, %v, %v", plugin, ok, err)
-	}
-	service := NewConnectService(catalog, nil, nil, nil, connector)
-	result, err := service.Start(ctx, "zoom", StartOptions{MCP: mcpconfig.AuthorizeOptions{RedirectURL: "https://jaz.example/callback"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Start.AuthURL != authorizer.authURL || authorizer.server.OAuth != client || authorizer.server.URL != "https://mcp.zoom.us/mcp/zoom/streamable" {
-		t.Fatalf("unexpected Zoom authorization: %#v", authorizer.server)
-	}
-	if err := authorizer.onAuthorized(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if len(store.connections) != 1 || store.connections[0].Provider != "zoom" {
-		t.Fatalf("connections = %#v", store.connections)
-	}
-
-	t.Setenv(client.ClientSecretEnvVar, "")
-	accounts := NewService(NewCatalog(clients), &serviceStore{connections: store.connections}, nil)
-	plugin, ok, err = accounts.Plugin(ctx, "zoom", false)
-	if err != nil || !ok || plugin.Available() || plugin.Connection == nil || plugin.Connection.Status != integrations.PluginConnectionStatusConnected || len(plugin.Connection.Accounts) != 1 {
-		t.Fatalf("saved Zoom account after configuration was lost = %#v, %v, %v", plugin, ok, err)
-	}
-	resultDisconnect, err := accounts.DisconnectAccount(ctx, plugin.Connection.Accounts[0].ID)
-	if err != nil || !resultDisconnect.MCPServersChanged {
-		t.Fatalf("disconnect from unconfigured Zoom = %#v, %v", resultDisconnect, err)
-	}
 }

@@ -1,22 +1,15 @@
 package connections
 
 import (
-	"cmp"
-	"fmt"
-	"os"
 	"slices"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/connectors/calendar"
-	"github.com/wins/jaz/backend/internal/connectors/deployink"
 	"github.com/wins/jaz/backend/internal/connectors/drive"
 	"github.com/wins/jaz/backend/internal/connectors/gmail"
-	"github.com/wins/jaz/backend/internal/connectors/granola"
-	"github.com/wins/jaz/backend/internal/connectors/jazapps"
 	"github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
-	"github.com/wins/jaz/backend/internal/connectors/zoom"
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
@@ -27,41 +20,29 @@ type Catalog struct {
 }
 
 func NewCatalog(clients map[string]mcpconfig.OAuthConfig) *Catalog {
-	return &Catalog{clients: clients, plugins: []integrations.Plugin{
-		calendar.Plugin(),
-		deployink.Plugin(),
-		drive.Plugin(),
-		gmail.Plugin(),
-		granola.Plugin(),
-		jazapps.Tasks(),
-		jazapps.CRM(),
-		slack.Plugin(),
-		telegram.Plugin(),
-		whatsapp.Plugin(),
-		zoom.Plugin(),
-	}}
+	return &Catalog{
+		clients: clients,
+		plugins: []integrations.Plugin{
+			calendar.Plugin(),
+			drive.Plugin(),
+			gmail.Plugin(),
+			slack.Plugin(),
+			telegram.Plugin(),
+			whatsapp.Plugin(),
+		},
+	}
 }
 
-func (c *Catalog) MCPOAuthClient(plugin integrations.Plugin) mcpconfig.OAuthConfig {
-	return c.clients[cmp.Or(plugin.Provider.ID, plugin.ID)]
+func (c *Catalog) OAuthClientByID(id string) mcpconfig.OAuthConfig {
+	if c == nil {
+		return mcpconfig.OAuthConfig{}
+	}
+	return c.clients[id]
 }
 
-func (c *Catalog) forSignIn(plugin integrations.Plugin, loopbackAllowed bool) integrations.Plugin {
-	if !plugin.Available() || !mcpConnectionPlugin(plugin) {
-		return plugin
-	}
-	client := c.MCPOAuthClient(plugin)
-	switch {
-	case client.UsesLoopback():
-		if !loopbackAllowed {
-			plugin.Implementation.Status = "local_sign_in_required"
-			plugin.Implementation.Reason = fmt.Sprintf("Sign in to %s from the device running the local Jaz backend.", plugin.Name)
-		}
-	case plugin.RemoteMCP.OAuthSecrets && (client.ClientID == "" || strings.TrimSpace(os.Getenv(client.ClientSecretEnvVar)) == ""):
-		plugin.Implementation.Status = "setup_required"
-		plugin.Implementation.Reason = fmt.Sprintf("%s requires a registered OAuth app. Configure a public client ID for local sign-in or ask your Jaz administrator to configure its credentials.", plugin.Name)
-	}
-	return plugin
+func (c *Catalog) IsNative(id string) bool {
+	_, ok := c.Plugin(id)
+	return ok
 }
 
 func (c *Catalog) ListPlugins() []integrations.Plugin {

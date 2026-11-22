@@ -18,6 +18,7 @@ type Bot struct {
 	Prompt     string `json:"prompt"`
 	Main       int64  `json:"main"`
 	Workspaces string `json:"workspaces"`
+	Plugins    string `json:"plugins"`
 }
 
 type BotCommitment struct {

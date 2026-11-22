@@ -17,6 +17,7 @@ import (
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	"github.com/wins/jaz/backend/internal/m365copilot"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/serverconfig"
@@ -77,6 +78,17 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 		fx.Supply(mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil), Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager, acp.AgentCatalog{}, runtimefiles.New(store.RootDir())),
 		fx.Provide(NewOAuthBroker, NewMicrosoftCopilotAuth, NewProviderSource, sessionevents.New, fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus)))),
 		fx.Provide(func() storage.Store { return store }),
+		fx.Provide(func() storage.PluginStore { return store }),
+		fx.Provide(func() *connections.Catalog { return connections.NewCatalog(nil) }),
+		fx.Provide(
+			NewConnectionOAuthService,
+			func() *connections.QRService { return connections.NewQRService() },
+			NewConnectionMCPConnector,
+			NewConnectionConnectService,
+			func(catalog *connections.Catalog, store *sqlitestore.Store) *connections.Service {
+				return connections.NewService(catalog, store)
+			},
+		),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
 		fx.Provide(func() storage.FeedStore { return fakeFeedStore{} }),
 		HTTPModule(),
@@ -249,58 +261,49 @@ func TestNewRoutesIncludesBrowserSettingsRoutes(t *testing.T) {
 	}
 }
 
-func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
+func TestNewRoutesIncludesUnifiedPluginRoutes(t *testing.T) {
 	catalog := connections.NewCatalog(nil)
 	oauth := connections.NewOAuthService(fakeConnectionOAuthStore{}, connections.OAuthConfig{})
 	qr := connections.NewQRService()
+	connService := connections.NewService(catalog, fakeConnectionOAuthStore{})
+	connect := connections.NewConnectService(catalog, oauth, qr, nil)
+	pluginService := plugins.NewService(plugins.New(runtimefiles.New(t.TempDir())), nil, connService, connect, oauth, qr)
 	routes := NewRoutes(routeDeps{
-		Usage:           usagecore.NewService(fakeUsageStore{}),
-		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}, nil),
-		ConnectionOAuth: oauth,
-		ConnectionQR:    qr,
-		ConnectionStart: connections.NewConnectService(catalog, oauth, qr, nil, nil),
-		Preview:         testPreviewHandler(t),
+		Usage:   usagecore.NewService(fakeUsageStore{}),
+		Plugins: pluginService,
+		Preview: testPreviewHandler(t),
 	})
+	want := []string{
+		"GET /v1/plugins",
+		"GET /v1/plugins/{plugin}",
+		"PUT /v1/plugins/{plugin}/enabled",
+		"PUT /v1/plugins/{plugin}/config",
+		"POST /v1/plugins/{plugin}/connect",
+		"DELETE /v1/plugins/accounts/{id}",
+		"GET /v1/plugins/qr/{id}/status",
+		"POST /v1/plugins/qr/{id}/password",
+		"DELETE /v1/plugins/qr/{id}",
+		"GET /v1/plugins/oauth/callback",
+		"GET /v1/plugins/sources",
+		"POST /v1/plugins/sources",
+		"DELETE /v1/plugins/sources/{id}",
+		"POST /v1/plugins/sources/refresh",
+		"POST /v1/plugins/install",
+		"POST /v1/plugins/{plugin}/update",
+		"DELETE /v1/plugins/{plugin}",
+		"GET /v1/plugins/{plugin}/page",
+	}
 	found := map[string]bool{}
 	for _, route := range routes {
-		if (route.Pattern == "GET /v1/connections/plugins" ||
-			route.Pattern == "GET /v1/connections/plugins/{id}" ||
-			route.Pattern == "DELETE /v1/connections/accounts/{id}" ||
-			route.Pattern == "POST /v1/connections/plugins/{id}/connect" ||
-			route.Pattern == "GET /v1/connections/qr/{id}" ||
-			route.Pattern == "POST /v1/connections/qr/{id}/password" ||
-			route.Pattern == "DELETE /v1/connections/qr/{id}" ||
-			route.Pattern == "GET /v1/connections/oauth/callback") && route.Handler != nil {
+		if route.Handler != nil {
 			found[route.Pattern] = true
 		}
 	}
-	if !found["GET /v1/connections/plugins"] ||
-		!found["GET /v1/connections/plugins/{id}"] ||
-		!found["DELETE /v1/connections/accounts/{id}"] ||
-		!found["POST /v1/connections/plugins/{id}/connect"] ||
-		!found["GET /v1/connections/qr/{id}"] ||
-		!found["POST /v1/connections/qr/{id}/password"] ||
-		!found["DELETE /v1/connections/qr/{id}"] ||
-		!found["GET /v1/connections/oauth/callback"] {
-		t.Fatalf("missing connection plugin routes: %#v", routes)
-	}
-}
-
-func TestNewRoutesKeepsConnectionStartRoutesIndependent(t *testing.T) {
-	catalog := connections.NewCatalog(nil)
-	oauth := connections.NewOAuthService(fakeConnectionOAuthStore{}, connections.OAuthConfig{})
-	routes := NewRoutes(routeDeps{
-		Usage:           usagecore.NewService(fakeUsageStore{}),
-		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}, nil),
-		ConnectionOAuth: oauth,
-		Preview:         testPreviewHandler(t),
-	})
-	for _, route := range routes {
-		if route.Pattern == "GET /v1/connections/oauth/callback" && route.Handler != nil {
-			return
+	for _, pattern := range want {
+		if !found[pattern] {
+			t.Fatalf("missing plugin route %q: %#v", pattern, routes)
 		}
 	}
-	t.Fatalf("missing OAuth callback route without QR service: %#v", routes)
 }
 
 func TestHTTPModuleWiresWithNewStore(t *testing.T) {
@@ -311,6 +314,16 @@ func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 		fx.NopLogger,
 		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}, Config{}, serverconfig.Config{}),
 		fx.Provide(NewStore, NewOAuthBroker, NewMicrosoftCopilotAuth, NewRuntimeAuthKey, NewProviderSource, sessionevents.New, fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus)))),
+		fx.Provide(
+			func() *connections.Catalog { return connections.NewCatalog(nil) },
+			NewConnectionOAuthService,
+			func() *connections.QRService { return connections.NewQRService() },
+			NewConnectionMCPConnector,
+			NewConnectionConnectService,
+			func(catalog *connections.Catalog, store *sqlitestore.Store) *connections.Service {
+				return connections.NewService(catalog, store)
+			},
+		),
 		fx.Provide(func(store *sqlitestore.Store) *mcpruntime.Manager {
 			return mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil)
 		}),

@@ -15,6 +15,7 @@ type BotRecord struct {
 	Kind       string
 	Prompt     string
 	Workspaces []string
+	Plugins    *[]string
 	Shape      string
 	Color      string
 	Pinned     int
