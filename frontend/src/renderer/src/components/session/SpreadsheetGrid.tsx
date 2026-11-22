@@ -1,10 +1,22 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useCallback, useId, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { utils, type CellAddress, type Range } from 'xlsx'
 import { cellTextBounds, initialSpreadsheetSelection, mergedRange, moveSpreadsheetSelection, selectionRange, selectionTSV, spreadsheetCell, spreadsheetIndex, spreadsheetLayout, spreadsheetStyle, spreadsheetText, visibleIndices, type SpreadsheetSelection, type SpreadsheetSheet } from '@/lib/spreadsheet'
+import type { SpreadsheetStyle } from '@/lib/spreadsheetMetadata'
 import '@/components/session/spreadsheet.css'
 
 const ROW_HEADER = 46
 const COLUMN_HEADER = 26
+const DEFAULT_FONT_SIZE = 12
+
+function fontFamily(style: SpreadsheetStyle, fallback: string) {
+  return style.fontFamily ? `${JSON.stringify(style.fontFamily)}, ${fallback}` : fallback
+}
+
+export function spreadsheetDigitWidth(font: SpreadsheetStyle): number {
+  const context = document.createElement('canvas').getContext('2d')!
+  context.font = `${font.fontSize ?? DEFAULT_FONT_SIZE}px ${fontFamily(font, getComputedStyle(document.body).fontFamily)}`
+  return Math.round(Math.max(...[...'0123456789'].map((digit) => context.measureText(digit).width)))
+}
 
 function rectangle(sheet: SpreadsheetSheet, range: Range): CSSProperties {
   return {
@@ -33,7 +45,7 @@ const Cell = memo(function Cell({ sheet, r, c, active, id }: { id: string; sheet
     aria-rowspan={range.e.r - range.s.r + 1}
     aria-colspan={range.e.c - range.s.c + 1}
     className="spreadsheet-cell"
-    style={{ ...rectangle(sheet, range), backgroundColor: style.fill, color: style.color, fontWeight: style.bold ? 600 : 400, fontStyle: style.italic ? 'italic' : undefined, fontSize: style.fontSize, fontFamily: style.fontFamily ? `${JSON.stringify(style.fontFamily)}, var(--font-sans)` : undefined, textAlign: style.horizontal ?? (cell?.t === 'n' ? 'right' : 'left') }}
+    style={{ ...rectangle(sheet, range), backgroundColor: style.fill, color: style.color, fontWeight: style.bold ? 600 : 400, fontStyle: style.italic ? 'italic' : undefined, fontSize: style.fontSize ?? DEFAULT_FONT_SIZE, fontFamily: fontFamily(style, 'var(--font-sans)'), textAlign: style.horizontal ?? (cell?.t === 'n' ? 'right' : 'left') }}
   >
     {style.border && <div className="spreadsheet-cell-border" style={{ left: range.s.c ? -1 : 0, top: range.s.r ? -1 : 0, borderTop: style.border.top, borderRight: style.border.right, borderBottom: style.border.bottom, borderLeft: style.border.left }} />}
     {textBounds && <div className="spreadsheet-cell-text" style={{ ...textBounds, justifyContent: style.vertical === 'top' ? 'flex-start' : style.vertical === 'center' ? 'center' : 'flex-end' }}>

@@ -58,8 +58,9 @@
   user-select: none;
   font-variant-numeric: tabular-nums;
   touch-action: none;
-  color: #000;
+  color: var(--sheet-ink);
   color-scheme: light;
+  --sheet-ink: #000;
   --sheet-bg: #fff;
   --sheet-line: #e1e3e6;
   --sheet-header: #f3f4f6;
@@ -170,7 +171,7 @@
 .spreadsheet-column-headers > .is-selected,
 .spreadsheet-row-headers > .is-selected {
   background: var(--sheet-accent-soft);
-  color: #000;
+  color: var(--sheet-ink);
   font-weight: 600;
 }
 
@@ -178,7 +179,7 @@
 .spreadsheet-freeze-row {
   position: absolute;
   pointer-events: none;
-  background: #9aa0a6;
+  background: var(--sheet-header-ink);
 }
 
 .spreadsheet-freeze-column {
