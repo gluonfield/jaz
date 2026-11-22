@@ -63,7 +63,7 @@ export function useModelReasoningState({
   })
   const reasoning = reasoningForModel(model, reasoningEffort)
   return {
-    modelSuggestions: query.isFetching ? [] : modelSuggestions,
+    modelSuggestions,
     modelsLoading: enabled && (query.isPending || query.isFetching),
     modelsReady: ready && !query.isFetching && modelSuggestions.length > 0,
     defaultModel,

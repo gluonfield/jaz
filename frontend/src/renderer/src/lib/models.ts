@@ -59,6 +59,7 @@ export function modelCatalogQuery(agent: string, provider?: string) {
       return { models: modelSuggestionsFromCatalog(body.models ?? []), defaultModel: body.default_model }
     },
     staleTime: provider === undefined ? 60_000 : 60 * 60 * 1000,
+    gcTime: Infinity,
     retry: provider === undefined ? false : 5,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
   })
