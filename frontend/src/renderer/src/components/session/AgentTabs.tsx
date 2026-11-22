@@ -1,6 +1,7 @@
-import { useRef, type WheelEvent } from 'react'
+import { useState, type WheelEvent } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { agentLabel } from '@/lib/agentLabel'
+import { createSwipe } from '@/lib/swipe'
 
 const TAB = 28
 const STEP = TAB + 2
@@ -16,26 +17,16 @@ export function agentTabsWidth(count: number): number {
   return NAMED + (count - 1) * STEP
 }
 
-// A horizontal touchpad swipe moves one agent along, once per gesture.
+// A horizontal touchpad swipe anywhere in the picker moves one agent along.
 export function useAgentSwipe(agent?: AgentChoice) {
-  const gesture = useRef({ travel: 0, at: 0, done: false })
+  const [swipe] = useState(createSwipe)
   return (event: WheelEvent<HTMLElement>) => {
     if (!agent || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) {
       return
     }
-    const swipe = gesture.current
-    if (event.timeStamp - swipe.at > 120) {
-      swipe.travel = 0
-      swipe.done = false
-    }
-    swipe.at = event.timeStamp
-    swipe.travel += event.deltaX
-    if (swipe.done || Math.abs(swipe.travel) < 40) {
-      return
-    }
-    swipe.done = true
-    const next = agent.options.indexOf(agent.value) + Math.sign(swipe.travel)
-    if (agent.options[next]) {
+    const step = swipe(event.deltaX, event.timeStamp)
+    const next = agent.options.indexOf(agent.value) + step
+    if (step && agent.options[next]) {
       agent.onChange(agent.options[next])
       event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
     }
