@@ -5,6 +5,8 @@ import { spreadsheetMetadata } from './spreadsheetMetadata'
 
 const load = (data, digit = 7) => readSpreadsheet(data, () => digit)
 
+const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+
 function workbook(rows, bookType = 'xlsx') {
   const book = utils.book_new()
   utils.book_append_sheet(book, utils.aoa_to_sheet(rows), 'Data')
@@ -24,7 +26,7 @@ function styledWorkbook() {
     const file = CFB.find(zip, `Root Entry/${name}`)
     let xml = new TextDecoder().decode(file.content)
     if (name.includes('sheet1')) {
-      xml = xml.replace('<sheetData>', '<sheetViews><sheetView workbookViewId="0"><pane xSplit="1" ySplit="1" state="frozen" topLeftCell="B2"/></sheetView></sheetViews><sheetData>')
+      xml = xml.replace('<sheetData>', '<sheetViews><sheetView showGridLines="0" workbookViewId="0"><pane xSplit="1" ySplit="1" state="frozen" topLeftCell="B2"/></sheetView></sheetViews><sheetData>')
       for (const [address, style] of [['A1', 3], ['B2', 3], ['A3', 4]]) {
         xml = xml.replace(new RegExp(`<c [^>]*r="${address}"[^>]*>`), (tag) => tag.replace(/ s="\d+"/g, '').replace('<c', `<c s="${style}"`))
       }
@@ -35,6 +37,14 @@ function styledWorkbook() {
     }
     CFB.utils.cfb_add(zip, `Root Entry/${name}`, new TextEncoder().encode(xml))
   }
+  const relationship = (type, target) => `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type}" Target="${target}"/></Relationships>`
+  const parts = {
+    'xl/worksheets/_rels/sheet1.xml.rels': relationship('drawing', '../drawings/drawing1.xml'),
+    'xl/drawings/_rels/drawing1.xml.rels': relationship('image', '../media/image1.png'),
+    'xl/drawings/drawing1.xml': '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><xdr:oneCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>95250</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="190500" cy="95250"/><xdr:pic><xdr:blipFill><a:blip r:embed="rId1"/></xdr:blipFill><xdr:spPr><a:xfrm><a:ext cx="1" cy="1"/></a:xfrm></xdr:spPr></xdr:pic></xdr:oneCellAnchor></xdr:wsDr>',
+    'xl/media/image1.png': PNG,
+  }
+  for (const [name, content] of Object.entries(parts)) CFB.utils.cfb_add(zip, `Root Entry/${name}`, typeof content === 'string' ? new TextEncoder().encode(content) : content)
   return CFB.write(zip, { type: 'buffer', fileType: 'zip' })
 }
 
@@ -73,6 +83,8 @@ test('XLSX recovers frozen panes, font, alignment, borders and explicit wrap wit
   expect(raw.Sheets.Data['!data']).toEqual(cells)
   const sheet = load(data)[0]
   expect(sheet.frozen).toEqual({ r: 1, c: 1 })
+  expect(sheet.gridlines).toBe(false)
+  expect(sheet.images).toEqual([{ type: 'image/png', data: PNG, left: sheet.columns[1] + 10, top: sheet.rows[2], width: 20, height: 10 }])
   expect(spreadsheetLayout(sheet, 264, 64).frozen).toEqual({ r: 1, c: 1 })
   expect(spreadsheetLayout(sheet, 263, 63).frozen).toEqual({ r: 0, c: 0 })
   expect(sheet.columns[1]).toBe(132)
@@ -117,30 +129,62 @@ test('large CSV has no row cap and virtualization visits only visible cells; bla
 })
 
 
-test.each([true, false])('legacy XLS distinguishes frozen panes from ordinary splits (frozen=%s)', (frozen) => {
-  const { save } = workbook([['A', 'B'], ['C', 'D'], ['E', 'F']], 'xls')
-  const container = CFB.read(new Uint8Array(save()), { type: 'buffer' })
-  const entry = CFB.find(container, '/Workbook')
-  const source = Buffer.from(entry.content)
-  let sheetStart = 0
-  for (let offset = 0; offset + 4 < source.length; offset += source.readUInt16LE(offset + 2) + 4) {
-    if (source.readUInt16LE(offset) === 0x0085) {
-      sheetStart = source.readUInt32LE(offset + 4)
-      break
-    }
+function legacyWorkbook(rows, { globals = Buffer.alloc(0), sheet = Buffer.alloc(0), patch = () => {} }) {
+  const container = CFB.read(new Uint8Array(workbook(rows, 'xls').save()), { type: 'buffer' })
+  const source = Buffer.from(CFB.find(container, '/Workbook').content)
+  const ends = []
+  let bound = 0
+  for (let offset = 0; offset + 4 <= source.length; offset += source.readUInt16LE(offset + 2) + 4) {
+    const id = source.readUInt16LE(offset)
+    if (id === 0x0085) bound = offset + 4
+    if (id === 0x000a) ends.push(offset)
+    patch(source, id, offset + 4)
   }
-  let end = sheetStart
-  while (source.readUInt16LE(end) !== 0x000a) end += source.readUInt16LE(end + 2) + 4
-  const records = Buffer.alloc(36)
-  records.writeUInt16LE(0x023e, 0)
-  records.writeUInt16LE(18, 2)
-  records.writeUInt16LE(frozen ? 0x0008 : 0, 4)
-  records.writeUInt16LE(0x0041, 22)
-  records.writeUInt16LE(10, 24)
-  records.writeUInt16LE(1, 26)
-  records.writeUInt16LE(2, 28)
-  CFB.utils.cfb_add(container, `${container.FullPaths[0]}Workbook`, Buffer.concat([source.subarray(0, end), records, source.subarray(end)]))
-  const sheet = load(CFB.write(container, { type: 'buffer', fileType: 'cfb' }))[0]
+  source.writeUInt32LE(source.readUInt32LE(bound) + globals.length, bound)
+  CFB.utils.cfb_add(container, `${container.FullPaths[0]}Workbook`, Buffer.concat([source.subarray(0, ends[0]), globals, source.subarray(ends[0], ends[1]), sheet, source.subarray(ends[1])]))
+  return load(CFB.write(container, { type: 'buffer', fileType: 'cfb' }))[0]
+}
+
+function words(...values) {
+  return Buffer.from(values.flatMap((value) => [value & 0xff, value >> 8]))
+}
+
+function record(id, body) {
+  const header = Buffer.alloc(4)
+  header.writeUInt16LE(id, 0)
+  header.writeUInt16LE(body.length, 2)
+  return Buffer.concat([header, body])
+}
+
+function art(type, version, ...children) {
+  const body = Buffer.concat(children.map((child) => Buffer.from(child)))
+  const header = Buffer.alloc(8)
+  header.writeUInt16LE(version, 0)
+  header.writeUInt16LE(type, 2)
+  header.writeUInt32LE(body.length, 4)
+  return Buffer.concat([header, body])
+}
+
+test.each([true, false])('legacy XLS distinguishes frozen panes from ordinary splits (frozen=%s)', (frozen) => {
+  const sheet = legacyWorkbook([['A', 'B'], ['C', 'D'], ['E', 'F']], { sheet: Buffer.concat([record(0x023e, words(frozen ? 0x0008 : 0, 0, 0, 0, 0, 0, 0, 0, 0)), record(0x0041, words(1, 2, 0, 0, 0))]) })
   expect(sheet.frozen).toEqual(frozen ? { r: 2, c: 1 } : { r: 0, c: 0 })
+  expect(sheet.gridlines).toBe(false)
   expect(spreadsheetText(sheet, { r: 2, c: 1 })).toBe('F')
+})
+
+test('legacy XLS recovers fonts, alignment, borders and pictures anchored to cells', () => {
+  const picture = art(0xf007, 0x0002, Buffer.alloc(36), art(0xf01e, 0x6e00, Buffer.alloc(17), PNG))
+  const anchor = art(0xf010, 0x0000, words(0, 1, 512, 0, 128, 2, 0, 1, 0))
+  const shape = art(0xf004, 0x000f, art(0xf00b, 0x0013, Buffer.from([0x04, 0x41, 1, 0, 0, 0])), anchor)
+  const sheet = legacyWorkbook([['Centred', 'B'], ['C', 'D']], {
+    globals: record(0x00eb, art(0xf000, 0x000f, art(0xf001, 0x001f, picture))),
+    sheet: record(0x00ec, art(0xf002, 0x000f, art(0xf003, 0x000f, shape))),
+    patch: (source, id, offset) => {
+      if (id !== 0x00e0) return
+      source.writeUInt8(0x1a, offset + 6)
+      source.writeUInt32LE(0x0020 | 10 << 23, offset + 10)
+    },
+  })
+  expect(spreadsheetStyle(sheet, { r: 0, c: 0 })).toMatchObject({ fontFamily: 'Arial', horizontal: 'center', vertical: 'center', wrap: true, border: { left: undefined, right: '2px solid #FF0000' } })
+  expect(sheet.images).toEqual([{ type: 'image/png', data: PNG, left: sheet.columns[1] + (sheet.columns[2] - sheet.columns[1]) / 2, top: sheet.rows[1] / 2, width: (sheet.columns[2] - sheet.columns[1]) / 2, height: sheet.rows[1] / 2 }])
 })

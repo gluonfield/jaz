@@ -63,10 +63,15 @@
   --sheet-ink: #000;
   --sheet-bg: #fff;
   --sheet-line: #e1e3e6;
+  --sheet-cell-line: var(--sheet-line);
   --sheet-header: #f3f4f6;
   --sheet-header-ink: #5f6368;
   --sheet-accent: #1a73e8;
   --sheet-accent-soft: #d3e3fd;
+}
+
+.spreadsheet-scroll.is-plain {
+  --sheet-cell-line: transparent;
 }
 
 .spreadsheet-scroll:focus-visible {
@@ -93,8 +98,8 @@
   position: absolute;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--sheet-line);
-  border-bottom: 1px solid var(--sheet-line);
+  border-right: 1px solid var(--sheet-cell-line);
+  border-bottom: 1px solid var(--sheet-cell-line);
   background: var(--sheet-bg);
   line-height: 1.2;
 }
@@ -114,6 +119,13 @@
   right: -1px;
   bottom: -1px;
   z-index: 1;
+  pointer-events: none;
+}
+
+.spreadsheet-image {
+  position: absolute;
+  z-index: 1;
+  max-width: none;
   pointer-events: none;
 }
 
