@@ -19,13 +19,7 @@ func (l *Locks) Lock(ids ...string) func() {
 	slices.Sort(ids)
 	var held []*sync.Mutex
 	for _, id := range slices.Compact(ids) {
-		l.mu.Lock()
-		lock := l.locks[id]
-		if lock == nil {
-			lock = &sync.Mutex{}
-			l.locks[id] = lock
-		}
-		l.mu.Unlock()
+		lock := l.forID(id)
 		lock.Lock()
 		held = append(held, lock)
 	}
@@ -34,4 +28,23 @@ func (l *Locks) Lock(ids ...string) func() {
 			lock.Unlock()
 		}
 	}
+}
+
+func (l *Locks) TryLock(id string) (func(), bool) {
+	lock := l.forID(id)
+	if !lock.TryLock() {
+		return nil, false
+	}
+	return lock.Unlock, true
+}
+
+func (l *Locks) forID(id string) *sync.Mutex {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	lock := l.locks[id]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		l.locks[id] = lock
+	}
+	return lock
 }

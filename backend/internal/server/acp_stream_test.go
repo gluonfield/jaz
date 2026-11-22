@@ -46,11 +46,9 @@ func TestACPStreamFollowUpAdmission(t *testing.T) {
 			}
 			server := &Server{Store: store, ACP: manager}
 			res := httptest.NewRecorder()
-			server.streamACPSession(res, res, context.Background(), session, acpStreamTurn{
-				QueuedMessage: storage.QueuedMessage{
-					Text: "also check this", PlanRequested: tc.plan,
-					Contexts: []storage.MessageContext{{Type: "selection", Text: "selected code"}},
-				},
+			server.streamACPSession(res, res, context.Background(), session, acp.SendRequest{
+				Session: session.ID, Message: "also check this", PlanRequested: tc.plan, FromUser: true,
+				Contexts: []storage.MessageContext{{Type: "selection", Text: "selected code"}},
 			})
 			loaded, err := store.LoadSession(session.ID)
 			if err != nil {

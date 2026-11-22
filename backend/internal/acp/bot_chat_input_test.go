@@ -20,12 +20,12 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func TestChatSendQueuesFollowUpWhenAgentCannotSteer(t *testing.T) {
+func TestChatSendInterruptsWhenAgentCannotSteer(t *testing.T) {
 	t.Run("agent without steering", func(t *testing.T) {
-		testChatQueuedFollowUp(t, acp.AgentAntigravity, map[string]string{}, false)
+		testChatInterrupt(t, acp.AgentAntigravity, map[string]string{}, false)
 	})
 	t.Run("plan needs a new turn", func(t *testing.T) {
-		testChatQueuedFollowUp(t, acp.AgentCodex, map[string]string{
+		testChatInterrupt(t, acp.AgentCodex, map[string]string{
 			"JAZ_FAKE_ACP_NATIVE_STEERING": "1",
 			"JAZ_FAKE_ACP_PLAN_CONFIG":     "1",
 			"JAZ_FAKE_ACP_SET_CONFIG":      "1",
@@ -33,7 +33,7 @@ func TestChatSendQueuesFollowUpWhenAgentCannotSteer(t *testing.T) {
 	})
 }
 
-func testChatQueuedFollowUp(t *testing.T, agent string, env map[string]string, plan bool) {
+func testChatInterrupt(t *testing.T, agent string, env map[string]string, plan bool) {
 	t.Helper()
 	store, root := newTestStore(t)
 	jaz := startJazAgent(t, testContext(t), store, root, agent, env)
@@ -42,7 +42,12 @@ func testChatQueuedFollowUp(t *testing.T, agent string, env map[string]string, p
 	if err != nil {
 		t.Fatal(err)
 	}
-	jaz.busy(thread.ID)
+	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: thread.ID, Message: "work on the original request, block until cancelled"}); err != nil {
+		t.Fatal(err)
+	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, thread.ID)
+	nativeSession := jaz.session(thread.ID).RuntimeRef.SessionID
+	jaz.queueUser(thread.ID, `{"text":"do this later"}`)
 	handler := jaz.server.Handler()
 	path := "/v1/sessions/" + thread.ID
 	var body bytes.Buffer
@@ -67,20 +72,28 @@ func testChatQueuedFollowUp(t *testing.T, agent string, env map[string]string, p
 	}
 
 	response = httptest.NewRecorder()
-	request = httptest.NewRequest(http.MethodPost, path+"/messages:stream", strings.NewReader(`{"message":"explain the questions","contexts":[{"type":"selection","text":"the deployment question"}],"attachment_ids":["`+attachment.ID+`"],"plan_requested":`+strconv.FormatBool(plan)+`}`))
+	request = httptest.NewRequest(http.MethodPost, path+"/messages:stream", strings.NewReader(`{"message":"explain the questions until released","contexts":[{"type":"selection","text":"the deployment question"}],"attachment_ids":["`+attachment.ID+`"],"plan_requested":`+strconv.FormatBool(plan)+`}`))
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"type":"accepted"`) || strings.Contains(response.Body.String(), `"type":"error"`) {
 		t.Fatalf("send = %d %s", response.Code, response.Body.String())
 	}
 	stored := jaz.session(thread.ID)
-	if stored.Status != storage.StatusRunning || len(stored.QueuedMessages) != 1 || stored.QueuedMessages[0].PlanRequested != plan || jaz.promptsContaining("explain the questions") != 0 {
-		t.Fatalf("follow-up did not wait for the active turn: %+v, prompts = %q", stored, jaz.prompts())
+	if stored.Turn == nil || stored.Turn.PlanRequested != plan || stored.RuntimeRef.SessionID != nativeSession || len(stored.QueuedMessages) != 1 || stored.QueuedMessages[0].Text != "do this later" {
+		t.Fatalf("Send now should resume the same thread ahead of the queue: %+v, prompts = %q", stored, jaz.prompts())
+	}
+	jaz.eventually("follow-up delivered", func() bool { return jaz.promptsContaining("explain the questions") == 1 })
+	requests, err := os.ReadFile(filepath.Join(root, "requests.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel := bytes.Index(requests, []byte(`"method":"session/cancel"`))
+	if cancel < 0 || cancel > bytes.Index(requests, []byte("explain the questions")) || jaz.promptsContaining("do this later") != 0 {
+		t.Fatalf("ACP did not cancel the current turn first: %s", requests)
 	}
 	jaz.release()
-	jaz.eventually("follow-up delivered", func() bool { return jaz.promptsContaining("explain the questions") == 1 })
 	jaz.idle(thread.ID)
 	prompt := jaz.promptWith("explain the questions")
-	if len(jaz.prompts()) != 2 || !strings.Contains(prompt, "the deployment question") || !strings.Contains(prompt, attachment.ID+"-questions.png") || len(jaz.queued(thread.ID)) != 0 {
+	if len(jaz.prompts()) != 3 || !strings.Contains(prompt, "the deployment question") || !strings.Contains(prompt, attachment.ID+"-questions.png") || jaz.promptsContaining("do this later") != 1 {
 		t.Fatalf("follow-up payload or delivery count changed: %q", jaz.prompts())
 	}
 }

@@ -15,19 +15,14 @@ import (
 
 var errACPTurnRunning = errors.New("session is already running")
 
-type acpStreamTurn struct {
-	storage.QueuedMessage
-	Attachments []storage.Attachment
-}
-
-func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, clientCtx context.Context, session storage.Session, turn acpStreamTurn) {
+func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, clientCtx context.Context, session storage.Session, input acp.SendRequest) {
 	if s.ACP == nil {
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: "acp manager is not configured"})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 		return
 	}
 
-	compact := isACPCompactCommand(turn.Text)
+	compact := isACPCompactCommand(input.Message)
 	followUp := !compact && s.sessionRuntimeRunning(session)
 	var err error
 	if compact {
@@ -47,19 +42,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	if compact {
 		job, err = s.ACP.Compact(startCtx, acp.CompactRequest{Session: session.ID})
 	} else {
-		job, err = s.ACP.Input(startCtx, acp.SendRequest{
-			Session:       session.ID,
-			Message:       turn.Text,
-			Contexts:      turn.Contexts,
-			Attachments:   turn.Attachments,
-			FromUser:      true,
-			PlanRequested: turn.PlanRequested,
-			GoalRequested: turn.GoalRequested,
-		})
-		if errors.Is(err, acp.ErrSteeringUnsupported) {
-			err = s.queueUserFollowUp(session.ID, turn.QueuedMessage)
-			followUp = true
-		}
+		job, err = s.sendChatPrompt(startCtx, input)
 	}
 	cancelStart()
 	if err != nil {
@@ -110,6 +93,24 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 			}
 		}
 	}
+}
+
+func (s *Server) sendChatPrompt(ctx context.Context, input acp.SendRequest) (acp.Job, error) {
+	unlock := s.lockSession(promptAdmissionKey(input.Session))
+	defer func() {
+		unlock()
+		s.drainQueueSoon(input.Session)
+	}()
+	job, err := s.ACP.Input(ctx, input)
+	if !errors.Is(err, acp.ErrSteeringUnsupported) {
+		return job, err
+	}
+	if active, err := s.ACP.Status(input.Session); err == nil && (active.State == acp.StateRunning || active.State == acp.StateStarting) {
+		if _, err := s.ACP.Cancel(ctx, input.Session); err != nil {
+			return acp.Job{}, err
+		}
+	}
+	return s.ACP.Send(ctx, input)
 }
 
 func (s *Server) beginACPTurn(ctx context.Context, session storage.Session, message string) (storage.Session, error) {
