@@ -10,7 +10,9 @@ export interface ModelSelection {
 }
 
 export function pickerEffortOptions(options: ReasoningEffortOption[]): ReasoningEffortOption[] {
-  return ['low', 'medium', 'high', 'xhigh', 'ultracode'].flatMap((value) => {
+  // Max stands in as the top stop for a model that offers it without xhigh.
+  const top = options.some((option) => option.value === 'xhigh') ? 'xhigh' : 'max'
+  return ['low', 'medium', 'high', top, 'ultracode'].flatMap((value) => {
     const option = options.find((option) => option.value === value)
       ?? (value === 'ultracode' ? options.find((option) => option.value === 'ultra') : undefined)
     return option ? [{ ...option, label: value === 'xhigh' ? 'Xhigh' : value === 'ultracode' ? 'Ultracode' : option.label }] : []

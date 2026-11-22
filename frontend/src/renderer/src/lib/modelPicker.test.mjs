@@ -17,8 +17,8 @@ test('picker exposes only five efforts in order without changing provider IDs', 
   expect(pickerEffortOptions(options(['ultra', 'ultracode']))).toEqual([{ value: 'ultracode', label: 'Ultracode' }])
 })
 
-test('picker only offers efforts the selected model supports', () => {
-  expect(pickerEffortOptions(options(['max', 'high', 'low'])).map(({ value }) => value)).toEqual(['low', 'high'])
+test('picker only offers efforts the selected model supports, with Max on top where there is no xhigh', () => {
+  expect(pickerEffortOptions(options(['max', 'high', 'low'])).map(({ value }) => value)).toEqual(['low', 'high', 'max'])
   expect(pickerEffortOptions([])).toEqual([])
 })
 
