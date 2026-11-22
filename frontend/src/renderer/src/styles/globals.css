@@ -75,7 +75,7 @@
 /* The colour theme (Settings → Appearance, lib/appearanceScheme.ts): the main
  * hue every token takes a trace of, whether it is tinted at all (graphite is
  * not), the three wash hues for the window with their chroma and how strongly
- * they mix in, and how strongly the globe lines show. Zero specificity lets the Appearance
+ * they mix in, and how strongly the drawing grid shows. Zero specificity lets the Appearance
  * override win whichever stylesheet loads first. */
 :where(:root) {
   --hue: 264;
@@ -95,6 +95,16 @@
    * Appearance colour dots and swatches sit at their own. */
   --wash-l: 0.8;
   --swatch-l: 0.76;
+
+  /* Engineering paper in the ink colour: fine squares with a bolder line every
+   * fifth. Shared by the window and the Appearance dial's face. */
+  --grid-fine: color-mix(in oklab, var(--color-ink) 12%, transparent);
+  --grid-bold: color-mix(in oklab, var(--color-ink) 26%, transparent);
+  --drawing-grid:
+    linear-gradient(to right, var(--grid-bold) 1px, transparent 1px) 0 0 / 80px 80px,
+    linear-gradient(to bottom, var(--grid-bold) 1px, transparent 1px) 0 0 / 80px 80px,
+    linear-gradient(to right, var(--grid-fine) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(to bottom, var(--grid-fine) 1px, transparent 1px) 0 0 / 16px 16px;
 
   --thread-max: 760px;
   --prose-max: 80ch;
@@ -844,7 +854,8 @@ body {
 }
 
 /* The window behind the cards takes the theme's washes in Zen's (Arc's)
- * shapes: one from each top corner and one rising from the bottom. Globe lines sit over the wash, under everything else.
+ * shapes: one from each top corner and one rising from the bottom. A drawing grid sits over the wash, under everything
+ * else; its opacity is the Grid setting.
  * The Appearance theme tiles reuse the rule in each mode's colours. On macOS,
  * index.html adds .vibrant: the page goes transparent so the rail and thread
  * list show the native material through a weak surface tint under the wash;
@@ -882,11 +893,7 @@ body {
     z-index: -1;
     pointer-events: none;
     opacity: var(--grain);
-    /* A globe's latitude and longitude lines rising from the bottom left, twice
-     * the window's height across, drawn in the ink colour so they read in both
-     * modes. Opacity is the Globe setting. */
-    background-color: var(--color-ink);
-    mask: url('../assets/globe.svg') calc(30vw - 105vh) -10vh / 210vh no-repeat;
+    background: var(--drawing-grid);
   }
   html.vibrant .app-chrome {
     --chrome-ground: color-mix(in oklab, var(--color-surface) 30%, transparent);
