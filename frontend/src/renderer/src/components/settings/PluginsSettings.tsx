@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Plus, RefreshCw, Settings2 } from 'lucide-react'
+import { Loader2, MoreHorizontal, Plus, RefreshCw, Settings2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
+import { MenuRow, Popover } from '@/components/ui/Popover'
 import { SearchField } from '@/components/ui/SearchField'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
@@ -228,27 +229,31 @@ export function PluginsSettings() {
       ) : (
         <div className="space-y-8">
           {connectedPlugins.length > 0 ? (
-            <section className="space-y-2.5">
-              <div className="flex items-center justify-between">
+            <section className="space-y-1">
+              <div className="flex items-center justify-between pb-1">
                 <h3 className="text-[13px] font-semibold text-ink">Connected</h3>
                 <span className="text-[12px] tabular-nums text-ink-3">{connectedPlugins.length}</span>
               </div>
-              <div className="divide-y divide-border/50 rounded-card bg-surface">
+              <div className="divide-y divide-border/50">
                 {connectedPlugins.map((plugin) => {
                   const accounts = plugin.auth?.accounts ?? []
                   const singleAccount = accounts.length === 1 ? accounts[0] : null
-                  const canRemove = !plugin.auth && plugin.installed && plugin.origin !== 'builtin'
+                  const hasSkillsOrViews = (plugin.skills?.length ?? 0) > 0 || (plugin.views?.length ?? 0) > 0
+                  const canRemove = plugin.installed && plugin.origin !== 'builtin' && (!plugin.auth || hasSkillsOrViews)
                   return (
                     <ConnectedPluginRow
                       key={plugin.id}
                       plugin={plugin}
-                      disconnecting={Boolean(singleAccount && disconnectingAccountID === singleAccount.id)}
-                      removing={remove.isPending && remove.variables === plugin.id}
-                      updating={update.isPending && update.variables === plugin.id}
+                      busy={
+                        Boolean(singleAccount && disconnectingAccountID === singleAccount.id) ||
+                        (remove.isPending && remove.variables === plugin.id) ||
+                        (update.isPending && update.variables === plugin.id)
+                      }
                       onOpen={() => setSelectedID(plugin.id)}
+                      onAddAccount={plugin.auth?.multi_account && pluginCanConnect(plugin) ? () => signIn.start(plugin) : undefined}
                       onDisconnect={singleAccount ? () => disconnect.mutate(singleAccount.id) : undefined}
                       onRemove={canRemove ? () => remove.mutate(plugin.id) : undefined}
-                      onUpdate={() => update.mutate(plugin.id)}
+                      onUpdate={plugin.installed && plugin.source ? () => update.mutate(plugin.id) : undefined}
                     />
                   )
                 })}
@@ -327,54 +332,96 @@ export function PluginsSettings() {
 
 function ConnectedPluginRow({
   plugin,
-  disconnecting,
-  removing,
-  updating,
+  busy,
   onOpen,
+  onAddAccount,
   onDisconnect,
   onRemove,
   onUpdate,
 }: {
   plugin: Plugin
-  disconnecting: boolean
-  removing: boolean
-  updating: boolean
+  busy: boolean
   onOpen: () => void
+  onAddAccount?: () => void
   onDisconnect?: () => void
   onRemove?: () => void
-  onUpdate: () => void
+  onUpdate?: () => void
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
   const summary = pluginSummary(plugin)
+  const multipleAccounts = (plugin.auth?.accounts?.length ?? 0) > 1
+  const hasTopActions = Boolean(onUpdate || onAddAccount)
+  const hasDestructive = Boolean(onDisconnect || onRemove || multipleAccounts)
+
+  const run = (action: () => void) => {
+    setMenuOpen(false)
+    action()
+  }
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/40">
+    <div className="flex items-center gap-3 py-3.5">
       <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 text-left">
         <PluginAvatar plugin={plugin} size="md" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] font-medium text-ink">{plugin.display_name}</p>
-          {summary ? <p className="mt-0.5 truncate text-[12px] text-ink-2">{summary}</p> : null}
+          <div className="flex items-center gap-2">
+            <p className="truncate text-[14px] font-medium text-ink">{plugin.display_name}</p>
+            {plugin.source?.update_available ? (
+              <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                Update
+              </span>
+            ) : null}
+          </div>
+          {summary ? <p className="mt-0.5 truncate text-[12.5px] text-ink-2">{summary}</p> : null}
         </div>
       </button>
 
-      <div className="flex shrink-0 items-center gap-2">
-        {plugin.source?.update_available ? (
-          <Button size="sm" variant="secondary" disabled={updating} onClick={onUpdate}>
-            {updating ? <Loader2 size={12} className="animate-spin" /> : null}
-            Update
-          </Button>
-        ) : null}
-        {onDisconnect ? (
-          <Button size="sm" variant="ghost" disabled={disconnecting} onClick={onDisconnect}>
-            {disconnecting ? <Loader2 size={12} className="animate-spin" /> : null}
-            Disconnect
-          </Button>
-        ) : onRemove ? (
-          <Button size="sm" variant="ghost" disabled={removing} onClick={onRemove}>
-            {removing ? <Loader2 size={12} className="animate-spin" /> : null}
-            Remove
-          </Button>
-        ) : null}
-      </div>
+      <Popover
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        placement="below"
+        align="end"
+        trigger={
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label={`${plugin.display_name} options`}
+            aria-expanded={menuOpen}
+            disabled={busy}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {busy ? <Loader2 size={15} className="animate-spin" /> : <MoreHorizontal size={16} />}
+          </IconButton>
+        }
+      >
+        <div role="menu" className="flex flex-col gap-0.5">
+          {onUpdate ? (
+            <MenuRow role="menuitem" onClick={() => run(onUpdate)}>
+              {plugin.source?.update_available ? 'Update plugin' : 'Check for updates'}
+            </MenuRow>
+          ) : null}
+          {onAddAccount ? (
+            <MenuRow role="menuitem" onClick={() => run(onAddAccount)}>
+              Add account
+            </MenuRow>
+          ) : null}
+          {hasTopActions && hasDestructive ? <div className="my-1 h-px bg-border/60" /> : null}
+          {multipleAccounts ? (
+            <MenuRow role="menuitem" onClick={() => run(onOpen)}>
+              Manage accounts
+            </MenuRow>
+          ) : null}
+          {onDisconnect ? (
+            <MenuRow role="menuitem" onClick={() => run(onDisconnect)}>
+              Disconnect
+            </MenuRow>
+          ) : null}
+          {onRemove ? (
+            <MenuRow role="menuitem" onClick={() => run(onRemove)}>
+              Remove
+            </MenuRow>
+          ) : null}
+        </div>
+      </Popover>
     </div>
   )
 }
