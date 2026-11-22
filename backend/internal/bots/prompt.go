@@ -1,10 +1,12 @@
 package bots
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -81,8 +83,15 @@ func homeInstructions(bot storage.Session) (string, error) {
 	if bot.RuntimeRef == nil || bot.RuntimeRef.Cwd == "" {
 		return "", nil
 	}
-	file, err := readFile(bot.RuntimeRef.Cwd, instructionsFile)
-	return file.Content, err
+	store := instructions.NewLocalFSStore("", instructions.WithBotHomeResolver(func(string) (string, error) {
+		return bot.RuntimeRef.Cwd, nil
+	}))
+	doc, err := store.Get(context.Background(), instructions.Key{
+		Scope:   instructions.ScopeBot,
+		ScopeID: bot.ID,
+		Kind:    instructions.KindBots,
+	})
+	return doc.Content, err
 }
 
 func identityPrompt(name string, main bool) string {

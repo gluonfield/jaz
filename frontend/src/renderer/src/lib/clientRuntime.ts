@@ -4,6 +4,7 @@ import type { UpdateStatus } from '../../../shared/update'
 import type { VoiceOverlayAPI } from '@shared/voice'
 import type { WindowKind } from '@shared/windowKind'
 import type { ConnectionSessionAPI } from '@shared/connectionSession'
+import { normalizeCloudUrl } from '@shared/cloudConfig'
 import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
 export { LOCAL_BACKEND_URL as DEFAULT_API_BASE_URL } from '@shared/localBackend'
@@ -18,6 +19,7 @@ export interface ClientRuntime {
   platform: ClientPlatform
   deviceKind: ClientPlatform
   windowKind: WindowKind
+  cloudUrl: string
   capabilities: {
     localBackend: boolean
     updates: boolean
@@ -69,14 +71,16 @@ function webDefaultApiBaseUrl(): string {
 function createRuntime(): ClientRuntime {
   const electron = window.jaz
   if (electron) {
+    const localEnabled = electron.localEnabled ?? true
     return {
       kind: 'electron',
       connectionSession: electron.connectionSession,
       platform: 'desktop',
       deviceKind: 'desktop',
       windowKind: electron.windowKind,
+      cloudUrl: normalizeCloudUrl(electron.cloudUrl),
       capabilities: {
-        localBackend: true,
+        localBackend: localEnabled,
         updates: true,
         previewWebview: true,
       },
@@ -114,6 +118,7 @@ function createRuntime(): ClientRuntime {
     platform: 'browser',
     deviceKind: 'browser',
     windowKind: 'main',
+    cloudUrl: normalizeCloudUrl(import.meta.env.VITE_JAZ_CLOUD_URL),
     capabilities: {
       localBackend: false,
       updates: false,

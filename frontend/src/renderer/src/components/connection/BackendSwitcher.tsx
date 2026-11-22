@@ -45,7 +45,9 @@ export function BackendSwitcher({ onConnectServer }: { onConnectServer: () => vo
       }
     >
       <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium text-ink-3">Run jaz on</p>
-      <SwitchRow label={localBackendLabel()} current={describeBackend(url).local} onSwitch={switchLocal} />
+      {clientRuntime.capabilities.localBackend ? (
+        <SwitchRow label={localBackendLabel()} current={describeBackend(url).local} onSwitch={switchLocal} />
+      ) : null}
       {remotes.map((remote) => (
         <RemoteRow
           key={remote.url}
@@ -149,7 +151,7 @@ function RemoteRow({
         {current ? <Check size={13} className="shrink-0 text-primary" /> : null}
       </button>
       <RowAction icon={<Pencil size={11} />} label={`Rename ${backend.label}`} onClick={() => setEditing(true)} />
-      {!current ? <RowAction icon={<X size={11} />} label={`Forget ${backend.label}`} onClick={onForget} /> : null}
+      {!current && !backend.managed ? <RowAction icon={<X size={11} />} label={`Forget ${backend.label}`} onClick={onForget} /> : null}
     </div>
   )
 }

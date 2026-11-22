@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/templates/jazplatform"
@@ -62,7 +63,7 @@ func TurnNote(store NoteStore) func(storage.Session) (note, promptDigest string)
 				return fmt.Sprintf("Owner context unavailable: %v\n\n", err), thread.PromptDigest
 			}
 			text := modules.Text()
-			version := digest([]byte(text))
+			version := instructions.Digest([]byte(text))
 			note := ""
 			if thread.RuntimeRef.SessionID != "" && thread.PromptDigest != version {
 				note = "Your owner's connected project context changed. Use these current links:\n\n" + text + "\n\n"
@@ -153,7 +154,7 @@ func identityNote(store PromptStore, thread storage.Session, seen string) (note,
 		return "", seen
 	}
 	text := promptmodule.New(policy, identity.Text()).Text()
-	version = digest([]byte(text))
+	version = instructions.Digest([]byte(text))
 	if thread.RuntimeRef.SessionID == "" || seen == version {
 		return "", version
 	}
@@ -200,7 +201,7 @@ func taskNote(store NoteStore, bot string, held map[int64]string) (note string, 
 		if err != nil {
 			return fmt.Sprintf("Your open tasks could not be read: %v.\n\n", err), held
 		}
-		lines[commitment.ID] = digest([]byte(line))
+		lines[commitment.ID] = instructions.Digest([]byte(line))
 		if held[commitment.ID] == lines[commitment.ID] {
 			unchanged = append(unchanged, fmt.Sprintf("#%d", commitment.ID))
 			continue

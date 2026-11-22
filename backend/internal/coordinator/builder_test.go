@@ -9,8 +9,10 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/connections"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/visualize"
 )
 
@@ -304,5 +306,86 @@ func TestBuilderCanvasPromptNamesTheThreadsBoard(t *testing.T) {
 	}
 	if _, err := builder.ACPPromptForContext(context.Background(), root, string(visualize.SurfaceCanvas)); err == nil {
 		t.Fatal("a canvas prompt without a session id must fail rather than name a shared board")
+	}
+}
+
+type memoryInstructionStore struct {
+	docs map[instructions.Key]instructions.Document
+}
+
+func (m *memoryInstructionStore) Get(_ context.Context, key instructions.Key) (instructions.Document, error) {
+	if doc, ok := m.docs[key]; ok {
+		return doc, nil
+	}
+	return instructions.Document{Key: key}, nil
+}
+
+func (m *memoryInstructionStore) Save(_ context.Context, key instructions.Key, content, expectedVersion string) (instructions.Document, error) {
+	cur := m.docs[key]
+	if cur.Version != expectedVersion {
+		return cur, instructions.ErrConflict
+	}
+	doc := instructions.Document{Key: key, Content: content, Version: instructions.Digest([]byte(content))}
+	m.docs[key] = doc
+	return doc, nil
+}
+
+func TestBuilderWithInstructionsAndCloudPromptMode(t *testing.T) {
+	store := &memoryInstructionStore{
+		docs: map[instructions.Key]instructions.Document{
+			{OrgID: "org-1", Scope: instructions.ScopeOrg, ScopeID: "org-1", Kind: instructions.KindAgents}:     {Content: "Org rule: never leak customer data."},
+			{OrgID: "org-1", Scope: instructions.ScopeSpace, ScopeID: "space-9", Kind: instructions.KindAgents}: {Content: "Space rule: cite tender clauses."},
+			{OrgID: "org-1", Scope: instructions.ScopeUser, ScopeID: "user-42", Kind: instructions.KindAgents}:  {Content: "User rule: keep replies concise."},
+			{OrgID: "org-1", Scope: instructions.ScopeUser, ScopeID: "user-42", Kind: instructions.KindSoul}:    {Content: "Be direct and warm."},
+			{OrgID: "org-1", Scope: instructions.ScopeBot, ScopeID: "bot-7", Kind: instructions.KindBots}:       {Content: "Coordinate specialist workers."},
+		},
+	}
+
+	builder := NewBuilder("", "/workspace", "", nil).
+		WithInstructions(store).
+		WithCloud(CloudScope{OrgID: "org-1", SpaceID: "space-9", UserID: "user-42"})
+
+	prompt, err := builder.ACPPromptForContext(context.Background(), "/workspace", string(visualize.SurfaceChat))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, prompt,
+		"## Instructions",
+		"`instruction_get`",
+		"`instruction_update`",
+		"`instruction_propose`",
+		"## Org AGENTS.md\n\nOrg rule: never leak customer data.",
+		"## Space AGENTS.md\n\nSpace rule: cite tender clauses.",
+		"## AGENTS.md\n\nUser rule: keep replies concise.",
+		"## SOUL.md\n\nBe direct and warm.",
+		"Current working directory: /workspace",
+	)
+	for _, reject := range []string{"## Runtime paths", "~/.jaz/workspaces/default"} {
+		if strings.Contains(prompt, reject) {
+			t.Fatalf("cloud prompt must not contain %q:\n%s", reject, prompt)
+		}
+	}
+
+	botCtx := sessioncontext.WithSourceType(WithCloudScope(context.Background(), CloudScope{BotID: "bot-7"}), storage.SourceBot)
+	botPrompt, err := builder.ACPPromptForContext(botCtx, "/workspace", string(visualize.SurfaceChat))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"## Org AGENTS.md\n\nOrg rule: never leak customer data.",
+		"## BOTS.md",
+		"Read with `instruction_get` and save lasting bot coordination policy with `instruction_update`",
+		"Coordinate specialist workers.",
+	} {
+		if !strings.Contains(botPrompt, want) {
+			t.Fatalf("cloud bot prompt missing %q:\n%s", want, botPrompt)
+		}
+	}
+	if strings.Contains(botPrompt, "/BOTS.md") {
+		t.Fatalf("cloud bot prompt must not reference local disk BOTS.md path:\n%s", botPrompt)
+	}
+
+	if _, err := NewBuilder("", "/workspace", "", nil).WithCloud(CloudScope{OrgID: "org-1"}).ACPPrompt("/workspace"); err == nil {
+		t.Fatal("cloud mode without an instructions store must fail fast")
 	}
 }

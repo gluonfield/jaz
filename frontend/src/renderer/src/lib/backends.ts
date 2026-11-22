@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { normalizeBaseUrl, forgetApiAuthToken } from './api/client'
+import { clientRuntime } from './clientRuntime'
 
 // The backends this device has connected to, offered as switch targets by the
 // connect screen, the sidebar switcher, and Settings. Auth keys already live
@@ -9,7 +10,7 @@ import { normalizeBaseUrl, forgetApiAuthToken } from './api/client'
 // memory. "This machine" (loopback) is implicit and never stored here.
 const BACKENDS_KEY = 'jaz.backends'
 
-export type KnownBackend = { url: string; label: string; lastConnectedAt: string }
+export type KnownBackend = { url: string; label: string; lastConnectedAt: string; managed?: boolean }
 
 function read(): KnownBackend[] {
   try {
@@ -20,9 +21,20 @@ function read(): KnownBackend[] {
   }
 }
 
+function mergeConfiguredCloud(list: KnownBackend[]): KnownBackend[] {
+  if (!clientRuntime.cloudUrl) return list
+  const cloudUrl = normalizeBaseUrl(clientRuntime.cloudUrl)
+  if (!cloudUrl) return list
+  const existing = list.find((b) => normalizeBaseUrl(b.url) === cloudUrl)
+  if (existing) {
+    return list.map((b) => (normalizeBaseUrl(b.url) === cloudUrl ? { ...b, managed: true } : b))
+  }
+  return [...list, { url: cloudUrl, label: hostLabel(cloudUrl), lastConnectedAt: '', managed: true }]
+}
+
 // Most-recently-connected first.
 function sorted(list: KnownBackend[]): KnownBackend[] {
-  return [...list].sort((a, b) => b.lastConnectedAt.localeCompare(a.lastConnectedAt))
+  return [...mergeConfiguredCloud(list)].sort((a, b) => b.lastConnectedAt.localeCompare(a.lastConnectedAt))
 }
 
 // In-memory mirror so every surface re-renders together on connect/rename/forget
@@ -68,7 +80,7 @@ export function renameBackend(url: string, label: string): void {
   const target = normalizeBaseUrl(url)
   const name = label.trim()
   if (!target || !name) return
-  commit(read().map((b) => (normalizeBaseUrl(b.url) === target ? { ...b, label: name } : b)))
+  commit(mergeConfiguredCloud(read()).map((b) => (normalizeBaseUrl(b.url) === target ? { ...b, label: name } : b)))
 }
 
 // Registry-level removal. Prefer connection.forgetBackend, which also clears a

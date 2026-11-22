@@ -18,6 +18,7 @@ import (
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/gitinfo"
 	repoapi "github.com/wins/jaz/backend/internal/httpapi/repo"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/m365copilot"
@@ -115,6 +116,7 @@ type Server struct {
 	AgentCatalog acp.AgentCatalog
 	AuthKey      string
 	ServerConfig serverconfig.Config
+	Instructions instructions.Store
 	// Prompts derives the system prompt fresh per turn from disk, so skill
 	// and prompt-file edits apply without a restart.
 	Prompts *coordinator.Builder

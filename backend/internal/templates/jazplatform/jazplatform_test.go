@@ -263,6 +263,56 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 	}
 }
 
+func TestRenderCloudPromptModeUsesMCPInstructions(t *testing.T) {
+	data := Data{
+		Agents: "User standing rule",
+		Soul:   "Direct persona",
+		Cloud: &CloudInstructions{
+			HasOrg:      true,
+			OrgAgents:   "Org compliance rule",
+			HasSpace:    true,
+			SpaceAgents: "Space tender rule",
+		},
+		Date:     "June 16, 2026",
+		Time:     "12:34:56 BST",
+		Timezone: "BST (UTC+01:00)",
+		Weekday:  "Tuesday",
+		Human:    "Tuesday, June 16, 2026 at 12:34:56 BST",
+		Cwd:      "/workspace",
+	}
+	prompt, err := RenderThread(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, prompt,
+		"## Instructions",
+		"`instruction_get`",
+		"`instruction_update`",
+		"`instruction_propose`",
+		"## Org AGENTS.md\n\nOrg compliance rule",
+		"## Space AGENTS.md\n\nSpace tender rule",
+		"## AGENTS.md\n\nUser standing rule",
+		"## SOUL.md\n\nDirect persona",
+	)
+	if strings.Contains(prompt, "## Runtime paths") {
+		t.Fatalf("cloud prompt must omit local Runtime paths:\n%s", prompt)
+	}
+
+	botPrompt, err := RenderBot(BotData{Data: data, Instructions: "Bot cloud rules"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, botPrompt,
+		"## BOTS.md",
+		"`instruction_get`",
+		"`instruction_update`",
+		"Bot cloud rules",
+	)
+	if strings.Contains(botPrompt, "/BOTS.md") {
+		t.Fatalf("cloud bot prompt must omit local BOTS.md path:\n%s", botPrompt)
+	}
+}
+
 func testData(agents, soul string) Data {
 	return Data{
 		Agents:     agents,

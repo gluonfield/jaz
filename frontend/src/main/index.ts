@@ -38,6 +38,7 @@ import { setupLauncher, teardownLauncher } from './spotlight'
 import { attachVoiceOverlay } from './voiceOverlay'
 import { createUpdateController } from './updater'
 import { createConnectionSession } from '@main/connectionSession'
+import { readNodeCloudConfig } from '@shared/cloudConfig'
 import { installFileActions } from '@main/fileActions'
 import { attachContextMenu } from '@main/contextMenu'
 import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
@@ -66,8 +67,10 @@ let mainWindow: BrowserWindow | null = null
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
 const notifications = createNotifications(openInMain)
+const cloudConfig = readNodeCloudConfig(process.env)
 const connectionSession = createConnectionSession({
   rendererPath: join(__dirname, '../renderer/index.html'),
+  localEnabled: cloudConfig.localEnabled,
   startLocal: startLocalBackend,
   profile: () => ({ ...getDeviceIdentity(), ...getDeviceMetadata() }),
   stopConsumers: () => notifications.stop(),
@@ -314,6 +317,9 @@ app.whenReady().then(() => {
   installCredentialEncryption()
   ipcMain.handle('jaz:start-local-backend', (event) => {
     const record = connectionSession.authorizeOwner(event)
+    if (!cloudConfig.localEnabled) {
+      return Promise.resolve({ ok: false, error: 'Local backend is disabled for this build' })
+    }
     const document = record.document
     return startLocalBackend().then((result) => {
       connectionSession.authorizeOwner(event, document)

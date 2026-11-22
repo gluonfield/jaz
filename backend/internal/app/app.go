@@ -17,6 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/jazagent"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/m365copilot"
@@ -208,8 +209,13 @@ func NewMemory(cfg Config, layout runtimefiles.Layout) (*jazmem.Memory, error) {
 	return jazmem.Open(jazmem.Config{Root: memoryRoot, DBPath: dbPath, DisableProviderDreams: true})
 }
 
-func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *memoryservice.Service, connections *connections.Service, agents acp.AgentConfigSource, installed *plugins.Store) *coordinator.Builder {
+func NewInstructionsStore(layout runtimefiles.Layout) instructions.Store {
+	return instructions.NewLocalFSStore(layout.Root, instructions.WithBotsRoot(layout.Bots))
+}
+
+func NewPromptBuilder(store *sqlitestore.Store, inst instructions.Store, workspace Workspace, memory *memoryservice.Service, connections *connections.Service, agents acp.AgentConfigSource, installed *plugins.Store) *coordinator.Builder {
 	return coordinator.NewBuilder(store.RootDir(), string(workspace), memory.Root(), memory.Enabled).
+		WithInstructions(inst).
 		WithConnections(connections).
 		WithAgents(agents).
 		WithBrowserEnabled(func() bool { return agentsettings.BrowserEnabled(store) }).

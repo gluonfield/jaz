@@ -1,5 +1,6 @@
 import { ChevronsUpDown, Plus } from 'lucide-react'
 import { MenuRow, Popover } from '@/components/ui/Popover'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { backendName, connectionStatusDisplay, describeBackend, localBackendLabel, sameBackend } from '@/lib/connectionDisplay'
 import { useBackendSwitcher } from './useBackendSwitcher'
 
@@ -9,8 +10,9 @@ import { useBackendSwitcher } from './useBackendSwitcher'
 // connecting a server lives in Settings instead.
 export function ConnectionFooterButton({ onOpenConnect }: { onOpenConnect: () => void }) {
   const { open, setOpen, status, url, remotes, switchLocal, switchRemote } = useBackendSwitcher()
+  const localEnabled = clientRuntime.capabilities.localBackend
 
-  if (remotes.length === 0) return null
+  if ((localEnabled ? 1 : 0) + remotes.length <= 1) return null
 
   const { dot } = connectionStatusDisplay(status)
 
@@ -23,9 +25,11 @@ export function ConnectionFooterButton({ onOpenConnect }: { onOpenConnect: () =>
       trigger={<Trigger url={url} name={backendName(url)} dot={dot} onClick={() => setOpen((value) => !value)} />}
     >
       <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium text-ink-3">Run jaz on</p>
-      <MenuRow selected={describeBackend(url).local} onClick={switchLocal}>
-        {localBackendLabel()}
-      </MenuRow>
+      {localEnabled ? (
+        <MenuRow selected={describeBackend(url).local} onClick={switchLocal}>
+          {localBackendLabel()}
+        </MenuRow>
+      ) : null}
       {remotes.map((remote) => (
         <MenuRow key={remote.url} selected={sameBackend(url, remote.url)} onClick={() => switchRemote(remote.url)}>
           {remote.label}

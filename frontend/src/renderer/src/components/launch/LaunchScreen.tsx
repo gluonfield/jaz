@@ -251,6 +251,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                           label={backend.label}
                           busy={busy === backend.url}
                           connected={isCurrent(backend.url)}
+                          managed={backend.managed}
                           disabled={busy !== null}
                           onConnect={() => connectTo(backend.url)}
                           onForget={() => forgetBackend(backend.url)}
@@ -353,6 +354,7 @@ function BackendChoice({
   label,
   busy,
   connected,
+  managed = false,
   disabled,
   onConnect,
   onForget,
@@ -360,6 +362,7 @@ function BackendChoice({
   label: string
   busy: boolean
   connected: boolean
+  managed?: boolean
   disabled: boolean
   onConnect: () => void
   onForget: () => void
@@ -381,7 +384,7 @@ function BackendChoice({
         <span className="min-w-0 truncate">{label}</span>
         {connected ? <span className="shrink-0 text-[12px] text-ink-3">Connected</span> : null}
       </motion.button>
-      {!connected ? (
+      {!connected && !managed ? (
         <button
           type="button"
           aria-label={`Forget ${label}`}

@@ -1,16 +1,14 @@
 package bots
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
@@ -23,7 +21,7 @@ var homeFiles = []string{instructionsFile, memoryFile}
 
 // ErrFileChanged refuses a save made over a version of the file that is no
 // longer current.
-var ErrFileChanged = errors.New("the file changed since it was read")
+var ErrFileChanged = instructions.ErrConflict
 
 // File is one of a bot's identity files. Version is a digest of the content
 // read, so a save over it can tell whether the file changed in between; a
@@ -35,49 +33,51 @@ type File struct {
 	UpdatedAt time.Time `json:"updated_at,omitzero"`
 }
 
-func (s *Service) Files(botID string) ([]File, error) {
-	home, err := s.home(botID)
-	if err != nil {
-		return nil, err
+func (s *Service) SetInstructions(store instructions.Store) {
+	if store != nil {
+		s.instructions = store
 	}
+}
+
+func (s *Service) Files(botID string) ([]File, error) {
 	files := make([]File, 0, len(homeFiles))
 	for _, name := range homeFiles {
-		file, err := readFile(home, name)
+		kind, err := instructionKindForFile(name)
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, file)
+		doc, err := s.instructions.Get(context.Background(), instructions.Key{
+			Scope:   instructions.ScopeBot,
+			ScopeID: botID,
+			Kind:    kind,
+		})
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, fileFromDocument(name, doc))
 	}
 	return files, nil
 }
 
 // SaveFile writes the user's edit to one of a bot's identity files, unless
 // the file has moved on from version, as when the bot wrote to it meanwhile.
-// The edit replaces the file whole, so an agent reading it never sees half of
-// it; a write by the bot between the check and the replace is still lost,
-// since the bot writes with its own tools.
 func (s *Service) SaveFile(botID, name, content, version string) (File, error) {
-	if !slices.Contains(homeFiles, name) {
-		return File{}, fmt.Errorf("unknown file %q", name)
-	}
-	home, err := s.home(botID)
+	kind, err := instructionKindForFile(name)
 	if err != nil {
 		return File{}, err
 	}
-	current, err := readFile(home, name)
+	doc, err := s.instructions.Save(context.Background(), instructions.Key{
+		Scope:   instructions.ScopeBot,
+		ScopeID: botID,
+		Kind:    kind,
+	}, content, version)
+	if errors.Is(err, instructions.ErrConflict) {
+		return fileFromDocument(name, doc), ErrFileChanged
+	}
 	if err != nil {
 		return File{}, err
 	}
-	if current.Version != version {
-		return current, ErrFileChanged
-	}
-	if err := replaceFile(filepath.Join(home, name), content); err != nil {
-		return File{}, err
-	}
-	saved, err := readFile(home, name)
-	if err != nil {
-		return File{}, err
-	}
+	saved := fileFromDocument(name, doc)
 	s.record(botID, sessionevents.BotActivityEvent{Kind: "file_edited", Label: name}, saved.UpdatedAt)
 	return saved, nil
 }
@@ -131,44 +131,22 @@ func (s *Service) home(botID string) (string, error) {
 	return session.RuntimeRef.Cwd, nil
 }
 
-func readFile(home, name string) (File, error) {
-	path := filepath.Join(home, name)
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return File{Name: name}, nil
+func instructionKindForFile(name string) (instructions.Kind, error) {
+	switch name {
+	case instructionsFile:
+		return instructions.KindBots, nil
+	case memoryFile:
+		return instructions.KindMemory, nil
+	default:
+		return "", fmt.Errorf("unknown file %q", name)
 	}
-	if err != nil {
-		return File{}, err
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return File{}, err
-	}
-	return File{Name: name, Content: string(data), Version: digest(data), UpdatedAt: info.ModTime().UTC()}, nil
 }
 
-func digest(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:8])
-}
-
-// replaceFile writes content beside path and renames it over path.
-func replaceFile(path, content string) error {
-	temp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*")
-	if err != nil {
-		return err
+func fileFromDocument(name string, doc instructions.Document) File {
+	return File{
+		Name:      name,
+		Content:   doc.Content,
+		Version:   doc.Version,
+		UpdatedAt: doc.UpdatedAt,
 	}
-	defer os.Remove(temp.Name())
-	if _, err := temp.WriteString(content); err != nil {
-		temp.Close()
-		return err
-	}
-	if err := temp.Chmod(0o644); err != nil {
-		temp.Close()
-		return err
-	}
-	if err := temp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temp.Name(), path)
 }

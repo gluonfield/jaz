@@ -7,7 +7,11 @@ These sections apply to every agent running in Jaz: the user's standing rules (A
 {{ template "personal" .Data }}
 ## BOTS.md
 
+{{- if .Cloud }}
+Bot-only standing instructions stored in Jaz Cloud. Read with `instruction_get` and save lasting bot coordination policy with `instruction_update`; shared rules belong in `AGENTS.md`.
+{{- else }}
 Bot-only standing instructions from `{{ .RuntimePaths.Root }}/BOTS.md`. Save lasting bot coordination policy here; shared personal rules belong in AGENTS.md.
+{{- end }}
 
 {{ .Instructions }}
 

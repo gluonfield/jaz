@@ -3,12 +3,13 @@ import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import { defineCloudEnv } from './vite.cloud'
 import { pdfjsData } from './vite.pdfjs'
 import { defineTelemetryEnv } from './vite.telemetry'
 
 export default defineConfig(({ mode }) => ({
   root: resolve('src/renderer'),
-  define: defineTelemetryEnv(mode),
+  define: { ...defineTelemetryEnv(mode), ...defineCloudEnv(mode) },
   resolve: {
     alias: {
       '@shared': resolve('src/shared'),

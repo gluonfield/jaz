@@ -22,7 +22,7 @@ afterEach(() => {
   }
 })
 
-function fixture({ start, registration, principal = 'device', deviceId = 'identity' } = {}) {
+function fixture({ start, registration, principal = 'device', deviceId = 'identity', localEnabled = true } = {}) {
   delete process.env.ELECTRON_RENDERER_URL
   const rendererPath = '/fixture/app/out/renderer/index.html'
   const url = pathToFileURL(rendererPath).toString()
@@ -36,6 +36,7 @@ function fixture({ start, registration, principal = 'device', deviceId = 'identi
   let stopped = 0
   const service = module.exports.createConnectionSession({
     rendererPath,
+    localEnabled,
     startLocal: async () => {
       starts += 1
       return start ? start() : { ok: true, url: 'http://127.0.0.1:5299', key: 'root-grant' }
@@ -224,4 +225,15 @@ test('local to remote to local waits for outstanding issuance and discards its l
   expect(owner.read().snapshot.phase).toBe('pending')
   owner.call({ operation: 'commit', document, revision: next.revision, session })
   expect(owner.read().snapshot.session.token).toBe('jaz_device-bearer')
+})
+
+test('disabling local backend rejects loopback session start and local IPC', async () => {
+  const f = fixture({ localEnabled: false })
+  const owner = f.window(true)
+  const document = owner.read().document
+  expect(() => owner.call({ operation: 'begin', document, url: 'http://127.0.0.1:5299' })).toThrow('disabled')
+  await expect(owner.local(document, 0)).rejects.toThrow('disabled')
+  expect(f.counts().starts).toBe(0)
+  const remote = owner.call({ operation: 'begin', document, url: 'https://cloud.example' })
+  expect(remote.url).toBe('https://cloud.example')
 })

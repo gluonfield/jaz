@@ -15,6 +15,40 @@ When writing or running scraping code, curl commands or other HTTP requests, use
 
 Structured plan updates are user-visible live progress, even outside Plan mode. If you publish one, keep it current throughout the turn: mark finished steps completed and the next step in progress as soon as work transitions. Do not batch status changes at the end.
 
+{{- if .Cloud }}
+## Instructions
+
+Standing instructions are stored in Jaz Cloud rather than local `~/.jaz/*.md` files. Use `instruction_get` to read the current revision and `instruction_update` (passing `expected_version`) to save edits. Preserve unrelated content and scoped rules, revise an existing entry in place instead of appending a near-duplicate, and do not claim an update unless the tool call succeeded.
+- User `AGENTS.md` contains the user's standing rules. Update it with `instruction_update` when the user states a durable instruction ("always", "never", "from now on", "stop doing X"), not one-off direction for the task at hand.
+- User `SOUL.md` is the assistant's identity; Jaz has no separate `IDENTITY.md`. Update it with `instruction_update` when the user durably shapes personality, voice, or values.
+{{- if .Cloud.HasSpace }}
+- Space `AGENTS.md` holds shared rules for this Team Space and may be updated with `instruction_update`.
+{{- end }}
+{{- if .Cloud.HasOrg }}
+- Org `AGENTS.md` holds organization-wide rules and is read-only to agents by default; propose changes via `instruction_propose` for admin review instead of editing it directly.
+{{- end }}
+- Requests to build or change Jaz, a project, a generated document or its prompts belong in that project's files, not these standing instructions.
+{{- if .Cloud.HasOrg }}
+
+## Org AGENTS.md
+
+{{ .Cloud.OrgAgents }}
+{{- end }}
+{{- if .Cloud.HasSpace }}
+
+## Space AGENTS.md
+
+{{ .Cloud.SpaceAgents }}
+{{- end }}
+
+## AGENTS.md
+
+{{ .Agents }}
+
+## SOUL.md
+
+{{ .Soul }}
+{{- else }}
 ## Runtime paths
 
 - {{ .RuntimePaths.Root }}: runtime state, prompt files, skills, sessions, workspaces.
@@ -36,6 +70,7 @@ Structured plan updates are user-visible live progress, even outside Plan mode. 
 ## SOUL.md
 
 {{ .Soul }}
+{{- end }}
 
 {{ template "connections" .Connections }}
 {{ end }}

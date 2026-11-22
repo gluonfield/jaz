@@ -39,9 +39,17 @@ type RuntimePaths struct {
 	WorktreesPath    string
 }
 
+type CloudInstructions struct {
+	HasOrg      bool
+	OrgAgents   string
+	HasSpace    bool
+	SpaceAgents string
+}
+
 type Data struct {
 	Agents          string
 	AgentNames      []string
+	Cloud           *CloudInstructions
 	Date            string
 	Time            string
 	Timezone        string

@@ -10,9 +10,10 @@ import (
 	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/sessiongoal"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/turnrunner"
 )
 
-var ErrSteeringUnsupported = errors.New("acp steering unsupported")
+var ErrSteeringUnsupported = fmt.Errorf("acp %w", turnrunner.ErrSteeringUnsupported)
 
 var errTurnEnded = fmt.Errorf("%w: agent turn ended before steering", ErrSteeringUnsupported)
 

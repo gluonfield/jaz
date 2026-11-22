@@ -28,6 +28,7 @@ import (
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	botsapi "github.com/wins/jaz/backend/internal/httpapi/bots"
 	hooksapi "github.com/wins/jaz/backend/internal/httpapi/hooks"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
@@ -115,6 +116,7 @@ func serveOptions(args []string) []fx.Option {
 			terminal.New,
 			app.NewACPMCPServerReader,
 			exectool.NewCommandManager,
+			app.NewInstructionsStore,
 			app.NewPromptBuilder,
 			app.NewACPAgentConfigSource,
 			app.NewACPAdapterManager,
@@ -250,6 +252,7 @@ func startServer(
 	msCopilot *m365copilot.AuthService,
 	locks *sessionlock.Locks,
 	events *sessionevents.Bus,
+	inst instructions.Store,
 	prompts *coordinator.Builder,
 	mcpManager *mcpruntime.Manager,
 	workspace app.Workspace,
@@ -299,6 +302,7 @@ func startServer(
 		AgentCatalog:          catalog,
 		AuthKey:               authKey,
 		ServerConfig:          serverConfig,
+		Instructions:          inst,
 		Prompts:               prompts,
 		Root:                  store.RootDir(),
 		Workspace:             string(workspace),

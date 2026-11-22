@@ -17,6 +17,7 @@ import { LOCAL_BACKEND_URL as LOCAL_URL } from '@shared/localBackend'
 type WindowDocument = { window: BrowserWindow; document: number; frame?: WebFrameMain; active: boolean }
 type Dependencies = {
   rendererPath: string
+  localEnabled?: boolean
   startLocal: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
   profile: () => DeviceIdentity & DeviceMetadata
   stopConsumers: () => void
@@ -139,6 +140,9 @@ export function createConnectionSession(deps: Dependencies) {
       if (!validBackendOrigin(request.url)) {
         throw new Error('Invalid backend origin')
       }
+      if (deps.localEnabled === false && request.url === LOCAL_URL) {
+        throw new Error('Local backend is disabled for this build')
+      }
       if (!(snapshot.localPending && request.url === LOCAL_URL)) {
         localGeneration += 1
       }
@@ -205,6 +209,9 @@ export function createConnectionSession(deps: Dependencies) {
 
   async function local(event: IpcMainInvokeEvent, document: number, revision: number): Promise<LocalSession> {
     authorizeOwner(event, document)
+    if (deps.localEnabled === false) {
+      throw new Error('Local backend is disabled for this build')
+    }
     if (snapshot.url !== LOCAL_URL || snapshot.revision !== revision || snapshot.phase !== 'pending') {
       throw new Error('Local startup was cancelled')
     }

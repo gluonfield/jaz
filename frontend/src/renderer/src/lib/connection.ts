@@ -384,6 +384,9 @@ export async function connectRemote(input: string): Promise<string | null> {
 }
 
 export async function startLocal(): Promise<string | null> {
+  if (!clientRuntime.capabilities.localBackend) {
+    return 'Local backend is disabled for this build'
+  }
   const cached = cachedApiAuthToken(LOCAL_URL)
   const value = begin(LOCAL_URL)
   clearConnectionPreference()
@@ -516,12 +519,20 @@ async function init(): Promise<void> {
     return
   }
   const preference = connectionPreference()
-  if (preference?.mode === 'local') {
+  if (preference?.mode === 'local' && clientRuntime.capabilities.localBackend) {
     await startLocal()
     return
   }
   if (preference?.mode === 'remote' && preference.remoteUrl) {
     await restore(preference.remoteUrl)
+    return
+  }
+  if (clientRuntime.cloudUrl && !clientRuntime.capabilities.localBackend) {
+    await connectRemote(clientRuntime.cloudUrl)
+    return
+  }
+  if (!clientRuntime.capabilities.localBackend && clientRuntime.kind === 'electron') {
+    block(null)
     return
   }
   const url = normalizeBaseUrl(localBaseUrl())

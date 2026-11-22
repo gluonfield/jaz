@@ -55,7 +55,7 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, pairing = false, storedValues = [], encryptCredential, decryptCredential, health, registration, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential } = {}) {
+async function fixture({ auth, pairing = false, storedValues = [], encryptCredential, decryptCredential, health, registration, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
   const stored = new Map(storedValues)
   if (web) stored.set('jaz.deviceIdentity', JSON.stringify({ device_id: 'identity', public_key: 'public' }))
   const configured = []
@@ -86,6 +86,8 @@ async function fixture({ auth, pairing = false, storedValues = [], encryptCreden
     addEventListener() {},
     jaz: web ? undefined : {
       apiBaseUrl: 'http://127.0.0.1:5299',
+      cloudUrl,
+      localEnabled,
       windowKind: owner ? 'main' : 'board',
       connectionSession: session,
       encryptCredential,
@@ -700,4 +702,16 @@ test('a late browser storage rejection cannot disconnect a newer verified connec
   expect(connection.useConnection().status).toBe('connected')
   expect(connection.cachedApiAuthToken()).toBe('jaz_new')
   expect(connection.connectionPreference()).toEqual({ mode: 'remote', remoteUrl: 'https://new.example' })
+})
+
+test('org-baked cloud build with local disabled auto-connects to cloudUrl and refuses startLocal', async () => {
+  const cloudUrl = 'https://jaz.acme.com'
+  const { connection } = await fixture({
+    cloudUrl,
+    localEnabled: false,
+    health: () => Response.json({ ok: true, auth_required: false }),
+  })
+  expect(connection.useConnection().status).toBe('connected')
+  expect(connection.useConnection().url).toBe(cloudUrl)
+  expect(await connection.startLocal()).toContain('disabled')
 })

@@ -38,6 +38,8 @@ declare global {
       encryptCredential: (value: string) => string
       decryptCredential: (value: string) => string
       apiBaseUrl: string
+      cloudUrl?: string
+      localEnabled?: boolean
       localBackendTransport?: string
       windowKind: WindowKind
       pathForFile: (file: File) => string

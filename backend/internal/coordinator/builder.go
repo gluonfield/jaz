@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/connections"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/visualize"
 )
@@ -27,6 +28,8 @@ type Builder struct {
 	pluginFilter   func(string) bool
 	connections    ConnectionSource
 	agents         AgentNameSource
+	instructions   instructions.Store
+	cloud          *CloudScope
 }
 
 func NewBuilder(root, workspace, memoryRoot string, memoryEnabled func() bool) *Builder {
@@ -50,6 +53,17 @@ func (b *Builder) WithBrowserEnabled(enabled func() bool) *Builder {
 
 func (b *Builder) WithPluginFilter(allow func(string) bool) *Builder {
 	b.pluginFilter = allow
+	return b
+}
+
+func (b *Builder) WithInstructions(store instructions.Store) *Builder {
+	b.instructions = store
+	return b
+}
+
+func (b *Builder) WithCloud(scope CloudScope) *Builder {
+	copyScope := scope
+	b.cloud = &copyScope
 	return b
 }
 
@@ -89,11 +103,12 @@ func (b *Builder) ACPPromptForArtifactSurface(cwd, surface string) (string, erro
 }
 
 func (b *Builder) ACPPromptForContext(ctx context.Context, cwd, surface string) (string, error) {
+	cloud := mergeCloudScope(b.cloud, ctx)
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {
 		cwd = strings.TrimSpace(b.workspace)
 	}
-	if cwd == "" {
+	if cwd == "" && cloud == nil {
 		cwd = defaultWorkspace(b.root)
 	}
 	catalog, err := skills.LoadForWorkspaceFiltered(b.root, cwd, b.pluginFilter)
@@ -107,10 +122,15 @@ func (b *Builder) ACPPromptForContext(ctx context.Context, cwd, surface string) 
 		return "", err
 	}
 	agents := b.agentNames()
-	return platformPrompt(ctx, b.root, cwd, b.runtimeWorkspace(), memoryRoot, catalog.PromptForContext(ctx), connections, agents, b.browserToolsEnabled(), visualize.NormalizeSurface(surface), now)
+	runtimeWorkspace := ""
+	if cloud == nil {
+		runtimeWorkspace = b.runtimeWorkspace()
+	}
+	return platformPrompt(ctx, b.root, cwd, runtimeWorkspace, memoryRoot, catalog.PromptForContext(ctx), connections, agents, b.browserToolsEnabled(), visualize.NormalizeSurface(surface), now, b.instructions, cloud)
 }
 
 func (b *Builder) build(ctx context.Context, workspace string, surface visualize.Surface) (system, skillsPrompt string, err error) {
+	cloud := mergeCloudScope(b.cloud, ctx)
 	if strings.TrimSpace(workspace) == "" {
 		workspace = b.workspace
 	}
@@ -126,7 +146,7 @@ func (b *Builder) build(ctx context.Context, workspace string, surface visualize
 		return "", "", err
 	}
 	agents := b.agentNames()
-	system, err = prompt(ctx, b.root, workspace, memoryRoot, skillsPrompt, connections, agents, b.browserToolsEnabled(), surface, now)
+	system, err = prompt(ctx, b.root, workspace, memoryRoot, skillsPrompt, connections, agents, b.browserToolsEnabled(), surface, now, b.instructions, cloud)
 	return system, skillsPrompt, err
 }
 

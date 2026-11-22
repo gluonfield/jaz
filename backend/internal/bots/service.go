@@ -14,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -22,13 +23,14 @@ import (
 type Service struct {
 	store Store
 	// homes is where each bot's own directory lives, named after its id.
-	homes       string
-	threads     Threads
-	queue       TurnQueue
-	attachments Attachments
-	routines    Routines
-	events      Publisher
-	log         *log.Logger
+	homes        string
+	instructions instructions.Store
+	threads      Threads
+	queue        TurnQueue
+	attachments  Attachments
+	routines     Routines
+	events       Publisher
+	log          *log.Logger
 
 	mu        sync.Mutex
 	followUps map[string]int
@@ -38,7 +40,7 @@ type Service struct {
 }
 
 func NewService(store Store, homes string, threads Threads, queue TurnQueue, attachments Attachments, routines Routines, events Publisher, logger *log.Logger) *Service {
-	return &Service{
+	svc := &Service{
 		store:       store,
 		homes:       homes,
 		threads:     threads,
@@ -50,6 +52,8 @@ func NewService(store Store, homes string, threads Threads, queue TurnQueue, att
 		followUps:   map[string]int{},
 		delivering:  map[string]*sync.Mutex{},
 	}
+	svc.instructions = instructions.NewLocalFSStore("", instructions.WithBotHomeResolver(svc.home))
+	return svc
 }
 
 func (s *Service) List() ([]Bot, error) {
