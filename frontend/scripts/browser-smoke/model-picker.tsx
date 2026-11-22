@@ -111,17 +111,9 @@ export async function exerciseModelPicker(): Promise<void> {
   const openPicker = async () => {
     await click([...element.querySelectorAll('button')].find((item) => item.getAttribute('aria-label')?.startsWith('Model:')))
     await until(() => Boolean(slider()))
-    await until(() => document.activeElement?.getAttribute('aria-label')?.startsWith('Select model,') === true)
+    await until(() => document.activeElement?.getAttribute('aria-checked') === 'true')
     await until(() => getComputedStyle(document.querySelector('[role="dialog"]')!.parentElement!).opacity === '1')
-    const heading = document.activeElement!.getBoundingClientRect()
-    if (heading.height > 28 || heading.width >= slider().getBoundingClientRect().width - 20) {
-      throw new Error('Model hover surface is too large')
-    }
-    if ((button('Fast Mode')?.getBoundingClientRect().height ?? 0) > heading.height) {
-      throw new Error('Fast Mode enlarges the picker header')
-    }
     assertNoFocusBorder(document.activeElement!)
-    await window.smoke.pointer('mouseMove', Math.round(heading.x + heading.width / 2), Math.round(heading.y + heading.height / 2))
   }
   const assertNoFocusBorder = (element: Element) => {
     const style = getComputedStyle(element)
@@ -129,7 +121,7 @@ export async function exerciseModelPicker(): Promise<void> {
       throw new Error('Picker shows a focus border: ' + style.outline + ' / ' + style.boxShadow)
     }
   }
-  const openModels = async () => {
+  const switchAgent = async (name: string, config: () => boolean) => {
     const panel = document.querySelector('[role="dialog"]')!
     const heights: number[] = []
     const untilTime = performance.now() + 500
@@ -140,18 +132,21 @@ export async function exerciseModelPicker(): Promise<void> {
       }
     }
     const measuring = measure()
-    await click([...document.querySelectorAll('button')].find((item) => item.getAttribute('aria-label')?.startsWith('Select model,')))
-    await until(() => document.activeElement?.getAttribute('role') === 'menuitemradio')
+    await click(button(name))
+    await until(config)
     await measuring
     const first = heights[0]
     const last = heights.at(-1)!
     if (Math.abs(last - first) > 10 && !heights.some((height) => height > Math.min(first, last) + 2 && height < Math.max(first, last) - 2)) {
       throw new Error('Model list height jumped instead of animating')
     }
-    if (panel.querySelector('input') || button('Recommended') || button('Back to effort')) {
-      throw new Error('Model list includes removed controls')
+    if (document.activeElement?.getAttribute('aria-selected') !== 'true' || document.activeElement.getAttribute('aria-label') !== name) {
+      throw new Error('Switching agent moved focus off its tab')
     }
-    assertNoFocusBorder(document.activeElement!)
+    if (!element.querySelector(`button[aria-label*=", agent: ${name}"]`)) {
+      throw new Error('The closed picker does not name the agent')
+    }
+    assertNoFocusBorder(document.activeElement)
   }
   const close = async () => {
     await window.smoke.key('Escape')
@@ -191,18 +186,17 @@ export async function exerciseModelPicker(): Promise<void> {
       await window.smoke.key('Right')
       await until(() => configIs('codex', 'gpt-6-astra', effort))
     }
-    await openModels()
     await click(button('GPT-5.6 Terra'))
     await until(() => configIs('codex', 'gpt-5.6-terra', 'medium'))
-    if (button('Fast Mode') || controls.sessionConfig({ directory: '', worktree: false }).config_options) {
+    await until(() => !button('Fast Mode'))
+    if (controls.sessionConfig({ directory: '', worktree: false }).config_options) {
       throw new Error('Fast Mode was offered for a model without native support')
     }
     if (slider().max !== '3') {
       throw new Error('Terra shows unavailable Ultracode')
     }
-    await openModels()
     await click(button('GPT-6 Astra'))
-    await until(() => slider()?.getAttribute('aria-label') === 'Reasoning effort')
+    await until(() => configIs('codex', 'gpt-6-astra', 'medium') && Boolean(button('Fast Mode')))
     await window.smoke.key('Tab')
     await window.smoke.key('Tab')
     if (document.activeElement !== slider()) {
@@ -211,14 +205,10 @@ export async function exerciseModelPicker(): Promise<void> {
     await window.smoke.key('End')
     await until(() => configIs('codex', 'gpt-6-astra', 'ultra'))
     await window.smoke.capture('codex-picker')
-    await close()
-    await click(button('Agent: Codex'))
-    await click(button('Claude'))
-    await until(() => configIs('claude', 'opus[1m]', 'xhigh'))
-    await openPicker()
-    await window.smoke.capture('claude-picker-hover')
-    await openModels()
+    await switchAgent('Claude', () => configIs('claude', 'opus[1m]', 'xhigh'))
     await window.smoke.capture('claude-models')
+    await window.smoke.key('Tab')
+    await until(() => document.activeElement?.textContent === 'Opus 5.5')
     await window.smoke.key('Down')
     await until(() => document.activeElement?.textContent === 'Fable 5.2')
     await window.smoke.key('Up')
@@ -275,9 +265,9 @@ export async function exerciseModelPicker(): Promise<void> {
     const previousControls = controls
     render(1)
     await until(() => controls !== previousControls && configIs('claude', 'opus[1m]', 'ultracode'))
-    await click(button('Agent: Claude'))
-    await click(button('Codex'))
-    await until(() => configIs('codex', 'gpt-6-astra', 'ultra'))
+    await openPicker()
+    await switchAgent('Codex', () => configIs('codex', 'gpt-6-astra', 'ultra'))
+    await close()
     settings.acp.codex = { ...settings.acp.codex, model_provider: 'openrouter', model: 'qwen/qwen3', reasoning_effort: 'high' }
     client.setQueryData(keys.agentSettings, { ...settings })
     await until(() => configIs('codex', 'qwen/qwen3', 'high'))
@@ -291,9 +281,7 @@ export async function exerciseModelPicker(): Promise<void> {
     if (button('Fast Mode')?.getAttribute('aria-checked') !== 'true') {
       throw new Error('Fast Mode was lost after changing model, agent, provider or remounting')
     }
-    await openModels()
     await click(button('GPT-6 Astra'))
-    await until(() => Boolean(slider()))
     await close()
     await window.smoke.resize(390, 760)
     await openPicker()
@@ -380,7 +368,7 @@ export async function exerciseModelPicker(): Promise<void> {
     await until(() => Boolean(element.querySelector('button')))
     await click(element.querySelector('button')!)
     await until(() => Boolean(slider()))
-    if (!button('Select model, runtime-default')?.disabled) throw new Error('Reasoning-only control permits model selection')
+    if (document.querySelector('[role="menuitemradio"], [role="tab"]')) throw new Error('Reasoning-only control offers a model or agent')
     slider().focus()
     await window.smoke.key('End')
     await until(() => picked === 'high')
