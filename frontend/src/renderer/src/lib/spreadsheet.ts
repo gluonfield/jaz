@@ -128,7 +128,8 @@ export function spreadsheetLayout(sheet: SpreadsheetSheet, width: number, height
     while (result.at(-1)! < extent) result.push(result.at(-1)! + size)
     return result
   }
-  return { ...sheet, columns: extend(sheet.columns, width, sheet.defaultColumnWidth), rows: extend(sheet.rows, height, sheet.defaultRowHeight) }
+  const frozen = (axis: number[], count: number, extent: number) => axis[count] <= extent / 2 ? count : 0
+  return { ...sheet, frozen: { r: frozen(sheet.rows, sheet.frozen.r, height), c: frozen(sheet.columns, sheet.frozen.c, width) }, columns: extend(sheet.columns, width, sheet.defaultColumnWidth), rows: extend(sheet.rows, height, sheet.defaultRowHeight) }
 }
 
 export function cellTextBounds(sheet: SpreadsheetSheet, range: Range): { left: number; width: number } {

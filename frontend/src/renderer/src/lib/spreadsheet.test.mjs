@@ -73,6 +73,8 @@ test('XLSX recovers frozen panes, font, alignment, borders and explicit wrap wit
   expect(raw.Sheets.Data['!data']).toEqual(cells)
   const sheet = load(data)[0]
   expect(sheet.frozen).toEqual({ r: 1, c: 1 })
+  expect(spreadsheetLayout(sheet, 264, 64).frozen).toEqual({ r: 1, c: 1 })
+  expect(spreadsheetLayout(sheet, 263, 63).frozen).toEqual({ r: 0, c: 0 })
   expect(sheet.columns[1]).toBe(132)
   expect(load(data, 9)[0].columns[1]).toBe(169)
   expect(sheet.rows[3] - sheet.rows[2]).toBeCloseTo(80)
