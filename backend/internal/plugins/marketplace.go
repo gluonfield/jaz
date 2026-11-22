@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/plugins/manifest"
 )
 
@@ -29,6 +30,7 @@ type MarketplaceEntry struct {
 	Execution        string   `json:"execution,omitempty"`
 	Privacy          string   `json:"privacy,omitempty"`
 	SourceRepo       string   `json:"source_repo,omitempty"`
+	HasRemoteMCP     bool     `json:"has_remote_mcp,omitempty"`
 }
 
 var marketplacePaths = []string{
@@ -155,6 +157,7 @@ func (s *Store) marketplace(repoRoot, repoLabel string) ([]preparedPlugin, []Mar
 				Execution:      item.Execution,
 				Privacy:        item.Privacy,
 				SourceRepo:     repoLabel,
+				HasRemoteMCP:   strings.EqualFold(item.Policy.Authentication, "ON_USE"),
 			})
 			continue
 		}
@@ -231,6 +234,13 @@ func scanSiblingFlavors(repoRoot, dataDir string) map[string]Plugin {
 }
 
 func entryFromPlugin(plugin Plugin, repoLabel, relPath, ref string) MarketplaceEntry {
+	hasRemote := false
+	for _, srv := range plugin.MCPServers {
+		if srv.Transport == string(mcpconfig.TransportStreamableHTTP) && srv.URL != "" {
+			hasRemote = true
+			break
+		}
+	}
 	return MarketplaceEntry{
 		ID:               plugin.ID,
 		DisplayName:      plugin.DisplayName,
@@ -245,5 +255,6 @@ func entryFromPlugin(plugin Plugin, repoLabel, relPath, ref string) MarketplaceE
 		IconDataURL:      plugin.IconDataURL,
 		SuggestedPrompts: plugin.SuggestedPrompts,
 		SourceRepo:       repoLabel,
+		HasRemoteMCP:     hasRemote,
 	}
 }

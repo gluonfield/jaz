@@ -164,6 +164,7 @@ func TestRepositorySourceConflictAndMarketplaceCatalogRefresh(t *testing.T) {
 	repoA := makeGitRepo(t, map[string]string{
 		".agents/plugins/marketplace.json": `{"plugins":[{"name":"alpha","source":"./plugins/alpha"}]}`,
 		"plugins/alpha/plugin.json":        `{"name":"alpha","displayName":"Alpha A"}`,
+		"plugins/alpha/.mcp.json":          `{"mcpServers":{"alpha":{"type":"http","url":"https://alpha.example/mcp"}}}`,
 	})
 	repoB := makeGitRepo(t, map[string]string{
 		"plugins/alpha/plugin.json": `{"name":"alpha","displayName":"Alpha B"}`,
@@ -183,6 +184,13 @@ func TestRepositorySourceConflictAndMarketplaceCatalogRefresh(t *testing.T) {
 	catalog, err := svc.List(t.Context(), false)
 	if err != nil || len(catalog.Plugins) != 1 || catalog.Plugins[0].Installed || catalog.Plugins[0].Origin != "marketplace" {
 		t.Fatalf("browse catalog = %+v, %v", catalog, err)
+	}
+	if catalog.Plugins[0].Auth == nil || catalog.Plugins[0].Auth.Kind != "mcp_oauth" || catalog.Plugins[0].Auth.Status != "available" {
+		t.Fatalf("marketplace remote MCP auth = %+v", catalog.Plugins[0].Auth)
+	}
+	_, searchOut, err := svc.searchMCP(t.Context(), nil, SearchInput{Query: "alpha"})
+	if err != nil || len(searchOut.Plugins) != 1 || searchOut.Plugins[0].ConnectLink != "jaz://plugin/alpha/connect" {
+		t.Fatalf("marketplace search connect link = %+v, %v", searchOut, err)
 	}
 	if _, err := svc.Install(t.Context(), RepositoryInput{Repository: repoA, Paths: []string{"./plugins/alpha"}}); err != nil {
 		t.Fatal(err)

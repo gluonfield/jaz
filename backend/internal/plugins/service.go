@@ -19,10 +19,11 @@ import (
 )
 
 const (
-	searchResultsMax   = 20
-	OAuthCallbackPath  = "/v1/plugins/oauth/callback"
-	SearchMCPToolName  = "plugins_search"
-	DefaultRefreshWait = 15 * time.Minute
+	searchResultsMax       = 20
+	OAuthCallbackPath      = "/v1/plugins/oauth/callback"
+	SearchMCPToolName      = "plugins_search"
+	DefaultRefreshWait     = 15 * time.Minute
+	DefaultMarketplaceRepo = "cambridgeadvancedsystems/jaz-plugins-official"
 )
 
 type SourceView struct {
@@ -358,6 +359,28 @@ func (s *Service) AddSource(ctx context.Context, input RepositoryInput) (SourceV
 	return sourceViewFromRecord(record, entries), nil
 }
 
+// EnsureDefaultSource seeds the official Jaz plugin marketplace when no Git
+// sources are configured yet.
+func (s *Service) EnsureDefaultSource(ctx context.Context) (bool, error) {
+	if s.store == nil || s.state == nil {
+		return false, nil
+	}
+	sources, err := s.state.ListPluginSources(ctx)
+	if err != nil {
+		return false, err
+	}
+	if len(sources) > 0 {
+		return false, nil
+	}
+	if _, err := s.AddSource(ctx, RepositoryInput{
+		Repository: DefaultMarketplaceRepo,
+		AutoUpdate: true,
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func sourceViewFromRecord(record storage.PluginSourceRecord, entries []MarketplaceEntry) SourceView {
 	return SourceView{
 		ID:            record.ID,
@@ -604,6 +627,10 @@ func pluginFromMarketplace(src SourceView, entry MarketplaceEntry) Plugin {
 		}
 		icon = PluginIcon{Kind: kind, Value: entry.IconDataURL}
 	}
+	var auth *PluginAuth
+	if entry.HasRemoteMCP {
+		auth = &PluginAuth{Kind: "mcp_oauth", Status: "available"}
+	}
 	return Plugin{
 		ID:               entry.ID,
 		Name:             entry.ID,
@@ -621,6 +648,7 @@ func pluginFromMarketplace(src SourceView, entry MarketplaceEntry) Plugin {
 		Execution:        cmp.Or(entry.Execution, "cloud"),
 		Installed:        false,
 		Enabled:          false,
+		Auth:             auth,
 		Source: &Source{
 			ID:         src.ID,
 			Repository: cmp.Or(entry.Repository, src.Repository),
