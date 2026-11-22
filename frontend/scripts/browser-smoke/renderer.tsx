@@ -556,4 +556,8 @@ await tab.scroll('down', 0, targetRef)` } })
   return <><div id="profile-settings" className="absolute left-4 top-4"><BrowserProfileImport /></div><div className="h-full" style={{ width: PREVIEW_PANEL_WIDTH }}><PreviewPanel target={target} onTargetChange={setTarget} onClose={() => {}} browserControl={browser} /></div></>
 }
 
-createRoot(document.getElementById('root')!).render(<Fixture />)
+if (new URLSearchParams(location.search).get('suite') === 'response-links') {
+  Object.assign(window, { replyLinksReady: import('./response-links').then(({ mountResponseLinks }) => mountResponseLinks()) })
+} else {
+  createRoot(document.getElementById('root')!).render(<Fixture />)
+}
