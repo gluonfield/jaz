@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import {
   BrowserWindow,
   Menu,
@@ -72,9 +72,7 @@ if (!singleInstanceLock) {
   app.quit()
 }
 
-if (process.defaultApp && process.argv.length >= 2) {
-  app.setAsDefaultProtocolClient('jaz', process.execPath, [resolve(process.argv[1])])
-} else {
+if (app.isPackaged) {
   app.setAsDefaultProtocolClient('jaz')
 }
 
@@ -360,9 +358,10 @@ if (singleInstanceLock) {
       return result
     })
   })
-  ipcMain.handle(OIDC_BEGIN_CHANNEL, (event) => {
+  ipcMain.handle(OIDC_BEGIN_CHANNEL, async (event) => {
     const record = connectionSession.authorizeOwner(event)
-    oidcGate.begin(record.window.webContents.id)
+    const redirectUri = await oidcGate.beginLoopback(record.window.webContents.id, () => mainWindow)
+    return { redirectUri }
   })
   ipcMain.handle('jaz:pick-directory', async (event) => {
     trustedWindow(event)
@@ -439,6 +438,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  oidcGate.clear()
   notifications.stop()
   teardownLauncher()
   stopLocalBackend('before_quit')

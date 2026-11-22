@@ -509,9 +509,12 @@ export async function startCloudSignIn(baseUrl: string, oidcLoginUrl?: string): 
     }
     return null
   }
-  await clientRuntime.beginOidcSignIn?.()
+  const started = await clientRuntime.beginOidcSignIn?.()
+  const clientRedirect = started && typeof started === 'object' && typeof started.redirectUri === 'string' && started.redirectUri.trim()
+    ? started.redirectUri.trim()
+    : 'jaz://auth/callback'
   const target = buildOidcLoginUrl(origin, loginPath, {
-    clientRedirect: 'jaz://auth/callback',
+    clientRedirect,
     state: pending.state,
     ...(codeChallenge ? { codeChallenge } : {}),
   })

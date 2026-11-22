@@ -125,6 +125,7 @@ async function fixture({ auth, authMe, authExchange, authLogout, discovery, stor
       startLocalBackend,
       beginOidcSignIn: async () => {
         oidcBeginCalls += 1
+        return { redirectUri: 'http://127.0.0.1:43123/auth/callback' }
       },
       onOidcCallback: (handler) => {
         oidcCallbackHandler = handler
@@ -889,7 +890,7 @@ test('Electron OIDC flow invokes beginOidcSignIn, opens jaz://auth/callback logi
   const loginUrl = new URL(f.openedExternal[0])
   expect(loginUrl.origin).toBe(cloudUrl)
   expect(loginUrl.pathname).toBe('/v1/auth/login')
-  expect(loginUrl.searchParams.get('client_redirect')).toBe('jaz://auth/callback')
+  expect(loginUrl.searchParams.get('client_redirect')).toBe('http://127.0.0.1:43123/auth/callback')
   expect(loginUrl.searchParams.get('code_challenge')).toBeTruthy()
   const state = loginUrl.searchParams.get('state')
   expect(state).toBeTruthy()

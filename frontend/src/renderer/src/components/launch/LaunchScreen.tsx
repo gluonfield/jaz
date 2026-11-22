@@ -1,15 +1,11 @@
-import { Cloud, KeyRound, Laptop, LoaderCircle, X } from 'lucide-react'
+import { Cloud, Laptop, LoaderCircle, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { parseOidcCallbackUrl } from '@/lib/api/cloudAuth'
 import { useKnownBackends } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
 import {
-  completeOidcCallback,
   connectionPreference,
   connectRemote,
   currentConnection,
@@ -76,8 +72,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   const status = previewStatus ?? liveStatus
   const [mode, setMode] = useState<'options' | 'remote' | 'sso'>('options')
   const [ssoTarget, setSsoTarget] = useState<SsoTarget | null>(null)
-  const [pasteOpen, setPasteOpen] = useState(false)
-  const [callbackInput, setCallbackInput] = useState('')
+  const [awaitingBrowserSso, setAwaitingBrowserSso] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const backends = useKnownBackends()
@@ -129,8 +124,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
           oidcLoginUrl: next.oidcLoginUrl || '/v1/auth/login',
         })
         setMode('sso')
-        setPasteOpen(false)
-        setCallbackInput('')
+        setAwaitingBrowserSso(false)
         return null
       }
       return err
@@ -143,23 +137,10 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
       if (clientRuntime.kind === 'electron') {
         setSsoTarget(target)
         setMode('sso')
-        setPasteOpen(true)
+        setAwaitingBrowserSso(true)
       }
       return null
     })
-
-  const submitCallbackToken = () => {
-    if (!ssoTarget) return
-    const raw = callbackInput.trim()
-    if (!raw) return
-    const parsed = parseOidcCallbackUrl(raw)
-    if (parsed.code || (parsed.token && parsed.state)) {
-      void run(`token:${ssoTarget.url}`, () => completeOidcCallback(raw))
-      return
-    }
-    const token = parsed.token || raw
-    void run(`token:${ssoTarget.url}`, () => connectRemote(`${ssoTarget.url}#token=${encodeURIComponent(token)}`))
-  }
 
   const isCurrent = (target: string) => manual && sameBackend(currentUrl, target)
 
@@ -284,61 +265,30 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                       </div>
                       <ChoiceButton
                         primary
-                        label="Sign in with SSO"
+                        label={awaitingBrowserSso ? 'Reopen browser sign-in' : 'Sign in with SSO'}
                         busyLabel="Opening SSO…"
                         busy={busy === `sso:${activeSso.url}`}
                         disabled={busy !== null}
                         onClick={() => launchSso(activeSso)}
                       />
-                      {pasteOpen ? (
-                        <form
-                          onSubmit={(event) => {
-                            event.preventDefault()
-                            submitCallbackToken()
+                      {awaitingBrowserSso ? (
+                        <p className="px-0.5 text-center text-[11.5px] text-ink-3">
+                          Complete sign-in in your browser — Jaz will connect automatically.
+                        </p>
+                      ) : null}
+                      <div className="flex items-center justify-between px-0.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMode('options')
+                            setAwaitingBrowserSso(false)
+                            setActionError(null)
                           }}
-                          className="mt-1 flex flex-col gap-2 border-t border-border/70 pt-2.5"
+                          className="cursor-pointer text-[12px] text-ink-3 transition-colors duration-150 hover:text-ink"
                         >
-                          <p className="text-[11.5px] text-ink-3">
-                            After signing in, paste the callback URL or session token if the app did not catch it automatically.
-                          </p>
-                          <Input
-                            value={callbackInput}
-                            onChange={(event) => setCallbackInput(event.target.value)}
-                            placeholder="jaz://auth/callback#code=… or session token"
-                            spellCheck={false}
-                            className="rounded-full font-mono text-[12px]"
-                          />
-                          <div className="flex items-center justify-end gap-2">
-                            <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => setPasteOpen(false)}>
-                              Cancel
-                            </Button>
-                            <Button variant="primary" size="sm" type="submit" disabled={busy !== null || !callbackInput.trim()}>
-                              Continue
-                            </Button>
-                          </div>
-                        </form>
-                      ) : (
-                        <div className="flex items-center justify-between px-0.5 pt-0.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMode('options')
-                              setActionError(null)
-                            }}
-                            className="cursor-pointer text-[12px] text-ink-3 transition-colors duration-150 hover:text-ink"
-                          >
-                            Back
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPasteOpen(true)}
-                            className="inline-flex cursor-pointer items-center gap-1 text-[12px] text-ink-3 transition-colors duration-150 hover:text-ink"
-                          >
-                            <KeyRound size={11} />
-                            Paste session token
-                          </button>
-                        </div>
-                      )}
+                          Back
+                        </button>
+                      </div>
                     </motion.div>
                   ) : mode === 'options' ? (
                     <motion.div key="opts" {...swap} className="flex flex-col gap-2">

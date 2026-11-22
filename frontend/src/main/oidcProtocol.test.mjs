@@ -88,3 +88,32 @@ test('createOidcCallbackGate enforces single-use delivery, TTL, owner window, an
   expect(gate.consume(callback, win)).toBe(false)
   expect(win.sent).toHaveLength(1)
 })
+
+test('createOidcCallbackGate loopback server accepts same-origin fragment POST, focuses window, and closes once consumed', async () => {
+  const gate = createOidcCallbackGate({ ttlMs: 60_000 })
+  const win = mockWindow({ id: 7, minimized: true })
+  const redirectUri = await gate.beginLoopback(7, () => win)
+  const origin = new URL(redirectUri).origin
+  expect(redirectUri).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/auth\/callback$/)
+
+  const page = await fetch(redirectUri)
+  expect(page.status).toBe(200)
+  expect(await page.text()).toContain('window.location.hash')
+
+  const badOrigin = await fetch(redirectUri, {
+    method: 'POST',
+    headers: { Origin: 'https://evil.example', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hash: '#code=evil&state=x' }),
+  })
+  expect(badOrigin.status).toBe(403)
+  expect(win.sent).toHaveLength(0)
+
+  const ok = await fetch(redirectUri, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hash: '#code=loopback-code&state=st-1' }),
+  })
+  expect(ok.status).toBe(200)
+  expect(win.actions).toEqual(['restore', 'show', 'focus'])
+  expect(win.sent).toEqual([[OIDC_CALLBACK_CHANNEL, 'jaz://auth/callback#code=loopback-code&state=st-1']])
+})

@@ -32,7 +32,7 @@ export interface ClientRuntime {
   setNativeTheme?: (source: 'light' | 'dark' | 'system') => void
   setWindowButtonsVisible?: (visible: boolean) => void
   startLocalBackend?: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
-  beginOidcSignIn?: () => Promise<void>
+  beginOidcSignIn?: () => Promise<{ redirectUri?: string } | void>
   onOidcCallback?: (handler: (url: string) => void) => () => void
   pickDirectory?: () => Promise<string | null>
   configureNotifications?: (config: NotificationConfig) => Promise<boolean>
