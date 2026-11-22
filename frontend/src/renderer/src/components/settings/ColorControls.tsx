@@ -1,6 +1,6 @@
 import { Minus, MoonStar, Plus, Shuffle, Sparkles, Sun } from 'lucide-react'
 import { type KeyboardEvent, type PointerEvent, useId } from 'react'
-import grainUrl from '@/assets/grain.png'
+import windUrl from '@/assets/wind.svg'
 import {
   type ColorTheme,
   HARMONIES,
@@ -13,7 +13,7 @@ import {
 import { type ThemePref, useTheme } from '@/lib/theme'
 
 // The colour pickers, after Zen's (Arc's): a dotted pad, a wavy strength
-// slider and a notched grain dial.
+// slider and a notched wind dial.
 
 // A colour at the picker's lightness for the mode (--swatch-l in globals.css).
 export const swatch = (hue: number, saturation: number) =>
@@ -236,7 +236,7 @@ const DIAL = 64
 const RING = 28
 const NOTCHES = 16
 
-// Sixteen notches round a face that shows the grain itself; the handle sits
+// Sixteen notches round a face that shows the wind streaks themselves; the handle sits
 // at the chosen notch, counted clockwise from the top.
 export function GrainDial({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   const point = (turn: number, inset = 0) => {
@@ -253,7 +253,7 @@ export function GrainDial({ value, onChange }: { value: number; onChange: (value
     <div
       role="slider"
       tabIndex={0}
-      aria-label="Grain"
+      aria-label="Wind"
       aria-valuemin={0}
       aria-valuemax={NOTCHES - 1}
       aria-valuenow={Math.round(value * NOTCHES)}
@@ -277,8 +277,8 @@ export function GrainDial({ value, onChange }: { value: number; onChange: (value
       ))}
       <span
         aria-hidden
-        className="absolute inset-[13px] rounded-full mix-blend-hard-light"
-        style={{ backgroundImage: `url(${grainUrl})`, opacity: value }}
+        className="absolute inset-[13px] rounded-full bg-ink"
+        style={{ maskImage: `url(${windUrl})`, opacity: value }}
       />
       <span
         aria-hidden
