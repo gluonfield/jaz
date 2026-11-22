@@ -14,8 +14,9 @@ const (
 	activityWindow = 30 * 24 * time.Hour
 	// runsShown is how many recent runs of each routine Activity lists.
 	runsShown = 20
-	// activityShown bounds what Activity lists besides what is running.
-	activityShown = 200
+	// activityShown is how many rows Activity lists; what runs is never cut
+	// for what finished.
+	activityShown = 30
 )
 
 // Activity is what a bot did: a task it closed, or a thread it started, a
@@ -78,10 +79,11 @@ type ActivityView struct {
 	Started map[string][]Activity `json:"started"`
 }
 
-// Activity lists what a bot owes, then what it is doing and what it did in
-// the last activityWindow, newest first. A thread serving a commitment shows
-// through it, open or closed, unless it works again after the commitment
-// closed; a side chat another side chat started shows under it.
+// Activity lists what a bot owes, then the newest activityShown things it is
+// doing and did in the last activityWindow, newest first. A thread serving a
+// commitment shows through it, open or closed, unless it works again after the
+// commitment closed; a side chat another side chat started shows under it.
+// Only rows that show count.
 func (s *Service) Activity(botID string) (ActivityView, error) {
 	if !isBot(s.store, botID) {
 		return ActivityView{}, storage.ErrBotNotFound
@@ -103,18 +105,23 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 		}
 		view.Owed = append(view.Owed, owed)
 	}
-	closed, err := s.store.ListClosedCommitments(botID, since, activityShown)
+	closed, err := s.store.ListClosedCommitments(botID, since)
 	if err != nil {
 		return ActivityView{}, err
 	}
 	var out []Activity
-	for _, commitment := range closed {
+	for i, commitment := range closed {
+		for _, thread := range commitment.Threads {
+			tasked[thread.ID] = tasked[thread.ID] || thread.State != "working" && thread.State != "background"
+		}
+		// Older closed tasks cannot make the cut, but still keep their threads
+		// out of the list.
+		if i >= activityShown {
+			continue
+		}
 		task, err := s.taskView(commitment)
 		if err != nil {
 			return ActivityView{}, err
-		}
-		for _, thread := range commitment.Threads {
-			tasked[thread.ID] = tasked[thread.ID] || thread.State != "working" && thread.State != "background"
 		}
 		out = append(out, Activity{Kind: "task", At: commitment.ClosedAt, Title: cmp.Or(task.Name, task.Request), Status: commitment.Status, Task: &task})
 	}
@@ -175,10 +182,12 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 			}
 		}
 	}
-	slices.SortStableFunc(out, func(a, b Activity) int { return b.At.Compare(a.At) })
+	newest := func(a, b Activity) int { return b.At.Compare(a.At) }
+	slices.SortStableFunc(out, newest)
 	running := slices.DeleteFunc(slices.Clone(out), func(item Activity) bool { return !item.Running })
 	done := slices.DeleteFunc(out, func(item Activity) bool { return item.Running })
-	view.Items = append(running, done[:min(len(done), activityShown)]...)
+	view.Items = append(running, done...)[:min(len(running)+len(done), activityShown)]
+	slices.SortStableFunc(view.Items, newest)
 	return view, nil
 }
 

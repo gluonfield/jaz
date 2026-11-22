@@ -305,17 +305,16 @@ func (q *Queries) LinkCommitmentThread(ctx context.Context, arg LinkCommitmentTh
 const listClosedCommitments = `-- name: ListClosedCommitments :many
 SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms, reply_seq, check_at_ms, opened_turn_ms, name FROM bot_commitments
 WHERE bot_id = ?1 AND status IN ('completed', 'cancelled') AND closed_at_ms >= ?2
-ORDER BY closed_at_ms DESC LIMIT ?3
+ORDER BY closed_at_ms DESC
 `
 
 type ListClosedCommitmentsParams struct {
 	BotID   string        `json:"bot_id"`
 	SinceMs sql.NullInt64 `json:"since_ms"`
-	MaxRows int64         `json:"max_rows"`
 }
 
 func (q *Queries) ListClosedCommitments(ctx context.Context, arg ListClosedCommitmentsParams) ([]BotCommitment, error) {
-	rows, err := q.db.QueryContext(ctx, listClosedCommitments, arg.BotID, arg.SinceMs, arg.MaxRows)
+	rows, err := q.db.QueryContext(ctx, listClosedCommitments, arg.BotID, arg.SinceMs)
 	if err != nil {
 		return nil, err
 	}

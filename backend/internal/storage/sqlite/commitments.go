@@ -274,11 +274,11 @@ func (s *Store) ListOpenCommitments(botID string) ([]storage.Commitment, error) 
 }
 
 // ListClosedCommitments returns a bot's commitments closed since since,
-// newest first, at most limit of them.
-func (s *Store) ListClosedCommitments(botID string, since time.Time, limit int) ([]storage.Commitment, error) {
+// newest first.
+func (s *Store) ListClosedCommitments(botID string, since time.Time) ([]storage.Commitment, error) {
 	ctx := context.Background()
 	q := botdb.New(s.db)
-	rows, err := q.ListClosedCommitments(ctx, botdb.ListClosedCommitmentsParams{BotID: botID, SinceMs: sql.NullInt64{Int64: timeToMs(since), Valid: true}, MaxRows: int64(limit)})
+	rows, err := q.ListClosedCommitments(ctx, botdb.ListClosedCommitmentsParams{BotID: botID, SinceMs: sql.NullInt64{Int64: timeToMs(since), Valid: true}})
 	if err != nil {
 		return nil, err
 	}

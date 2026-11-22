@@ -71,7 +71,7 @@ SELECT * FROM bot_commitments WHERE bot_id = sqlc.arg(bot_id) AND status IN ('pe
 -- name: ListClosedCommitments :many
 SELECT * FROM bot_commitments
 WHERE bot_id = sqlc.arg(bot_id) AND status IN ('completed', 'cancelled') AND closed_at_ms >= sqlc.arg(since_ms)
-ORDER BY closed_at_ms DESC LIMIT sqlc.arg(max_rows);
+ORDER BY closed_at_ms DESC;
 
 -- name: GetCommitment :one
 SELECT * FROM bot_commitments WHERE id = ?;

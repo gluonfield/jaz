@@ -484,8 +484,8 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	items := view.Items
 	var got []string
 	for i, item := range items {
-		if i > 0 && (item.Running && !items[i-1].Running || item.Running == items[i-1].Running && item.At.After(items[i-1].At)) {
-			t.Fatalf("activity is not what runs first, then newest first: %+v before %+v", items[i-1], item)
+		if i > 0 && item.At.After(items[i-1].At) {
+			t.Fatalf("activity is not newest first: %+v before %+v", items[i-1], item)
 		}
 		line := item.Kind + ":" + item.Title + ":" + item.Text + ":" + item.Status
 		if item.Running {
@@ -539,16 +539,6 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	if len(delivered.Started[finished]) != 2 || len(delivered.Started[diff]) != 1 {
 		t.Fatalf("delivered work lost its nested threads: %+v", delivered.Started)
 	}
-	// What runs stays listed however much happened since it started.
-	for i := range activityShown {
-		if _, err := store.CreateSession(storage.CreateSession{Slug: fmt.Sprint("later-", i), Title: "Later", ParentID: research.ID, SourceType: storage.SourceBotWorker, SourceID: research.ID}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	busy, err := service.Activity(research.ID)
-	if err != nil || len(busy.Items) != activityShown+2 || !busy.Items[0].Running || !busy.Items[1].Running {
-		t.Fatalf("after %d newer items the running side chats are gone: %d items, first %+v, %v", activityShown, len(busy.Items), busy.Items[:2], err)
-	}
 	// Messages between bots stay in each bot's thread, out of Activity.
 	theirs, err := service.Activity(operations.ID)
 	if err != nil {
@@ -562,6 +552,134 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		return event.BotActivity.Kind == "message_received" && event.BotActivity.Text == "Which fixes matter this week?"
 	}) {
 		t.Fatalf("Activity lists a message between bots, or the bot written to has no record of it: %+v, %+v", theirs.Items, received)
+	}
+}
+
+func TestActivityListsTheNewestThirtyShownRowsAcrossDays(t *testing.T) {
+	service, store, _ := newHomeService(t)
+	bot, err := service.Create(t.Context(), CreateBot{Name: "Research"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	hours := func(n int) time.Time { return now.Add(-time.Duration(n) * time.Hour) }
+	finish := func(id string, at time.Time) {
+		t.Helper()
+		if err := store.StartSessionTurn(id, storage.Turn{StartedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.FinishSessionTurn(id, storage.StatusIdle, "", at, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	thread := func(parent, title string, task int64, done time.Time) string {
+		t.Helper()
+		session, err := store.CreateSession(storage.CreateSession{Slug: title, Title: title, ParentID: parent, SourceType: storage.SourceBotWorker, SourceID: bot.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if task > 0 {
+			if err := store.LinkCommitmentThread(bot.ID, session.ID, task); err != nil {
+				t.Fatal(err)
+			}
+		}
+		finish(session.ID, done)
+		return session.ID
+	}
+	task := func(request string) int64 {
+		t.Helper()
+		owed, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: request})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return owed.ID
+	}
+	// Rows that do not show, all newer than any that do, take no place: the
+	// threads of open and closed tasks, even the oldest closed one's, what a
+	// side chat started, and a routine run in the bot's own thread.
+	delivered := task("Delivered")
+	worked := []string{thread(bot.ID, "Delivery draft", delivered, now.Add(-10*time.Minute)), thread(bot.ID, "Delivery check", delivered, now.Add(-11*time.Minute))}
+	if _, err := service.Commit(bot.ID, Commit{ID: delivered, Status: storage.CommitmentDone, Message: "Delivered"}); err != nil {
+		t.Fatal(err)
+	}
+	for h := 1; h < 69; h += 2 {
+		dropped := task(fmt.Sprintf("Dropped %dh", h))
+		if h == 67 {
+			thread(bot.ID, "Late follow-up", dropped, now.Add(-15*time.Minute))
+		}
+		if err := store.DropCommitment(dropped, "Superseded", hours(h)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open := task("Still open")
+	thread(bot.ID, "Open work", open, now.Add(-time.Minute))
+	var chats []string
+	for h := 2; h <= 20; h += 2 {
+		chat := thread(bot.ID, fmt.Sprintf("Chat %dh", h), 0, hours(h))
+		chats = append(chats, chat)
+	}
+	thread(chats[0], "Nested review", 0, now.Add(-20*time.Minute))
+	long, err := store.CreateSession(storage.CreateSession{Slug: "long-run", Title: "Long run", ParentID: bot.ID, SourceType: storage.SourceBotWorker, SourceID: bot.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StartSessionTurn(long.ID, storage.Turn{StartedAt: hours(72)}); err != nil {
+		t.Fatal(err)
+	}
+	routine, err := service.routines.Create(loops.CreateLoop{Name: "Nightly sweep", Prompt: "Sweep.", BotID: bot.ID, Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 2 * * *", Timezone: "UTC"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(at time.Time, own bool) {
+		t.Helper()
+		id := store.NewRunID()
+		threadID := bot.ID
+		if own {
+			session, err := store.CreateSession(storage.CreateSession{Slug: "nightly-sweep", Title: "Nightly sweep", ParentID: bot.ID, SourceType: storage.SourceLoopRun, SourceID: id})
+			if err != nil {
+				t.Fatal(err)
+			}
+			threadID = session.ID
+		}
+		if err := store.SaveRun(loops.Run{ID: id, LoopID: routine.ID, ThreadID: threadID, ScheduledFor: at, StartedAt: at, FinishedAt: at, Status: loops.RunStatusOK, CreatedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for h := 22; h <= 30; h += 2 {
+		run(hours(h), true)
+	}
+	run(now.Add(-5*time.Minute), false)
+
+	view, err := service.Activity(bot.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The newest 29 finished rows, hours 0 to 28, then the side chat running
+	// for three days, which newer finished rows never push out.
+	want := []string{"task:Delivered"}
+	for h := 1; h <= 28; h++ {
+		switch {
+		case h%2 == 1:
+			want = append(want, fmt.Sprintf("task:Dropped %dh", h))
+		case h <= 20:
+			want = append(want, fmt.Sprintf("side_chat:Chat %dh", h))
+		default:
+			want = append(want, "routine:Nightly sweep")
+		}
+	}
+	want = append(want, "side_chat:Long run")
+	var got []string
+	for _, item := range view.Items {
+		got = append(got, item.Kind+":"+item.Title)
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("activity =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if threads := view.Items[0].Task.Threads; len(threads) != 2 || !slices.ContainsFunc(threads, func(thread OwedThread) bool { return thread.ID == worked[0] }) || !slices.ContainsFunc(threads, func(thread OwedThread) bool { return thread.ID == worked[1] }) {
+		t.Fatalf("a listed task lost its threads: %+v", threads)
+	}
+	if len(view.Owed) != 1 || view.Owed[0].ID != open || len(view.Owed[0].Threads) != 1 || len(view.Started[chats[0]]) != 1 {
+		t.Fatalf("the open task or what a side chat started went missing: %+v, %+v", view.Owed, view.Started)
 	}
 }
 
