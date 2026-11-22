@@ -534,6 +534,80 @@ func TestACPTranscriptChunksWithoutMessageIDCrossSessionState(t *testing.T) {
 	}
 }
 
+func TestACPTranscriptPostTurnChunksWithoutMessageIDShareRun(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "post-turn", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = sessionevents.New()
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentAntigravity, ACPSession: "acp-session", State: StateRunning}}
+	manager.jobsByID[session.ID] = job
+
+	job.startTurn(CompletionInline, false, false)
+	manager.queueACPMessage(job, "Working on it.")
+	job.State = StateIdle
+	manager.publishACPStatus(job.eventView())
+	job.turn = nil
+
+	manager.queueACPThought(job, "Check ")
+	manager.flushACPTranscriptBuffer(manager.transcriptBuffers.get(session.ID, false))
+	manager.queueACPThought(job, "result")
+	manager.queueACPMessage(job, "| Type | Name |\n")
+	manager.flushACPTranscriptBuffer(manager.transcriptBuffers.get(session.ID, false))
+	manager.publishAgentSession(job)
+	manager.queueACPMessage(job, "|---|---|\n")
+	manager.flushACPTranscriptBuffer(manager.transcriptBuffers.get(session.ID, false))
+	manager.queueACPMessage(job, "| NS | staging |")
+	manager.publishACPTool(job.eventView(), sessionevents.ACPToolCall{ID: "tool-1", Title: "Deploy", Status: "completed"})
+	manager.queueACPMessage(job, "Done ")
+	manager.flushACPTranscriptBuffer(manager.transcriptBuffers.get(session.ID, false))
+	manager.queueACPMessage(job, "deploying.")
+	manager.withACPTranscriptBarrier(job.eventView(), nil)
+
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected := sessionevents.CompactTranscript(stored)
+	var messages []string
+	var thoughts []string
+	for _, event := range projected {
+		if event.Type == sessionevents.TypeACPMessage {
+			if event.ProjectionKey == "" || event.ACP == nil || event.ACP.TextRunID == "" {
+				t.Fatalf("post-turn message missing run identity: %#v", event)
+			}
+			messages = append(messages, event.Content)
+		}
+		if event.Type == sessionevents.TypeACPThought {
+			if event.ProjectionKey == "" || event.ACP == nil || event.ACP.TextRunID == "" {
+				t.Fatalf("post-turn thought missing run identity: %#v", event)
+			}
+			thoughts = append(thoughts, event.ACP.Thought)
+		}
+	}
+	wantMessages := []string{
+		"Working on it.",
+		"| Type | Name |\n|---|---|\n| NS | staging |",
+		"Done deploying.",
+	}
+	if len(messages) != len(wantMessages) {
+		t.Fatalf("messages = %#v, want %#v", messages, wantMessages)
+	}
+	for i := range wantMessages {
+		if messages[i] != wantMessages[i] {
+			t.Fatalf("messages[%d] = %q, want %q", i, messages[i], wantMessages[i])
+		}
+	}
+	if len(thoughts) != 1 || thoughts[0] != "Check result" {
+		t.Fatalf("thoughts = %#v, want [Check result]", thoughts)
+	}
+}
+
 func TestAgentSessionIsPublishedOnlyWhenItChanges(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
