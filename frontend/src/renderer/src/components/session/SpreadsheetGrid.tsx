@@ -8,6 +8,8 @@ const ROW_HEADER = 46
 const COLUMN_HEADER = 26
 const DEFAULT_FONT_SIZE = 12
 
+type PlacedImage = { url: string; left: number; top: number; width: number; height: number }
+
 function fontFamily(style: SpreadsheetStyle, fallback: string) {
   return style.fontFamily ? `${JSON.stringify(style.fontFamily)}, ${fallback}` : fallback
 }
@@ -57,7 +59,7 @@ const Cell = memo(function Cell({ sheet, r, c, active, id }: { id: string; sheet
 function Pane({ id, sheet, images, rows, columns, left, top, width, height, scrollLeft, scrollTop, selection }: {
   id: string
   sheet: SpreadsheetSheet
-  images: (CSSProperties & { url: string })[]
+  images: PlacedImage[]
   rows: number[]
   columns: number[]
   left: number
@@ -111,7 +113,7 @@ export default function SpreadsheetGrid({ sheet: source, initialSelection }: { s
   const [dragging, setDragging] = useState(false)
   const [selection, setSelection] = useState(() => initialSpreadsheetSelection(source, initialSelection))
   const [viewport, setViewport] = useState({ width: 0, height: 0, left: 0, top: 0 })
-  const [images, setImages] = useState<(CSSProperties & { url: string })[]>([])
+  const [images, setImages] = useState<PlacedImage[]>([])
   const sheet = useMemo(() => spreadsheetLayout(source, viewport.width - ROW_HEADER, viewport.height - COLUMN_HEADER), [source, viewport.width, viewport.height])
   const frozenWidth = sheet.columns[sheet.frozen.c]
   const frozenHeight = sheet.rows[sheet.frozen.r]

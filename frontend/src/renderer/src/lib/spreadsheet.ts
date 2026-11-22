@@ -1,5 +1,5 @@
 import { read, utils, type CellAddress, type CellObject, type Range, type WorkSheet } from 'xlsx'
-import type { SpreadsheetCorner, SpreadsheetMetadata, SpreadsheetStyle } from '@/lib/spreadsheetFormat'
+import type { SpreadsheetCorner, SpreadsheetImageAnchor, SpreadsheetMetadata, SpreadsheetStyle } from '@/lib/spreadsheetFormat'
 import { spreadsheetMetadata } from '@/lib/spreadsheetMetadata'
 
 export type SpreadsheetSelection = { anchor: CellAddress; focus: CellAddress }
@@ -30,6 +30,14 @@ function offsets(length: number, size: (index: number) => number): number[] {
   return result
 }
 
+function placedImage(image: SpreadsheetImageAnchor, columns: number[], rows: number[]): SpreadsheetImage {
+  const scale = (axis: number[], index: number) => image.offsets === 'pixels' ? 1 : axis[index + 1] - axis[index]
+  const place = (corner: SpreadsheetCorner) => ({ left: columns[corner.c] + corner.x * scale(columns, corner.c), top: rows[corner.r] + corner.y * scale(rows, corner.r) })
+  const start = place(image.from)
+  const end = 'to' in image ? place(image.to) : { left: start.left + image.size.width, top: start.top + image.size.height }
+  return { type: image.type, data: image.data, ...start, width: end.left - start.left, height: end.top - start.top }
+}
+
 export function readSpreadsheet(data: ArrayBuffer, digitWidth: (font: SpreadsheetStyle) => number): SpreadsheetSheet[] {
   const book = read(data, { type: 'array', dense: true, raw: true, cellStyles: true, cellNF: true, cellHTML: false, bookFiles: true, sheetStubs: true })
   const metadata = spreadsheetMetadata(book)
@@ -53,13 +61,7 @@ export function readSpreadsheet(data: ArrayBuffer, digitWidth: (font: Spreadshee
       name, source, ...meta, merges, used: range, rows, columns,
       defaultColumnWidth: pixels(defaultColumnCharacters),
       frozen: { r: Math.min(rows.length - 1, meta.frozen.r), c: Math.min(columns.length - 1, meta.frozen.c) },
-      images: images.map((image) => {
-        const scale = (axis: number[], index: number) => image.offsets === 'pixels' ? 1 : axis[index + 1] - axis[index]
-        const place = (corner: SpreadsheetCorner) => ({ left: columns[corner.c] + corner.x * scale(columns, corner.c), top: rows[corner.r] + corner.y * scale(rows, corner.r) })
-        const start = place(image.from)
-        const end = 'to' in image ? place(image.to) : { left: start.left + image.size.width, top: start.top + image.size.height }
-        return { type: image.type, data: image.data, ...start, width: end.left - start.left, height: end.top - start.top }
-      }),
+      images: images.map((image) => placedImage(image, columns, rows)),
     }
   })
 }

@@ -19,10 +19,10 @@ export function sheetImages(read: (path: string) => string, bytes: (path: string
     let corner: SpreadsheetCorner | undefined
     const finish = () => {
       const target = media.get(anchor.embed ?? '')?.path ?? ''
-      const type = IMAGE_TYPES[target.slice(target.lastIndexOf('.') + 1).toLowerCase()]
+      const image = IMAGE_TYPES[target.slice(target.lastIndexOf('.') + 1).toLowerCase()]
       const data = bytes(target)
       const extent = anchor.to ? { to: anchor.to } : anchor.size && { size: anchor.size }
-      if (anchor.from && extent && type && data) images.push({ type, data: new Uint8Array(data), from: anchor.from, offsets: 'pixels', ...extent })
+      if (anchor.from && extent && image && data) images.push({ type: image, data: new Uint8Array(data), from: anchor.from, offsets: 'pixels', ...extent })
       anchor = {}
     }
     visit(read(path), (name, attrs) => {
