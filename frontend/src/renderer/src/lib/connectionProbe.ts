@@ -1,9 +1,9 @@
 import { CLIENT_PLATFORM, CLIENT_PLATFORM_HEADER, secureBackendConnection } from '@/lib/api/client'
 import { backendFetch, clientRuntime } from '@/lib/clientRuntime'
-import { deviceAccess, type ResourceTicket } from '@shared/connectionSession'
+import { verifiedAccess, type AuthKind, type ResourceTicket } from '@shared/connectionSession'
 
 export type ProbeFailure = { ok: false; error: string; recoverable: boolean; code?: string }
-export type Access = { ok: true; kind: 'device' | 'root'; deviceId: string; ticket?: ResourceTicket } | ProbeFailure
+export type Access = { ok: true; kind: AuthKind; deviceId: string; ticket?: ResourceTicket } | ProbeFailure
 export type Health = { ok: true; authRequired: boolean } | ProbeFailure
 
 export async function readJSON<T>(response: Response): Promise<T | null> {
@@ -42,9 +42,9 @@ export async function readHealth(url: string, signal?: AbortSignal): Promise<Hea
   return { ok: false, error: `No backend responded at ${url}`, recoverable: true }
 }
 
-export async function readAccess(url: string, token: string, signal?: AbortSignal, expectedDeviceId?: string): Promise<Access> {
+export async function readAccess(url: string, token: string, signal?: AbortSignal): Promise<Access> {
   if (!token || !secureBackendConnection(url)) {
-    return { ok: false, error: 'A secure device credential is required', recoverable: false }
+    return { ok: false, error: 'A secure credential is required', recoverable: false }
   }
   try {
     const response = await backendFetch(url + '/v1/auth/check', {
@@ -55,11 +55,8 @@ export async function readAccess(url: string, token: string, signal?: AbortSigna
     if (!response.ok) {
       return { ok: false, error: response.status === 401 ? 'Backend key was rejected' : body?.error || 'Backend authentication failed', recoverable: response.status >= 500, code: body?.code }
     }
-    if (body?.ok === true && body.auth_kind === 'root' && expectedDeviceId === undefined) {
-      return { ok: true, kind: 'root', deviceId: '' }
-    }
     try {
-      return { ok: true, kind: 'device', ...deviceAccess(body, expectedDeviceId) }
+      return { ok: true, ...verifiedAccess(body) }
     } catch (error) {
       return { ok: false, error: (error as Error).message, recoverable: false }
     }

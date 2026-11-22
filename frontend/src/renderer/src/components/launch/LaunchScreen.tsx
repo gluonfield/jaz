@@ -2,12 +2,10 @@ import { LoaderCircle, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
-import { Button } from '@/components/ui/Button'
 import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
 import { useKnownBackends } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
 import {
-  cancelPendingApproval,
   connectionPreference,
   connectRemote,
   type ConnectionStatus,
@@ -79,7 +77,7 @@ type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; o
 // machines through the exact same flow they onboarded with; on success it
 // dismisses itself via `onClose`.
 export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}) {
-  const { status: liveStatus, error, pairing, url: currentUrl } = useConnection()
+  const { status: liveStatus, error, url: currentUrl } = useConnection()
   const status = previewStatus ?? liveStatus
   const [mode, setMode] = useState<'options' | 'remote'>('options')
   // The target currently connecting: 'local', or a backend URL. Disables the
@@ -168,40 +166,6 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
               >
                 {checkingCopy}
               </motion.p>
-            </motion.div>
-          ) : status === 'pending_approval' && pairing ? (
-            <motion.div
-              key="pending"
-              variants={stagger}
-              initial="hidden"
-              animate="show"
-              className="flex w-full max-w-[340px] flex-col items-center"
-            >
-              <motion.div variants={rise} className="mb-4 flex size-12 items-center justify-center rounded-full bg-primary-soft">
-                <span className="size-2.5 animate-pulse rounded-full bg-primary" />
-              </motion.div>
-              <motion.h1
-                variants={rise}
-                className="text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
-              >
-                Waiting for approval
-              </motion.h1>
-              <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
-                Approve this device from Settings on a connected Jaz app.
-              </motion.p>
-              <motion.div
-                variants={rise}
-                className="mt-5 w-full rounded-[16px] bg-surface/90 p-3 text-left shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-[2px]"
-              >
-                <p className="text-[12px] font-medium text-ink">{pairing.deviceName}</p>
-                <p className="mt-1 truncate font-mono text-[11px] text-ink-3">{pairing.url}</p>
-                <p className="mt-2 text-[11px] text-ink-3">Request expires {formatApprovalExpiry(pairing.expiresAt)}.</p>
-              </motion.div>
-              <motion.div variants={rise} className="mt-4">
-                <Button variant="ghost" onClick={cancelPendingApproval}>
-                  Cancel
-                </Button>
-              </motion.div>
             </motion.div>
           ) : (
             <motion.div
@@ -398,10 +362,4 @@ function BackendChoice({
       ) : null}
     </div>
   )
-}
-
-function formatApprovalExpiry(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'soon'
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }

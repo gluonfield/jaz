@@ -3,7 +3,6 @@ package app
 import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/canvas"
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	feedcore "github.com/wins/jaz/backend/internal/feed"
 	agentsessionsapi "github.com/wins/jaz/backend/internal/httpapi/agentsessions"
 	canvasapi "github.com/wins/jaz/backend/internal/httpapi/canvas"
@@ -56,8 +55,4 @@ func HTTPModule() fx.Option {
 		NewRoutes,
 		NewPublicRoutes,
 	)
-}
-
-func NewDeviceAuth(store *sqlitestore.Store) *deviceauth.Service {
-	return deviceauth.New(store)
 }

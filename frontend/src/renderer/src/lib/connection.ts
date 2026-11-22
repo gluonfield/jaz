@@ -1,23 +1,21 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import {
-  apiBaseUrl, cachedApiAuthToken, clearApiSession, CLIENT_PLATFORM, CLIENT_PLATFORM_HEADER,
+  apiBaseUrl, cachedApiAuthToken, clearApiSession,
   consumeStartupConnectUrl, isLocalBackendUrl, localBaseUrl, normalizeBaseUrl,
   parseBackendConnectUrl, rememberApiAuthToken, restoreApiAuthToken, secureBackendConnection,
   setApiAuthToken, setApiBaseUrl, onApiAuthRejected,
 } from '@/lib/api/client'
 import { rememberBackend, removeKnownBackend } from '@/lib/backends'
-import { backendFetch, clientRuntime } from '@/lib/clientRuntime'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { loadBrowserCredential, saveBrowserCredential, forgetBrowserCredential } from '@/lib/browserCredentials'
-import { getDeviceProfile } from '@/lib/deviceIdentity'
 import { queryClient } from '@/lib/query/queryClient'
-import { readAccess, readHealth, readJSON } from '@/lib/connectionProbe'
+import { readAccess, readHealth } from '@/lib/connectionProbe'
 import type { ResourceTicket, SessionSnapshot, VerifiedSession } from '@shared/connectionSession'
 import { LOCAL_BACKEND_URL as LOCAL_URL } from '@shared/localBackend'
 
 export { isLocalBackendUrl } from '@/lib/api/client'
-export type ConnectionStatus = 'checking' | 'connected' | 'reconnecting' | 'disconnected' | 'pending_approval'
-export type PendingPairing = { url: string; id: string; secret: string; deviceName: string; expiresAt: string }
-export type ConnectionState = { status: ConnectionStatus; url: string; pairing: PendingPairing | null; error: string | null }
+export type ConnectionStatus = 'checking' | 'connected' | 'reconnecting' | 'disconnected'
+export type ConnectionState = { status: ConnectionStatus; url: string; error: string | null }
 export type ConnectionMode = 'local' | 'remote'
 type ConnectionPreference = { mode: ConnectionMode; remoteUrl?: string }
 type Attempt = { url: string; revision: number; controller: AbortController }
@@ -30,9 +28,7 @@ export const ownsConnection = desktop?.owner ?? clientRuntime.windowKind === 'ma
 let authoritative = desktop?.snapshot
 let attempt: Attempt | null = null
 let pollTimer: ReturnType<typeof setTimeout> | undefined
-let pairingTimer: ReturnType<typeof setTimeout> | undefined
-let issuance: Promise<unknown> = Promise.resolve()
-let state: ConnectionState = { status: 'checking', url: apiBaseUrl(), pairing: null, error: null }
+let state: ConnectionState = { status: 'checking', url: apiBaseUrl(), error: null }
 const listeners = new Set<() => void>()
 
 function setState(next: Partial<ConnectionState>): void {
@@ -97,7 +93,6 @@ function invalidate(): void {
   attempt?.controller.abort()
   attempt = null
   clearTimeout(pollTimer)
-  clearTimeout(pairingTimer)
   clearApiSession()
   void queryClient.cancelQueries()
   queryClient.clear()
@@ -118,7 +113,7 @@ function begin(url: string, announce = true): Attempt {
   const value = { url, revision: authoritative?.revision ?? 0, controller: new AbortController() }
   attempt = value
   setApiBaseUrl(url)
-  setState({ status: 'checking', url, pairing: null, error: null })
+  setState({ status: 'checking', url, error: null })
   return value
 }
 
@@ -133,7 +128,7 @@ function block(error: string | null, keepPreference = false): void {
   } else if (bridge && desktop && authoritative?.phase === 'connected') {
     authoritative = bridge.update({ operation: 'reject', document: desktop.document, revision: authoritative.revision })
   }
-  setState({ status: 'disconnected', pairing: null, error })
+  setState({ status: 'disconnected', error })
 }
 
 function activate(value: Attempt, candidate: Candidate): void {
@@ -146,7 +141,7 @@ function activate(value: Attempt, candidate: Candidate): void {
     value.revision = authoritative.revision
   }
   setApiAuthToken(candidate.url, candidate.token, candidate.ticket)
-  setState({ status: 'connected', url: candidate.url, pairing: null, error: null })
+  setState({ status: 'connected', url: candidate.url, error: null })
   if (ownsConnection) {
     if (candidate.url === LOCAL_URL && clientRuntime.kind === 'electron') {
       savePreference({ mode: 'local' })
@@ -168,19 +163,18 @@ function activate(value: Attempt, candidate: Candidate): void {
 }
 
 async function verify(value: Attempt, candidate: Candidate): Promise<string | null> {
-  const access = await readAccess(value.url, candidate.token, value.controller.signal, candidate.deviceId || undefined)
+  const access = await readAccess(value.url, candidate.token, value.controller.signal)
   if (!current(value)) {
     return null
   }
-  if (!access.ok || access.kind !== 'device') {
-    const error = access.ok ? 'A device credential is required' : access.error
-    if (!access.ok && access.recoverable) {
-      setState({ status: 'disconnected', error })
+  if (!access.ok) {
+    if (access.recoverable) {
+      setState({ status: 'disconnected', error: access.error })
       pollTimer = setTimeout(() => void verify(value, candidate), 5000)
-      return error
+      return access.error
     }
-    block(error)
-    return error
+    block(access.error)
+    return access.error
   }
   activate(value, { ...candidate, deviceId: access.deviceId, ticket: access.ticket })
   return null
@@ -197,7 +191,7 @@ function schedulePoll(value: Attempt, candidate: Candidate, missed = false): voi
     if (!current(value)) {
       return
     }
-    const access = health.ok && candidate.token ? await readAccess(value.url, candidate.token, value.controller.signal, candidate.deviceId) : health
+    const access = health.ok && candidate.token ? await readAccess(value.url, candidate.token, value.controller.signal) : health
     if (!current(value)) {
       return
     }
@@ -216,104 +210,11 @@ function schedulePoll(value: Attempt, candidate: Candidate, missed = false): voi
   }, 5000)
 }
 
-async function serialized<T>(value: Attempt, issue: () => Promise<T>): Promise<T | undefined> {
-  const next = issuance.catch(() => {}).then(() => current(value) ? issue() : undefined)
-  issuance = next
-  return next
-}
-
 async function savedCredential(url: string): Promise<SavedCredential> {
   if (clientRuntime.kind === 'web') {
     return await loadBrowserCredential(url) || { token: '' }
   }
   return { token: restoreApiAuthToken(url) }
-}
-
-async function register(value: Attempt, credential: string): Promise<string | null> {
-  const profile = await getDeviceProfile()
-  if (!current(value)) {
-    return null
-  }
-  const response = await serialized(value, () => backendFetch(value.url + '/v1/devices/register', {
-    method: 'POST', redirect: 'error',
-    headers: { Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
-    body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }), signal: AbortSignal.timeout(5000),
-  }))
-  if (!response || !current(value)) {
-    return null
-  }
-  const body = await readJSON<{ token?: string; error?: string; pairing?: { id: string; expires_at: string }; pairing_secret?: string }>(response)
-  if (!current(value)) {
-    return null
-  }
-  if (response.ok && body?.token) {
-    return verify(value, { url: value.url, token: body.token, deviceId: profile.device_id, remembered: false })
-  }
-  if (response.status === 202 && body?.pairing && body.pairing_secret) {
-    pending(value, { url: value.url, id: body.pairing.id, secret: body.pairing_secret, expiresAt: body.pairing.expires_at, deviceName: profile.name }, profile.device_id)
-    return null
-  }
-  const error = body?.error || 'Device registration failed'
-  block(error)
-  return error
-}
-
-function pending(value: Attempt, pairing: PendingPairing, deviceId: string): void {
-  if (!current(value)) {
-    return
-  }
-  setState({ status: 'pending_approval', pairing })
-  const poll = async (): Promise<void> => {
-    if (!current(value)) {
-      return
-    }
-    try {
-      const response = await backendFetch(value.url + '/v1/devices/pairing-requests/' + encodeURIComponent(pairing.id), {
-        headers: { [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM, 'X-Jaz-Pairing-Secret': pairing.secret },
-        signal: AbortSignal.any([value.controller.signal, AbortSignal.timeout(5000)]),
-      })
-      const body = await readJSON<{ token?: string; error?: string; pairing?: { status: string } }>(response)
-      if (!current(value)) {
-        return
-      }
-      if (response.ok && body?.pairing?.status === 'approved' && body.token) {
-        await verify(value, { url: value.url, token: body.token, deviceId, remembered: false })
-        return
-      }
-      if (!response.ok || body?.pairing?.status === 'rejected' || body?.pairing?.status === 'expired') {
-        block(body?.error || 'Device approval is no longer available. Connect again.')
-        return
-      }
-    } catch {
-      if (!current(value)) {
-        return
-      }
-    }
-    pairingTimer = setTimeout(() => void poll(), 2000)
-  }
-  pairingTimer = setTimeout(() => void poll(), 2000)
-}
-
-async function pair(value: Attempt): Promise<string | null> {
-  const profile = await getDeviceProfile()
-  if (!current(value)) {
-    return null
-  }
-  const response = await backendFetch(value.url + '/v1/devices/pairing-requests', {
-    method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
-    body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }), signal: AbortSignal.any([value.controller.signal, AbortSignal.timeout(5000)]),
-  })
-  const body = await readJSON<{ pairing?: { id: string; expires_at: string }; pairing_secret?: string; error?: string }>(response)
-  if (!current(value)) {
-    return null
-  }
-  if (!response.ok || !body?.pairing || !body.pairing_secret) {
-    const error = body?.error || 'Could not create a device approval request'
-    block(error)
-    return error
-  }
-  pending(value, { url: value.url, id: body.pairing.id, secret: body.pairing_secret, expiresAt: body.pairing.expires_at, deviceName: profile.name }, profile.device_id)
-  return null
 }
 
 export async function connectRemote(input: string): Promise<string | null> {
@@ -327,9 +228,6 @@ export async function connectRemote(input: string): Promise<string | null> {
   const value = begin(url)
   clearConnectionPreference()
   try {
-    if (parsed.key.startsWith('invite_')) {
-      return await register(value, parsed.key)
-    }
     const health = await readHealth(url, value.controller.signal)
     if (!current(value)) {
       return null
@@ -343,31 +241,25 @@ export async function connectRemote(input: string): Promise<string | null> {
       return null
     }
     let token = parsed.key || cached
-    let deviceId: string | undefined
     if (!token) {
       const saved = await savedCredential(url).catch((error): SavedCredential => {
         if (clientRuntime.kind !== 'web') throw error
         return { token: '' }
       })
       token = saved.token
-      deviceId = saved.deviceId
       remembered = Boolean(token)
     }
     if (!current(value)) return null
     if (!token) {
-      return await pair(value)
+      const error = 'Authentication required to connect to this server'
+      block(error)
+      return error
     }
-    const access = await readAccess(url, token, value.controller.signal, deviceId)
+    const access = await readAccess(url, token, value.controller.signal)
     if (!current(value)) {
       return null
     }
-    if (access.ok && access.kind === 'root') {
-      return await register(value, token)
-    }
     if (!access.ok) {
-      if (access.code === 'device_approval_required' && parsed.key) {
-        return await register(value, token)
-      }
       block(access.error)
       return access.error
     }
@@ -421,10 +313,6 @@ export async function startLocal(): Promise<string | null> {
 }
 
 export function disconnectBackend(): void {
-  block(null)
-}
-
-export function cancelPendingApproval(): void {
   block(null)
 }
 
@@ -502,7 +390,7 @@ async function hydrate(snapshot: SessionSnapshot): Promise<void> {
     if (ownsConnection && snapshot.phase === 'blocked' && (wasConnected || snapshot.url !== LOCAL_URL)) {
       clearConnectionPreference()
     }
-    setState({ status: snapshot.phase === 'pending' || snapshot.phase === 'initial' ? 'checking' : 'disconnected', url: snapshot.url || state.url, pairing: null, error: snapshot.error })
+    setState({ status: snapshot.phase === 'pending' || snapshot.phase === 'initial' ? 'checking' : 'disconnected', url: snapshot.url || state.url, error: snapshot.error })
   }
 }
 
@@ -553,7 +441,6 @@ async function init(): Promise<void> {
 async function restore(url: string): Promise<void> {
   const value = begin(url)
   let token: string | undefined
-  let deviceId: string | undefined
   const retry = async (): Promise<void> => {
     const health = await readHealth(url, value.controller.signal)
     if (!current(value)) {
@@ -576,7 +463,6 @@ async function restore(url: string): Promise<void> {
       if (token === undefined) {
         const saved = await savedCredential(url)
         token = saved.token
-        deviceId = saved.deviceId
       }
     } catch {
       if (!current(value)) return
@@ -587,10 +473,10 @@ async function restore(url: string): Promise<void> {
     }
     if (!current(value)) return
     if (!token) {
-      block('Connect again with an authorized link or request approval')
+      block('Connect again with an authorized credential')
       return
     }
-    const access = await readAccess(url, token, value.controller.signal, deviceId)
+    const access = await readAccess(url, token, value.controller.signal)
     if (!current(value)) {
       return
     }
@@ -603,10 +489,6 @@ async function restore(url: string): Promise<void> {
       }
       return
     }
-    if (access.kind !== 'device') {
-      block('A saved device credential is required')
-      return
-    }
     activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered: true })
   }
   await retry()
@@ -615,5 +497,5 @@ async function restore(url: string): Promise<void> {
 bridge?.subscribe((snapshot) => {
   void hydrate(snapshot)
 })
-onApiAuthRejected(() => block('Backend device access was rejected'))
+onApiAuthRejected(() => block('Backend authentication was rejected'))
 void init().catch((error: unknown) => block(error instanceof Error ? error.message : 'Could not open the connection'))

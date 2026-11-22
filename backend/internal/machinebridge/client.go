@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -153,7 +154,15 @@ func (c *Client) NegotiatedCapabilities() Capabilities {
 	return c.negotiated
 }
 
+func (c *Client) Close() error {
+	if closer, ok := c.cfg.ExecLauncher.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
 func (c *Client) Run(ctx context.Context) error {
+	defer func() { _ = c.Close() }()
 	backoff := c.cfg.MinBackoff
 	for {
 		if err := ctx.Err(); err != nil {

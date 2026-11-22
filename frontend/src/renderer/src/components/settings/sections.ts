@@ -27,7 +27,6 @@ export type SettingsSection =
   | 'browser'
   | 'computer'
   | 'usage'
-  | 'devices'
   | 'keyboard'
   | 'mcp'
   | 'plugins'
@@ -62,7 +61,6 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'browser', label: 'Browser', icon: Globe, group: 'Capabilities' },
   { id: 'computer', label: 'Computer Use', icon: MonitorSmartphone, group: 'Capabilities' },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn, group: 'Account' },
-  { id: 'devices', label: 'Devices', icon: MonitorSmartphone, group: 'Account' },
   { id: 'archived', label: 'Archived threads', icon: ArchiveRestore, group: 'Account' },
 ]
 

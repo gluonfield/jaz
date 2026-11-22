@@ -7,14 +7,12 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/computercontrol"
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	feedcore "github.com/wins/jaz/backend/internal/feed"
 	agentsessionsapi "github.com/wins/jaz/backend/internal/httpapi/agentsessions"
 	botsapi "github.com/wins/jaz/backend/internal/httpapi/bots"
 	browserapi "github.com/wins/jaz/backend/internal/httpapi/browser"
 	canvasapi "github.com/wins/jaz/backend/internal/httpapi/canvas"
 	computerapi "github.com/wins/jaz/backend/internal/httpapi/computer"
-	deviceapi "github.com/wins/jaz/backend/internal/httpapi/devices"
 	feedapi "github.com/wins/jaz/backend/internal/httpapi/feed"
 	filesystemapi "github.com/wins/jaz/backend/internal/httpapi/filesystem"
 	hooksapi "github.com/wins/jaz/backend/internal/httpapi/hooks"
@@ -47,8 +45,6 @@ type routeDeps struct {
 	Usage            usagecore.Service
 	Feed             feedcore.Service
 	ModelCatalog     *modelcatalog.Service `optional:"true"`
-	Jaz              Config
-	Devices          *deviceauth.Service `optional:"true"`
 	Store            storage.Store
 	Config           serverconfig.Config               `optional:"true"`
 	Browser          *browsercontrol.ConfiguredBackend `optional:"true"`
@@ -113,7 +109,6 @@ func NewRoutes(deps routeDeps) server.Routes {
 	routes = appendPluginRoutes(routes, deps.Plugins, deps.PluginSessions, deps.MCP, deps.Config)
 	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
-	routes = appendDeviceRoutes(routes, deps.Devices, deps.Store, deps.Config, deps.Jaz.Devices.DisablePairing)
 	if deps.Computer != nil && deps.ComputerSettings != nil {
 		routes = append(routes,
 			server.Route{Pattern: "GET /v1/computer", Handler: deps.ComputerSettings},
@@ -199,28 +194,6 @@ func appendPluginRoutes(routes server.Routes, service *plugins.Service, sessions
 		server.Route{Pattern: "GET /v1/plugins/{plugin}/page", Handler: httpHandlerFunc(handler.Page)},
 		server.Route{Pattern: "POST /v1/plugins/{plugin}/update", Handler: httpHandlerFunc(handler.Update)},
 		server.Route{Pattern: "DELETE /v1/plugins/{plugin}", Handler: httpHandlerFunc(handler.Remove)},
-	)
-}
-
-func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, settings storage.SettingsStorage, cfg serverconfig.Config, disablePairing bool) server.Routes {
-	if devices == nil {
-		return routes
-	}
-	handler := deviceapi.NewHandler(devices, settings, cfg)
-	routes = append(routes,
-		server.Route{Pattern: "GET /v1/devices/connection-link", Handler: httpHandlerFunc(handler.ConnectionLink)},
-		server.Route{Pattern: "PUT /v1/devices/connection-link", Handler: httpHandlerFunc(handler.UpdateConnectionLink)},
-		server.Route{Pattern: "GET /v1/devices", Handler: httpHandlerFunc(handler.List)},
-		server.Route{Pattern: "POST /v1/devices/register", Handler: httpHandlerFunc(handler.Register)},
-		server.Route{Pattern: "DELETE /v1/devices/{id}", Handler: httpHandlerFunc(handler.Revoke)},
-	)
-	// Pairing is the unauthenticated keyless-onboarding surface.
-	if disablePairing {
-		return routes
-	}
-	return append(routes,
-		server.Route{Pattern: "POST /v1/devices/pairing-requests", Handler: httpHandlerFunc(handler.CreatePairing)},
-		server.Route{Pattern: "/v1/devices/pairing-requests/", Handler: httpHandlerFunc(handler.Pairing)},
 	)
 }
 

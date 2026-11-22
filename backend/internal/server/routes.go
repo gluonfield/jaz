@@ -10,6 +10,7 @@ import (
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /.well-known/jaz-server", s.handleServerDiscovery)
 	mux.HandleFunc("GET /v1/auth/check", s.handleAuthCheck)
 	mux.HandleFunc("GET /v1/sessions/", s.handleGetSession)
 	mux.HandleFunc("POST /v1/sessions", s.handleCreateSession)
@@ -94,9 +95,32 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleServerDiscovery(w http.ResponseWriter, r *http.Request) {
+	auth := "none"
+	if s.AuthKey != "" {
+		auth = "bearer"
+	}
+	writeJSON(w, http.StatusOK, serverDiscoveryResponse{
+		OK:   true,
+		Mode: "local",
+		Auth: auth,
+		Capabilities: healthCapabilities{
+			SessionFileRead: true,
+		},
+	})
+}
+
 type healthResponse struct {
 	OK           bool               `json:"ok"`
 	AuthRequired bool               `json:"auth_required"`
+	Capabilities healthCapabilities `json:"capabilities"`
+}
+
+type serverDiscoveryResponse struct {
+	OK           bool               `json:"ok"`
+	Mode         string             `json:"mode"`
+	Auth         string             `json:"auth"`
+	OIDCLoginURL string             `json:"oidc_login_url,omitempty"`
 	Capabilities healthCapabilities `json:"capabilities"`
 }
 

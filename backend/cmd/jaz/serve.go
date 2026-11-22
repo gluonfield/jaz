@@ -25,7 +25,6 @@ import (
 	"github.com/wins/jaz/backend/internal/connections"
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/coordinator"
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	botsapi "github.com/wins/jaz/backend/internal/httpapi/bots"
 	hooksapi "github.com/wins/jaz/backend/internal/httpapi/hooks"
 	"github.com/wins/jaz/backend/internal/instructions"
@@ -89,7 +88,6 @@ func serveOptions(args []string) []fx.Option {
 			app.NewRuntimeAuthKey,
 			app.NewWorkspace,
 			app.NewMemory,
-			app.NewDeviceAuth,
 			connections.NewCatalog,
 			app.NewConnectionMCPConnector,
 			app.NewConnectionService,
@@ -273,7 +271,6 @@ func startServer(
 	jazTools *jaztools.Service,
 	terminals *terminal.Manager,
 	threadService *threads.Service,
-	deviceAuth *deviceauth.Service,
 	runtimeAuthKey app.RuntimeAuthKey,
 	routes server.Routes,
 	publicRoutes server.PublicRoutes,
@@ -312,7 +309,6 @@ func startServer(
 		SourceProjectionQueue: sourceProjectionQueue.Queue,
 		MemorySourceQueue:     memorySourceQueue.Queue,
 		Terminal:              terminals,
-		Devices:               deviceAuth,
 	}
 	app.ConnectACPCompletion(manager, a, store, locks, events, prompts, logger)
 	lc.Append(fx.Hook{

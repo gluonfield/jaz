@@ -72,7 +72,6 @@ const connectionSession = createConnectionSession({
   rendererPath: join(__dirname, '../renderer/index.html'),
   localEnabled: cloudConfig.localEnabled,
   startLocal: startLocalBackend,
-  profile: () => ({ ...getDeviceIdentity(), ...getDeviceMetadata() }),
   stopConsumers: () => notifications.stop(),
 })
 

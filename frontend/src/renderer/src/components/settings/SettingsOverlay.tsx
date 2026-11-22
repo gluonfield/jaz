@@ -16,7 +16,6 @@ import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { ComputerSettings } from '@/components/settings/ComputerSettings'
 import { NotificationsSettings } from '@/components/settings/NotificationsSettings'
 import { BrowserSettings } from './BrowserSettings'
-import { DevicesSettings } from './DevicesSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
 import { MCPSettings } from './MCPSettings'
@@ -205,7 +204,5 @@ function SectionContent({
       return <BrowserSettings />
     case 'usage':
       return <UsageSettings />
-    case 'devices':
-      return <DevicesSettings />
   }
 }

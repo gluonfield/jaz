@@ -278,8 +278,7 @@ export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): 
   return backendFetch(`${url}${path}`, options).then(async (response) => {
     if ((response.status === 401 || response.status === 403) && bearer === `Bearer ${cachedApiAuthToken(url)}`) {
       const body = await response.clone().json().catch(() => null) as { code?: string } | null
-      if (revision === credentialRevision && url === apiBaseUrl() &&
-        (body?.code === 'unauthorized' || body?.code === 'device_approval_required')) {
+      if (revision === credentialRevision && url === apiBaseUrl() && body?.code === 'unauthorized') {
         for (const handler of rejectionListeners) {
           handler()
         }

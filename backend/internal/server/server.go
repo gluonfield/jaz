@@ -15,7 +15,6 @@ import (
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/coordinator"
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/gitinfo"
 	repoapi "github.com/wins/jaz/backend/internal/httpapi/repo"
 	"github.com/wins/jaz/backend/internal/instructions"
@@ -134,8 +133,8 @@ type Server struct {
 	MemorySourceQueue     sourceQueueStatsReader
 
 	Terminal     *terminal.Manager
-	Devices      *deviceauth.Service
 	terminalOnce sync.Once
+	tickets      resourceTicketStore
 
 	acpAuthLoginJobs   sync.Map
 	antigravityLoginMu sync.Mutex

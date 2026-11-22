@@ -1,17 +1,12 @@
 package server
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
-	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
 func TestAuthMiddlewareKeepsHealthPublic(t *testing.T) {
@@ -32,6 +27,32 @@ func TestAuthMiddlewareKeepsHealthPublic(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareKeepsWellKnownDiscoveryPublic(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		authKey  string
+		wantAuth string
+	}{
+		{"with auth key", "secret", "bearer"},
+		{"without auth key", "", "none"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := httptest.NewRecorder()
+			(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: tc.authKey}).Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/.well-known/jaz-server", nil))
+			if res.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+			}
+			var body serverDiscoveryResponse
+			if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if !body.OK || body.Mode != "local" || body.Auth != tc.wantAuth || !body.Capabilities.SessionFileRead {
+				t.Fatalf("discovery = %#v, want auth=%q", body, tc.wantAuth)
+			}
+		})
+	}
+}
+
 func TestAuthMiddlewareRejectsMissingKey(t *testing.T) {
 	res := httptest.NewRecorder()
 	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/auth/check", nil))
@@ -40,13 +61,24 @@ func TestAuthMiddlewareRejectsMissingKey(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareAcceptsBearerKey(t *testing.T) {
+func TestAuthMiddlewareAcceptsBearerKeyAndIssuesResourceTicket(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/auth/check", nil)
 	req.Header.Set("Authorization", "Bearer secret")
 	res := httptest.NewRecorder()
 	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var body struct {
+		OK             bool            `json:"ok"`
+		AuthKind       string          `json:"auth_kind"`
+		ResourceTicket *ResourceTicket `json:"resource_ticket"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.OK || body.AuthKind != "bearer" || body.ResourceTicket == nil || body.ResourceTicket.Token == "" {
+		t.Fatalf("auth check = %#v", body)
 	}
 }
 
@@ -83,51 +115,12 @@ func TestAuthMiddlewareRejectsQueryKeyOnMutations(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareRequiresDeviceAfterBootstrap(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	devices := deviceauth.New(store)
-	registered, err := devices.Register(testDeviceInfo("First Mac", "desktop", 1))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rootReq := httptest.NewRequest(http.MethodGet, "/v1/auth/check", nil)
-	rootReq.Header.Set("Authorization", "Bearer root-key")
-	rootRes := httptest.NewRecorder()
-	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "root-key", Devices: devices}).Handler().ServeHTTP(rootRes, rootReq)
-	if rootRes.Code != http.StatusForbidden {
-		t.Fatalf("root status = %d, body = %s", rootRes.Code, rootRes.Body.String())
-	}
-
-	deviceReq := httptest.NewRequest(http.MethodGet, "/v1/auth/check", nil)
-	deviceReq.Header.Set("Authorization", "Bearer "+registered.Token)
-	deviceRes := httptest.NewRecorder()
-	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "root-key", Devices: devices}).Handler().ServeHTTP(deviceRes, deviceReq)
-	if deviceRes.Code != http.StatusOK {
-		t.Fatalf("device status = %d, body = %s", deviceRes.Code, deviceRes.Body.String())
-	}
-}
-
-func TestAuthMiddlewareRejectsLocalBrowserExtensionWithoutKeyAfterBootstrap(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	devices := deviceauth.New(store)
-	if _, err := devices.Register(testDeviceInfo("First Mac", "desktop", 1)); err != nil {
-		t.Fatal(err)
-	}
-
+func TestAuthMiddlewareRejectsLocalBrowserExtensionWithoutKey(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/thread/browser", nil)
 	req.RemoteAddr = "127.0.0.1:53124"
 	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnopabcdefghijklmnop")
 	res := httptest.NewRecorder()
-	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "root-key", Devices: devices}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "root-key"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})).ServeHTTP(res, req)
 	if res.Code != http.StatusUnauthorized {
@@ -171,23 +164,5 @@ func TestAuthMiddlewareRejectsRemoteBrowserExtensionWithoutKey(t *testing.T) {
 	})).ServeHTTP(res, req)
 	if res.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-}
-
-func testDeviceInfo(name, kind string, seed byte) deviceauth.Registration {
-	raw := make([]byte, 32)
-	for i := range raw {
-		raw[i] = seed
-	}
-	sum := sha256.Sum256(raw)
-	return deviceauth.Registration{
-		Identity: deviceauth.DeviceIdentity{
-			DeviceID:  hex.EncodeToString(sum[:]),
-			PublicKey: base64.RawURLEncoding.EncodeToString(raw),
-		},
-		Profile: deviceauth.DeviceProfile{
-			Name: name,
-			Kind: kind,
-		},
 	}
 }

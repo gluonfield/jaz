@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/mobilepush"
 )
+
+const defaultPushClientID = "default"
 
 type Handler struct {
 	Service *mobilepush.Service
@@ -19,22 +21,14 @@ func (h Handler) Status(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) Register(w http.ResponseWriter, r *http.Request) {
-	deviceID, ok := authenticatedDevice(w, r)
-	if !ok {
-		return
-	}
 	var input mobilepush.Registration
 	if !decode(w, r, &input) {
 		return
 	}
-	writeResult(w, h.Service.Register(deviceID, input))
+	writeResult(w, h.Service.Register(pushClientID(r, input.InstallationID), input))
 }
 
 func (h Handler) RegisterActivity(w http.ResponseWriter, r *http.Request) {
-	deviceID, ok := authenticatedDevice(w, r)
-	if !ok {
-		return
-	}
 	var input struct {
 		mobilepush.Registration
 		SessionID string `json:"session_id"`
@@ -42,7 +36,7 @@ func (h Handler) RegisterActivity(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	writeResult(w, h.Service.RegisterActivity(deviceID, mobilepush.Activity{
+	writeResult(w, h.Service.RegisterActivity(pushClientID(r, input.InstallationID), mobilepush.Activity{
 		Registration: input.Registration,
 		SessionID:    input.SessionID,
 		ID:           r.PathValue("activity"),
@@ -50,20 +44,19 @@ func (h Handler) RegisterActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) Unregister(w http.ResponseWriter, r *http.Request) {
-	deviceID, ok := authenticatedDevice(w, r)
-	if !ok {
-		return
-	}
-	writeResult(w, h.Service.Unregister(deviceID, r.PathValue("activity")))
+	writeResult(w, h.Service.Unregister(pushClientID(r, r.URL.Query().Get("installation_id")), r.PathValue("activity")))
 }
 
-func authenticatedDevice(w http.ResponseWriter, r *http.Request) (string, bool) {
-	principal, ok := deviceauth.PrincipalFromContext(r.Context())
-	if !ok || principal.Kind != deviceauth.PrincipalDevice || principal.DeviceID == "" {
-		httpapi.WriteError(w, http.StatusForbidden, errors.New("pair this device before enabling notifications"))
-		return "", false
+func pushClientID(r *http.Request, installationID string) string {
+	for _, candidate := range []string{
+		r.Header.Get("X-Jaz-Device-ID"),
+		installationID,
+	} {
+		if id := strings.TrimSpace(candidate); id != "" && len(id) <= 128 {
+			return id
+		}
 	}
-	return principal.DeviceID, true
+	return defaultPushClientID
 }
 
 func decode(w http.ResponseWriter, r *http.Request, target any) bool {

@@ -8,7 +8,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	browserapi "github.com/wins/jaz/backend/internal/httpapi/browser"
 	"github.com/wins/jaz/backend/internal/settings"
 	sqlite "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -23,15 +22,11 @@ func TestPackagedBrowserOriginPreservesAuthentication(t *testing.T) {
 	if _, err := settings.SaveBrowserSettings(store, settings.BrowserSettings{Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	devices := deviceauth.New(store)
-	device, err := devices.RegisterApproved(testDeviceInfo("Desktop", "desktop", 1))
-	if err != nil {
-		t.Fatal(err)
-	}
+	const token = "jaz_desktop-bearer"
 	backend := browsercontrol.NewDesktopBackend()
 	defer backend.Close()
 	srv := httptest.NewServer((&Server{
-		Store: store, Devices: devices, AuthKey: "root",
+		Store: store, AuthKey: token,
 		Routes: Routes{{Pattern: "GET /v1/browser/desktop", Handler: browserapi.DesktopHandler{Backend: backend, Store: store}}},
 	}).Handler())
 	defer srv.Close()
@@ -41,11 +36,11 @@ func TestPackagedBrowserOriginPreservesAuthentication(t *testing.T) {
 		token  string
 		status int
 	}{
-		{"packaged desktop", "file://", device.Token, http.StatusSwitchingProtocols},
+		{"packaged desktop", "file://", token, http.StatusSwitchingProtocols},
 		{"missing credential", "file://", "", http.StatusUnauthorized},
 		{"invalid credential", "file://", "invalid", http.StatusUnauthorized},
-		{"untrusted website", "https://untrusted.example", device.Token, http.StatusForbidden},
-		{"file host", "file://untrusted.example", device.Token, http.StatusForbidden},
+		{"untrusted website", "https://untrusted.example", token, http.StatusForbidden},
+		{"file host", "file://untrusted.example", token, http.StatusForbidden},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dialer := websocket.Dialer{Subprotocols: []string{"jaz", "jaz-auth." + test.token}}

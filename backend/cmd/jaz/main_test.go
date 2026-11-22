@@ -16,7 +16,6 @@ func TestServerArgs(t *testing.T) {
 		{name: "server flags", in: []string{"--addr", ":8080"}, args: []string{"--addr", ":8080"}, action: mainRun},
 		{name: "serve alias", in: []string{"serve", "--addr", ":8080"}, args: []string{"--addr", ":8080"}, action: mainRun},
 		{name: "server alias", in: []string{"server"}, action: mainRun},
-		{name: "devices", in: []string{"devices", "--root", "/tmp/jaz"}, args: []string{"--root", "/tmp/jaz"}, action: mainDevices},
 		{name: "update", in: []string{"update", "--latest"}, args: []string{"--latest"}, action: mainUpdate},
 		{name: "connect-cloud", in: []string{"connect-cloud", "--help"}, args: []string{"--help"}, action: mainConnectCloud},
 		{name: "version flag", in: []string{"--version"}, action: mainVersion},

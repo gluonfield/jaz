@@ -61,11 +61,6 @@ func pushFixture(t *testing.T, source string) (*Service, *sqlitestore.Store, *ca
 			t.Fatal(err)
 		}
 	}
-	if _, err := store.SaveApprovedDevice(storage.SaveApprovedDevice{
-		ID: "phone", Name: "Phone", Kind: storage.DeviceKindMobile, TokenHash: "test-hash", CreatedAt: time.Now(), ApprovedAt: time.Now(),
-	}); err != nil {
-		t.Fatal(err)
-	}
 	sender := &capturingSender{}
 	service := NewService(store, sender, func(string) bool {
 		return false
@@ -196,8 +191,8 @@ func TestQuestionsCarryReplyIdentityAndProtectSecretQuestions(t *testing.T) {
 	}
 }
 
-func TestRevocationAndNotificationOptOutPreserveBoundary(t *testing.T) {
-	service, store, sender, session := pushFixture(t, storage.SourceBot)
+func TestNotificationOptOutAndActivityUnregisterPreserveBoundary(t *testing.T) {
+	service, _, sender, session := pushFixture(t, storage.SourceBot)
 	if err := service.RegisterActivity("phone", Activity{
 		Registration: Registration{Token: strings.Repeat("cd", 32), Environment: "development"},
 		ID:           "activity", SessionID: session.ID,
@@ -214,7 +209,7 @@ func TestRevocationAndNotificationOptOutPreserveBoundary(t *testing.T) {
 	if len(sender.pushes) != 1 || sender.pushes[0].kind != "liveactivity" {
 		t.Fatalf("opting out of notifications removed progress: %#v", sender.pushes)
 	}
-	if _, err := store.RevokeDevice("phone", time.Now()); err != nil {
+	if err := service.Unregister("phone", "activity"); err != nil {
 		t.Fatal(err)
 	}
 	event.Type = "permission_response"
@@ -222,7 +217,7 @@ func TestRevocationAndNotificationOptOutPreserveBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(sender.pushes) != 1 {
-		t.Fatal("a revoked device received a push")
+		t.Fatal("unregistered activity still received a push")
 	}
 }
 

@@ -4,14 +4,13 @@ import { trustedWindow } from '@main/permissions'
 import {
   CONNECTION_SESSION_CHANNEL,
   LOCAL_SESSION_CHANNEL,
-  deviceAccess,
+  verifiedAccess,
   validBackendOrigin,
   type LocalSession,
   type SessionDocument,
   type SessionMutation,
   type SessionSnapshot,
 } from '@shared/connectionSession'
-import type { DeviceIdentity, DeviceMetadata } from '@main/deviceIdentity'
 import { LOCAL_BACKEND_URL as LOCAL_URL } from '@shared/localBackend'
 
 type WindowDocument = { window: BrowserWindow; document: number; frame?: WebFrameMain; active: boolean }
@@ -19,7 +18,6 @@ type Dependencies = {
   rendererPath: string
   localEnabled?: boolean
   startLocal: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
-  profile: () => DeviceIdentity & DeviceMetadata
   stopConsumers: () => void
 }
 
@@ -150,8 +148,7 @@ export function createConnectionSession(deps: Dependencies) {
     }
     const session = request.session
     if (request.revision !== snapshot.revision || (snapshot.phase !== 'pending' && snapshot.phase !== 'connected') ||
-      session.url !== snapshot.url || !validBackendOrigin(session.url) || typeof session.token !== 'string' || typeof session.deviceId !== 'string' || typeof session.remembered !== 'boolean' ||
-      (session.token && (!session.token.startsWith('jaz_') || !session.deviceId))) {
+      session.url !== snapshot.url || !validBackendOrigin(session.url) || typeof session.token !== 'string' || typeof session.deviceId !== 'string' || typeof session.remembered !== 'boolean') {
       throw new Error('Connection session was replaced')
     }
     if (localFlight?.settled) {
@@ -187,24 +184,14 @@ export function createConnectionSession(deps: Dependencies) {
     if (!local.key) {
       throw new Error('Local bootstrap credential is unavailable')
     }
-    const profile = deps.profile()
-    const response = await fetch(LOCAL_URL + '/v1/devices/register', {
-      method: 'POST', redirect: 'error',
-      headers: { Authorization: `Bearer ${local.key}`, 'Content-Type': 'application/json', 'X-Jaz-Client-Platform': 'desktop' },
-      body: JSON.stringify({ ...profile, kind: 'desktop' }), signal: AbortSignal.timeout(5000),
-    })
-    const body = await response.json() as { token?: string; error?: string }
-    if (!response.ok || !body.token?.startsWith('jaz_')) {
-      throw new Error(body.error || 'Local device registration failed')
-    }
     const check = await fetch(LOCAL_URL + '/v1/auth/check', {
-      redirect: 'error', headers: { Authorization: `Bearer ${body.token}`, 'X-Jaz-Client-Platform': 'desktop' }, signal: AbortSignal.timeout(3000),
+      redirect: 'error', headers: { Authorization: `Bearer ${local.key}`, 'X-Jaz-Client-Platform': 'desktop' }, signal: AbortSignal.timeout(3000),
     })
     if (!check.ok) {
-      throw new Error('Local device verification failed')
+      throw new Error('Local authentication verification failed')
     }
-    const access = deviceAccess(await check.json(), profile.device_id)
-    return { url: LOCAL_URL, token: body.token, deviceId: access.deviceId, ticket: access.ticket, remembered: false }
+    const access = verifiedAccess(await check.json())
+    return { url: LOCAL_URL, token: local.key, deviceId: access.deviceId, ticket: access.ticket, remembered: false }
   }
 
   async function local(event: IpcMainInvokeEvent, document: number, revision: number): Promise<LocalSession> {

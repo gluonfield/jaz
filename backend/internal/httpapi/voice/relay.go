@@ -10,15 +10,14 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/desktopbridge"
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/httpapi"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/voice/live"
 )
 
 type relayStore interface {
 	LoadSession(string) (storage.Session, error)
-	LoadDevice(string) (storage.Device, error)
 }
 
 type RelayHandler struct {
@@ -45,14 +44,8 @@ func NewRelayHandler(store relayStore, service *live.Service, relay *live.Deskto
 }
 
 func (h *RelayHandler) Desktop(w http.ResponseWriter, r *http.Request) {
-	principal, ok := deviceauth.PrincipalFromContext(r.Context())
-	if !ok || principal.Kind != deviceauth.PrincipalDevice {
-		httpapi.WriteError(w, http.StatusForbidden, errors.New("an approved Jaz Desktop device is required"))
-		return
-	}
-	device, err := h.store.LoadDevice(principal.DeviceID)
-	if err != nil || device.Kind != storage.DeviceKindDesktop || device.Status != storage.DeviceStatusApproved {
-		httpapi.WriteError(w, http.StatusForbidden, errors.New("an approved Jaz Desktop device is required"))
+	if sessioncontext.ClientPlatform(r.Context()) != "desktop" {
+		httpapi.WriteError(w, http.StatusForbidden, errors.New("a Jaz Desktop client is required"))
 		return
 	}
 	conn, err := httpapi.UpgradeWebSocket(w, r)

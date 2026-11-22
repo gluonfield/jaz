@@ -19,7 +19,6 @@ const namespace = "mobile_push"
 
 type Store interface {
 	storage.SettingsStorage
-	ListDevices() ([]storage.Device, error)
 	LoadSession(string) (storage.Session, error)
 	LoadBot(string) (storage.BotRecord, error)
 	LoadMembership(string, string) (storage.BotMembership, error)
