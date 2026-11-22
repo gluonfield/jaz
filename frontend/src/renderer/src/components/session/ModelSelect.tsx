@@ -3,7 +3,7 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
-import { AgentTabs, agentTabsWidth, type AgentChoice } from '@/components/session/AgentTabs'
+import { AgentTabs, agentTabsWidth, useAgentSwipe, type AgentChoice } from '@/components/session/AgentTabs'
 import { Pop, Roll, SWAP, Tick, useDirection, useWidthTransition } from '@/components/session/pickerMotion'
 import { Button } from '@/components/ui/Button'
 import { Popover } from '@/components/ui/Popover'
@@ -137,6 +137,7 @@ export function ModelSelect({
   const agentDirection = useDirection(agent ? agent.options.indexOf(agent.value) : 0)
   const effortDirection = useDirection(effortOptions.findIndex((option) => option.value === effortValue))
   useWidthTransition(triggerRef, `${agent?.value}/${label}/${effortLabel}/${fast}`)
+  const swipeAgent = useAgentSwipe(disabled ? undefined : tabs)
   const adjustable = effortOptions.length > 1
   const listed = Boolean(tabs || suggestions.length || loading)
   const focusSelection = useCallback((dialog: HTMLElement | null) => {
@@ -181,6 +182,7 @@ export function ModelSelect({
           ref={focusSelection}
           role="dialog"
           aria-label="Model and effort"
+          onWheel={swipeAgent}
           className="model-picker max-w-[calc(100vw-32px)]"
           style={{ width: Math.max(256, tabs ? agentTabsWidth(tabs.options.length) : 0) }}
         >
