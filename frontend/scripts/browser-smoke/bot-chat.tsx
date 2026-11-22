@@ -174,7 +174,7 @@ export async function exerciseBotChat() {
     flushSync(() => root.render(null))
     client.removeQueries({ queryKey: keys.sessionMessages(id) })
     client.removeQueries({ queryKey: keys.sessionEvents(id) })
-    client.setQueryData(botActivityQuery(id).queryKey, { owed: [{ id: 1, request: 'Revisit the saved question', status: 'waiting_for_user', question_seq: target }], items: [], started: {} })
+    client.setQueryData(botActivityQuery(id).queryKey, { owed: [{ id: 1, request: 'Revisit the saved question', status: 'waiting_for_user', question_seq: target }], items: [] })
     openDetails = true
     await router.navigate({ to: '/bots/$botId', params: { botId: id }, search: { message: target }, hash: `message-${target}` })
     mount()
