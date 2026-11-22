@@ -10,7 +10,7 @@ import {
 } from './schedule'
 
 // The editable shape behind the create/edit modal. `runtime` is an ACP agent
-// name, matching the RuntimeSelect contract used by the new-thread composer.
+// name, as in the new-thread composer.
 export interface LoopDraft {
   name: string
   prompt: string

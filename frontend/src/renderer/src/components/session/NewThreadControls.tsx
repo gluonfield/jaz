@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Check,
-  ChevronDown,
   Folder,
   FolderPlus,
   GitBranch,
@@ -10,71 +9,13 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { Button } from '@/components/ui/Button'
 import { CreateProjectDialog } from '@/components/projects/CreateProjectDialog'
 import { Modal } from '@/components/ui/Modal'
 import { ContextMenu, MenuRow, Popover } from '@/components/ui/Popover'
-import { agentLabel } from '@/lib/agentLabel'
 import { deleteProject, projectsQuery, type Project } from '@/lib/api/sessions'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 import { keys } from '@/lib/query/keys'
-
-// Selects the ACP agent backing a new thread.
-export function RuntimeSelect({
-  value,
-  agents,
-  disabled,
-  placement,
-  onChange,
-}: {
-  value: string
-  agents: string[]
-  disabled?: boolean
-  placement?: 'above' | 'below'
-  onChange: (runtime: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const label = agentLabel(value)
-  const showLogo = hasAgentLogo(value)
-  const select = (runtime: string) => {
-    onChange(runtime)
-    setOpen(false)
-  }
-  return (
-    <Popover
-      open={open}
-      onClose={() => setOpen(false)}
-      placement={placement}
-      trigger={
-        <Button
-          variant="secondary"
-          size="sm"
-          className="max-w-[12rem]"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-label={`Agent: ${label}`}
-          title={`Agent: ${label}`}
-          disabled={disabled}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {showLogo ? <AgentLogo agent={value} size={14} /> : null}
-          <span className="truncate">{label}</span>
-          <ChevronDown size={13} className="shrink-0" />
-        </Button>
-      }
-    >
-      {agents.map((agent) => (
-        <MenuRow key={agent} selected={value === agent} onClick={() => select(agent)}>
-          <span className="flex min-w-0 items-center gap-2">
-            {hasAgentLogo(agent) ? <AgentLogo agent={agent} size={14} /> : null}
-            <span className="truncate">{agentLabel(agent)}</span>
-          </span>
-        </MenuRow>
-      ))}
-    </Popover>
-  )
-}
 
 function directoryName(path: string): string {
   const parts = path.split(/[\\/]+/).filter(Boolean)

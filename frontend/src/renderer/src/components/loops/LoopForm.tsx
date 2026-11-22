@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
-import { RuntimeSelect } from '@/components/session/NewThreadControls'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { boardsQuery } from '@/lib/api/boards'
 import { agentSettingsQuery } from '@/lib/api/settings'
@@ -251,26 +250,21 @@ function LoopPromptCard({
               <span className="px-1.5 text-[13px] text-ink-3">Connect an agent in Settings</span>
             ) : null}
             {runtimeAvailable ? (
-              <>
-                <RuntimeSelect
-                  value={draft.runtime}
-                  agents={agents}
-                  disabled={disabled}
-                  placement="below"
-                  onChange={(runtime) => set({ runtime, provider: '', model: '', reasoningEffort: '' })}
-                />
-                <ModelSelect
-                  key={draft.runtime}
-                  value={model}
-                  suggestions={modelSuggestions}
-                  loading={modelsLoading}
-                  disabled={disabled}
-                  placement="below"
-                  onChange={(next) => set({ model: next.model, reasoningEffort: next.effort })}
-                  effort={reasoningEffort}
-                  effortOptions={pickerEffortOptions(effortOptions)}
-                />
-              </>
+              <ModelSelect
+                agent={{
+                  value: draft.runtime,
+                  options: agents,
+                  onChange: (runtime) => set({ runtime, provider: '', model: '', reasoningEffort: '' }),
+                }}
+                value={model}
+                suggestions={modelSuggestions}
+                loading={modelsLoading}
+                disabled={disabled}
+                placement="below"
+                onChange={(next) => set({ model: next.model, reasoningEffort: next.effort })}
+                effort={reasoningEffort}
+                effortOptions={pickerEffortOptions(effortOptions)}
+              />
             ) : null}
           </div>
         </div>
