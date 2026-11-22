@@ -1,6 +1,5 @@
 import { Minus, MoonStar, Plus, Shuffle, Sparkles, Sun } from 'lucide-react'
 import { type KeyboardEvent, type PointerEvent, useId } from 'react'
-import windUrl from '@/assets/wind.svg'
 import {
   type ColorTheme,
   HARMONIES,
@@ -13,7 +12,7 @@ import {
 import { type ThemePref, useTheme } from '@/lib/theme'
 
 // The colour pickers, after Zen's (Arc's): a dotted pad, a wavy strength
-// slider and a notched wind dial.
+// slider and a notched globe dial.
 
 // A colour at the picker's lightness for the mode (--swatch-l in globals.css).
 export const swatch = (hue: number, saturation: number) =>
@@ -236,7 +235,7 @@ const DIAL = 64
 const RING = 28
 const NOTCHES = 16
 
-// Sixteen notches round a face that shows the wind streaks themselves; the handle sits
+// Sixteen notches round a face that shows a small globe; the handle sits
 // at the chosen notch, counted clockwise from the top.
 export function GrainDial({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   const point = (turn: number, inset = 0) => {
@@ -253,7 +252,7 @@ export function GrainDial({ value, onChange }: { value: number; onChange: (value
     <div
       role="slider"
       tabIndex={0}
-      aria-label="Wind"
+      aria-label="Globe"
       aria-valuemin={0}
       aria-valuemax={NOTCHES - 1}
       aria-valuenow={Math.round(value * NOTCHES)}
@@ -275,11 +274,19 @@ export function GrainDial({ value, onChange }: { value: number; onChange: (value
           style={point(notch / NOTCHES, 1.5)}
         />
       ))}
-      <span
+      <svg
         aria-hidden
-        className="absolute inset-[13px] rounded-full bg-ink"
-        style={{ maskImage: `url(${windUrl})`, opacity: value }}
-      />
+        viewBox="-20 -20 40 40"
+        className="absolute top-[13px] left-[13px] size-[38px] fill-none stroke-ink"
+        strokeWidth={0.7}
+        style={{ opacity: value }}
+      >
+        <g transform="rotate(-23)">
+          <ellipse rx={6.5} ry={19} />
+          <ellipse rx={15} ry={19} />
+          <path d="M0-19V19M-19 0H19M-16.5-9.5H16.5M-16.5 9.5H16.5" />
+        </g>
+      </svg>
       <span
         aria-hidden
         className="absolute inset-[13px] rounded-full border border-border/50 bg-[linear-gradient(-45deg,transparent_-10%,rgb(0_0_0/0.1)_110%)] dark:bg-[linear-gradient(-45deg,transparent_-10%,rgb(255_255_255/0.1)_110%)]"

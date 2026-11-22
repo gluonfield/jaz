@@ -3,7 +3,7 @@ import { jazDefaults } from './jazDefaults'
 
 // The colour theme, as on Arc and Zen's picker: a main hue with up to two more
 // linked to it, how saturated they are, how strongly they wash the window, and
-// wind streaks over it. globals.css derives every token from the CSS variables
+// globe lines over it. globals.css derives every token from the CSS variables
 // this emits, at lightness steps tuned per mode, so text, cards and buttons
 // always match whatever colour is picked.
 export interface ColorTheme {
@@ -16,7 +16,7 @@ export interface ColorTheme {
   saturation: number
   /** 0–1: how strongly they wash the window */
   strength: number
-  /** 0–1: the wind streaks' opacity */
+  /** 0–1: the globe lines' opacity */
   grain: number
 }
 
