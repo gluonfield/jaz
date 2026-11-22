@@ -11,9 +11,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/connections"
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/testgit"
+	"github.com/wins/jaz/backend/pkg/integrations"
+	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 func fixtureGit(t *testing.T, dir string, args ...string) string {
@@ -241,5 +245,77 @@ func TestRepositoryFallbackDiscoveryAndSafeFailures(t *testing.T) {
 	}
 	if err != nil || !slices.Equal(names, []string{"one", "two"}) {
 		t.Fatalf("failed fetch changed installed packages: %+v %v", listed, err)
+	}
+}
+
+func TestDisconnectAndRemoveClearPluginConnectionsAndMCPTokens(t *testing.T) {
+	repo := makeGitRepo(t, map[string]string{
+		"plugins/granola/plugin.json": `{"name":"granola","displayName":"Granola"}`,
+		"plugins/granola/.mcp.json":   `{"mcpServers":{"granola":{"type":"http","url":"https://mcp.granola.ai/mcp"}}}`,
+	})
+	layout := runtimefiles.New(t.TempDir())
+	db, err := sqlitestore.New(layout.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	connSvc := connections.NewService(connections.NewCatalog(nil), db)
+	svc := NewService(New(layout), db, connSvc, nil, nil, nil)
+
+	if _, err := svc.Install(t.Context(), RepositoryInput{Repository: repo}); err != nil {
+		t.Fatal(err)
+	}
+
+	serverID := MCPServerID("granola", "granola")
+	tokenKey := mcpconfig.OAuthConnectionID(serverID)
+	legacyConn := integrations.Connection{
+		ID:          "granola:https-mcp-granola-ai-mcp-legacy",
+		Provider:    "granola",
+		AccountID:   "https://mcp.granola.ai/mcp",
+		AccountName: "Granola",
+	}
+	saveConnected := func() {
+		t.Helper()
+		if err := db.SaveConnection(t.Context(), legacyConn); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.SaveToken(t.Context(), tokenKey, integrationoauth.Token{AccessToken: "secret"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Disconnect must remove both the legacy connection row and the plugin's MCP OAuth token.
+	saveConnected()
+	res, err := svc.DisconnectAccount(t.Context(), legacyConn.ID)
+	if err != nil || !res.MCPServersChanged {
+		t.Fatalf("DisconnectAccount = %+v, %v", res, err)
+	}
+	if _, ok, err := db.LoadToken(t.Context(), tokenKey); err != nil || ok {
+		t.Fatalf("expected MCP OAuth token deleted after disconnect, ok=%v err=%v", ok, err)
+	}
+	got, err := svc.Get(t.Context(), "granola", false)
+	if err != nil || got.Auth == nil || got.Auth.Connected || len(got.Auth.Accounts) != 0 {
+		t.Fatalf("expected disconnected granola after DisconnectAccount: %+v, %v", got.Auth, err)
+	}
+
+	// Remove must also disconnect accounts and wipe tokens so reinstalling starts disconnected.
+	saveConnected()
+	if err := svc.Remove(t.Context(), "granola"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := db.LoadToken(t.Context(), tokenKey); err != nil || ok {
+		t.Fatalf("expected MCP OAuth token deleted after remove, ok=%v err=%v", ok, err)
+	}
+	if _, err := svc.Install(t.Context(), RepositoryInput{Repository: repo}); err != nil {
+		t.Fatal(err)
+	}
+	reinstalled, err := svc.Get(t.Context(), "granola", false)
+	if err != nil || reinstalled.Auth == nil || reinstalled.Auth.Connected || len(reinstalled.Auth.Accounts) != 0 {
+		t.Fatalf("expected reinstalled granola to start disconnected: %+v, %v", reinstalled.Auth, err)
+	}
+
+	// Official marketplace source cannot be deleted.
+	if err := svc.RemoveSource(t.Context(), DefaultMarketplaceSourceID()); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("RemoveSource(official) = %v, want ErrInvalid", err)
 	}
 }

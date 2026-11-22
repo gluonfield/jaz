@@ -90,7 +90,7 @@ func TestConnectServiceStartsGitPluginMCPAuthorization(t *testing.T) {
 	if err := authorizer.onAuthorized(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(store.connections) != 1 || store.connections[0].Provider != "zoom" || store.connections[0].AccountName != "Zoom" {
+	if len(store.connections) != 1 || store.connections[0].ID != "plugin:zoom:bWFpbg" || store.connections[0].Provider != "zoom" || store.connections[0].AccountName != "Zoom" {
 		t.Fatalf("connections = %#v", store.connections)
 	}
 }

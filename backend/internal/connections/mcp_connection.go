@@ -36,11 +36,13 @@ func (c *MCPConnectionConnector) ConnectServer(ctx context.Context, pluginID, se
 	if err != nil {
 		return OAuthStart{}, err
 	}
-	connID, err := integrations.ConnectionID(pluginID, input.URL)
-	if err != nil {
-		return OAuthStart{}, err
-	}
-	if serverID == "" {
+	connID := serverID
+	if connID == "" {
+		var idErr error
+		connID, idErr = integrations.ConnectionID(pluginID, input.URL)
+		if idErr != nil {
+			return OAuthStart{}, idErr
+		}
 		serverID = connID
 	}
 	connection := integrations.Connection{

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowDownToLine, Check, Copy, ExternalLink, Loader2, Plug, Plus, QrCode, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowDownToLine, Check, Copy, ExternalLink, Loader2, Plug, Plus, QrCode, RefreshCw, Trash2, Unplug } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -27,12 +27,14 @@ import { PluginAvatar } from './PluginVisuals'
 export function PluginDetailModal({
   plugin,
   connecting,
+  disconnecting,
   installing,
   updating,
   removing,
   toggling,
   onClose,
   onConnect,
+  onDisconnect,
   onInstall,
   onUpdate,
   onRemove,
@@ -40,12 +42,14 @@ export function PluginDetailModal({
 }: {
   plugin: Plugin | null
   connecting: boolean
+  disconnecting: boolean
   installing: boolean
   updating: boolean
   removing: boolean
   toggling: boolean
   onClose: () => void
   onConnect: (plugin: Plugin) => void
+  onDisconnect: (accountID: string) => void
   onInstall: (plugin: Plugin) => void
   onUpdate: (plugin: Plugin) => void
   onRemove: (plugin: Plugin) => void
@@ -53,13 +57,16 @@ export function PluginDetailModal({
 }) {
   if (!plugin) return null
 
-  const canDisconnect = plugin.installed && plugin.origin !== 'builtin'
-  const hasAccounts = (plugin.auth?.accounts?.length ?? 0) > 0
+  const canRemove = plugin.installed && plugin.origin !== 'builtin'
+  const accounts = plugin.auth?.accounts ?? []
+  const hasAccounts = accounts.length > 0
   const hasConfig = (plugin.config_variables?.length ?? 0) > 0
   const hasPrompts = (plugin.suggested_prompts?.length ?? 0) > 0
   const hasSkills = (plugin.skills?.length ?? 0) > 0
   const hasTools = (plugin.tools?.length ?? 0) > 0
   const hasMCP = (plugin.mcp_servers?.length ?? 0) > 0
+  const singleConnectedAccount =
+    plugin.auth?.connected && !plugin.auth.multi_account && accounts.length === 1 ? accounts[0] : null
 
   return (
     <Modal open onClose={onClose} title={plugin.display_name} size="wide" chromeless>
@@ -84,7 +91,7 @@ export function PluginDetailModal({
                 {updating ? 'Updating…' : plugin.source.update_available ? 'Update' : 'Check update'}
               </Button>
             ) : null}
-            {canDisconnect ? (
+            {canRemove ? (
               <Button variant="ghost" size="sm" disabled={removing || updating} onClick={() => onRemove(plugin)}>
                 <Trash2 size={13} />
                 Remove
@@ -110,9 +117,27 @@ export function PluginDetailModal({
           </div>
 
           {!plugin.installed ? (
-            <Button variant="primary" size="lg" disabled={installing} onClick={() => onInstall(plugin)} className="shrink-0">
-              {installing ? <Loader2 size={14} className="animate-spin" /> : <ArrowDownToLine size={14} />}
-              {installing ? 'Installing…' : 'Install'}
+            plugin.auth && pluginCanConnect(plugin) ? (
+              <Button variant="primary" size="lg" disabled={connecting || installing} onClick={() => onConnect(plugin)} className="shrink-0">
+                {connecting ? <Loader2 size={14} className="animate-spin" /> : <Plug size={14} />}
+                {connecting ? 'Connecting…' : 'Connect'}
+              </Button>
+            ) : (
+              <Button variant="primary" size="lg" disabled={installing} onClick={() => onInstall(plugin)} className="shrink-0">
+                {installing ? <Loader2 size={14} className="animate-spin" /> : <ArrowDownToLine size={14} />}
+                {installing ? 'Installing…' : 'Install'}
+              </Button>
+            )
+          ) : singleConnectedAccount ? (
+            <Button
+              variant="secondary"
+              size="lg"
+              disabled={disconnecting}
+              onClick={() => onDisconnect(singleConnectedAccount.id)}
+              className="shrink-0"
+            >
+              {disconnecting ? <Loader2 size={14} className="animate-spin" /> : <Unplug size={14} />}
+              {disconnecting ? 'Disconnecting…' : 'Disconnect'}
             </Button>
           ) : plugin.auth ? (
             <ConnectButton plugin={plugin} connecting={connecting} onConnect={() => onConnect(plugin)} />
@@ -121,7 +146,7 @@ export function PluginDetailModal({
       </div>
 
       <div className="space-y-8 px-8 pb-9">
-        {hasAccounts ? <AccountsSection accounts={plugin.auth!.accounts!} /> : null}
+        {hasAccounts ? <AccountsSection accounts={accounts} /> : null}
         {hasConfig ? <ConfigSection key={plugin.id} plugin={plugin} variables={plugin.config_variables!} /> : null}
         {hasPrompts ? <SuggestedPromptsSection prompts={plugin.suggested_prompts!} /> : null}
         {hasSkills ? (

@@ -76,6 +76,46 @@ func (s *Service) Plugin(ctx context.Context, id string, _ bool) (integrations.P
 	return plugin, true, err
 }
 
+type tokenDeleter interface {
+	DeleteToken(context.Context, string) error
+}
+
+func (s *Service) LoadAccount(ctx context.Context, id string) (integrations.Connection, bool, error) {
+	if s == nil || s.store == nil {
+		return integrations.Connection{}, false, nil
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return integrations.Connection{}, false, nil
+	}
+	return s.store.LoadConnection(ctx, id)
+}
+
+func (s *Service) ClearMCPTokens(ctx context.Context, serverIDs ...string) error {
+	if s == nil || s.store == nil {
+		return nil
+	}
+	deleter, ok := s.store.(tokenDeleter)
+	if !ok {
+		return nil
+	}
+	var errs []error
+	for _, serverID := range serverIDs {
+		serverID = strings.TrimSpace(serverID)
+		if serverID == "" {
+			continue
+		}
+		tokenID := mcpconfig.OAuthConnectionID(serverID)
+		unlock := integrationoauth.LockToken(tokenID)
+		err := deleter.DeleteToken(ctx, tokenID)
+		unlock()
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 func (s *Service) ListAccounts(ctx context.Context, providerID string) ([]integrations.Connection, error) {
 	if s == nil || s.store == nil || providerID == "" {
 		return nil, nil

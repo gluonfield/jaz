@@ -35,8 +35,13 @@ type SourceView struct {
 	CommitSHA     string             `json:"commit_sha,omitempty"`
 	AutoUpdate    bool               `json:"auto_update,omitempty"`
 	IsMarketplace bool               `json:"is_marketplace,omitempty"`
+	BuiltIn       bool               `json:"built_in,omitempty"`
 	Plugins       []MarketplaceEntry `json:"plugins,omitempty"`
 	CheckedAt     time.Time          `json:"checked_at,omitempty"`
+}
+
+func DefaultMarketplaceSourceID() string {
+	return strings.ToLower(DefaultMarketplaceRepo)
 }
 
 type CatalogResponse struct {
@@ -272,7 +277,23 @@ func (s *Service) DisconnectAccount(ctx context.Context, accountID string) (conn
 	if s.connections == nil {
 		return connections.DisconnectResult{}, connections.ErrConnectionNotFound
 	}
-	return s.connections.DisconnectAccount(ctx, accountID)
+	account, found, err := s.connections.LoadAccount(ctx, accountID)
+	if err != nil {
+		return connections.DisconnectResult{}, err
+	}
+	result, err := s.connections.DisconnectAccount(ctx, accountID)
+	if err != nil {
+		return connections.DisconnectResult{}, err
+	}
+	if found && account.Provider != "" {
+		if clearErr := s.clearPluginMCPTokens(ctx, account.Provider); clearErr != nil {
+			return connections.DisconnectResult{}, clearErr
+		}
+		if s.connections.Catalog() == nil || !s.connections.Catalog().IsNative(account.Provider) {
+			result.MCPServersChanged = true
+		}
+	}
+	return result, nil
 }
 
 func (s *Service) Install(ctx context.Context, input RepositoryInput) (InstallResult, error) {
@@ -325,7 +346,42 @@ func (s *Service) Remove(ctx context.Context, id string) error {
 	if s.store == nil {
 		return errors.New("plugin store unavailable")
 	}
-	return s.store.Remove(id)
+	id = strings.TrimSpace(id)
+	serverIDs := s.pluginMCPServerIDs(ctx, id)
+	if err := s.store.Remove(id); err != nil {
+		return err
+	}
+	if s.connections != nil {
+		if accounts, err := s.connections.ListAccounts(ctx, id); err == nil {
+			for _, account := range accounts {
+				_, _ = s.connections.DisconnectAccount(ctx, account.ID)
+			}
+		}
+		_ = s.connections.ClearMCPTokens(ctx, serverIDs...)
+	}
+	return nil
+}
+
+func (s *Service) pluginMCPServerIDs(ctx context.Context, pluginID string) []string {
+	if s.store == nil || pluginID == "" {
+		return nil
+	}
+	plugin, err := s.store.Read(ctx, pluginID)
+	if err != nil {
+		return nil
+	}
+	ids := make([]string, 0, len(plugin.MCPServers))
+	for _, srv := range plugin.MCPServers {
+		ids = append(ids, MCPServerID(plugin.ID, srv.Name))
+	}
+	return ids
+}
+
+func (s *Service) clearPluginMCPTokens(ctx context.Context, pluginID string) error {
+	if s.connections == nil {
+		return nil
+	}
+	return s.connections.ClearMCPTokens(ctx, s.pluginMCPServerIDs(ctx, pluginID)...)
 }
 
 func (s *Service) ListSources(ctx context.Context) ([]SourceView, error) {
@@ -359,8 +415,8 @@ func (s *Service) AddSource(ctx context.Context, input RepositoryInput) (SourceV
 	return sourceViewFromRecord(record, entries), nil
 }
 
-// EnsureDefaultSource seeds the official Jaz plugin marketplace when no Git
-// sources are configured yet.
+// EnsureDefaultSource seeds the official Jaz plugin marketplace when it is not
+// already registered.
 func (s *Service) EnsureDefaultSource(ctx context.Context) (bool, error) {
 	if s.store == nil || s.state == nil {
 		return false, nil
@@ -369,8 +425,11 @@ func (s *Service) EnsureDefaultSource(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if len(sources) > 0 {
-		return false, nil
+	officialID := DefaultMarketplaceSourceID()
+	for _, src := range sources {
+		if src.ID == officialID {
+			return false, nil
+		}
 	}
 	if _, err := s.AddSource(ctx, RepositoryInput{
 		Repository: DefaultMarketplaceRepo,
@@ -391,6 +450,7 @@ func sourceViewFromRecord(record storage.PluginSourceRecord, entries []Marketpla
 		CommitSHA:     record.CommitSHA,
 		AutoUpdate:    record.AutoUpdate,
 		IsMarketplace: record.IsMarketplace,
+		BuiltIn:       record.ID == DefaultMarketplaceSourceID(),
 		Plugins:       entries,
 		CheckedAt:     record.CheckedAt,
 	}
@@ -400,7 +460,11 @@ func (s *Service) RemoveSource(ctx context.Context, id string) error {
 	if s.state == nil {
 		return ErrNotFound
 	}
-	deleted, err := s.state.DeletePluginSource(ctx, strings.TrimSpace(id))
+	id = strings.TrimSpace(id)
+	if id == DefaultMarketplaceSourceID() {
+		return fmt.Errorf("%w: the official Jaz marketplace cannot be removed", ErrInvalid)
+	}
+	deleted, err := s.state.DeletePluginSource(ctx, id)
 	if err != nil {
 		return err
 	}
