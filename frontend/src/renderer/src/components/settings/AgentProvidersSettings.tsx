@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, CheckCircle2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, CheckCircle2, ChevronDown, Download, LoaderCircle, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ProviderLogo } from '@/components/settings/ProviderLogo'
@@ -11,7 +11,7 @@ import { Modal } from '@/components/ui/Modal'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { modelProviderRequiresKey } from '@/lib/agentRuntimes'
-import { createProvider, deleteProvider, getProviderStatuses, updateProvider } from '@/lib/api/providers'
+import { createProvider, deleteProvider, fetchProviderModels, getProviderStatuses, updateProvider } from '@/lib/api/providers'
 import { agentSettingsQuery, updateAgentSettings } from '@/lib/api/settings'
 import type { AgentSettings as AgentSettingsData, ProviderInput } from '@/lib/api/types'
 import { isLocalBackendUrl, useConnection } from '@/lib/connection'
@@ -435,9 +435,13 @@ function ProviderEditorModal({
   const needsKey = !draft || endpointRequiresKey(draft.base_url)
   const [headersText, setHeadersText] = useState(() => JSON.stringify(draft?.headers ?? {}, null, 0))
   const [headersValid, setHeadersValid] = useState(true)
+  const [modelsText, setModelsText] = useState(() => (draft?.models ?? []).join('\n'))
+  const [loadingModels, setLoadingModels] = useState(false)
+  const [modelsLoadError, setModelsLoadError] = useState('')
   useEffect(() => {
     setHeadersText(JSON.stringify(draft?.headers ?? {}, null, 0))
     setHeadersValid(true)
+    setModelsText((draft?.models ?? []).join('\n'))
   }, [draft?.id])
   const headersInvalid = !headersValid && headersText.trim() !== ''
   if (draft) canSave = canSave && headersValid
@@ -544,9 +548,69 @@ function ProviderEditorModal({
               aria-label="Extra headers JSON"
             />
           </ProviderField>
+
+          <ProviderField
+            label="Models URL"
+            hint="Optional: fetch the catalog from this URL instead of base_url + /models."
+          >
+            <Input
+              value={draft.models_url ?? ''}
+              onChange={(event) => onChange({ ...draft, models_url: event.target.value || undefined })}
+              placeholder="https://example.com/v1/models"
+              autoComplete="off"
+              spellCheck={false}
+              className="font-mono text-[12px]"
+              aria-label="Models URL"
+            />
+          </ProviderField>
+<ProviderField
+            label="Models"
+            hint={modelsLoadError
+              ? modelsLoadError
+              : 'Load from the provider, or fill manually — one per line.'}
+          >
+            <div className="flex flex-col items-start gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={loadingModels || !draft.base_url.trim()}
+                onClick={async () => {
+                  setLoadingModels(true)
+                  setModelsLoadError('')
+                  try {
+                    const { models } = await fetchProviderModels(draft)
+                    if (!models.length) throw new Error('No models returned')
+                    setModelsText(models.join('\n'))
+                    onChange({ ...draft, models, default_model: draft.default_model || models[0] || '' })
+                  } catch (error) {
+                    setModelsLoadError(error instanceof Error ? error.message : String(error))
+                  } finally {
+                    setLoadingModels(false)
+                  }
+                }}
+              >
+                {loadingModels ? <LoaderCircle size={14} className="animate-spin" /> : <Download size={14} />}
+                {loadingModels ? 'Loading…' : 'Load models'}
+              </Button>
+              <textarea
+                value={modelsText}
+                onChange={(event) => {
+                  setModelsText(event.target.value)
+                  const list = event.target.value.split(/[\n,]+/).map((m) => m.trim()).filter(Boolean)
+                  onChange({ ...draft, models: list.length ? list : undefined, default_model: draft.default_model || list[0] || '' })
+                }}
+                rows={4}
+                placeholder={'glm-5.3-flash\nglm-4.6'}
+                spellCheck={false}
+                className="w-full rounded-control border border-border bg-surface px-2.5 py-2 font-mono text-[12px] text-ink outline-none focus:border-primary"
+                aria-label="Models list"
+              />
+            </div>
+          </ProviderField>
           <ProviderField label="Icon">
             <IconPicker value={draft.icon ?? ''} onChange={(icon) => onChange({ ...draft, icon })} />
           </ProviderField>
+
         </div>
       ) : null}
     </Modal>

@@ -17,6 +17,33 @@ func testAgentDefaultsSeed() AgentDefaults {
 	return AgentDefaultsFromCatalog(acp.BuiltinAgents())
 }
 
+func TestAgentDefaultsRoundTripPreservesProviderNativePrefix(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaults := testAgentDefaultsSeed()
+	selected := defaults.ACP[acp.AgentOpenCode]
+	selected.ModelProvider, selected.Model = "markoff", "markoff/gpt-oss-120b"
+	defaults.ACP[acp.AgentOpenCode] = selected
+	if _, err := SaveAgentDefaults(store, defaults); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		loaded, err := LoadEffectiveAgentDefaults(store, acp.BuiltinAgents())
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := loaded.ACP[acp.AgentOpenCode]
+		if got.ModelProvider != selected.ModelProvider || got.Model != selected.Model {
+			t.Fatalf("stored native model changed: %+v", got)
+		}
+		if _, err := SaveAgentDefaults(store, loaded); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestAgentDefaultsFromCatalogKeepsAuthManagedAgentsDisabled(t *testing.T) {
 	seed := AgentDefaultsFromCatalog(acp.BuiltinAgents())
 	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentKimi, acp.AgentGrok, acp.AgentOpenCode, acp.AgentAntigravity} {
