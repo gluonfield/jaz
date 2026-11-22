@@ -38,19 +38,19 @@ export function sendGroupMessage(id: string, text: string, attachmentIds: string
   return post<void>(`/v1/bots/${id}/messages`, { text, attachment_ids: attachmentIds })
 }
 
-// What a bot owes and the threads it started, newest first; polled closely
-// while anything runs. Rows of other kinds, which other server versions send,
-// are not shown.
+// What a bot owes, and the tasks it closed and threads it started, newest
+// first; polled closely while anything runs. Rows of other kinds, which other
+// server versions send, are not shown.
 export const botActivityQuery = (botId: string) =>
   queryOptions({
     queryKey: keys.botActivity(botId),
     queryFn: async () => {
-      const activity = await get<{ items: { kind: string; thread_id?: string }[] | null; owed: BotOwed[] | null }>(`/v1/bots/${botId}/activity`)
-      return { items: (activity.items ?? []).filter((item): item is BotActivity => (item.kind === 'side_chat' || item.kind === 'routine') && Boolean(item.thread_id)), owed: activity.owed ?? [] }
+      const activity = await get<{ items: { kind: string; thread_id?: string; task?: BotOwed }[] | null; owed: BotOwed[] | null }>(`/v1/bots/${botId}/activity`)
+      return { items: (activity.items ?? []).filter((item): item is BotActivity => item.kind === 'task' ? Boolean(item.task) : (item.kind === 'side_chat' || item.kind === 'routine') && Boolean(item.thread_id)), owed: activity.owed ?? [] }
     },
     refetchInterval: (query) => {
       const data = query.state.data
-      return data?.items.some((item) => item.running) || data?.owed.some((owed) => owed.moving || owed.threads?.some((thread) => thread.state === 'working' || thread.state === 'background')) ? 3_000 : 15_000
+      return data?.items.some((item) => item.kind !== 'task' && item.running) || data?.owed.some((owed) => owed.moving || owed.threads?.some((thread) => thread.state === 'working' || thread.state === 'background')) ? 3_000 : 15_000
     },
   })
 

@@ -372,6 +372,14 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	if _, err := service.Commit(research.ID, Commit{ID: commitments["Rerun"], Status: storage.CommitmentDropped, Message: "Superseded"}); err != nil {
 		t.Fatal(err)
 	}
+	// A task closed before Activity looks back is left out.
+	ancient, err := store.OpenCommitment(storage.Commitment{BotID: research.ID, Request: "Ancient idea"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DropCommitment(ancient.ID, "Too old", time.Now().Add(-40*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 	for _, id := range []string{working, running, rerun} {
 		if err := store.StartSessionTurn(id, storage.Turn{}); err != nil {
 			t.Fatal(err)
@@ -489,15 +497,17 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		got = append(got, line)
 	}
 	slices.Sort(got)
-	// Side chats that serve commitments show through them; a change to
-	// MEMORY.md is not a thread and is left out.
+	// Side chats that serve commitments show through them, open or closed,
+	// unless taken up again; a change to MEMORY.md is not a thread and is
+	// left out.
 	want := []string{
 		"routine:Morning brief::ok",
 		"routine:Morning brief:Gmail sign-in expired:error",
 		"side_chat:Errand for the team::idle",
 		"side_chat:Legacy notes::running:running",
-		"side_chat:Old idea::idle",
 		"side_chat:Rerun::running:running",
+		"task:Old idea::cancelled",
+		"task:Rerun::cancelled",
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("activity =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -522,9 +532,9 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		t.Fatal(err)
 	}
 	if slices.ContainsFunc(delivered.Owed, func(task Owed) bool { return task.ID == commitments["Plan review"] }) || !slices.ContainsFunc(delivered.Items, func(item Activity) bool {
-		return item.ThreadID == finished && item.Status == storage.StatusIdle && !item.Running
-	}) {
-		t.Fatalf("delivered work disappeared instead of moving from tasks to history: %+v", delivered)
+		return item.Kind == "task" && item.Status == storage.CommitmentDone && item.Task.ID == commitments["Plan review"] && item.Task.Threads[0].ID == finished
+	}) || slices.ContainsFunc(delivered.Items, func(item Activity) bool { return item.ThreadID == finished }) {
+		t.Fatalf("delivered work did not move from tasks to history as its task: %+v", delivered)
 	}
 	if len(delivered.Started[finished]) != 2 || len(delivered.Started[diff]) != 1 {
 		t.Fatalf("delivered work lost its nested threads: %+v", delivered.Started)

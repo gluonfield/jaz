@@ -29,12 +29,15 @@ export async function exerciseBotPanel(): Promise<void> {
     { id: 1, request: 'Capacity test with 20 threads', status: 'in_progress', threads: [{ id: 'side-f', title: 'Capacity harness', state: 'finished' }, { id: 'side-g', title: 'Capacity run', state: 'failed' }] },
     { id: 7, request: 'Run the login suites', status: 'in_progress', moving: true, threads: [{ id: 'side-i', title: 'Login suites', state: 'background' }, { id: 'side-j', title: 'Login fix', state: 'finished' }] },
   ]
-  // Older servers also listed closed commitments and memory changes; the
-  // panel drops them.
+  // Closed tasks join the history; their threads show only in their modal.
+  // Older servers also listed commitments and memory changes as rows of their
+  // own; the panel drops them.
   const activity: (BotActivity | { kind: 'commitment' | 'file_changed'; at: string; title: string; status?: string; text?: string; thread_id?: string })[] = [
     { kind: 'file_changed', at: minutes(62), title: 'MEMORY.md' },
-    { kind: 'commitment', at: minutes(20), title: 'Calmer bot faces', status: 'completed', thread_id: 'side-d' },
-    { kind: 'commitment', at: minutes(60 * 24 + 40), title: 'Muse-style identity cards', status: 'cancelled', text: 'He chose option A instead' },
+    { kind: 'commitment', at: minutes(21), title: 'Legacy closed commitment', status: 'completed', thread_id: 'side-k' },
+    { kind: 'commitment', at: minutes(60 * 24 + 41), title: 'Legacy dropped commitment', status: 'cancelled', text: 'He chose option A instead' },
+    { kind: 'task', at: minutes(20), task: { id: 11, name: 'Calmer bot faces', request: 'Make the bot faces calmer so a busy sidebar does not flicker', status: 'completed', threads: [{ id: 'side-d', title: 'Faces redesign', state: 'finished' }] } },
+    { kind: 'task', at: minutes(60 * 24 + 40), task: { id: 12, request: 'Muse-style identity cards', status: 'cancelled' } },
     { kind: 'side_chat', at: minutes(14), running: true, title: 'Notes cleanup', status: 'running', thread_id: 'side-c2' },
     { kind: 'side_chat', at: minutes(30), title: 'Merged both reviews into one plan', status: 'idle', thread_id: 'side-b' },
     { kind: 'routine', at: minutes(80), title: 'Grok Bot and Dots watch', status: 'ok', thread_id: 'run-watch' },
@@ -364,9 +367,20 @@ export async function exerciseBotPanel(): Promise<void> {
     await until('a waiting task\'s thread did not open', () => router.state.location.pathname === '/sessions/sharing-audit' && !dialog())
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes(`Tasks ${owed.length}`))
-    if (text().includes('He chose option A instead') || text().includes('Calmer bot faces') || text().includes('Muse-style identity cards')) {
-      throw new Error('Bot panel: completed or cancelled task history leaked into Activity')
+    if (text().includes('He chose option A instead') || text().includes('Legacy') || link('side-d')) {
+      throw new Error('Bot panel: legacy commitment rows or a closed task\'s thread leaked into the history')
     }
+    const closed = [...tabpanel().querySelectorAll('section:not([aria-label="Tasks"]) li > button')].map((row) => row.textContent).join('|')
+    if (closed !== 'Calmer bot facesDone|Muse-style identity cardsDropped') {
+      throw new Error(`Bot panel: closed tasks are not one-line rows in their days, got ${closed}`)
+    }
+    await click('Calmer bot faces')
+    await until('a closed task did not open its modal with what was asked and its threads', () => dialog()?.querySelector('h2')?.textContent === 'Calmer bot faces' && dialog()!.textContent!.includes('Done') && body() === 'Make the bot faces calmer so a busy sidebar does not flickerThreadsFaces redesignFinished')
+    await capture('bot-panel-task-done')
+    await click('Close')
+    await click('Muse-style identity cards')
+    await until('a dropped task did not open its modal', () => dialog()?.querySelector('h2')?.textContent === 'Muse-style identity cards' && dialog()!.textContent!.includes('Dropped') && body() === '')
+    await click('Close')
     if (link('run-heartbeat')?.textContent !== 'HeartbeatFailed' || link('run-heartbeat')?.title !== 'Gmail sign-in expired' || !link('run-watch')) {
       throw new Error('Bot panel: a routine run lost its thread, failure or reason')
     }
@@ -525,7 +539,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Activity')
     const completed = owed.splice(0)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-    await until('completed tasks did not leave the open list', () => !document.querySelector('section[aria-label="Tasks"]') && !text().includes(completed[0].name!) && text().includes('Notes cleanup'))
+    await until('completed tasks did not leave the open list', () => !document.querySelector('section[aria-label="Tasks"]') && !text().includes(completed[0].name!) && text().includes('Notes cleanup') && text().includes('Calmer bot faces'))
     owed.push(...completed)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
     await until('new tasks did not appear', () => text().includes(completed[0].name!))

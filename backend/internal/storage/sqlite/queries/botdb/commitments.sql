@@ -68,6 +68,11 @@ WHERE id = (SELECT bot_id FROM bot_commitments WHERE id = sqlc.arg(id)) AND queu
 -- name: ListOpenCommitments :many
 SELECT * FROM bot_commitments WHERE bot_id = sqlc.arg(bot_id) AND status IN ('pending', 'in_progress', 'waiting_for_user', 'stopped') ORDER BY id;
 
+-- name: ListClosedCommitments :many
+SELECT * FROM bot_commitments
+WHERE bot_id = sqlc.arg(bot_id) AND status IN ('completed', 'cancelled') AND closed_at_ms >= sqlc.arg(since_ms)
+ORDER BY closed_at_ms DESC LIMIT sqlc.arg(max_rows);
+
 -- name: GetCommitment :one
 SELECT * FROM bot_commitments WHERE id = ?;
 

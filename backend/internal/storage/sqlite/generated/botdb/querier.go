@@ -34,6 +34,7 @@ type Querier interface {
 	// A thread the bot started serves its open task, whether new or continued.
 	LinkCommitmentThread(ctx context.Context, arg LinkCommitmentThreadParams) (int64, error)
 	ListBots(ctx context.Context) ([]Bot, error)
+	ListClosedCommitments(ctx context.Context, arg ListClosedCommitmentsParams) ([]BotCommitment, error)
 	ListCommitmentDependencies(ctx context.Context, ids []int64) ([]BotCommitmentDependency, error)
 	ListCommitmentMotion(ctx context.Context, ids []int64) ([]ListCommitmentMotionRow, error)
 	ListCommitmentOpeningMessages(ctx context.Context, ids []int64) ([]ListCommitmentOpeningMessagesRow, error)

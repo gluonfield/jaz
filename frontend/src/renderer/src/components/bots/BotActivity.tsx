@@ -3,13 +3,13 @@ import { Link } from '@tanstack/react-router'
 import { useEffect, useState, type MouseEvent } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
-import type { Bot, BotActivity, BotOwed, BotOwedThread } from '@/lib/api/types'
+import type { Bot, BotActivity, BotOwed, BotOwedThread, BotThreadActivity } from '@/lib/api/types'
 import { taskName, taskStateLabel } from '@/lib/bots'
 import { clockTime, formatDuration, shortDate } from '@/lib/format/time'
 
-// What a bot is working on and what it did: its tasks, then the threads it
-// started by day, one line each. A task opens a modal with what it is and its
-// threads; a thread line opens its thread.
+// What a bot is working on and what it did: its open tasks, then by day the
+// tasks it closed and the threads it started, one line each. A task opens a
+// modal with what it is and its threads; a thread line opens its thread.
 export function BotActivity({ bot }: { bot: Bot }) {
   const activity = useQuery(botActivityQuery(bot.id))
   const [shown, setShown] = useState<number>()
@@ -26,7 +26,7 @@ export function BotActivity({ bot }: { bot: Bot }) {
     { title: 'Waiting for you', tasks: owed.filter((task) => task.status === 'waiting_for_user') },
   ]
   const days = groupByDay(items, now)
-  const task = owed.find((item) => item.id === shown)
+  const task = [...owed, ...items.flatMap((item) => item.kind === 'task' ? [item.task] : [])].find((item) => item.id === shown)
   if (!owed.length && !days.length) {
     return <p className="text-[13px] text-ink-3">No tasks yet.</p>
   }
@@ -40,11 +40,7 @@ export function BotActivity({ bot }: { bot: Bot }) {
               {title ? <h4 className="mt-3 mb-1 text-[11px] font-medium text-ink-3">{title} <span className="ml-1 tabular-nums">{tasks.length}</span></h4> : null}
               <ul className="flex flex-col">
                 {tasks.map((item) => (
-                  <li key={item.id} className="flex flex-col">
-                    <button type="button" onClick={() => setShown(item.id)} className={`${LINE} cursor-pointer`}>
-                      <Line title={taskName(item)} state={title ? undefined : taskStateLabel(item)} tone={item.moving ? 'running' : undefined} />
-                    </button>
-                  </li>
+                  <li key={item.id} className="flex flex-col"><TaskButton task={item} stated={!title} onOpen={setShown} /></li>
                 ))}
               </ul>
             </div>
@@ -55,7 +51,9 @@ export function BotActivity({ bot }: { bot: Bot }) {
         <section key={day} aria-label={day} className="flex flex-col">
           <h3 className="mb-1 text-[13px] font-semibold text-ink">{day}</h3>
           <ul className="flex flex-col">
-            {list.map((item) => <li key={item.thread_id}><ThreadLink line={activityLine(item, now)} /></li>)}
+            {list.map((item) => item.kind === 'task'
+              ? <li key={`task-${item.task.id}`} className="flex flex-col"><TaskButton task={item.task} stated onOpen={setShown} /></li>
+              : <li key={item.thread_id}><ThreadLink line={activityLine(item, now)} /></li>)}
           </ul>
         </section>
       ))}
@@ -65,6 +63,14 @@ export function BotActivity({ bot }: { bot: Bot }) {
 }
 
 const LINE = '-mx-2 flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-left text-[13px] transition-colors duration-150 hover:bg-list-hover'
+
+function TaskButton({ task, stated, onOpen }: { task: BotOwed; stated: boolean; onOpen: (id: number) => void }) {
+  return (
+    <button type="button" onClick={() => onOpen(task.id)} className={`${LINE} cursor-pointer`}>
+      <Line title={taskName(task)} state={stated ? taskStateLabel(task) : undefined} tone={task.moving ? 'running' : undefined} />
+    </button>
+  )
+}
 
 // A task's name, what was asked, its threads and, when it waits on you, its
 // question in the chat.
@@ -101,7 +107,7 @@ type ThreadLine = { id: string; title: string; state: string; tone?: Tone; hint?
 
 const ENDS: Partial<Record<string, string>> = { error: 'Failed', skipped: 'Skipped', cancelled: 'Stopped' }
 
-function activityLine(item: BotActivity, now: number): ThreadLine {
+function activityLine(item: BotThreadActivity, now: number): ThreadLine {
   const line = { id: item.thread_id, title: item.title || 'Side chat', hint: item.text }
   if (item.running) return { ...line, state: `Running for ${formatDuration(now - Date.parse(item.at))}`, tone: 'running' }
   return { ...line, state: ENDS[item.status ?? ''] ?? clockTime(item.at), tone: item.status === 'error' ? 'danger' : undefined }

@@ -40,6 +40,8 @@ export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'thinking' | 'work
 }
 
 export function taskStateLabel(task: Pick<BotOwed, 'status' | 'moving' | 'blocked' | 'stalled' | 'threads'>): string {
+  if (task.status === 'completed') return 'Done'
+  if (task.status === 'cancelled') return 'Dropped'
   if (task.status === 'stopped') return 'Stopped'
   if (task.status === 'waiting_for_user') return 'Waiting for you'
   if (task.blocked) return 'Waiting on another task'

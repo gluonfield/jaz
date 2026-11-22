@@ -800,10 +800,19 @@ export interface BotActivityEvent {
   text?: string
 }
 
-// A thread a bot started: a side chat, or a routine run in a thread of its
-// own. `at` is when a running thread started, or else when it ended; `text`
-// is a failed run's error.
-export interface BotActivity {
+// What a bot did: a task it closed, or a thread it started.
+export type BotActivity = BotTaskActivity | BotThreadActivity
+
+export interface BotTaskActivity {
+  kind: 'task'
+  at: string
+  task: BotOwed
+}
+
+// A side chat, or a routine run in a thread of its own. `at` is when a
+// running thread started, or else when it ended; `text` is a failed run's
+// error.
+export interface BotThreadActivity {
   kind: 'side_chat' | 'routine'
   at: string
   running?: boolean
@@ -813,13 +822,13 @@ export interface BotActivity {
   thread_id: string
 }
 
-// A commitment a bot has not closed: what was asked, where it was asked and
-// what it asks you, how it is going, and the threads serving it.
+// A task a bot took on: what was asked, what it asks you, how it is going or
+// how it closed, and the threads serving it.
 export interface BotOwed {
   id: number
   name?: string
   request: string
-  status: 'pending' | 'in_progress' | 'waiting_for_user' | 'stopped'
+  status: 'pending' | 'in_progress' | 'waiting_for_user' | 'stopped' | 'completed' | 'cancelled'
   question_seq?: number
   opening_seq?: number
   blocked?: boolean

@@ -20,6 +20,7 @@ type CommitmentStore interface {
 	DropCommitment(id int64, why string, at time.Time) error
 	LoadCommitment(id int64) (storage.Commitment, error)
 	ListOpenCommitments(botID string) ([]storage.Commitment, error)
+	ListClosedCommitments(botID string, since time.Time, limit int) ([]storage.Commitment, error)
 	DeliverMessage(event sessionevents.Event, closes []int64) (sessionevents.Event, error)
 	AskCommitment(storage.Commitment, sessionevents.Event) (sessionevents.Event, error)
 	TransitionCommitment(storage.Commitment, sessionevents.Event) (sessionevents.Event, error)
