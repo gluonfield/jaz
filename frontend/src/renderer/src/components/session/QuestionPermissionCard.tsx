@@ -15,6 +15,12 @@ function optionText(label: string, description?: string) {
   return description ? `${label} — ${description}` : label
 }
 
+function answerText(question: ACPQuestion, value: string) {
+  if (question.is_secret) return '••••••••'
+  const option = question.options?.find((option) => option.label === value)
+  return optionText(value, option?.description)
+}
+
 export function QuestionPermissionCard({
   event,
   resolution,
@@ -55,17 +61,12 @@ export function QuestionPermissionCard({
               <p className="text-sm font-medium leading-snug text-ink text-pretty">{question.question}</p>
               {values.length ? (
                 <ul className="mt-2 flex flex-col gap-1.5">
-                  {values.map((value, i) => {
-                    const description = question.options?.find((option) => option.label === value)?.description
-                    return (
-                      <li key={i} className="flex items-start justify-between gap-3 text-[13px] leading-5 text-ink-2">
-                        <span className="min-w-0 text-pretty">
-                          {question.is_secret ? '••••••••' : optionText(value, description)}
-                        </span>
-                        <Check className="mt-0.5 size-3.5 shrink-0 text-ink-3" aria-hidden />
-                      </li>
-                    )
-                  })}
+                  {values.map((value, i) => (
+                    <li key={i} className="flex items-start justify-between gap-3 text-[13px] leading-5 text-ink-2">
+                      <span className="min-w-0 text-pretty wrap-anywhere">{answerText(question, value)}</span>
+                      <Check className="mt-0.5 size-3.5 shrink-0 text-ink-3" aria-hidden />
+                    </li>
+                  ))}
                 </ul>
               ) : (
                 <p className="mt-1 text-[13px] text-ink-3">
@@ -149,7 +150,7 @@ export function QuestionPermissionCard({
               onChange={() => pickOption(option.label)}
               className="mt-0.75 size-3.5 shrink-0 accent-ink"
             />
-            <span className="min-w-0 text-pretty">{optionText(option.label, option.description)}</span>
+            <span className="min-w-0 text-pretty wrap-anywhere">{optionText(option.label, option.description)}</span>
           </label>
         ))}
 
