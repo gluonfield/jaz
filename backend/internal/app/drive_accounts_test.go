@@ -80,7 +80,7 @@ func TestExistingPersonalAndWorkspaceDriveAccountsRetainSeparateTools(t *testing
 			t.Fatalf("%s search lost its account: %s, %v", alias, data, err)
 		}
 	}
-	service := connections.NewService(connections.NewCatalog(nil), store, nil)
+	service := connections.NewService(connections.NewCatalog(nil), store)
 	if _, err := service.DisconnectAccount(ctx, "google_drive:personal"); err != nil {
 		t.Fatal(err)
 	}

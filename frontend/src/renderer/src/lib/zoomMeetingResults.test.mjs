@@ -65,4 +65,5 @@ test('the Zoom meeting card leaves host links, missing links, and other provider
   ]
   expect(zoomMeetingResults(searchResult(invalid))).toBeUndefined()
   expect(zoomMeetingResults({ ...searchResult([scheduled]), server_id: 'other' })).toBeUndefined()
+  expect(zoomMeetingResults({ ...searchResult([scheduled]), server_id: 'plugin:zoom:em9vbQ' })?.joinable).toEqual([scheduled])
 })

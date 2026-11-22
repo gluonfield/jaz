@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/runtimefiles"
-
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -65,8 +64,6 @@ func (s *ViewService) Open(ctx context.Context, session string, request ViewRequ
 	return target, err
 }
 
-// shown returns the thread's id and latest views when the file-following view
-// named is one of them.
 func (s *ViewService) shown(ctx context.Context, session, reference, file string) (string, []sessionevents.PluginView, error) {
 	plugin, view, _ := strings.Cut(reference, "/")
 	if !name.MatchString(plugin) || !name.MatchString(view) || !filename.MatchString(file) {
@@ -85,40 +82,72 @@ func (s *ViewService) shown(ctx context.Context, session, reference, file string
 	return thread.SessionID, latest, nil
 }
 
-// State returns what the view last saved for this thread: its own JSON, kept
-// in one file that each save replaces. A view that saved nothing gets null.
 func (s *ViewService) State(ctx context.Context, session, reference, file string) (json.RawMessage, error) {
-	thread, _, err := s.shown(ctx, session, reference, file)
-	if err != nil {
-		return nil, err
-	}
-	state, err := os.ReadFile(filepath.Join(s.states, thread, reference, file))
-	if errors.Is(err, fs.ErrNotExist) {
-		return json.RawMessage("null"), nil
-	}
+	state, _, err := s.StateWithRevision(ctx, session, reference, file)
 	return state, err
 }
 
+func (s *ViewService) StateWithRevision(ctx context.Context, session, reference, file string) (json.RawMessage, int64, error) {
+	thread, _, err := s.shown(ctx, session, reference, file)
+	if err != nil {
+		return nil, 0, err
+	}
+	plugin, view, _ := strings.Cut(reference, "/")
+	if s.plugins != nil && s.plugins.stateStore != nil {
+		record, ok, err := s.plugins.stateStore.GetThreadPluginState(ctx, thread, plugin, view, file)
+		if err != nil {
+			return nil, 0, err
+		}
+		if ok && len(record.UIStateJSON) > 0 {
+			return record.UIStateJSON, record.Revision, nil
+		}
+	}
+	state, err := os.ReadFile(filepath.Join(s.states, thread, reference, file))
+	if errors.Is(err, fs.ErrNotExist) {
+		return json.RawMessage("null"), 0, nil
+	}
+	return state, 0, err
+}
+
 func (s *ViewService) SaveState(ctx context.Context, session, reference, file string, state json.RawMessage) error {
+	_, err := s.SaveStateWithRevision(ctx, session, reference, file, state, nil)
+	return err
+}
+
+func (s *ViewService) SaveStateWithRevision(ctx context.Context, session, reference, file string, state json.RawMessage, expectedRevision *int64) (int64, error) {
 	if !json.Valid(state) {
-		return fmt.Errorf("%w: view state is not JSON", ErrInvalid)
+		return 0, fmt.Errorf("%w: view state is not JSON", ErrInvalid)
 	}
 	thread, _, err := s.shown(ctx, session, reference, file)
 	if err != nil {
-		return err
+		return 0, err
+	}
+	plugin, view, _ := strings.Cut(reference, "/")
+	if s.plugins != nil && s.plugins.stateStore != nil {
+		if err := s.plugins.stateStore.SaveThreadPluginUIState(ctx, thread, plugin, view, file, state, expectedRevision); err != nil {
+			return 0, err
+		}
+		record, ok, err := s.plugins.stateStore.GetThreadPluginState(ctx, thread, plugin, view, file)
+		if err != nil {
+			return 0, err
+		}
+		if ok {
+			return record.Revision, nil
+		}
+		return 1, nil
 	}
 	dir := filepath.Join(s.states, thread, reference)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
+		return 0, err
 	}
 	temp, err := os.CreateTemp(dir, "."+file+"-*")
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer os.Remove(temp.Name())
 	_, err = temp.Write(state)
 	if err = errors.Join(err, temp.Close()); err != nil {
-		return err
+		return 0, err
 	}
-	return os.Rename(temp.Name(), filepath.Join(dir, file))
+	return 0, os.Rename(temp.Name(), filepath.Join(dir, file))
 }

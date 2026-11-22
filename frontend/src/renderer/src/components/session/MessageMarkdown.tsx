@@ -90,10 +90,11 @@ type MarkdownNode = {
   data?: { hName: string; hProperties: Record<string, string> }
 }
 
-const CONNECT_LINK = /^jaz:\/\/connect\/([\w-]+)$/
+const CONNECT_LINK = /^jaz:\/\/(?:connect\/([\w.-]+)|plugin\/([\w.-]+)\/connect)$/
 
-// A paragraph holding only jaz://connect/<plugin> links, bare or labelled,
-// becomes one connect card per link. In a sentence or code the link stays text.
+// A paragraph holding only jaz://plugin/<id>/connect or jaz://connect/<id>
+// links, bare or labelled, becomes one connect card per link. In a sentence or
+// code the link stays text.
 function remarkConnectCards() {
   return function replace(node: MarkdownNode): void {
     if (!node.children) return
@@ -114,7 +115,8 @@ function connectCardPlugins(paragraph: MarkdownNode): string[] | null {
     if (child.type !== 'link' && child.type !== 'text' && child.type !== 'break') return null
     const links = child.type === 'link' ? [child.url ?? ''] : (child.value ?? '').split(/\s+/).filter(Boolean)
     for (const link of links) {
-      const plugin = CONNECT_LINK.exec(link)?.[1]
+      const match = CONNECT_LINK.exec(link)
+      const plugin = match?.[1] || match?.[2]
       if (!plugin) return null
       plugins.push(plugin)
     }

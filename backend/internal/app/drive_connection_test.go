@@ -17,10 +17,12 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/connectors/drive"
-	connectionsapi "github.com/wins/jaz/backend/internal/httpapi/connections"
+	pluginsapi "github.com/wins/jaz/backend/internal/httpapi/plugins"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/oauthbroker"
+	"github.com/wins/jaz/backend/internal/plugins"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
 )
@@ -90,15 +92,17 @@ func TestDriveConnectionSignInRefreshAndDisconnect(t *testing.T) {
 	oauth := NewConnectionOAuthService(store, Config{Connections: ConnectionsConfig{
 		Drive: GoogleConnectionConfig{OAuthClientID: "drive-client", OAuthClientSecret: "drive-secret"},
 	}}, oauthbroker.Broker{})
-	connect := connections.NewConnectService(catalog, oauth, nil, nil, nil)
+	connect := connections.NewConnectService(catalog, oauth, nil, nil)
+	connService := connections.NewService(catalog, store)
+	pluginService := plugins.NewService(plugins.New(runtimefiles.New(t.TempDir())), store, connService, connect, oauth, nil)
 	registry := tools.NewRegistry()
 	manager := mcpruntime.NewManager(connectionMCPServerReader{store: store, catalog: catalog}, store, registry, log.New(io.Discard))
 	defer manager.Close()
-	handler := connectionsapi.NewConnectHandler(connect, oauth, nil, manager, "http://127.0.0.1:5299")
-	request := httptest.NewRequest(http.MethodPost, "/v1/connections/plugins/google_drive/connect", nil)
-	request.SetPathValue("id", drive.ProviderID)
+	handler := pluginsapi.NewHandler(pluginService, store, manager, "http://127.0.0.1:5299")
+	request := httptest.NewRequest(http.MethodPost, "/v1/plugins/google_drive/connect", nil)
+	request.SetPathValue("plugin", drive.ProviderID)
 	response := httptest.NewRecorder()
-	handler.Start(response, request)
+	handler.Connect(response, request)
 	var start connections.ConnectStart
 	if err := json.Unmarshal(response.Body.Bytes(), &start); err != nil || response.Code != http.StatusOK {
 		t.Fatalf("start: %d %s, error = %v", response.Code, response.Body.String(), err)
@@ -117,7 +121,7 @@ func TestDriveConnectionSignInRefreshAndDisconnect(t *testing.T) {
 		}
 	}
 	response = httptest.NewRecorder()
-	handler.Callback(response, httptest.NewRequest(http.MethodGet, "/v1/connections/oauth/callback?code=approved&state="+url.QueryEscape(query.Get("state")), nil))
+	handler.OAuthCallback(response, httptest.NewRequest(http.MethodGet, plugins.OAuthCallbackPath+"?code=approved&state="+url.QueryEscape(query.Get("state")), nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("callback: %d %s", response.Code, response.Body.String())
 	}
@@ -169,7 +173,7 @@ func TestDriveConnectionSignInRefreshAndDisconnect(t *testing.T) {
 	if _, ok, err := store.LoadToken(ctx, mcpconfig.OAuthConnectionID(accounts[0].ID)); err != nil || ok {
 		t.Fatalf("grant was duplicated under MCP: exists = %v, error = %v", ok, err)
 	}
-	service := connections.NewService(catalog, store, nil)
+	service := connections.NewService(catalog, store)
 	if result, err := service.DisconnectAccount(ctx, accounts[0].ID); err != nil || !result.MCPServersChanged {
 		t.Fatalf("disconnect = %+v, error = %v", result, err)
 	}

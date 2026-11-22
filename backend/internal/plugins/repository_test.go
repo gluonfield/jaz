@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/runtimefiles"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/testgit"
 )
 
@@ -43,21 +44,26 @@ func TestRepositoryMarketplaceUpdateAndFailedReplacement(t *testing.T) {
 	repo := t.TempDir()
 	fixtureGit(t, repo, "init", "--quiet")
 	fixtureFiles(t, repo, map[string]string{
-		".agents/plugins/marketplace.json":        `{"plugins":[{"name":"alpha","source":"./plugins/alpha"},{"name":"beta","source":{"source":"local","path":"./plugins/beta"}},{"name":"remote","source":{"source":"url","url":"https://example.invalid/plugin.git"}},{"name":"script","source":{"source":"command","command":"never-run"}}],"owner":{"ignored":true},"policy":"ignored"}`,
+		".agents/plugins/marketplace.json":        `{"plugins":[{"name":"alpha","source":"./plugins/alpha"},{"name":"beta","source":{"source":"local","path":"./plugins/beta"}},{"name":"script","source":{"source":"command","command":"never-run"}}],"owner":{"ignored":true},"policy":"ignored"}`,
 		".claude-plugin/marketplace.json":         `{"plugins":[{"name":"excluded","source":"./plugins/excluded"}]}`,
-		"plugins/alpha/plugin.json":               portable(t, "alpha", nil),
+		"plugins/alpha/plugin.json":               `{"name":"alpha"}`,
 		"plugins/alpha/views/status.html":         "first",
 		"plugins/beta/.claude-plugin/plugin.json": `{"name":"beta","version":"1"}`,
-		"plugins/excluded/plugin.json":            portable(t, "excluded", nil),
+		"plugins/excluded/plugin.json":            `{"name":"excluded"}`,
 	})
 	fixtureGit(t, repo, "add", "--all")
 	testgit.Snapshot(t, repo)
 	first := fixtureGit(t, repo, "rev-parse", "HEAD")
 	ref := fixtureGit(t, repo, "branch", "--show-current")
 	layout := runtimefiles.New(t.TempDir())
-	store := New(layout)
+	db, err := sqlitestore.New(layout.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := New(layout).WithStateStore(db)
 	result, err := store.InstallRepository(t.Context(), RepositoryInput{Repository: repo, Ref: ref})
-	if err != nil || len(result.Plugins) != 2 || len(result.Skipped) != 2 || result.Skipped[0].Name != "remote" || result.Skipped[1].Name != "script" {
+	if err != nil || len(result.Plugins) != 2 || len(result.Skipped) != 1 || result.Skipped[0].Name != "script" {
 		t.Fatalf("marketplace install = %+v %v", result, err)
 	}
 	for _, plugin := range result.Plugins {
@@ -83,46 +89,126 @@ func TestRepositoryMarketplaceUpdateAndFailedReplacement(t *testing.T) {
 	fixtureFiles(t, repo, map[string]string{"plugins/alpha/views/status.html": "unpublished"})
 	fixtureGit(t, repo, "add", "--all")
 	testgit.Snapshot(t, repo)
-	candidate, err := read(filepath.Join(repo, "plugins", "alpha"), store.dataDir)
+	candidate, err := readPackage(filepath.Join(repo, "plugins", "alpha"), store.dataDir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	previous := *updated.Plugins[0].Source
-	beta, err := read(filepath.Join(repo, "plugins", "beta"), store.dataDir)
+	beta, err := readPackage(filepath.Join(repo, "plugins", "beta"), store.dataDir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, source := range []*Source{nil, {Repository: repo, Ref: ref, Commit: fixtureGit(t, repo, "rev-parse", "HEAD")}} {
-		prepared, err := stagePackages([]preparedPlugin{{plugin: candidate, path: filepath.Join(repo, "plugins", "alpha"), source: source, expected: &previous}, {plugin: beta, path: filepath.Join(repo, "plugins", "beta"), source: source}}, filepath.Join(t.TempDir(), "ready"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.RemoveAll(prepared[1].path); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := store.publish(prepared); !errors.Is(err, fs.ErrNotExist) {
-			t.Fatalf("missing staged package did not fail its real rename: %v", err)
-		}
-		view, viewErr := store.View("alpha/status")
-		listed, listErr := store.List()
-		if viewErr != nil || listErr != nil || view != "second" || *listed[0].Source != previous || listed[1].Source.Commit != first {
-			t.Fatalf("failed rename changed last good package/origin: %+v %q %v %v", listed, view, listErr, viewErr)
-		}
-	}
-	listed, err = store.List()
-	view, viewErr := store.View("alpha/status")
-	if err != nil || viewErr != nil || view != "second" || listed[0].Source.Commit != second {
-		t.Fatalf("failed publication changed last good package/origin: %+v %q %v %v", listed, view, err, viewErr)
-	}
-	if _, err := store.Install(archive(t, map[string]string{"alpha/plugin.json": portable(t, "alpha", nil), "alpha/views/status.html": "ZIP"})); err != nil {
+	prepared, err := stagePackages(repo, []preparedPlugin{
+		{plugin: candidate, path: filepath.Join(repo, "plugins", "alpha"), source: &Source{Repository: repo, Ref: ref, Commit: fixtureGit(t, repo, "rev-parse", "HEAD")}, expected: previous.Commit},
+		{plugin: beta, path: filepath.Join(repo, "plugins", "beta"), source: &Source{Repository: repo, Ref: ref, Commit: first}},
+	}, filepath.Join(t.TempDir(), "ready"), store.dataDir)
+	if err != nil {
 		t.Fatal(err)
 	}
-	listed, err = store.List()
-	if err != nil || listed[0].Source != nil || listed[1].Source == nil {
-		t.Fatalf("ZIP did not clear only its replaced origin: %+v %v", listed, err)
+	if err := os.RemoveAll(prepared[1].path); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := store.Update(t.Context(), "alpha"); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("ZIP plugin offered Git update: %v", err)
+	if _, err := store.publish(t.Context(), prepared); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("missing staged package did not fail its real rename: %v", err)
+	}
+	view, viewErr := store.View("alpha/status")
+	listed, listErr := store.List()
+	if viewErr != nil || listErr != nil || view != "second" || *listed[0].Source != previous || listed[1].Source.Commit != first {
+		t.Fatalf("failed rename changed last good package/origin: %+v %q %v %v", listed, view, listErr, viewErr)
+	}
+}
+
+func TestRepositoryMaterializesInRepoSymlinksAndRejectsEscapes(t *testing.T) {
+	// Simulates base44/skills layout where plugins/base44/skills/app -> ../../../skills/app
+	repo := t.TempDir()
+	fixtureGit(t, repo, "init", "--quiet")
+	fixtureFiles(t, repo, map[string]string{
+		"skills/app/SKILL.md":                    "---\nname: base44-app\ndescription: Build Base44 apps\n---\n",
+		"plugins/base44/.codex-plugin/plugin.json": `{"name":"base44","interface":{"displayName":"Base44"}}`,
+	})
+	skillsDir := filepath.Join(repo, "plugins", "base44", "skills")
+	if err := os.MkdirAll(skillsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "..", "..", "skills", "app"), filepath.Join(skillsDir, "app")); err != nil {
+		t.Fatal(err)
+	}
+	fixtureGit(t, repo, "add", "--all")
+	testgit.Snapshot(t, repo)
+
+	store := New(runtimefiles.New(t.TempDir()))
+	result, err := store.InstallRepository(t.Context(), RepositoryInput{Repository: repo})
+	if err != nil || len(result.Plugins) != 1 || !slices.Equal(skillNames(result.Plugins[0].Skills), []string{"base44:base44-app"}) {
+		t.Fatalf("symlink materialization failed = %+v, %v", result, err)
+	}
+
+	// Escaping symlink outside the repo must fail.
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(outside, []byte("nope"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	badRepo := t.TempDir()
+	fixtureGit(t, badRepo, "init", "--quiet")
+	fixtureFiles(t, badRepo, map[string]string{"plugin.json": `{"name":"escape"}`})
+	if err := os.Symlink(outside, filepath.Join(badRepo, "leak.txt")); err != nil {
+		t.Fatal(err)
+	}
+	fixtureGit(t, badRepo, "add", "--all")
+	testgit.Snapshot(t, badRepo)
+	if _, err := store.InstallRepository(t.Context(), RepositoryInput{Repository: badRepo}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("escaping symlink accepted: %v", err)
+	}
+}
+
+func TestRepositorySourceConflictAndMarketplaceCatalogRefresh(t *testing.T) {
+	repoA := makeGitRepo(t, map[string]string{
+		".agents/plugins/marketplace.json": `{"plugins":[{"name":"alpha","source":"./plugins/alpha"}]}`,
+		"plugins/alpha/plugin.json":        `{"name":"alpha","displayName":"Alpha A"}`,
+		"plugins/alpha/.mcp.json":          `{"mcpServers":{"alpha":{"type":"http","url":"https://alpha.example/mcp"}}}`,
+	})
+	repoB := makeGitRepo(t, map[string]string{
+		"plugins/alpha/plugin.json": `{"name":"alpha","displayName":"Alpha B"}`,
+	})
+	layout := runtimefiles.New(t.TempDir())
+	db, err := sqlitestore.New(layout.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	svc := NewService(New(layout), db, nil, nil, nil, nil)
+
+	src, err := svc.AddSource(t.Context(), RepositoryInput{Repository: repoA})
+	if err != nil || !src.IsMarketplace || len(src.Plugins) != 1 || src.Plugins[0].ID != "alpha" {
+		t.Fatalf("marketplace source = %+v, %v", src, err)
+	}
+	catalog, err := svc.List(t.Context(), false)
+	if err != nil || len(catalog.Plugins) != 1 || catalog.Plugins[0].Installed || catalog.Plugins[0].Origin != "marketplace" {
+		t.Fatalf("browse catalog = %+v, %v", catalog, err)
+	}
+	if catalog.Plugins[0].Auth == nil || catalog.Plugins[0].Auth.Kind != "mcp_oauth" || catalog.Plugins[0].Auth.Status != "available" {
+		t.Fatalf("marketplace remote MCP auth = %+v", catalog.Plugins[0].Auth)
+	}
+	_, searchOut, err := svc.searchMCP(t.Context(), nil, SearchInput{Query: "alpha"})
+	if err != nil || len(searchOut.Plugins) != 1 || searchOut.Plugins[0].ConnectLink != "jaz://plugin/alpha/connect" {
+		t.Fatalf("marketplace search connect link = %+v, %v", searchOut, err)
+	}
+	if _, err := svc.Install(t.Context(), RepositoryInput{Repository: repoA, Paths: []string{"./plugins/alpha"}}); err != nil {
+		t.Fatal(err)
+	}
+	// Installing same ID from a different repo must return ErrConflict.
+	if _, err := svc.Install(t.Context(), RepositoryInput{Repository: repoB}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("cross-source conflict = %v, want ErrConflict", err)
+	}
+	// Push a new commit to repoA and refresh sources -> update_available becomes true.
+	fixtureFiles(t, repoA, map[string]string{"plugins/alpha/plugin.json": `{"name":"alpha","displayName":"Alpha A2","version":"2.0.0"}`})
+	fixtureGit(t, repoA, "add", "--all")
+	testgit.Snapshot(t, repoA)
+	if err := svc.RefreshSources(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.Get(t.Context(), "alpha", false)
+	if err != nil || got.Source == nil || !got.Source.UpdateAvailable {
+		t.Fatalf("expected UpdateAvailable after remote commit: %+v, %v", got, err)
 	}
 }
 
@@ -131,7 +217,7 @@ func TestRepositoryFallbackDiscoveryAndSafeFailures(t *testing.T) {
 	fixtureGit(t, repo, "init", "--quiet")
 	fixtureFiles(t, repo, map[string]string{
 		"bundle/one/.codex-plugin/plugin.json": `{"name":"one"}`,
-		"bundle/two/plugin.json":               portable(t, "two", nil),
+		"bundle/two/plugin.json":               `{"name":"two"}`,
 	})
 	fixtureGit(t, repo, "add", "--all")
 	testgit.Snapshot(t, repo)

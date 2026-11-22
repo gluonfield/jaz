@@ -4,37 +4,36 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
-	"strings"
 )
-
-const Schema = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
 
 var ErrNotPlugin = errors.New("not a plugin: no supported manifest")
 
 type Manifest struct {
-	Name            string
-	DisplayName     string
-	Description     string
-	Version         string
-	IconPath        string
-	Page            *Page
-	Warnings        []string
-	ManifestPath    string
-	ExtraSkillPaths []string
-	MCPServers      json.RawMessage
+	Name             string
+	DisplayName      string
+	Description      string
+	Version          string
+	Category         string
+	Author           string
+	AuthorURL        string
+	Homepage         string
+	Repository       string
+	Keywords         []string
+	IconPath         string
+	SuggestedPrompts []string
+	Page             *Page
+	Warnings         []string
+	ManifestPath     string
+	ExtraSkillPaths  []string
+	MCPServers       json.RawMessage
 }
 
 type Page struct {
-	View string
+	View string `json:"view"`
 }
 
-var safeName = regexp.MustCompile(`^[a-zA-Z0-9_-][a-zA-Z0-9._-]*$`)
-var portableName = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`)
+var safeName = regexp.MustCompile(`^[a-z0-9]+([._-][a-z0-9]+)*$`)
 
 func SafeName(value string) bool {
-	return safeName.MatchString(value)
-}
-
-func validName(value string) bool {
-	return len(value) <= 64 && portableName.MatchString(value) && !strings.Contains(value, "--") && !strings.Contains(value, "..")
+	return len(value) > 0 && len(value) <= 64 && safeName.MatchString(value)
 }

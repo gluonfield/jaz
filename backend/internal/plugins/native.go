@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,6 +27,14 @@ func readClaudePlugin(root, name string) (manifest.Manifest, error) {
 }
 
 func (s *Store) ClaudePlugins() ([]NativePlugin, error) {
+	states := s.loadStates(context.Background())
+	return s.ClaudePluginsFiltered(func(id string) bool {
+		st, ok := states[id]
+		return !ok || st.Enabled
+	})
+}
+
+func (s *Store) ClaudePluginsFiltered(allow func(string) bool) ([]NativePlugin, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	directory, err := filepath.Abs(s.dir)
@@ -41,9 +50,15 @@ func (s *Store) ClaudePlugins() ([]NativePlugin, error) {
 	}
 	var out []NativePlugin
 	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
 		root := filepath.Join(directory, entry.Name())
 		plugin, err := manifest.Read(root)
 		if err != nil || plugin.Name != entry.Name() {
+			continue
+		}
+		if allow != nil && !allow(plugin.Name) {
 			continue
 		}
 		native, err := readClaudePlugin(root, plugin.Name)

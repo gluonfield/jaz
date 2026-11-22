@@ -55,7 +55,7 @@ func TestDisconnectCannotBeUndoneByInflightRefresh(t *testing.T) {
 			<-started
 			disconnected := make(chan error, 1)
 			go func() {
-				_, err := connections.NewService(connections.NewCatalog(nil), store, nil).DisconnectAccount(t.Context(), account.ID)
+				_, err := connections.NewService(connections.NewCatalog(nil), store).DisconnectAccount(t.Context(), account.ID)
 				disconnected <- err
 			}()
 			early := false

@@ -7,7 +7,6 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/connections"
-	"github.com/wins/jaz/backend/internal/connectors/deployink"
 	driveconnector "github.com/wins/jaz/backend/internal/connectors/drive"
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
@@ -85,34 +84,6 @@ func TestConnectionMCPServerReaderSkipsSlackWithoutToken(t *testing.T) {
 	}
 }
 
-func TestConnectionMCPServerReaderInjectsOAuthBackedDeployink(t *testing.T) {
-	connectionID := "deployink:mcp-deployink-com"
-	reader := connectionReader(fakeConnectionTokenStore{
-		connections: map[string][]integrations.Connection{
-			deployink.ProviderID: {{
-				ID:          connectionID,
-				Provider:    deployink.ProviderID,
-				AccountName: deployink.ProviderName,
-			}},
-		},
-	})
-
-	servers, err := reader.ListMCPServers()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(servers) != 1 {
-		t.Fatalf("servers = %#v", servers)
-	}
-	got := servers[0]
-	if got.ID != connectionID || got.URL != deployink.RemoteMCPURL || got.Name != deployink.ProviderName || !got.Enabled {
-		t.Fatalf("server = %#v", got)
-	}
-	if len(got.Headers) != 0 {
-		t.Fatalf("headers = %#v", got.Headers)
-	}
-}
-
 func TestConnectionMCPServerReaderIgnoresProvidersWithoutConnectionBackedMCP(t *testing.T) {
 	reader := connectionReader(fakeConnectionTokenStore{
 		connections: map[string][]integrations.Connection{
@@ -165,23 +136,19 @@ func TestConnectionMCPServerReaderKeepsDriveAccountsAndToolsDistinct(t *testing.
 	}
 }
 
-func TestZoomConnectionRetainsClientAndManualServers(t *testing.T) {
-	manual := mcpconfig.Server{ID: "manual-zoom", Name: "Zoom", URL: "https://mcp.zoom.us/", OAuth: mcpconfig.OAuthConfig{ClientID: "custom-client"}}
+func TestConnectionMCPServerReaderSkipsDisabledPlugin(t *testing.T) {
 	reader := connectionReader(fakeConnectionTokenStore{
-		servers:     []mcpconfig.Server{manual},
-		connections: map[string][]integrations.Connection{"zoom": {{ID: "zoom:account", Provider: "zoom", AccountName: "Zoom"}}},
+		connections: map[string][]integrations.Connection{
+			"slack": {{ID: "slack:acme-u1", Provider: "slack", Alias: "acme"}},
+		},
+		tokens: map[string]integrationoauth.Token{"slack:acme-u1": {AccessToken: "xoxp-1"}},
 	})
-	client := mcpconfig.OAuthConfig{ClientID: "registered-client", ClientSecretEnvVar: "ZOOM_TEST_SECRET", UseAppScopes: true}
-	reader.catalog = connections.NewCatalog(map[string]mcpconfig.OAuthConfig{"zoom": client})
+	reader.enabled = func(_ context.Context, id string) bool { return id != "slack" }
 	servers, err := reader.ListMCPServers()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(servers) != 2 || servers[0].OAuth != manual.OAuth || servers[0].URL != manual.URL {
-		t.Fatalf("manual server changed: %#v", servers)
-	}
-	managed := servers[1]
-	if managed.ID != "zoom:account" || managed.OAuth != client || managed.Source != mcpconfig.SourceConnection {
-		t.Fatalf("managed server = %#v", managed)
+	if len(servers) != 0 {
+		t.Fatalf("disabled plugin emitted servers = %#v", servers)
 	}
 }

@@ -38,7 +38,7 @@ func selectMCPConnection(ctx context.Context, store ConnectionToolStore, provide
 	}
 	return mcpAccountSelection{
 		Connections: connections,
-		Text:        providerName + " is not connected. Connect it in Settings > Connections.",
+		Text:        providerName + " is not connected. Connect it in Settings > Plugins.",
 	}, nil
 }
 

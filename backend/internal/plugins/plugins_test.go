@@ -1,27 +1,24 @@
 package plugins
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wins/jaz/backend/internal/plugins/manifest"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/skills"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/testgit"
 )
 
-func portable(t *testing.T, name string, jaz map[string]any) string {
+func manifestJSON(t *testing.T, fields map[string]any) string {
 	t.Helper()
-	fields := map[string]any{"$schema": manifest.Schema, "name": name}
-	if jaz != nil {
-		fields["extensions"] = map[string]any{"chat.jaz": jaz}
-	}
 	data, err := json.Marshal(fields)
 	if err != nil {
 		t.Fatal(err)
@@ -29,41 +26,46 @@ func portable(t *testing.T, name string, jaz map[string]any) string {
 	return string(data)
 }
 
-func archive(t *testing.T, files map[string]string) []byte {
+func makeGitRepo(t *testing.T, files map[string]string) string {
 	t.Helper()
-	var buffer bytes.Buffer
-	writer := zip.NewWriter(&buffer)
-	for name, content := range files {
-		file, err := writer.Create(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := file.Write([]byte(content)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buffer.Bytes()
+	repo := t.TempDir()
+	fixtureGit(t, repo, "init", "--quiet")
+	fixtureFiles(t, repo, files)
+	fixtureGit(t, repo, "add", "--all")
+	testgit.Snapshot(t, repo)
+	return repo
 }
 
-// A repository's downloaded zip nests its plugins under a top folder.
-var repository = map[string]string{
-	"sg-main/README.md":                                   "# plugins",
-	"sg-main/plugins/tenders/plugin.json":                 `{"name":"tenders","description":"Query sheets","version":"0.2.0","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tenders"}}}`,
-	"sg-main/plugins/tenders/skills/query-sheet/SKILL.md": "---\nname: query-sheet\ndescription: Draft the query sheet\n---\n",
-	"sg-main/plugins/tenders/views/status.html":           "<p id=status></p>",
-	"sg-main/plugins/tenders/views/question.html":         "<p id=question></p>",
-	"sg-main/plugins/tenders/scripts/status.py":           "print('ok')",
-	"sg-main/plugins/quality/plugin.json":                 `{"name":"quality","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Quality"}}}`,
-	"sg-main/plugins/quality/skills/inspection/SKILL.md":  "---\nname: inspection\ndescription: Write an inspection report\n---\n",
+func installFiles(t *testing.T, store *Store, files map[string]string) ([]Plugin, error) {
+	t.Helper()
+	repo := makeGitRepo(t, files)
+	result, err := store.InstallRepository(context.Background(), RepositoryInput{Repository: repo})
+	return result.Plugins, err
 }
 
-func TestInstallAddsEveryPluginInARepositoryArchive(t *testing.T) {
+func skillNames(list []PluginSkill) []string {
+	out := make([]string, len(list))
+	for i, s := range list {
+		out[i] = s.Name
+	}
+	return out
+}
+
+var repositoryFixture = map[string]string{
+	"README.md":                                   "# plugins",
+	"plugins/tenders/plugin.json":                 `{"name":"tenders","displayName":"Tenders","description":"Query sheets","version":"0.2.0"}`,
+	"plugins/tenders/skills/query-sheet/SKILL.md": "---\nname: query-sheet\ndescription: Draft the query sheet\n---\n",
+	"plugins/tenders/views/status.html":           "<p id=status></p>",
+	"plugins/tenders/views/question.html":         "<p id=question></p>",
+	"plugins/tenders/scripts/status.py":           "print('ok')",
+	"plugins/quality/plugin.json":                 `{"name":"quality","displayName":"Quality"}`,
+	"plugins/quality/skills/inspection/SKILL.md":  "---\nname: inspection\ndescription: Write an inspection report\n---\n",
+}
+
+func TestInstallAddsEveryPluginInARepository(t *testing.T) {
 	layout := runtimefiles.New(t.TempDir())
 	store := New(layout)
-	if _, err := store.Install(archive(t, repository)); err != nil {
+	if _, err := installFiles(t, store, repositoryFixture); err != nil {
 		t.Fatal(err)
 	}
 	installed, err := store.List()
@@ -74,7 +76,7 @@ func TestInstallAddsEveryPluginInARepositoryArchive(t *testing.T) {
 		t.Fatalf("installed = %+v, want quality and tenders", installed)
 	}
 	tenders := installed[1]
-	if tenders.DisplayName != "Tenders" || tenders.Version != "0.2.0" || !slices.Equal(tenders.Skills, []string{"tenders:query-sheet"}) || !slices.Equal(tenders.Views, []string{"question", "status"}) {
+	if tenders.DisplayName != "Tenders" || tenders.Version != "0.2.0" || !slices.Equal(skillNames(tenders.Skills), []string{"tenders:query-sheet"}) || !slices.Equal(tenders.Views, []string{"question", "status"}) {
 		t.Fatalf("tenders = %+v", tenders)
 	}
 	html, err := store.View("tenders/status")
@@ -96,12 +98,26 @@ func TestInstallAddsEveryPluginInARepositoryArchive(t *testing.T) {
 }
 
 func TestInstallReplacesAndRemoveDeletes(t *testing.T) {
-	store := New(runtimefiles.New(t.TempDir()))
-	if _, err := store.Install(archive(t, repository)); err != nil {
+	layout := runtimefiles.New(t.TempDir())
+	db, err := sqlitestore.New(layout.Root)
+	if err != nil {
 		t.Fatal(err)
 	}
-	newer := archive(t, map[string]string{"tenders/plugin.json": `{"name":"tenders","version":"0.3.0","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","extensions":{"chat.jaz":{"displayName":"Tenders"}}}`})
-	if _, err := store.Install(newer); err != nil {
+	defer db.Close()
+	store := New(layout).WithStateStore(db)
+	repo := makeGitRepo(t, repositoryFixture)
+	if _, err := store.InstallRepository(t.Context(), RepositoryInput{Repository: repo}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(repo, "plugins", "tenders", "views", "status.html")); err != nil {
+		t.Fatal(err)
+	}
+	fixtureFiles(t, repo, map[string]string{
+		"plugins/tenders/plugin.json": `{"name":"tenders","displayName":"Tenders","version":"0.3.0"}`,
+	})
+	fixtureGit(t, repo, "add", "--all")
+	testgit.Snapshot(t, repo)
+	if _, err := store.Update(t.Context(), "tenders"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.View("tenders/status"); !errors.Is(err, ErrNotFound) {
@@ -119,15 +135,15 @@ func TestInstallReplacesAndRemoveDeletes(t *testing.T) {
 	}
 }
 
-func TestInstallRefusesWhatIsNotAPlugin(t *testing.T) {
-	store := New(runtimefiles.New(t.TempDir()))
+func TestInstallRefusesInvalidNamesAndReservedIDs(t *testing.T) {
+	store := New(runtimefiles.New(t.TempDir())).WithReservedIDs(func(id string) bool { return id == "gmail" })
 	for label, files := range map[string]map[string]string{
-		"no manifest":   {"tenders/skills/query-sheet/SKILL.md": "x"},
-		"unsafe name":   {"x/plugin.json": `{"name":"../skills","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"}`},
-		"leaving paths": {"../plugin.json": `{"name":"tenders","$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"}`},
+		"no plugin or skills": {"README.md": "hello"},
+		"unsafe name":         {"plugin.json": `{"name":"../skills"}`},
+		"reserved builtin id": {"plugin.json": `{"name":"gmail"}`},
 	} {
-		if _, err := store.Install(archive(t, files)); !errors.Is(err, ErrInvalid) {
-			t.Errorf("%s: err = %v, want invalid", label, err)
+		if _, err := installFiles(t, store, files); err == nil {
+			t.Errorf("%s: unexpectedly accepted", label)
 		}
 	}
 	if _, err := store.View("../skills/x"); !errors.Is(err, ErrInvalid) {
@@ -146,7 +162,7 @@ func (p *presented) PresentMCP(_ string, artifact *sessionevents.PresentationEve
 
 func TestShowViewPresentsTheViewWithItsData(t *testing.T) {
 	store := New(runtimefiles.New(t.TempDir()))
-	if _, err := store.Install(archive(t, repository)); err != nil {
+	if _, err := installFiles(t, store, repositoryFixture); err != nil {
 		t.Fatal(err)
 	}
 	shown := &presented{}

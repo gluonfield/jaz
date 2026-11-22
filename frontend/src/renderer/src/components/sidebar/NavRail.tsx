@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, linkOptions, useRouterState } from '@tanstack/react-router'
-import { LayoutDashboard, MessageSquare, Plus, Settings } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Settings } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { PluginIcon } from '@/components/plugins/PluginIcon'
@@ -48,7 +48,7 @@ export function useRailSections() {
       icon: <AppIcon app={app} />,
       link: linkOptions({ to: '/apps/$serverId/$tool', params: { serverId: app.server_id, tool: app.tool } }),
     })),
-    ...plugins.flatMap((plugin) => plugin.page ? [{
+    ...plugins.flatMap((plugin) => plugin.installed && plugin.enabled && plugin.page ? [{
       path: `/plugins/${plugin.name}`,
       label: plugin.display_name,
       icon: <PluginIcon icon={plugin.icon_data_url ?? ''} />,
@@ -135,18 +135,12 @@ export function NavRail({
         <MessageSquare aria-hidden />
       </Link>
       {sections.slice(0, SECTIONS.length).map(sectionTab)}
-      {/* Connected apps sit below the built-in sections, with a way to add more. */}
-      <span aria-hidden className="h-px w-4 bg-border" />
-      {sections.slice(SECTIONS.length).map((section, index) => sectionTab(section, SECTIONS.length + index))}
-      <button
-        type="button"
-        onClick={() => onOpenSettings('mcp')}
-        aria-label="Connect an app"
-        className={tabClass(false)}
-        {...tabTip('Connect an app')}
-      >
-        <Plus aria-hidden />
-      </button>
+      {sections.length > SECTIONS.length ? (
+        <>
+          <span aria-hidden className="h-px w-4 bg-border" />
+          {sections.slice(SECTIONS.length).map((section, index) => sectionTab(section, SECTIONS.length + index))}
+        </>
+      ) : null}
       <button
         type="button"
         data-rail-tab=""

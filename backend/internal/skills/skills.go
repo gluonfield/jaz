@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -35,6 +36,10 @@ func UserRoot(root string) string {
 }
 
 func Load(root string) (Catalog, error) {
+	return LoadFiltered(root, nil)
+}
+
+func LoadFiltered(root string, allowPlugin func(string) bool) (Catalog, error) {
 	if root == "" {
 		return Catalog{}, nil
 	}
@@ -49,9 +54,23 @@ func Load(root string) (Catalog, error) {
 	}
 	var packaged []Skill
 	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if allowPlugin != nil && !allowPlugin(entry.Name()) {
+			continue
+		}
 		pluginRoot := filepath.Join(root, pluginsDir, entry.Name())
 		plugin, err := manifest.Read(pluginRoot)
-		if err != nil || plugin.Name != entry.Name() {
+		if err != nil {
+			if !errors.Is(err, manifest.ErrNotPlugin) {
+				continue
+			}
+			held, _ := LoadPlugin(pluginRoot, entry.Name(), nil)
+			packaged = mergeSkills(packaged, held)
+			continue
+		}
+		if plugin.Name != entry.Name() {
 			continue
 		}
 		held, _ := LoadPlugin(pluginRoot, plugin.Name, plugin.ExtraSkillPaths)
@@ -61,7 +80,11 @@ func Load(root string) (Catalog, error) {
 }
 
 func LoadForWorkspace(root, workspace string) (Catalog, error) {
-	catalog, err := Load(root)
+	return LoadForWorkspaceFiltered(root, workspace, nil)
+}
+
+func LoadForWorkspaceFiltered(root, workspace string, allowPlugin func(string) bool) (Catalog, error) {
+	catalog, err := LoadFiltered(root, allowPlugin)
 	if err != nil {
 		return Catalog{}, err
 	}

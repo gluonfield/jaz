@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,10 +16,6 @@ import (
 	"github.com/wins/jaz/backend/internal/plugins/manifest"
 	"github.com/wins/jaz/backend/internal/storage"
 )
-
-type Page struct {
-	View string `json:"view"`
-}
 
 var filename = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]*$`)
 
@@ -45,6 +42,10 @@ type PageThread struct {
 }
 
 func (s *Store) Page(plugin string, sessions SessionStore) (PageContent, error) {
+	return s.PageWithContext(context.Background(), plugin, sessions)
+}
+
+func (s *Store) PageWithContext(ctx context.Context, plugin string, sessions SessionStore) (PageContent, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if !manifest.SafeName(plugin) {
@@ -64,12 +65,48 @@ func (s *Store) Page(plugin string, sessions SessionStore) (PageContent, error) 
 	if err != nil {
 		return PageContent{}, err
 	}
+	page := PageContent{View: html, Items: []PageItem{}}
+	seenThreads := map[string]bool{}
+
+	if s.stateStore != nil {
+		rows, err := s.stateStore.ListThreadPluginStatesByPlugin(ctx, plugin)
+		if err != nil {
+			return PageContent{}, err
+		}
+		for _, row := range rows {
+			if seenThreads[row.ThreadID] {
+				continue
+			}
+			var value any
+			if len(row.DataJSON) == 0 || string(row.DataJSON) == "null" || json.Unmarshal(row.DataJSON, &value) != nil || value == nil {
+				continue
+			}
+			seenThreads[row.ThreadID] = true
+			page.Items = append(page.Items, PageItem{
+				Folder: row.ThreadCwd,
+				Data:   value,
+				Threads: []PageThread{{
+					ID:        row.ThreadID,
+					Title:     row.ThreadTitle,
+					Status:    row.ThreadStatus,
+					UpdatedAt: row.ThreadUpdatedAt,
+				}},
+			})
+		}
+	}
+
+	if sessions == nil {
+		return page, nil
+	}
 	presentations, err := sessions.ListSessionPluginViews()
 	if err != nil {
 		return PageContent{}, err
 	}
 	latest := map[string]storage.SessionPluginView{}
 	for _, presentation := range presentations {
+		if seenThreads[presentation.ID] {
+			continue
+		}
 		owner, view, ok := strings.Cut(presentation.Reference, "/")
 		if !ok || owner != plugin || !name.MatchString(view) || presentation.File == "" {
 			continue
@@ -104,7 +141,6 @@ func (s *Store) Page(plugin string, sessions SessionStore) (PageContent, error) 
 		}
 		groups[key] = append(groups[key], PageThread{ID: thread.ID, Title: thread.Title, Status: thread.Status, UpdatedAt: thread.UpdatedAt})
 	}
-	page := PageContent{View: html, Items: []PageItem{}}
 	for _, key := range ordered {
 		root, err := os.OpenRoot(key.folder)
 		if err != nil {

@@ -13,7 +13,6 @@ import (
 
 const ShowViewMCPToolName = "show_view"
 
-// Presenter shows an artifact in the thread the call came from.
 type Presenter interface {
 	PresentMCP(sessionID string, artifact *sessionevents.PresentationEvent) (*mcp.CallToolResult, any, error)
 }
@@ -26,8 +25,8 @@ type MCPTools struct {
 type ShowViewInput struct {
 	View  string         `json:"view" jsonschema:"The view to show, as <plugin>/<view>, for example tenders/status."`
 	Title string         `json:"title" jsonschema:"A short title for the card or the side-panel tab."`
-	Data  map[string]any `json:"data,omitempty" jsonschema:"What the view draws, as a JSON object. Shows the view as a card in the conversation."`
-	File  string         `json:"file,omitempty" jsonschema:"A plain JSON filename in the thread's folder holding what the view draws. Opens the view in the side panel, where it redraws whenever the file changes. Use instead of data for a view that should stay in sight while work goes on."`
+	Data  map[string]any `json:"data,omitempty" jsonschema:"What the view draws, as a JSON object. Shows the view as a card in the conversation and persists structured view state."`
+	File  string         `json:"file,omitempty" jsonschema:"A plain JSON filename in the thread's folder holding what the view draws. Opens the view in the side panel, where it redraws whenever the file changes."`
 }
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
@@ -38,7 +37,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	}, t.ShowView)
 }
 
-func (t *MCPTools) ShowView(_ context.Context, req *mcp.CallToolRequest, input ShowViewInput) (*mcp.CallToolResult, any, error) {
+func (t *MCPTools) ShowView(ctx context.Context, req *mcp.CallToolRequest, input ShowViewInput) (*mcp.CallToolResult, any, error) {
 	title := strings.TrimSpace(input.Title)
 	file := strings.TrimSpace(input.File)
 	if title == "" {
@@ -55,12 +54,20 @@ func (t *MCPTools) ShowView(_ context.Context, req *mcp.CallToolRequest, input S
 	if err != nil {
 		return nil, nil, err
 	}
+	sessionID := mcpsession.SessionID(req)
 	if file != "" {
-		return t.Presenter.PresentMCP(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Reference: ref, Title: title, WidgetCode: html, File: file}})
+		return t.Presenter.PresentMCP(sessionID, &sessionevents.PresentationEvent{
+			Kind: sessionevents.PresentationPluginView,
+			View: &sessionevents.PluginView{Reference: ref, Title: title, WidgetCode: html, File: file},
+		})
 	}
-	artifact := &sessionevents.ArtifactEvent{Title: title, WidgetCode: html, ArtifactType: "html"}
-	if artifact.Data, err = json.Marshal(input.Data); err != nil {
+	raw, err := json.Marshal(input.Data)
+	if err != nil {
 		return nil, nil, err
 	}
-	return t.Presenter.PresentMCP(mcpsession.SessionID(req), &sessionevents.PresentationEvent{Kind: sessionevents.PresentationArtifact, Artifact: artifact})
+	if pluginID, viewName, ok := strings.Cut(ref, "/"); ok && sessionID != "" && t.Plugins != nil && t.Plugins.stateStore != nil {
+		_ = t.Plugins.stateStore.SaveThreadPluginData(ctx, sessionID, pluginID, viewName, "", raw)
+	}
+	artifact := &sessionevents.ArtifactEvent{Title: title, WidgetCode: html, ArtifactType: "html", Data: raw}
+	return t.Presenter.PresentMCP(sessionID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationArtifact, Artifact: artifact})
 }

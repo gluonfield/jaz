@@ -1,22 +1,106 @@
 import { queryOptions } from '@tanstack/react-query'
-import { apiFetch, del, get, post, put } from '@/lib/api/client'
-import { readAPIResponse } from '@/lib/api/response'
-import type { PluginView } from '@/lib/api/types'
+import { del, get, post, put } from '@/lib/api/client'
+import type { ConnectionQRStart, ConnectionQRStatus, ConnectionStart, IntegrationConnectionAccount, PluginView } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
-// A plugin is a folder of skills and the views they show, installed on the Jaz server.
+export type PluginIconKind = 'asset' | 'url' | 'data' | 'initials'
+
+export interface PluginIcon {
+  kind: PluginIconKind
+  value: string
+  background?: string
+}
+
+export interface PluginSkill {
+  name: string
+  description?: string
+}
+
+export interface PluginMCPServer {
+  name: string
+  transport: string
+}
+
+export interface PluginTool {
+  name: string
+  description?: string
+  risk?: string
+}
+
+export interface PluginConfigVariable {
+  name: string
+  description?: string
+  required?: boolean
+  secret?: boolean
+}
+
+export interface PluginAuth {
+  kind: string
+  status: string
+  reason?: string
+  multi_account?: boolean
+  connected: boolean
+  accounts?: IntegrationConnectionAccount[]
+}
+
+export interface PluginSourceRef {
+  id?: string
+  repository: string
+  ref?: string
+  path?: string
+  commit: string
+  remote_commit?: string
+  update_available?: boolean
+  auto_update?: boolean
+}
+
 export interface Plugin {
+  id: string
   name: string
   display_name: string
-  description: string
-  version: string
-  skills: string[]
-  views: string[]
-  mcp_servers: string[]
+  description?: string
+  version?: string
+  category?: string
+  author?: string
+  author_url?: string
+  homepage?: string
+  repository?: string
+  keywords?: string[]
+  suggested_prompts?: string[]
+  icon: PluginIcon
   icon_data_url?: string
-  warnings?: string[]
+  origin: 'builtin' | 'git' | 'marketplace'
+  execution?: 'cloud' | 'device'
+  installed: boolean
+  enabled: boolean
+  capabilities?: string[]
+  skills?: PluginSkill[]
+  views?: string[]
+  mcp_servers?: PluginMCPServer[]
+  tools?: PluginTool[]
+  config_variables?: PluginConfigVariable[]
+  config_set?: Record<string, boolean>
+  auth?: PluginAuth
   page?: { view: string }
-  source?: { repository: string; ref?: string; commit: string }
+  source?: PluginSourceRef
+  warnings?: string[]
+}
+
+export interface PluginSource {
+  id: string
+  repository: string
+  url: string
+  ref?: string
+  paths?: string[]
+  commit_sha?: string
+  auto_update?: boolean
+  is_marketplace?: boolean
+  checked_at?: string
+}
+
+export interface PluginCatalog {
+  plugins: Plugin[]
+  sources: PluginSource[]
 }
 
 export interface PluginPage {
@@ -28,11 +112,35 @@ export interface PluginPage {
   }[]
 }
 
-export type Installed = { plugins: Plugin[]; skipped?: { name: string; reason: string }[] }
+export interface PluginInstallInput {
+  repository: string
+  ref?: string
+  paths?: string[]
+  plugin_id?: string
+  source_id?: string
+  auto_update?: boolean
+}
+
+export interface PluginInstallResult {
+  plugins: Plugin[]
+  skipped?: { name: string; reason: string }[]
+}
+
+export const pluginCatalogQuery = queryOptions({
+  queryKey: keys.plugins,
+  queryFn: async ({ client }) => {
+    const data = await get<{ plugins?: Plugin[] | null; sources?: PluginSource[] | null }>('/v1/plugins')
+    void client.invalidateQueries({ queryKey: keys.mcpApps, exact: true })
+    return {
+      plugins: data.plugins ?? [],
+      sources: data.sources ?? [],
+    } satisfies PluginCatalog
+  },
+})
 
 export const pluginsQuery = queryOptions({
-  queryKey: keys.plugins,
-  queryFn: async () => (await get<Installed>('/v1/plugins')).plugins,
+  ...pluginCatalogQuery,
+  select: (data) => data.plugins,
 })
 
 export const pluginPageQuery = (plugin: string) => queryOptions({
@@ -41,22 +149,56 @@ export const pluginPageQuery = (plugin: string) => queryOptions({
   refetchInterval: 5000,
 })
 
-// Installs every plugin in a zip: one plugin's folder, or a whole repository.
-export async function installPlugins(archive: File): Promise<Plugin[]> {
-  const response = await apiFetch('/v1/plugins', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: archive })
-  return (await readAPIResponse<Installed>(response)).plugins
+export function setPluginEnabled(id: string, enabled: boolean): Promise<Plugin> {
+  return put<Plugin>(`/v1/plugins/${encodeURIComponent(id)}/enabled`, { enabled })
 }
 
-export function removePlugin(name: string): Promise<void> {
-  return del<void>(`/v1/plugins/${encodeURIComponent(name)}`)
+export function savePluginConfig(id: string, values: Record<string, string>): Promise<Plugin> {
+  return put<Plugin>(`/v1/plugins/${encodeURIComponent(id)}/config`, { values })
 }
 
-export function installRepository(input: { repository: string; ref?: string }): Promise<Installed> {
-  return post<Installed>('/v1/plugins/repository', input)
+export function connectPlugin(id: string): Promise<ConnectionStart> {
+  return post<ConnectionStart>(`/v1/plugins/${encodeURIComponent(id)}/connect`)
 }
 
-export function updatePlugin(name: string): Promise<Installed> {
-  return post<Installed>(`/v1/plugins/${encodeURIComponent(name)}/update`)
+export function disconnectPluginAccount(accountID: string): Promise<{ ok: boolean }> {
+  return del<{ ok: boolean }>(`/v1/plugins/accounts/${encodeURIComponent(accountID)}`)
+}
+
+export function pluginQRStatus(sessionID: string): Promise<ConnectionQRStatus> {
+  return get<ConnectionQRStatus>(`/v1/plugins/qr/${encodeURIComponent(sessionID)}/status`)
+}
+
+export function submitPluginQRPassword(sessionID: string, password: string): Promise<ConnectionQRStatus> {
+  return post<ConnectionQRStatus>(`/v1/plugins/qr/${encodeURIComponent(sessionID)}/password`, { password })
+}
+
+export function closePluginQR(sessionID: string): Promise<{ ok: boolean }> {
+  return del<{ ok: boolean }>(`/v1/plugins/qr/${encodeURIComponent(sessionID)}`)
+}
+
+export function installPlugin(input: PluginInstallInput): Promise<PluginInstallResult> {
+  return post<PluginInstallResult>('/v1/plugins/install', input)
+}
+
+export function updatePlugin(id: string): Promise<PluginInstallResult> {
+  return post<PluginInstallResult>(`/v1/plugins/${encodeURIComponent(id)}/update`)
+}
+
+export function removePlugin(id: string): Promise<void> {
+  return del<void>(`/v1/plugins/${encodeURIComponent(id)}`)
+}
+
+export function addPluginSource(input: PluginInstallInput): Promise<PluginSource> {
+  return post<PluginSource>('/v1/plugins/sources', input)
+}
+
+export function removePluginSource(id: string): Promise<void> {
+  return del<void>(`/v1/plugins/sources/${encodeURIComponent(id)}`)
+}
+
+export function refreshPluginSources(): Promise<PluginCatalog> {
+  return post<PluginCatalog>('/v1/plugins/sources/refresh')
 }
 
 export function openPluginView(session: string, input: { reference: string; file: string; name: string; title: string }): Promise<PluginView> {
@@ -68,10 +210,6 @@ type ShownView = { reference: string; file: string }
 const viewStatePath = (session: string, view: ShownView) =>
   `/v1/sessions/${session}/plugin-views/state?${new URLSearchParams(view)}`
 
-// What a view saved for this thread with setViewState. It is read once each
-// time the view opens, so nothing cached stands in for the saved file. After
-// a failed read the view opens unable to save, so it cannot replace a file it
-// never saw; a server without this endpoint behaves the same way.
 export const pluginViewStateQuery = (session: string, view: ShownView) => queryOptions({
   queryKey: keys.pluginViewState(session, view.reference, view.file),
   queryFn: () => get<unknown>(viewStatePath(session, view)),
@@ -83,3 +221,5 @@ export const pluginViewStateQuery = (session: string, view: ShownView) => queryO
 export function savePluginViewState(session: string, view: ShownView, state: unknown): Promise<void> {
   return put<void>(viewStatePath(session, view), state ?? null)
 }
+
+export type { ConnectionQRStart, ConnectionQRStatus, ConnectionStart, IntegrationConnectionAccount }

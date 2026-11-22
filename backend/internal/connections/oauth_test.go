@@ -49,7 +49,7 @@ func (memoryOAuthStore) SaveOAuthConnection(context.Context, integrationoauth.To
 }
 
 func TestOAuthStartBuildsGoogleCalendarPKCEURL(t *testing.T) {
-	redirectURL := "http://127.0.0.1:5222/v1/connections/oauth/callback"
+	redirectURL := "http://127.0.0.1:5222/v1/plugins/oauth/callback"
 	start, err := NewOAuthService(memoryOAuthStore{}, testOAuthConfig).Start(context.Background(), calendarconnector.ProviderID, redirectURL)
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +80,7 @@ func TestOAuthStartBuildsGoogleCalendarPKCEURL(t *testing.T) {
 }
 
 func TestOAuthStartBuildsGmailPKCEURL(t *testing.T) {
-	redirectURL := "http://127.0.0.1:5222/v1/connections/oauth/callback"
+	redirectURL := "http://127.0.0.1:5222/v1/plugins/oauth/callback"
 	start, err := NewOAuthService(memoryOAuthStore{}, testOAuthConfig).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func TestOAuthStartBuildsGmailPKCEURL(t *testing.T) {
 }
 
 func TestOAuthStartUsesBundledGmailClientCredentials(t *testing.T) {
-	redirectURL := "http://127.0.0.1:5222/v1/connections/oauth/callback"
+	redirectURL := "http://127.0.0.1:5222/v1/plugins/oauth/callback"
 	start, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{}).Start(context.Background(), gmailconnector.ProviderID, redirectURL)
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +136,7 @@ func TestOAuthStartRejectsUnsupportedPlugin(t *testing.T) {
 }
 
 func TestOAuthStartBuildsSlackPKCEURL(t *testing.T) {
-	redirectURL := "http://127.0.0.1:5222/v1/connections/oauth/callback"
+	redirectURL := "http://127.0.0.1:5222/v1/plugins/oauth/callback"
 	start, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{}).Start(context.Background(), slackconnector.ProviderID, redirectURL)
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +203,7 @@ func slackRedirectAndState(t *testing.T, cfg OAuthConfig, localCallback string) 
 }
 
 func TestSlackStartMintsBrokerState(t *testing.T) {
-	local := "https://jaz.example.com/v1/connections/oauth/callback"
+	local := "https://jaz.example.com/v1/plugins/oauth/callback"
 	broker := newFakeBroker(t, "broker-minted-state")
 	redirect, state := slackRedirectAndState(t, OAuthConfig{Broker: oauthbroker.Broker{URL: broker.callbackURL()}}, local)
 	if redirect != broker.callbackURL() {
@@ -231,7 +231,7 @@ func TestSlackStartFailsWhenBrokerUnavailable(t *testing.T) {
 }
 
 func TestSlackStartStaysDirectWithoutBroker(t *testing.T) {
-	local := "http://127.0.0.1:5299/v1/connections/oauth/callback"
+	local := "http://127.0.0.1:5299/v1/plugins/oauth/callback"
 	redirect, state := slackRedirectAndState(t, OAuthConfig{}, local)
 	if redirect != local {
 		t.Fatalf("redirect_uri = %q, want the direct callback", redirect)
@@ -242,7 +242,7 @@ func TestSlackStartStaysDirectWithoutBroker(t *testing.T) {
 }
 
 func TestGmailStartIgnoresBroker(t *testing.T) {
-	local := "http://127.0.0.1:5299/v1/connections/oauth/callback"
+	local := "http://127.0.0.1:5299/v1/plugins/oauth/callback"
 	broker := newFakeBroker(t, "should-not-be-used")
 	start, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{Broker: oauthbroker.Broker{URL: broker.callbackURL()}}).
 		Start(context.Background(), gmailconnector.ProviderID, local)

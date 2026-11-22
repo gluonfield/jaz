@@ -25,7 +25,7 @@ type ZoomJoinableMeeting = z.infer<typeof upcomingMeeting>
 
 export function zoomMeetingResults(app: MCPAppEvent) {
   const { result } = app
-  if (!app.server_id.startsWith('zoom:') || app.tool !== 'search_meetings' || result.isError) return
+  if ((!app.server_id.startsWith('zoom:') && !app.server_id.startsWith('plugin:zoom:')) || app.tool !== 'search_meetings' || result.isError) return
   const list = meetingList.safeParse(result.structuredContent)
   if (!list.success) return
 

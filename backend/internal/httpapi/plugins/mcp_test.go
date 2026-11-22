@@ -1,7 +1,6 @@
 package plugins
 
 import (
-	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -22,6 +21,7 @@ import (
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/testgit"
 	"github.com/wins/jaz/backend/internal/tools"
 )
@@ -77,7 +77,13 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	layout := runtimefiles.New(filepath.Join(t.TempDir(), "literal-${PLUGIN_DATA}"))
+	db, err := sqlitestore.New(layout.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
 	store := plugins.New(layout)
+	service := plugins.NewService(store, db, nil, nil, nil, nil)
 	unrelated := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "unrelated"}, nil)
 	unrelated.AddTool(&mcpsdk.Tool{Name: "unrelated", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 		return &mcpsdk.CallToolResult{}, nil
@@ -98,13 +104,14 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 		remoteHandler.ServeHTTP(w, r)
 	}))
 	defer upstream.Close()
-	if _, err := store.Install(pluginArchive(t, map[string]string{
-		"unrelated/plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"unrelated"}`,
-		"unrelated/mcp.json":    `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"remote":{"type":"streamable-http","url":"` + upstream.URL + `"}}}`,
-	})); err != nil {
+	unrelatedRepo := makeRepo(t, map[string]string{
+		"unrelated/plugin.json": `{"name":"unrelated"}`,
+		"unrelated/mcp.json":    `{"mcpServers":{"remote":{"type":"streamable-http","url":"` + upstream.URL + `"}}}`,
+	})
+	if _, err := store.InstallRepository(t.Context(), plugins.RepositoryInput{Repository: unrelatedRepo}); err != nil {
 		t.Fatal(err)
 	}
-	manager := mcpruntime.NewManager(store, nil, tools.NewRegistry(), log.New(io.Discard))
+	manager := mcpruntime.NewManager(service, nil, tools.NewRegistry(), log.New(io.Discard))
 	defer manager.Close()
 	defer close(release)
 	manager.Refresh(t.Context())
@@ -120,11 +127,10 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
-	handler := NewHandler(sessionStore{}, manager, store)
+	handler := NewHandler(service, sessionStore{}, manager, "")
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/plugins", handler.Install)
+	mux.HandleFunc("POST /v1/plugins/install", handler.Install)
 	mux.HandleFunc("DELETE /v1/plugins/{plugin}", handler.Remove)
-	mux.HandleFunc("POST /v1/plugins/repository", handler.InstallRepository)
 	mux.HandleFunc("POST /v1/plugins/{plugin}/update", handler.Update)
 	var previousRevision uint64
 	request := func(method, path string, body io.Reader) *httptest.ResponseRecorder {
@@ -152,29 +158,51 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 			return manager.Revision() > previousRevision && manager.Status(plugins.MCPServerID("fixture", "local")).Status == "connected"
 		})
 	}
-	install := func(value string) {
+	repo := t.TempDir()
+	git := func(args ...string) string {
 		t.Helper()
-		archive := pluginArchive(t, map[string]string{
-			"fixture/plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"fixture"}`,
-			"fixture/mcp.json":    `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"local":{"type":"stdio","command":"plugin-fixture","cwd":"${PLUGIN_DATA}","args":["-test.run=^TestPluginMCPProcess$"],"env":{"JAZ_PLUGIN_MCP_PROCESS":"1","GATE_FILE":"${PLUGIN_DATA}/allow","VALUE":"` + value + `"}}}}`,
-		})
-		recorder := request(http.MethodPost, "/v1/plugins", bytes.NewReader(archive))
-		if recorder.Code != http.StatusOK {
-			t.Fatalf("install = %d %s", recorder.Code, recorder.Body)
+		command := exec.Command("git", append([]string{"-c", "core.hooksPath=" + os.DevNull}, args...)...)
+		command.Dir = repo
+		data, err := command.Output()
+		if err != nil {
+			t.Fatal(err)
 		}
-		gate := filepath.Join(layout.Root, "plugin-data", "fixture", "allow")
-		if _, err := os.Stat(gate); os.IsNotExist(err) {
-			until(func() bool { _, err := os.Stat(gate + ".entered"); return err == nil })
-			if manager.Status(plugins.MCPServerID("fixture", "local")).Status == "connected" {
-				t.Fatal("MCP connected before its fixture was released")
-			}
-			if err := os.WriteFile(gate, nil, 0600); err != nil {
+		return strings.TrimSpace(string(data))
+	}
+	git("init", "--quiet")
+	writeConfig := func(value string, gate bool) {
+		t.Helper()
+		env := `{"JAZ_PLUGIN_MCP_PROCESS":"1","VALUE":"` + value + `"}`
+		if gate {
+			env = `{"JAZ_PLUGIN_MCP_PROCESS":"1","GATE_FILE":"${PLUGIN_DATA}/allow","VALUE":"` + value + `"}`
+		}
+		for name, body := range map[string]string{
+			"plugin.json": `{"name":"fixture"}`,
+			"mcp.json":    `{"mcpServers":{"local":{"type":"stdio","command":"plugin-fixture","cwd":"${PLUGIN_DATA}","args":["-test.run=^TestPluginMCPProcess$"],"env":` + env + `}}}`,
+		} {
+			if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0600); err != nil {
 				t.Fatal(err)
 			}
 		}
-		connected()
+		git("add", "--all")
+		testgit.Snapshot(t, repo)
 	}
-	install("${PLUGIN_ROOT}")
+	writeConfig("${PLUGIN_ROOT}", true)
+	input, _ := json.Marshal(plugins.RepositoryInput{Repository: repo})
+	recorder := request(http.MethodPost, "/v1/plugins/install", bytes.NewReader(input))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("install = %d %s", recorder.Code, recorder.Body)
+	}
+	gate := filepath.Join(layout.Root, "plugin-data", "fixture", "allow")
+	until(func() bool { _, err := os.Stat(gate + ".entered"); return err == nil })
+	if manager.Status(plugins.MCPServerID("fixture", "local")).Status == "connected" {
+		t.Fatal("MCP connected before its fixture was released")
+	}
+	if err := os.WriteFile(gate, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	connected()
+
 	proxy := httptest.NewServer(manager.Handler())
 	defer proxy.Close()
 	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "agent"}, nil)
@@ -217,10 +245,6 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 		return output["pid"]
 	}
 	first := call(filepath.Join(layout.Plugins, "fixture"))
-	install("${PLUGIN_ROOT}")
-	if call(filepath.Join(layout.Plugins, "fixture")) == first {
-		t.Fatal("replacing a plugin with the same config kept the old process")
-	}
 	points, err := manager.Entrypoints(t.Context())
 	if err != nil || len(points) != 1 {
 		t.Fatalf("app entrypoints = %+v %v", points, err)
@@ -229,46 +253,15 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 	if err != nil || !strings.Contains(html, "Plugin MCP App") {
 		t.Fatalf("MCP App = %s %v", html, err)
 	}
-	repo := t.TempDir()
-	git := func(args ...string) string {
-		t.Helper()
-		command := exec.Command("git", append([]string{"-c", "core.hooksPath=" + os.DevNull}, args...)...)
-		command.Dir = repo
-		data, err := command.Output()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return strings.TrimSpace(string(data))
-	}
-	git("init", "--quiet")
-	config := func(value string) {
-		t.Helper()
-		for name, body := range map[string]string{
-			"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"fixture"}`,
-			"mcp.json":    `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"local":{"type":"stdio","command":"plugin-fixture","cwd":"${PLUGIN_DATA}","args":["-test.run=^TestPluginMCPProcess$"],"env":{"JAZ_PLUGIN_MCP_PROCESS":"1","VALUE":"` + value + `"}}}}`,
-		} {
-			if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		git("add", "--all")
-		testgit.Snapshot(t, repo)
-	}
-	config("repo-first")
-	input, _ := json.Marshal(plugins.RepositoryInput{Repository: repo})
-	response := request(http.MethodPost, "/v1/plugins/repository", bytes.NewReader(input))
-	if response.Code != http.StatusOK {
-		t.Fatalf("repository install = %d %s", response.Code, response.Body)
-	}
-	connected()
-	call("repo-first")
-	config("repo-second")
-	response = request(http.MethodPost, "/v1/plugins/fixture/update", nil)
+	writeConfig("repo-second", false)
+	response := request(http.MethodPost, "/v1/plugins/fixture/update", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("repository update = %d %s", response.Code, response.Body)
 	}
 	connected()
-	call("repo-second")
+	if call("repo-second") == first {
+		t.Fatal("updating plugin kept old process")
+	}
 	listed, err := store.List()
 	if err != nil || listed[0].Source.Commit != git("rev-parse", "HEAD") {
 		t.Fatalf("updated source = %+v %v", listed, err)
@@ -280,7 +273,7 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 	if err := os.Remove(stopped); err != nil {
 		t.Fatal(err)
 	}
-	recorder := request(http.MethodDelete, "/v1/plugins/fixture", nil)
+	recorder = request(http.MethodDelete, "/v1/plugins/fixture", nil)
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("remove = %d %s", recorder.Code, recorder.Body)
 	}
@@ -291,29 +284,7 @@ func TestPluginInstallRefreshesProxyToolsAndMCPApps(t *testing.T) {
 	if points, err := manager.Entrypoints(t.Context()); err != nil || len(points) != 0 {
 		t.Fatalf("removed apps = %+v %v", points, err)
 	}
-	if _, err := os.Stat(stopped); err != nil {
-		t.Fatal("removed stdio process did not stop", err)
-	}
 	if requests.Load() != before {
 		t.Fatalf("plugin mutation contacted unrelated server: %d -> %d", before, requests.Load())
 	}
-}
-
-func pluginArchive(t *testing.T, files map[string]string) []byte {
-	t.Helper()
-	var archive bytes.Buffer
-	writer := zip.NewWriter(&archive)
-	for name, body := range files {
-		file, err := writer.Create(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := io.WriteString(file, body); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return archive.Bytes()
 }

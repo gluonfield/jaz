@@ -33,15 +33,13 @@ type DisconnectResult struct {
 type Service struct {
 	catalog       *Catalog
 	store         Store
-	remoteMCP     *RemoteMCPConnector
 	disconnecters map[string]SessionDisconnecter
 }
 
-func NewService(catalog *Catalog, store Store, remoteMCP *RemoteMCPConnector, disconnecters ...SessionDisconnecter) *Service {
+func NewService(catalog *Catalog, store Store, disconnecters ...SessionDisconnecter) *Service {
 	service := &Service{
 		catalog:       catalog,
 		store:         store,
-		remoteMCP:     remoteMCP,
 		disconnecters: map[string]SessionDisconnecter{},
 	}
 	for _, disconnecter := range disconnecters {
@@ -52,11 +50,15 @@ func NewService(catalog *Catalog, store Store, remoteMCP *RemoteMCPConnector, di
 	return service
 }
 
-func (s *Service) ListPlugins(ctx context.Context, loopbackAllowed bool) ([]integrations.Plugin, error) {
+func (s *Service) Catalog() *Catalog {
+	return s.catalog
+}
+
+func (s *Service) ListPlugins(ctx context.Context, _ bool) ([]integrations.Plugin, error) {
 	plugins := s.catalog.ListPlugins()
 	out := make([]integrations.Plugin, 0, len(plugins))
 	for i := range plugins {
-		plugin, err := s.withConnection(ctx, s.catalog.forSignIn(plugins[i], loopbackAllowed))
+		plugin, err := s.withConnection(ctx, plugins[i])
 		if err != nil {
 			return nil, err
 		}
@@ -65,13 +67,20 @@ func (s *Service) ListPlugins(ctx context.Context, loopbackAllowed bool) ([]inte
 	return out, nil
 }
 
-func (s *Service) Plugin(ctx context.Context, id string, loopbackAllowed bool) (integrations.Plugin, bool, error) {
+func (s *Service) Plugin(ctx context.Context, id string, _ bool) (integrations.Plugin, bool, error) {
 	plugin, ok := s.catalog.Plugin(id)
 	if !ok {
 		return integrations.Plugin{}, false, nil
 	}
-	plugin, err := s.withConnection(ctx, s.catalog.forSignIn(plugin, loopbackAllowed))
+	plugin, err := s.withConnection(ctx, plugin)
 	return plugin, true, err
+}
+
+func (s *Service) ListAccounts(ctx context.Context, providerID string) ([]integrations.Connection, error) {
+	if s == nil || s.store == nil || providerID == "" {
+		return nil, nil
+	}
+	return s.store.ListConnections(ctx, providerID)
 }
 
 func (s *Service) DisconnectAccount(ctx context.Context, id string) (DisconnectResult, error) {
@@ -84,11 +93,6 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) (DisconnectR
 		return DisconnectResult{}, err
 	}
 	if !ok {
-		if disconnected, remoteErr := s.remoteMCP.Disconnect(ctx, id, s.catalog); remoteErr != nil {
-			return DisconnectResult{}, remoteErr
-		} else if disconnected {
-			return DisconnectResult{MCPServersChanged: true}, nil
-		}
 		return DisconnectResult{}, ErrConnectionNotFound
 	}
 	unlock := integrationoauth.LockToken(id)
@@ -113,7 +117,7 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) (DisconnectR
 	return DisconnectResult{MCPServersChanged: usesConnectionMCP}, nil
 }
 
-// AgentConnections lists every connected account.
+// AgentConnections lists every connected account across native integrations.
 func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, error) {
 	plugins, err := s.ListPlugins(ctx, false)
 	if err != nil {
@@ -129,7 +133,7 @@ func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, erro
 			connection.ProviderName = plugin.Name
 		}
 		for _, account := range plugin.Connection.Accounts {
-			connection.Account = accountLabel(account)
+			connection.Account = AccountLabel(account)
 			connection.RelevantPaths = s.relevantPaths(account)
 			out = append(out, connection)
 		}
@@ -138,12 +142,6 @@ func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, erro
 }
 
 func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin) (integrations.Plugin, error) {
-	if connection, err := s.remoteMCP.Connection(ctx, plugin); err != nil {
-		return integrations.Plugin{}, err
-	} else if connection != nil {
-		plugin.Connection = connection
-		return plugin, nil
-	}
 	if plugin.Provider.ID == "" {
 		return plugin, nil
 	}
@@ -162,10 +160,13 @@ func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin
 
 func (s *Service) providerUsesConnectionMCP(provider string) bool {
 	plugin, ok := s.catalog.Plugin(provider)
-	return ok && plugin.UsesConnectionMCP()
+	if !ok {
+		return true
+	}
+	return plugin.UsesConnectionMCP()
 }
 
-func accountLabel(connection integrations.Connection) string {
+func AccountLabel(connection integrations.Connection) string {
 	label := connection.AccountRef()
 	accountID := strings.TrimSpace(connection.AccountID)
 	if label == "" {

@@ -19,7 +19,9 @@ export function createGroup(input: { name: string; members: string[] }): Promise
   return post<Bot>('/v1/bots/groups', input)
 }
 
-export type BotPatch = Partial<Pick<Bot, 'name' | 'avatar' | 'members' | 'agent' | 'model' | 'reasoning_effort' | 'workspaces' | 'prompt'>>
+export type BotPatch = Partial<
+  Pick<Bot, 'name' | 'avatar' | 'members' | 'agent' | 'model' | 'reasoning_effort' | 'workspaces' | 'prompt' | 'plugins'>
+> & { inherit_plugins?: boolean }
 
 export function updateBot(id: string, input: BotPatch): Promise<Bot> {
   return patch<Bot>(`/v1/bots/${id}`, input)

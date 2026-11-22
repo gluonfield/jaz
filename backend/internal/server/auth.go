@@ -11,6 +11,7 @@ import (
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/m365copilot"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 )
@@ -116,7 +117,7 @@ func publicDeviceRequest(r *http.Request) bool {
 }
 
 func publicOAuthCallback(r *http.Request) bool {
-	return r.Method == http.MethodGet && (r.URL.Path == "/v1/connections/oauth/callback" || r.URL.Path == mcpOAuthCallbackPath || r.URL.Path == m365copilot.OAuthCallbackPath)
+	return r.Method == http.MethodGet && (r.URL.Path == plugins.OAuthCallbackPath || r.URL.Path == mcpOAuthCallbackPath || r.URL.Path == m365copilot.OAuthCallbackPath)
 }
 
 func writeAuthError(w http.ResponseWriter, status int, code string, err error) {

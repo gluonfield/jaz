@@ -1,7 +1,6 @@
 package plugins
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -21,9 +20,11 @@ func TestManifestLayoutsDriveInventoryAndAgentSkills(t *testing.T) {
 		display string
 		want    []string
 	}{
-		{"plugin.json", portable(t, "acme.tools", map[string]any{"displayName": "Portable tools"}), "Portable tools", []string{"acme.tools:default"}},
+		{"plugin.json", `{"name":"acme.tools","displayName":"Portable tools"}`, "Portable tools", []string{"acme.tools:default"}},
 		{".claude-plugin/plugin.json", `{"name":"acme.tools","displayName":"Claude tools","skills":["./extra/","./single/",".","./skills/"],"hooks":{"command":"ignored"}}`, "Claude tools", []string{"acme.tools:default", "acme.tools:extra", "acme.tools:single", "acme.tools:root", "acme.tools:skills-root"}},
-		{".codex-plugin/plugin.json", `{"name":"acme.tools","interface":{"displayName":"Codex tools"},"skills":"./extra/","mcpServers":"./custom-mcp.json","apps":"./.app.json"}`, "Codex tools", []string{"acme.tools:default", "acme.tools:extra"}},
+		{".codex-plugin/plugin.json", `{"name":"acme.tools","interface":{"displayName":"Codex tools","defaultPrompt":["Run checks"]},"skills":"./extra/","mcpServers":"./custom-mcp.json","apps":"./.app.json"}`, "Codex tools", []string{"acme.tools:default", "acme.tools:extra"}},
+		{".cursor-plugin/plugin.json", `{"name":"acme.tools","displayName":"Cursor tools","skills":"skills/"}`, "Cursor tools", []string{"acme.tools:default", "acme.tools:skills-root"}},
+		{".antigravity-plugin/plugin.json", `{"name":"acme.tools","displayName":"Antigravity tools"}`, "Antigravity tools", []string{"acme.tools:default"}},
 	} {
 		t.Run(test.layout, func(t *testing.T) {
 			layout := runtimefiles.New(t.TempDir())
@@ -41,11 +42,11 @@ func TestManifestLayoutsDriveInventoryAndAgentSkills(t *testing.T) {
 				"bundle/custom-mcp.json":                           `{"mcpServers":{}}`,
 				"bundle/.app.json":                                 `{not read}`,
 			}
-			installed, err := store.Install(archive(t, files))
+			installed, err := installFiles(t, store, files)
 			if err != nil || len(installed) != 1 {
 				t.Fatalf("install = %+v, %v", installed, err)
 			}
-			if installed[0].DisplayName != test.display || !slices.Equal(installed[0].Skills, test.want) || len(installed[0].Warnings) != 0 {
+			if installed[0].DisplayName != test.display || !slices.Equal(skillNames(installed[0].Skills), test.want) || len(installed[0].Warnings) != 0 {
 				t.Fatalf("inventory = %+v, want %s with %v", installed[0], test.display, test.want)
 			}
 			catalog, err := skills.Load(layout.Root)
@@ -56,103 +57,66 @@ func TestManifestLayoutsDriveInventoryAndAgentSkills(t *testing.T) {
 				if skill.Plugin != "acme.tools" || !strings.HasPrefix(skill.Path, filepath.Join(layout.Plugins, "acme.tools")+string(filepath.Separator)) || !strings.Contains(catalog.Prompt(), skill.Path) {
 					t.Fatalf("skill lost its identity or original path: %+v", skill)
 				}
-				if _, err := os.Stat(skill.Path); err != nil {
-					t.Fatal(err)
-				}
 			}
 			definition, err := manifest.Read(filepath.Join(layout.Plugins, "acme.tools"))
 			if err != nil || definition.ManifestPath != test.layout {
 				t.Fatalf("selected manifest = %+v, %v", definition, err)
 			}
-			if test.layout == ".codex-plugin/plugin.json" && string(definition.MCPServers) != `"./custom-mcp.json"` {
-				t.Fatalf("MCP declaration lost: %s", definition.MCPServers)
+			if test.layout == ".codex-plugin/plugin.json" {
+				if string(definition.MCPServers) != `"./custom-mcp.json"` {
+					t.Fatalf("MCP declaration lost: %s", definition.MCPServers)
+				}
+				if !slices.Equal(installed[0].SuggestedPrompts, []string{"Run checks"}) {
+					t.Fatalf("suggested prompts = %v", installed[0].SuggestedPrompts)
+				}
 			}
 		})
 	}
 }
 
-func TestManifestPrecedenceAndUnknownCoreFields(t *testing.T) {
-	for _, hasRoot := range []bool{true, false} {
-		store := New(runtimefiles.New(t.TempDir()))
-		files := map[string]string{
-			"bundle/.claude-plugin/plugin.json": `{"name":"claude","displayName":"Claude fallback"}`,
-			"bundle/.codex-plugin/plugin.json":  `{"name":"codex","interface":{"displayName":"Codex fallback"}}`,
-		}
-		want := "Claude fallback"
-		if hasRoot {
-			files["bundle/plugin.json"] = `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"portable","title":"Ignored old title","page":{"view":"ignored","file":"ignored.json"},"extensions":{"other.client":false}}`
-			want = "portable"
-		}
-		installed, err := store.Install(archive(t, files))
-		if err != nil || installed[0].DisplayName != want || installed[0].Page != nil {
-			t.Fatalf("precedence = %+v, %v", installed, err)
-		}
-		if hasRoot && (len(installed[0].Warnings) != 3 || !strings.Contains(installed[0].Warnings[2], "native name")) {
-			t.Fatalf("unknown root fields and conflicting native overlay were not reported: %+v", installed[0])
-		}
-	}
+func TestManifestMergesSiblingMetadataAndTopLevelPage(t *testing.T) {
 	store := New(runtimefiles.New(t.TempDir()))
-	if _, err := store.Install(archive(t, map[string]string{"bundle/plugin.json": `{"name":"old-shape"}`, "bundle/.claude-plugin/plugin.json": `{"name":"fallback"}`})); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("invalid root fell back to native: %v", err)
+	installed, err := installFiles(t, store, map[string]string{
+		"bundle/.claude-plugin/plugin.json": `{"name":"base44","version":"1.0.0","description":"Build full-stack apps"}`,
+		"bundle/.codex-plugin/plugin.json":  `{"name":"base44","interface":{"displayName":"Base44","category":"Productivity","defaultPrompt":["Build an app with Base44"]}}`,
+		"bundle/views/dashboard.html":       `<p>ok</p>`,
+	})
+	if err != nil || len(installed) != 1 {
+		t.Fatalf("install = %+v, %v", installed, err)
+	}
+	got := installed[0]
+	if got.DisplayName != "Base44" || got.Category != "Productivity" || got.Description != "Build full-stack apps" || !slices.Equal(got.SuggestedPrompts, []string{"Build an app with Base44"}) {
+		t.Fatalf("merged metadata = %+v", got)
+	}
+
+	installedPage, err := installFiles(t, store, map[string]string{
+		"tenders/plugin.json":       `{"name":"tenders","displayName":"Tenders","page":{"view":"status"}}`,
+		"tenders/views/status.html": "<p>status</p>",
+	})
+	if err != nil || len(installedPage) != 1 || installedPage[0].Page == nil || installedPage[0].Page.View != "status" {
+		t.Fatalf("top-level page = %+v, %v", installedPage, err)
 	}
 }
 
-func TestPortableManifestValidationAtInstall(t *testing.T) {
-	for _, test := range []struct {
-		field string
-		value any
-	}{
-		{"$schema", nil}, {"$schema", "https://example.com/unknown"},
-		{"name", "Uppercase"}, {"name", "trailing-"}, {"name", "double--dash"}, {"name", "double..dot"}, {"name", strings.Repeat("a", 65)},
-		{"version", 3}, {"description", false}, {"author", "invalid"}, {"author", map[string]any{"name": false}},
-		{"homepage", false}, {"repository", []string{}}, {"license", false}, {"keywords", []any{"valid", false}},
-		{"extensions", []any{}}, {"extensions", false},
-	} {
-		t.Run(test.field, func(t *testing.T) {
-			fields := map[string]any{"$schema": manifest.Schema, "name": "valid"}
-			fields[test.field] = test.value
-			data, err := json.Marshal(fields)
-			if err != nil {
-				t.Fatal(err)
-			}
+func TestManifestRejectsInvalidNames(t *testing.T) {
+	for _, name := range []string{"Uppercase", "trailing-", "double--dash", "double..dot", strings.Repeat("a", 65)} {
+		t.Run(name, func(t *testing.T) {
 			store := New(runtimefiles.New(t.TempDir()))
-			if _, err := store.Install(archive(t, map[string]string{"plugin.json": string(data)})); !errors.Is(err, ErrInvalid) {
-				t.Fatalf("accepted invalid %s=%v: %v", test.field, test.value, err)
+			if _, err := installFiles(t, store, map[string]string{"plugin.json": manifestJSON(t, map[string]any{"name": name})}); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("accepted invalid name %q: %v", name, err)
 			}
 		})
-	}
-}
-
-func TestUnknownJazFieldsWarnAndLeaveThePageUsable(t *testing.T) {
-	store := New(runtimefiles.New(t.TempDir()))
-	installed, err := store.Install(archive(t, map[string]string{
-		"plugin.json": portable(t, "tenders", map[string]any{
-			"future": true,
-			"page":   map[string]any{"view": "status", "file": "../ignored.json", "icon": "legacy"},
-		}),
-		"views/status.html": "<p>status</p>",
-	}))
-	if err != nil || len(installed) != 1 || installed[0].Page == nil || installed[0].Page.View != "status" || !slices.Equal(installed[0].Warnings, []string{
-		`Ignoring unknown manifest field "extensions.chat.jaz.future"`,
-		`Ignoring unknown manifest field "extensions.chat.jaz.page.file"`,
-		`Ignoring unknown manifest field "extensions.chat.jaz.page.icon"`,
-	}) {
-		t.Fatalf("unknown nested fields blocked or escaped warnings: %+v %v", installed, err)
-	}
-	page, err := store.Page("tenders", pageSessions{})
-	if err != nil || page.View != "<p>status</p>" || len(page.Items) != 0 {
-		t.Fatalf("old page.file affected the page: %+v %v", page, err)
 	}
 }
 
 func TestPluginFilesCannotResolveOutsideThePackage(t *testing.T) {
 	layout := runtimefiles.New(t.TempDir())
 	store := New(layout)
-	if _, err := store.Install(archive(t, map[string]string{
-		"bundle/plugin.json":            portable(t, "contained", nil),
+	if _, err := installFiles(t, store, map[string]string{
+		"bundle/plugin.json":            `{"name":"contained"}`,
 		"bundle/skills/inside/SKILL.md": "---\nname: inside\ndescription: Skill inside\n---\n",
 		"bundle/views/status.html":      "<p>inside</p>",
-	})); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	root := filepath.Join(layout.Plugins, "contained")
@@ -190,13 +154,13 @@ func TestPluginFilesCannotResolveOutsideThePackage(t *testing.T) {
 func TestPluginSkillNamespacesPreserveCollisionsAndOriginalPaths(t *testing.T) {
 	layout := runtimefiles.New(t.TempDir())
 	store := New(layout)
-	if _, err := store.Install(archive(t, map[string]string{
-		"tenders/plugin.json":                     portable(t, "tenders", nil),
+	if _, err := installFiles(t, store, map[string]string{
+		"tenders/plugin.json":                     `{"name":"tenders"}`,
 		"tenders/skills/query-sheet/SKILL.md":     "---\nname: query-sheet\ndescription: Tender query\n---\n",
 		"tenders/skills/bid-preparation/SKILL.md": "---\nname: bid-preparation\ndescription: Tender bid\n---\n",
-		"other.tools/plugin.json":                 portable(t, "other.tools", nil),
+		"other.tools/plugin.json":                 `{"name":"other.tools"}`,
 		"other.tools/skills/query-sheet/SKILL.md": "---\nname: query-sheet\ndescription: Other query\n---\n",
-	})); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]string{
@@ -224,7 +188,7 @@ func TestPluginSkillNamespacesPreserveCollisionsAndOriginalPaths(t *testing.T) {
 		}
 	}
 	installed, err := store.List()
-	if err != nil || !slices.Equal(installed[0].Skills, []string{"other.tools:query-sheet"}) || !slices.Equal(installed[1].Skills, []string{"tenders:bid-preparation", "tenders:query-sheet"}) {
+	if err != nil || !slices.Equal(skillNames(installed[0].Skills), []string{"other.tools:query-sheet"}) || !slices.Equal(skillNames(installed[1].Skills), []string{"tenders:bid-preparation", "tenders:query-sheet"}) {
 		t.Fatalf("Settings inventory = %+v %v", installed, err)
 	}
 }

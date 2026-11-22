@@ -46,20 +46,16 @@ func NewConnectionQRService(providers ConnectionQRProviders) *connections.QRServ
 	return connections.NewQRService(providers.Providers...)
 }
 
-func NewConnectionRemoteMCPConnector(store *sqlitestore.Store) *connections.RemoteMCPConnector {
-	return connections.NewRemoteMCPConnector(store)
-}
-
 func NewConnectionMCPConnector(store *sqlitestore.Store, manager *mcpruntime.Manager) *connections.MCPConnectionConnector {
 	return connections.NewMCPConnectionConnector(store, manager)
 }
 
-func NewConnectionConnectService(catalog *connections.Catalog, oauth *connections.OAuthService, qr *connections.QRService, remoteMCP *connections.RemoteMCPConnector, mcpConnection *connections.MCPConnectionConnector) *connections.ConnectService {
-	return connections.NewConnectService(catalog, oauth, qr, remoteMCP, mcpConnection)
+func NewConnectionConnectService(catalog *connections.Catalog, oauth *connections.OAuthService, qr *connections.QRService, mcpConnection *connections.MCPConnectionConnector) *connections.ConnectService {
+	return connections.NewConnectService(catalog, oauth, qr, mcpConnection)
 }
 
-func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store, remoteMCP *connections.RemoteMCPConnector, disconnecters ConnectionSessionDisconnecters) *connections.Service {
-	return connections.NewService(catalog, store, remoteMCP, disconnecters.Disconnecters...)
+func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store, disconnecters ConnectionSessionDisconnecters) *connections.Service {
+	return connections.NewService(catalog, store, disconnecters.Disconnecters...)
 }
 
 func NewGmailMCPTools(store *sqlitestore.Store, raw integrationingest.RawWriter) *connections.GmailMCPTools {

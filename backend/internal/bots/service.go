@@ -122,7 +122,7 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 	if err := s.store.UpdateSessionTitle(session.ID, name); err != nil {
 		return Bot{}, err
 	}
-	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: KindBot, Prompt: strings.TrimSpace(input.Prompt), Workspaces: workspaces, Shape: avatar.Shape, Color: avatar.Color, Main: input.Main}); err != nil {
+	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: KindBot, Prompt: strings.TrimSpace(input.Prompt), Workspaces: workspaces, Plugins: normalizeBotPlugins(input.Plugins), Shape: avatar.Shape, Color: avatar.Color, Main: input.Main}); err != nil {
 		return Bot{}, err
 	}
 	s.events.Publish(sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeSession})
@@ -202,6 +202,17 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateBot) (Bot, 
 		if err != nil {
 			return Bot{}, err
 		}
+	}
+	if input.InheritPlugins {
+		if record.Kind != KindBot {
+			return Bot{}, errors.New("only a bot has plugins")
+		}
+		record.Plugins = nil
+	} else if input.Plugins != nil {
+		if record.Kind != KindBot {
+			return Bot{}, errors.New("only a bot has plugins")
+		}
+		record.Plugins = normalizeBotPlugins(input.Plugins)
 	}
 	if (input.Agent != nil || input.Model != nil) && record.Kind != KindBot {
 		return Bot{}, errors.New("only a bot has an agent")
@@ -468,6 +479,7 @@ func (s *Service) view(record storage.BotRecord, session storage.Session, held m
 		Name:        session.Title,
 		Prompt:      record.Prompt,
 		Workspaces:  slices.Clone(record.Workspaces),
+		Plugins:     cloneStringSlicePtr(record.Plugins),
 		Avatar:      Avatar{Shape: record.Shape, Color: record.Color},
 		Pinned:      record.Pinned,
 		Main:        record.Main,
@@ -573,4 +585,27 @@ func checkAvatar(avatar Avatar) error {
 		return fmt.Errorf("unsupported avatar %s/%s", avatar.Shape, avatar.Color)
 	}
 	return nil
+}
+
+func normalizeBotPlugins(raw *[]string) *[]string {
+	if raw == nil {
+		return nil
+	}
+	out := make([]string, 0, len(*raw))
+	for _, id := range *raw {
+		id = strings.TrimSpace(id)
+		if id == "" || slices.Contains(out, id) {
+			continue
+		}
+		out = append(out, id)
+	}
+	return &out
+}
+
+func cloneStringSlicePtr(raw *[]string) *[]string {
+	if raw == nil {
+		return nil
+	}
+	cloned := slices.Clone(*raw)
+	return &cloned
 }

@@ -1,30 +1,31 @@
 import { CheckCircle2, LoaderCircle } from 'lucide-react'
 import { useMemo } from 'react'
 import { ConnectionQRModal } from '@/components/settings/ConnectionQRModal'
-import { PluginIcon } from '@/components/settings/ConnectionPluginVisuals'
-import { accountAddress, pluginActionLabel, pluginCanConnect } from '@/components/settings/connectionFormatting'
-import { useConnectionSignIn } from '@/components/settings/useConnectionSignIn'
+import { PluginAvatar } from '@/components/settings/PluginVisuals'
+import { accountAddress, pluginActionLabel, pluginCanConnect } from '@/components/settings/pluginFormatting'
+import { usePluginSignIn } from '@/components/settings/usePluginSignIn'
 import { Button } from '@/components/ui/Button'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import type { IntegrationPlugin } from '@/lib/api/types'
+import type { Plugin } from '@/lib/api/plugins'
 
-// The connections people most want on day one lead the list.
 const PLUGIN_PRIORITY = ['telegram', 'whatsapp', 'gmail']
 
 export function ConnectionsList() {
-  const signIn = useConnectionSignIn()
-  const plugins = signIn.plugins
-  const sorted = useMemo(() => orderPlugins(plugins.data ?? []), [plugins.data])
+  const signIn = usePluginSignIn()
+  const sorted = useMemo(
+    () => orderPlugins(signIn.plugins.filter((plugin) => plugin.origin === 'builtin')),
+    [signIn.plugins],
+  )
 
   return (
     <div>
-      {plugins.isPending ? (
+      {signIn.catalog.isPending ? (
         <SkeletonRows count={3} />
-      ) : plugins.isError ? (
-        <p className="text-center text-[13px] text-danger">{plugins.error.message}</p>
+      ) : signIn.catalog.isError ? (
+        <p className="text-center text-[13px] text-danger">{signIn.catalog.error.message}</p>
       ) : sorted.length === 0 ? (
         <p className="rounded-[12px] bg-surface px-3 py-3 text-center text-[13px] text-ink-3">
-          No connections are available on this backend yet.
+          No integrations are available on this backend yet.
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-1.5">
@@ -38,7 +39,7 @@ export function ConnectionsList() {
           ))}
         </div>
       )}
-      <p className="mt-3 text-center text-[12px] text-ink-3">Optional — add more anytime in Settings.</p>
+      <p className="mt-3 text-center text-[12px] text-ink-3">Optional — manage all plugins anytime in Settings.</p>
 
       <ConnectionQRModal {...signIn.qrModal} />
     </div>
@@ -50,20 +51,20 @@ function ConnectionRow({
   connecting,
   onConnect,
 }: {
-  plugin: IntegrationPlugin
+  plugin: Plugin
   connecting: boolean
   onConnect: () => void
 }) {
-  const connected = plugin.connection?.status === 'connected'
-  const accounts = (plugin.connection?.accounts ?? []).map(accountAddress).filter(Boolean)
+  const connected = Boolean(plugin.auth?.connected)
+  const accounts = (plugin.auth?.accounts ?? []).map(accountAddress).filter(Boolean)
   const showConnect = pluginCanConnect(plugin) && !connected
 
   return (
     <div className="flex min-w-0 items-center gap-2.5 rounded-[12px] bg-surface px-3 py-2.5">
-      <PluginIcon plugin={plugin} compact />
+      <PluginAvatar plugin={plugin} size="sm" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <p className="truncate text-[13.5px] font-medium text-ink">{plugin.name}</p>
+          <p className="truncate text-[13.5px] font-medium text-ink">{plugin.display_name}</p>
           {connected ? <CheckCircle2 size={15} className="shrink-0 text-primary" /> : null}
         </div>
         {connected && accounts.length > 0 ? (
@@ -80,12 +81,12 @@ function ConnectionRow({
   )
 }
 
-function orderPlugins(plugins: IntegrationPlugin[]): IntegrationPlugin[] {
+function orderPlugins(plugins: Plugin[]): Plugin[] {
   const rank = new Map(PLUGIN_PRIORITY.map((id, index) => [id, index]))
   return [...plugins].sort((a, b) => {
     const left = rank.get(a.id) ?? Number.MAX_SAFE_INTEGER
     const right = rank.get(b.id) ?? Number.MAX_SAFE_INTEGER
     if (left !== right) return left - right
-    return a.name.localeCompare(b.name)
+    return a.display_name.localeCompare(b.display_name)
   })
 }

@@ -10,7 +10,7 @@ import (
 )
 
 const getBot = `-- name: GetBot :one
-SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces
+SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins
 FROM bots
 WHERE thread_id = ?1
 LIMIT 1
@@ -29,6 +29,7 @@ func (q *Queries) GetBot(ctx context.Context, threadID string) (Bot, error) {
 		&i.Prompt,
 		&i.Main,
 		&i.Workspaces,
+		&i.Plugins,
 	)
 	return i, err
 }
@@ -77,7 +78,7 @@ func (q *Queries) GetMembershipByThread(ctx context.Context, threadID string) (B
 }
 
 const listBots = `-- name: ListBots :many
-SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces
+SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins
 FROM bots
 `
 
@@ -100,6 +101,7 @@ func (q *Queries) ListBots(ctx context.Context) ([]Bot, error) {
 			&i.Prompt,
 			&i.Main,
 			&i.Workspaces,
+			&i.Plugins,
 		); err != nil {
 			return nil, err
 		}
@@ -196,8 +198,8 @@ func (q *Queries) UnpinBots(ctx context.Context) error {
 }
 
 const upsertBot = `-- name: UpsertBot :exec
-INSERT INTO bots (thread_id, kind, prompt, shape, color, members, main, workspaces)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+INSERT INTO bots (thread_id, kind, prompt, shape, color, members, main, workspaces, plugins)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
 ON CONFLICT(thread_id) DO UPDATE SET
   kind = excluded.kind,
   main = excluded.main,
@@ -205,7 +207,8 @@ ON CONFLICT(thread_id) DO UPDATE SET
   shape = excluded.shape,
   color = excluded.color,
   members = excluded.members,
-  workspaces = excluded.workspaces
+  workspaces = excluded.workspaces,
+  plugins = excluded.plugins
 `
 
 type UpsertBotParams struct {
@@ -217,6 +220,7 @@ type UpsertBotParams struct {
 	Members    string `json:"members"`
 	Main       int64  `json:"main"`
 	Workspaces string `json:"workspaces"`
+	Plugins    string `json:"plugins"`
 }
 
 func (q *Queries) UpsertBot(ctx context.Context, arg UpsertBotParams) error {
@@ -229,6 +233,7 @@ func (q *Queries) UpsertBot(ctx context.Context, arg UpsertBotParams) error {
 		arg.Members,
 		arg.Main,
 		arg.Workspaces,
+		arg.Plugins,
 	)
 	return err
 }

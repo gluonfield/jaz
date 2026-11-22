@@ -33,6 +33,7 @@ type Bot struct {
 	Name            string    `json:"name"`
 	Prompt          string    `json:"prompt,omitempty"`
 	Workspaces      []string  `json:"workspaces,omitempty"`
+	Plugins         *[]string `json:"plugins,omitempty"`
 	Avatar          Avatar    `json:"avatar"`
 	Pinned          int       `json:"pinned,omitempty"`
 	Main            bool      `json:"main,omitempty"`
@@ -63,20 +64,23 @@ type Bot struct {
 }
 
 type CreateBot struct {
-	Name       string   `json:"name"`
-	Prompt     string   `json:"prompt,omitempty"`
-	Workspaces []string `json:"workspaces,omitempty"`
-	Avatar     *Avatar  `json:"avatar,omitempty"`
-	Agent      string   `json:"agent,omitempty"`
-	Model      string   `json:"model,omitempty"`
+	Name       string    `json:"name"`
+	Prompt     string    `json:"prompt,omitempty"`
+	Workspaces []string  `json:"workspaces,omitempty"`
+	Plugins    *[]string `json:"plugins,omitempty"`
+	Avatar     *Avatar   `json:"avatar,omitempty"`
+	Agent      string    `json:"agent,omitempty"`
+	Model      string    `json:"model,omitempty"`
 	// StoredModel marks Model as saved earlier, as an adopted routine's is.
 	StoredModel bool `json:"-"`
 	Main        bool `json:"-"`
 }
 
 type UpdateBot struct {
-	Workspaces *[]string `json:"workspaces,omitempty"`
-	Name       *string   `json:"name,omitempty"`
+	Workspaces     *[]string `json:"workspaces,omitempty"`
+	Plugins        *[]string `json:"plugins,omitempty"`
+	InheritPlugins bool      `json:"inherit_plugins,omitempty"`
+	Name           *string   `json:"name,omitempty"`
 	Prompt     *string   `json:"prompt,omitempty"`
 	Avatar     *Avatar   `json:"avatar,omitempty"`
 	Members    *[]string `json:"members,omitempty"`

@@ -3,8 +3,8 @@ import { type FormEvent, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { QRCodeImage } from '@/components/ui/QRCodeImage'
-import type { ConnectionQRStart, ConnectionQRStatus, IntegrationPlugin } from '@/lib/api/types'
-import { PluginGlyph, PluginIcon } from './ConnectionPluginVisuals'
+import type { ConnectionQRStart, ConnectionQRStatus, Plugin } from '@/lib/api/plugins'
+import { PluginAvatar, PluginGlyph } from './PluginVisuals'
 
 export function ConnectionQRModal({
   plugin,
@@ -17,7 +17,7 @@ export function ConnectionQRModal({
   onRefresh,
   onSubmitPassword,
 }: {
-  plugin?: IntegrationPlugin
+  plugin?: Plugin
   qr?: ConnectionQRStart
   status?: ConnectionQRStatus
   loading: boolean
@@ -40,8 +40,8 @@ export function ConnectionQRModal({
     <Modal
       open
       onClose={onClose}
-      title={`Connect ${plugin.name}`}
-      description={`Scan with ${plugin.name} on your phone.`}
+      title={`Connect ${plugin.display_name}`}
+      description={`Scan with ${plugin.display_name} on your phone.`}
       icon={<PluginGlyph plugin={plugin} size={18} />}
       size="lg"
       footer={
@@ -84,7 +84,7 @@ export function ConnectionQRModal({
           <StatusCard plugin={plugin} status={currentStatus} error={status?.error} accountID={accountID} />
           {passwordRequired ? (
             <PasswordCard
-              provider={plugin.name}
+              provider={plugin.display_name}
               error={status?.error}
               submitting={passwordSubmitting}
               onSubmitPassword={onSubmitPassword}
@@ -103,16 +103,16 @@ function StatusCard({
   error,
   accountID,
 }: {
-  plugin: IntegrationPlugin
+  plugin: Plugin
   status: string
   error?: string
   accountID?: string
 }) {
-  const content = statusContent(plugin.name, status, error, accountID)
+  const content = statusContent(plugin.display_name, status, error, accountID)
   return (
     <div className="rounded-card bg-surface px-3 py-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]">
       <div className="flex items-start gap-3">
-        <PluginIcon plugin={plugin} compact />
+        <PluginAvatar plugin={plugin} size="sm" />
         <div className="min-w-0">
           <p className={`text-[13px] font-medium ${content.tone}`}>{content.title}</p>
           <p className="mt-1 text-[12px] leading-5 text-ink-3">{content.detail}</p>

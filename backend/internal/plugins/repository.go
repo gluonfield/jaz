@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -13,12 +14,16 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/plugins/manifest"
-	"github.com/wins/jaz/backend/internal/skills"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type RepositoryInput struct {
-	Repository string `json:"repository"`
-	Ref        string `json:"ref,omitempty"`
+	Repository string   `json:"repository"`
+	Ref        string   `json:"ref,omitempty"`
+	Paths      []string `json:"paths,omitempty"`
+	PluginID   string   `json:"plugin_id,omitempty"`
+	SourceID   string   `json:"source_id,omitempty"`
+	AutoUpdate bool     `json:"auto_update,omitempty"`
 }
 
 type SkippedPlugin struct {
@@ -68,6 +73,15 @@ func repositoryURL(value string) (string, error) {
 	return value, nil
 }
 
+func sourceIDFor(repoURL, ref string) string {
+	id := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(repoURL), ".git"))
+	id = strings.TrimPrefix(id, "https://github.com/")
+	if ref != "" {
+		id += "@" + ref
+	}
+	return id
+}
+
 func gitCommand(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	flags := []string{"-c", "http.userAgent=Mozilla/5.0", "-c", "credential.interactive=never", "-c", "core.hooksPath=" + os.DevNull, "-c", "protocol.ext.allow=never"}
 	command := exec.CommandContext(ctx, "git", append(flags, args...)...)
@@ -81,114 +95,242 @@ func gitCommand(ctx context.Context, dir string, args ...string) ([]byte, error)
 	return command.Output()
 }
 
-func (s *Store) InstallRepository(ctx context.Context, input RepositoryInput) (InstallResult, error) {
-	return s.installRepository(ctx, input, "", nil)
+func RemoteCommit(ctx context.Context, repoURL, ref string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	target := "HEAD"
+	if ref = strings.TrimSpace(ref); ref != "" {
+		if commitID.MatchString(ref) {
+			return ref, nil
+		}
+		target = ref
+	}
+	raw, err := gitCommand(ctx, "", "ls-remote", "--", repoURL, target)
+	if err != nil {
+		return "", err
+	}
+	fields := strings.Fields(string(raw))
+	if len(fields) == 0 || !commitID.MatchString(fields[0]) {
+		return "", fmt.Errorf("remote ref %q not found", target)
+	}
+	return fields[0], nil
 }
 
-func (s *Store) Update(ctx context.Context, name string) (InstallResult, error) {
-	if !manifest.SafeName(name) {
+func (s *Store) cloneCheckout(ctx context.Context, input RepositoryInput) (workDir, checkoutDir, repoURL, commit string, err error) {
+	input.Repository = strings.TrimSpace(input.Repository)
+	input.Ref = strings.TrimSpace(input.Ref)
+	repoURL, err = repositoryURL(input.Repository)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	if strings.HasPrefix(input.Ref, "-") || strings.ContainsAny(input.Ref, "\x00\r\n:") {
+		return "", "", "", "", fmt.Errorf("%w: invalid Git ref", ErrInvalid)
+	}
+	if err = os.MkdirAll(s.dir, 0o755); err != nil {
+		return "", "", "", "", err
+	}
+	workDir, err = os.MkdirTemp(s.dir, ".install-")
+	if err != nil {
+		return "", "", "", "", err
+	}
+	checkoutDir = filepath.Join(workDir, "repository")
+	if _, err = gitCommand(ctx, "", "clone", "--quiet", "--no-checkout", "--no-hardlinks", "--", repoURL, checkoutDir); err != nil {
+		_ = os.RemoveAll(workDir)
+		return "", "", "", "", fmt.Errorf("Git repository unavailable; the backend machine needs access through its existing Git credentials")
+	}
+	ref := "HEAD"
+	if input.Ref != "" {
+		if _, err = gitCommand(ctx, checkoutDir, "check-ref-format", "--allow-onelevel", input.Ref); err != nil {
+			_ = os.RemoveAll(workDir)
+			return "", "", "", "", fmt.Errorf("%w: invalid Git ref", ErrInvalid)
+		}
+		if _, err = gitCommand(ctx, checkoutDir, "fetch", "--quiet", "--", "origin", input.Ref); err != nil {
+			_ = os.RemoveAll(workDir)
+			return "", "", "", "", fmt.Errorf("Git ref unavailable; check the ref and the backend machine's repository access")
+		}
+		ref = "FETCH_HEAD"
+	}
+	rawCommit, err := gitCommand(ctx, checkoutDir, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
+	commit = strings.TrimSpace(string(rawCommit))
+	if err != nil || !commitID.MatchString(commit) {
+		_ = os.RemoveAll(workDir)
+		return "", "", "", "", fmt.Errorf("Git repository has no readable commit")
+	}
+	if _, err = gitCommand(ctx, checkoutDir, "checkout", "--quiet", "--detach", commit); err != nil {
+		_ = os.RemoveAll(workDir)
+		return "", "", "", "", fmt.Errorf("could not check out Git commit")
+	}
+	return workDir, checkoutDir, repoURL, commit, nil
+}
+
+func (s *Store) InspectSource(ctx context.Context, input RepositoryInput) (storage.PluginSourceRecord, []MarketplaceEntry, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	work, checkout, repoURL, commit, err := s.cloneCheckout(ctx, input)
+	if err != nil {
+		return storage.PluginSourceRecord{}, nil, err
+	}
+	defer os.RemoveAll(work)
+	var entries []MarketplaceEntry
+	isMarketplace := false
+	if len(input.Paths) > 0 {
+		for _, sub := range input.Paths {
+			resolved, err := manifest.Resolve(checkout, sub)
+			if err != nil {
+				return storage.PluginSourceRecord{}, nil, fmt.Errorf("%w: path %q: %v", ErrInvalid, sub, err)
+			}
+			plugin, err := readPackage(resolved, s.dataDir, nil)
+			if err != nil {
+				return storage.PluginSourceRecord{}, nil, err
+			}
+			entries = append(entries, entryFromPlugin(plugin, strings.TrimSpace(input.Repository), sub, strings.TrimSpace(input.Ref)))
+		}
+	} else {
+		_, discovered, _, mk, err := s.marketplace(checkout, strings.TrimSpace(input.Repository))
+		if err != nil {
+			return storage.PluginSourceRecord{}, nil, err
+		}
+		entries = discovered
+		isMarketplace = mk
+	}
+	catalogJSON, err := json.Marshal(entries)
+	if err != nil {
+		return storage.PluginSourceRecord{}, nil, err
+	}
+	now := time.Now().UTC()
+	record := storage.PluginSourceRecord{
+		ID:            sourceIDFor(repoURL, strings.TrimSpace(input.Ref)),
+		Repository:    strings.TrimSpace(input.Repository),
+		URL:           repoURL,
+		Ref:           strings.TrimSpace(input.Ref),
+		Paths:         input.Paths,
+		CommitSHA:     commit,
+		AutoUpdate:    input.AutoUpdate,
+		IsMarketplace: isMarketplace,
+		CatalogJSON:   catalogJSON,
+		CheckedAt:     now,
+		UpdatedAt:     now,
+	}
+	return record, entries, nil
+}
+
+func (s *Store) InstallRepository(ctx context.Context, input RepositoryInput) (InstallResult, error) {
+	return s.installRepository(ctx, input, strings.TrimSpace(input.PluginID), "")
+}
+
+func (s *Store) Update(ctx context.Context, pluginID string) (InstallResult, error) {
+	if !manifest.SafeName(pluginID) {
 		return InstallResult{}, fmt.Errorf("%w: invalid plugin name", ErrInvalid)
 	}
-	s.mu.RLock()
-	sources, err := s.sources()
-	_, installedErr := os.Stat(filepath.Join(s.dir, name))
-	s.mu.RUnlock()
+	if s.stateStore == nil {
+		return InstallResult{}, fmt.Errorf("%w: plugin state store unavailable", ErrInvalid)
+	}
+	state, ok, err := s.stateStore.GetPluginState(ctx, pluginID)
 	if err != nil {
 		return InstallResult{}, err
 	}
-	if installedErr != nil {
-		return InstallResult{}, ErrNotFound
-	}
-	source, ok := sources[name]
-	if !ok {
+	if !ok || state.SourceRepository == "" {
 		return InstallResult{}, fmt.Errorf("%w: this plugin was not installed from Git", ErrInvalid)
 	}
-	return s.installRepository(ctx, RepositoryInput{Repository: source.Repository, Ref: source.Ref}, name, &source)
+	var paths []string
+	if state.SourcePath != "" {
+		paths = []string{state.SourcePath}
+	}
+	return s.installRepository(ctx, RepositoryInput{
+		Repository: state.SourceRepository,
+		Ref:        state.SourceRef,
+		Paths:      paths,
+		SourceID:   state.SourceID,
+	}, pluginID, state.CommitSHA)
 }
 
-func (s *Store) installRepository(ctx context.Context, input RepositoryInput, wanted string, expected *Source) (result InstallResult, err error) {
-	input.Repository = strings.TrimSpace(input.Repository)
-	input.Ref = strings.TrimSpace(input.Ref)
-	repository, err := repositoryURL(input.Repository)
-	if err != nil {
-		return result, err
-	}
-	if strings.HasPrefix(input.Ref, "-") || strings.ContainsAny(input.Ref, "\x00\r\n:") {
-		return result, fmt.Errorf("%w: invalid Git ref", ErrInvalid)
-	}
+func (s *Store) installRepository(ctx context.Context, input RepositoryInput, wanted, expectedCommit string) (result InstallResult, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	if err = os.MkdirAll(s.dir, 0755); err != nil {
-		return result, err
-	}
-	work, err := os.MkdirTemp(s.dir, ".install-")
+	work, checkout, repoURL, commit, err := s.cloneCheckout(ctx, input)
 	if err != nil {
 		return result, err
 	}
 	defer os.RemoveAll(work)
-	repo := filepath.Join(work, "repository")
-	if _, err = gitCommand(ctx, "", "clone", "--quiet", "--no-checkout", "--no-hardlinks", "--", repository, repo); err != nil {
-		return result, fmt.Errorf("Git repository unavailable; the backend machine needs access through its existing Git credentials")
-	}
-	ref := "HEAD"
-	if input.Ref != "" {
-		if _, err = gitCommand(ctx, repo, "check-ref-format", "--allow-onelevel", input.Ref); err != nil {
-			return result, fmt.Errorf("%w: invalid Git ref", ErrInvalid)
+
+	var prepared []preparedPlugin
+	var skipped []SkippedPlugin
+	var entries []MarketplaceEntry
+	if len(input.Paths) > 0 {
+		for _, sub := range input.Paths {
+			resolved, err := manifest.Resolve(checkout, sub)
+			if err != nil {
+				return result, fmt.Errorf("%w: path %q: %v", ErrInvalid, sub, err)
+			}
+			plugin, err := readPackage(resolved, s.dataDir, nil)
+			if err != nil {
+				return result, err
+			}
+			prepared = append(prepared, preparedPlugin{plugin: plugin, path: resolved})
 		}
-		if _, err = gitCommand(ctx, repo, "fetch", "--quiet", "--", "origin", input.Ref); err != nil {
-			return result, fmt.Errorf("Git ref unavailable; check the ref and the backend machine's repository access")
+	} else {
+		prepared, entries, skipped, _, err = s.marketplace(checkout, strings.TrimSpace(input.Repository))
+		if err != nil {
+			return result, err
 		}
-		ref = "FETCH_HEAD"
 	}
-	rawCommit, err := gitCommand(ctx, repo, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
-	commit := strings.TrimSpace(string(rawCommit))
-	if err != nil || !commitID.MatchString(commit) {
-		return result, fmt.Errorf("Git repository has no readable commit")
-	}
-	archive := filepath.Join(work, "repository.zip")
-	if _, err = gitCommand(ctx, repo, "archive", "--format=zip", "--output="+archive, commit); err != nil {
-		return result, fmt.Errorf("could not export Git repository")
-	}
-	info, err := os.Stat(archive)
-	if err != nil || info.Size() > 64<<20 {
-		return result, fmt.Errorf("%w: repository package exceeds 64 MiB", ErrInvalid)
-	}
-	data, err := os.ReadFile(archive)
-	if err != nil {
-		return result, err
-	}
-	tree := filepath.Join(work, "content")
-	if err = os.MkdirAll(tree, 0755); err != nil {
-		return result, err
-	}
-	if err = skills.ExtractArchive(data, tree); err != nil {
-		return result, fmt.Errorf("%w: repository package: %v", ErrInvalid, err)
-	}
-	prepared, skipped, err := s.marketplace(tree)
-	if err != nil {
-		return result, err
-	}
+
+	// If wanted refers to an external git pointer inside a marketplace, follow it once.
 	if wanted != "" {
 		var selected []preparedPlugin
 		for _, candidate := range prepared {
-			if candidate.plugin.Name == wanted {
+			if candidate.plugin.ID == wanted {
 				selected = append(selected, candidate)
 			}
 		}
-		prepared = selected
-		if len(prepared) == 0 {
-			return result, fmt.Errorf("%w: plugin is missing or invalid in the repository", ErrInvalid)
+		if len(selected) == 0 {
+			for _, entry := range entries {
+				if entry.ID == wanted && entry.Repository != "" && entry.Repository != strings.TrimSpace(input.Repository) {
+					var subpaths []string
+					if entry.Path != "" {
+						subpaths = []string{entry.Path}
+					}
+					return s.installRepository(ctx, RepositoryInput{
+						Repository: entry.Repository,
+						Ref:        entry.Ref,
+						Paths:      subpaths,
+						SourceID:   input.SourceID,
+					}, wanted, expectedCommit)
+				}
+			}
+			return result, fmt.Errorf("%w: plugin %q not found in repository", ErrInvalid, wanted)
 		}
+		prepared = selected
 	}
-	source := Source{Repository: repository, Ref: input.Ref, Commit: commit}
+
+	if len(prepared) == 0 {
+		return InstallResult{Plugins: []Plugin{}, Skipped: skipped}, nil
+	}
+
+	sourceID := input.SourceID
+	if sourceID == "" {
+		sourceID = sourceIDFor(repoURL, strings.TrimSpace(input.Ref))
+	}
 	for i := range prepared {
-		prepared[i].source = &source
-		prepared[i].expected = expected
+		relPath, _ := filepath.Rel(checkout, prepared[i].path)
+		relPath = filepath.ToSlash(relPath)
+		if relPath == "." {
+			relPath = ""
+		}
+		src := Source{
+			ID:         sourceID,
+			Repository: strings.TrimSpace(input.Repository),
+			Ref:        strings.TrimSpace(input.Ref),
+			Path:       relPath,
+			Commit:     commit,
+		}
+		prepared[i].source = &src
+		prepared[i].expected = expectedCommit
 	}
-	prepared, err = stagePackages(prepared, filepath.Join(work, "ready"))
+	prepared, err = stagePackages(checkout, prepared, filepath.Join(work, "ready"), s.dataDir)
 	if err != nil {
 		return result, err
 	}
-	installed, err := s.publish(prepared)
+	installed, err := s.publish(ctx, prepared)
 	return InstallResult{Plugins: installed, Skipped: skipped}, err
 }
