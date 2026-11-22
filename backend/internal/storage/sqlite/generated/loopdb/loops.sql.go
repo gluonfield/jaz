@@ -485,6 +485,65 @@ func (q *Queries) ListRunsByLoop(ctx context.Context, arg ListRunsByLoopParams) 
 	return items, nil
 }
 
+const listThreadRunsByLoop = `-- name: ListThreadRunsByLoop :many
+SELECT
+  r.id,
+  r.loop_id,
+  r.thread_id,
+  r.scheduled_for_ms,
+  r.started_at_ms,
+  r.finished_at_ms,
+  r.status,
+  r.error,
+  r.created_at_ms,
+  r.reason,
+  r.delivered
+FROM loop_runs r JOIN loops l ON l.id = r.loop_id
+WHERE r.loop_id = ?1 AND r.thread_id NOT IN ('', l.bot_id)
+ORDER BY r.created_at_ms DESC
+LIMIT ?2
+`
+
+type ListThreadRunsByLoopParams struct {
+	LoopID string `json:"loop_id"`
+	Limit  int64  `json:"limit"`
+}
+
+func (q *Queries) ListThreadRunsByLoop(ctx context.Context, arg ListThreadRunsByLoopParams) ([]LoopRun, error) {
+	rows, err := q.db.QueryContext(ctx, listThreadRunsByLoop, arg.LoopID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LoopRun{}
+	for rows.Next() {
+		var i LoopRun
+		if err := rows.Scan(
+			&i.ID,
+			&i.LoopID,
+			&i.ThreadID,
+			&i.ScheduledForMs,
+			&i.StartedAtMs,
+			&i.FinishedAtMs,
+			&i.Status,
+			&i.Error,
+			&i.CreatedAtMs,
+			&i.Reason,
+			&i.Delivered,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const loopEventSeen = `-- name: LoopEventSeen :one
 SELECT EXISTS (
   SELECT 1 FROM loop_events WHERE loop_id = ?1 AND event_id = ?2

@@ -139,7 +139,7 @@ type PromptStore interface {
 // Routines is the loop service seen as a bot's routines.
 type Routines interface {
 	List() ([]loops.Loop, error)
-	Runs(loopID string, limit int) ([]loops.Run, error)
+	ThreadRuns(loopID string, limit int) ([]loops.Run, error)
 	Create(loops.CreateLoop) (loops.Loop, error)
 	Update(string, loops.UpdateLoop) (loops.Loop, error)
 	Delete(string) error

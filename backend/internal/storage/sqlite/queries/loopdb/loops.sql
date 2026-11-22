@@ -236,6 +236,24 @@ WHERE loop_id = sqlc.arg(loop_id)
 ORDER BY created_at_ms DESC
 LIMIT sqlc.arg(limit);
 
+-- name: ListThreadRunsByLoop :many
+SELECT
+  r.id,
+  r.loop_id,
+  r.thread_id,
+  r.scheduled_for_ms,
+  r.started_at_ms,
+  r.finished_at_ms,
+  r.status,
+  r.error,
+  r.created_at_ms,
+  r.reason,
+  r.delivered
+FROM loop_runs r JOIN loops l ON l.id = r.loop_id
+WHERE r.loop_id = sqlc.arg(loop_id) AND r.thread_id NOT IN ('', l.bot_id)
+ORDER BY r.created_at_ms DESC
+LIMIT sqlc.arg(limit);
+
 -- name: GetRunBefore :one
 SELECT
   r.id,

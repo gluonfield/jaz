@@ -249,6 +249,10 @@ func (s *Service) Runs(loopID string, limit int) ([]Run, error) {
 	return s.Repo.ListRuns(loopID, limit)
 }
 
+func (s *Service) ThreadRuns(loopID string, limit int) ([]Run, error) {
+	return s.Repo.ListThreadRuns(loopID, limit)
+}
+
 func (s *Service) EnsureMemoryPaths() error {
 	now := s.now()
 	s.mu.Lock()

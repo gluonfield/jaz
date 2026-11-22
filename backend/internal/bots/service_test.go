@@ -251,7 +251,7 @@ func (w *fakeWorld) List() ([]loops.Loop, error) {
 	return w.loops, nil
 }
 
-func (*fakeWorld) Runs(string, int) ([]loops.Run, error) {
+func (*fakeWorld) ThreadRuns(string, int) ([]loops.Run, error) {
 	return nil, nil
 }
 

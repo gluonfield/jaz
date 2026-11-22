@@ -12,10 +12,7 @@ import (
 const (
 	// activityWindow is how far back Activity looks.
 	activityWindow = 30 * 24 * time.Hour
-	// runsShown is how many recent runs of each routine Activity lists.
-	runsShown = 20
-	// activityShown is how many rows Activity lists; what runs is never cut
-	// for what finished.
+	// activityShown is how many rows Activity lists.
 	activityShown = 30
 )
 
@@ -80,10 +77,10 @@ type ActivityView struct {
 }
 
 // Activity lists what a bot owes, then the newest activityShown things it is
-// doing and did in the last activityWindow, newest first. A thread serving a
-// commitment shows through it, open or closed, unless it works again after the
-// commitment closed; a side chat another side chat started shows under it.
-// Only rows that show count.
+// doing and did in the last activityWindow, newest first, a running thread
+// dated by when it started. A thread serving a commitment shows through it,
+// open or closed, unless it works again after the commitment closed; a side
+// chat another side chat started shows under it. Only rows that show count.
 func (s *Service) Activity(botID string) (ActivityView, error) {
 	if !isBot(s.store, botID) {
 		return ActivityView{}, storage.ErrBotNotFound
@@ -162,7 +159,7 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 		if routine.BotID != botID {
 			continue
 		}
-		runs, err := s.routines.Runs(routine.ID, runsShown)
+		runs, err := s.routines.ThreadRuns(routine.ID, activityShown)
 		if err != nil {
 			return ActivityView{}, err
 		}
@@ -177,17 +174,13 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 				ThreadID: run.ThreadID,
 				LoopID:   routine.ID,
 			}
-			if run.ThreadID != "" && run.ThreadID != botID && (item.Running || item.At.After(since)) {
+			if item.Running || item.At.After(since) {
 				out = append(out, item)
 			}
 		}
 	}
-	newest := func(a, b Activity) int { return b.At.Compare(a.At) }
-	slices.SortStableFunc(out, newest)
-	running := slices.DeleteFunc(slices.Clone(out), func(item Activity) bool { return !item.Running })
-	done := slices.DeleteFunc(out, func(item Activity) bool { return item.Running })
-	view.Items = append(running, done...)[:min(len(running)+len(done), activityShown)]
-	slices.SortStableFunc(view.Items, newest)
+	slices.SortStableFunc(out, func(a, b Activity) int { return b.At.Compare(a.At) })
+	view.Items = out[:min(len(out), activityShown)]
 	return view, nil
 }
 

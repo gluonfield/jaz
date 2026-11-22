@@ -193,6 +193,9 @@ type Repository interface {
 	LoadLoop(id string) (Loop, error)
 	ListLoops() ([]Loop, error)
 	ListRuns(loopID string, limit int) ([]Run, error)
+	// ListThreadRuns lists a loop's runs in threads of their own, rather than
+	// in its bot's thread, newest first.
+	ListThreadRuns(loopID string, limit int) ([]Run, error)
 	LoadRun(id string) (Run, error)
 	// RunBefore is the run of the same loop created before runID, or a zero
 	// Run.

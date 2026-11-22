@@ -43,18 +43,14 @@ func (s *Store) ListRuns(loopID string, limit int) ([]loops.Run, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	rows, err := loopdb.New(s.db).ListRunsByLoop(context.Background(), loopdb.ListRunsByLoopParams{
+	return runsFromDB(loopdb.New(s.db).ListRunsByLoop(context.Background(), loopdb.ListRunsByLoopParams{
 		LoopID: loopID,
 		Limit:  int64(limit),
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]loops.Run, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, runFromDB(row))
-	}
-	return out, nil
+	}))
+}
+
+func (s *Store) ListThreadRuns(loopID string, limit int) ([]loops.Run, error) {
+	return runsFromDB(loopdb.New(s.db).ListThreadRunsByLoop(context.Background(), loopdb.ListThreadRunsByLoopParams{LoopID: loopID, Limit: int64(limit)}))
 }
 
 func (s *Store) LoadRun(id string) (loops.Run, error) {
@@ -89,11 +85,14 @@ func (s *Store) ListActiveRunIDs() ([]string, error) {
 }
 
 func (s *Store) ActiveRuns(loopID string) ([]loops.Run, error) {
-	rows, err := loopdb.New(s.db).ListActiveRunsForLoop(context.Background(), loopdb.ListActiveRunsForLoopParams{
+	return runsFromDB(loopdb.New(s.db).ListActiveRunsForLoop(context.Background(), loopdb.ListActiveRunsForLoopParams{
 		LoopID:         loopID,
 		StartingStatus: loops.RunStatusStarting,
 		RunningStatus:  loops.RunStatusRunning,
-	})
+	}))
+}
+
+func runsFromDB(rows []loopdb.LoopRun, err error) ([]loops.Run, error) {
 	if err != nil {
 		return nil, err
 	}

@@ -596,7 +596,7 @@ func TestActivityListsTheNewestThirtyShownRowsAcrossDays(t *testing.T) {
 	}
 	// Rows that do not show, all newer than any that do, take no place: the
 	// threads of open and closed tasks, even the oldest closed one's, what a
-	// side chat started, and a routine run in the bot's own thread.
+	// side chat started, and a routine's many runs in the bot's own thread.
 	delivered := task("Delivered")
 	worked := []string{thread(bot.ID, "Delivery draft", delivered, now.Add(-10*time.Minute)), thread(bot.ID, "Delivery check", delivered, now.Add(-11*time.Minute))}
 	if _, err := service.Commit(bot.ID, Commit{ID: delivered, Status: storage.CommitmentDone, Message: "Delivered"}); err != nil {
@@ -619,12 +619,15 @@ func TestActivityListsTheNewestThirtyShownRowsAcrossDays(t *testing.T) {
 		chats = append(chats, chat)
 	}
 	thread(chats[0], "Nested review", 0, now.Add(-20*time.Minute))
-	long, err := store.CreateSession(storage.CreateSession{Slug: "long-run", Title: "Long run", ParentID: bot.ID, SourceType: storage.SourceBotWorker, SourceID: bot.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.StartSessionTurn(long.ID, storage.Turn{StartedAt: hours(72)}); err != nil {
-		t.Fatal(err)
+	// A running side chat counts by when it started, like any other row.
+	for title, started := range map[string]time.Time{"Recent run": now.Add(-28*time.Hour - 30*time.Minute), "Long run": hours(72)} {
+		session, err := store.CreateSession(storage.CreateSession{Slug: title, Title: title, ParentID: bot.ID, SourceType: storage.SourceBotWorker, SourceID: bot.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.StartSessionTurn(session.ID, storage.Turn{StartedAt: started}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	routine, err := service.routines.Create(loops.CreateLoop{Name: "Nightly sweep", Prompt: "Sweep.", BotID: bot.ID, Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 2 * * *", Timezone: "UTC"}})
 	if err != nil {
@@ -648,14 +651,17 @@ func TestActivityListsTheNewestThirtyShownRowsAcrossDays(t *testing.T) {
 	for h := 22; h <= 30; h += 2 {
 		run(hours(h), true)
 	}
-	run(now.Add(-5*time.Minute), false)
+	for m := range 25 {
+		run(now.Add(-time.Duration(m+5)*time.Minute), false)
+	}
 
 	view, err := service.Activity(bot.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The newest 29 finished rows, hours 0 to 28, then the side chat running
-	// for three days, which newer finished rows never push out.
+	// The newest 30: hours 0 to 28, then the side chat running since 28.5
+	// hours ago; the task dropped 29 hours ago and the side chat running for
+	// three days are cut.
 	want := []string{"task:Delivered"}
 	for h := 1; h <= 28; h++ {
 		switch {
@@ -667,12 +673,12 @@ func TestActivityListsTheNewestThirtyShownRowsAcrossDays(t *testing.T) {
 			want = append(want, "routine:Nightly sweep")
 		}
 	}
-	want = append(want, "side_chat:Long run")
+	want = append(want, "side_chat:Recent run")
 	var got []string
 	for _, item := range view.Items {
 		got = append(got, item.Kind+":"+item.Title)
 	}
-	if !slices.Equal(got, want) {
+	if !slices.Equal(got, want) || !view.Items[activityShown-1].Running {
 		t.Fatalf("activity =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 	if threads := view.Items[0].Task.Threads; len(threads) != 2 || !slices.ContainsFunc(threads, func(thread OwedThread) bool { return thread.ID == worked[0] }) || !slices.ContainsFunc(threads, func(thread OwedThread) bool { return thread.ID == worked[1] }) {
