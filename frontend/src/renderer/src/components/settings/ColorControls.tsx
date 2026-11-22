@@ -1,6 +1,5 @@
 import { Minus, MoonStar, Plus, Shuffle, Sparkles, Sun } from 'lucide-react'
 import { type KeyboardEvent, type PointerEvent, useId } from 'react'
-import grainUrl from '@/assets/grain.png'
 import {
   type ColorTheme,
   HARMONIES,
@@ -275,11 +274,7 @@ export function GrainDial({ value, onChange }: { value: number; onChange: (value
           style={point(notch / NOTCHES, 1.5)}
         />
       ))}
-      <span
-        aria-hidden
-        className="absolute inset-[13px] rounded-full mix-blend-hard-light"
-        style={{ backgroundImage: `url(${grainUrl})`, opacity: value }}
-      />
+      <span aria-hidden className="absolute inset-[13px] rounded-full" style={{ background: 'var(--film)', opacity: value }} />
       <span
         aria-hidden
         className="absolute inset-[13px] rounded-full border border-border/50 bg-[linear-gradient(-45deg,transparent_-10%,rgb(0_0_0/0.1)_110%)] dark:bg-[linear-gradient(-45deg,transparent_-10%,rgb(255_255_255/0.1)_110%)]"

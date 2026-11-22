@@ -1,12 +1,14 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useCallback, useId, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { utils, type CellAddress, type Range } from 'xlsx'
 import { cellTextBounds, initialSpreadsheetSelection, mergedRange, moveSpreadsheetSelection, selectionRange, selectionTSV, spreadsheetCell, spreadsheetIndex, spreadsheetLayout, spreadsheetStyle, spreadsheetText, visibleIndices, type SpreadsheetSelection, type SpreadsheetSheet } from '@/lib/spreadsheet'
-import type { SpreadsheetStyle } from '@/lib/spreadsheetMetadata'
+import type { SpreadsheetStyle } from '@/lib/spreadsheetFormat'
 import '@/components/session/spreadsheet.css'
 
 const ROW_HEADER = 46
 const COLUMN_HEADER = 26
 const DEFAULT_FONT_SIZE = 12
+
+type PlacedImage = { url: string; left: number; top: number; width: number; height: number }
 
 function fontFamily(style: SpreadsheetStyle, fallback: string) {
   return style.fontFamily ? `${JSON.stringify(style.fontFamily)}, ${fallback}` : fallback
@@ -54,9 +56,10 @@ const Cell = memo(function Cell({ sheet, r, c, active, id }: { id: string; sheet
   </div>
 })
 
-function Pane({ id, sheet, rows, columns, left, top, width, height, scrollLeft, scrollTop, selection }: {
+function Pane({ id, sheet, images, rows, columns, left, top, width, height, scrollLeft, scrollTop, selection }: {
   id: string
   sheet: SpreadsheetSheet
+  images: PlacedImage[]
   rows: number[]
   columns: number[]
   left: number
@@ -96,6 +99,7 @@ function Pane({ id, sheet, rows, columns, left, top, width, height, scrollLeft, 
       {[...cellRows].map(([r, cells]) => <div key={r} role="row" aria-rowindex={r + 1}>
         {cells.map((range) => <Cell key={utils.encode_cell(range.s)} id={`${id}-${utils.encode_cell(range.s)}`} sheet={sheet} r={range.s.r} c={range.s.c} active={range.s.r >= selected.s.r && range.s.r <= selected.e.r && range.s.c >= selected.s.c && range.s.c <= selected.e.c} />)}
       </div>)}
+      {images.map(({ url, ...style }) => <img key={url} className="spreadsheet-image" alt="" src={url} style={style} />)}
       <div className="spreadsheet-selection" style={rectangle(sheet, selected)} />
       <div className="spreadsheet-active" style={rectangle(sheet, active)} />
     </div>
@@ -109,6 +113,7 @@ export default function SpreadsheetGrid({ sheet: source, initialSelection }: { s
   const [dragging, setDragging] = useState(false)
   const [selection, setSelection] = useState(() => initialSpreadsheetSelection(source, initialSelection))
   const [viewport, setViewport] = useState({ width: 0, height: 0, left: 0, top: 0 })
+  const [images, setImages] = useState<PlacedImage[]>([])
   const sheet = useMemo(() => spreadsheetLayout(source, viewport.width - ROW_HEADER, viewport.height - COLUMN_HEADER), [source, viewport.width, viewport.height])
   const frozenWidth = sheet.columns[sheet.frozen.c]
   const frozenHeight = sheet.rows[sheet.frozen.r]
@@ -130,6 +135,12 @@ export default function SpreadsheetGrid({ sheet: source, initialSelection }: { s
   ]
 
   const activeVisible = panes[activePane].rows.some((r) => r >= activeRange.s.r && r <= activeRange.e.r) && panes[activePane].columns.some((c) => c >= activeRange.s.c && c <= activeRange.e.c)
+
+  useEffect(() => {
+    const images = source.images.map(({ type, data, ...rectangle }) => ({ ...rectangle, url: URL.createObjectURL(new Blob([data], { type })) }))
+    setImages(images)
+    return () => images.forEach(({ url }) => URL.revokeObjectURL(url))
+  }, [source])
 
   useLayoutEffect(() => {
     const element = scroll.current!
@@ -213,7 +224,7 @@ export default function SpreadsheetGrid({ sheet: source, initialSelection }: { s
       aria-colcount={sheet.columns.length - 1}
       aria-activedescendant={activeVisible ? `${id}-${activePane}-${utils.encode_cell(activeRange.s)}` : undefined}
       tabIndex={0}
-      className="spreadsheet-scroll scrollbar-quiet"
+      className={`spreadsheet-scroll scrollbar-quiet ${sheet.gridlines ? '' : 'is-plain'}`}
       onScroll={(event) => {
         const element = event.currentTarget
         setViewport({ width: element.clientWidth, height: element.clientHeight, left: element.scrollLeft, top: element.scrollTop })
@@ -249,7 +260,7 @@ export default function SpreadsheetGrid({ sheet: source, initialSelection }: { s
     >
       <div style={{ width: Math.max(viewport.width, sheet.columns.at(-1)! + ROW_HEADER), height: Math.max(viewport.height, sheet.rows.at(-1)! + COLUMN_HEADER) }}>
         <div className="spreadsheet-viewport" style={{ width: viewport.width, height: viewport.height }}>
-          {panes.map((pane, index) => pane.width > 0 && pane.height > 0 ? <Pane key={index} id={`${id}-${index}`} sheet={sheet} selection={selection} {...pane} /> : null)}
+          {panes.map((pane, index) => pane.width > 0 && pane.height > 0 ? <Pane key={index} id={`${id}-${index}`} sheet={sheet} images={images} selection={selection} {...pane} /> : null)}
           {[{ indices: columns, offset: viewport.left, frozen: false }, { indices: frozenColumns, offset: 0, frozen: true }].map(({ indices, offset, frozen }) => <div key={String(frozen)} className="spreadsheet-column-headers" style={{ left: ROW_HEADER + (frozen ? 0 : frozenWidth), width: frozen ? frozenWidth : viewport.width - ROW_HEADER - frozenWidth }}>
             {indices.map((c) => <div key={c} role="columnheader" className={c >= range.s.c && c <= range.e.c ? 'is-selected' : ''} style={{ left: sheet.columns[c] - offset - (frozen ? 0 : frozenWidth), width: sheet.columns[c + 1] - sheet.columns[c], height: COLUMN_HEADER }}>{utils.encode_col(c)}</div>)}
           </div>)}
