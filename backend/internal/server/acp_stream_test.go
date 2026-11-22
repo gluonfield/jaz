@@ -17,16 +17,14 @@ import (
 
 func TestACPStreamFollowUpAdmission(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		supported bool
-		steerErr  error
-		plan      bool
-		failed    bool
+		name     string
+		steerErr error
+		plan     bool
+		failed   bool
 	}{
-		{name: "native steering", supported: true},
-		{name: "unsupported is not queued", failed: true},
-		{name: "new plan reaches admission", supported: true, plan: true},
-		{name: "rejection is not submitted twice", supported: true, steerErr: errors.New("provider rejected input"), failed: true},
+		{name: "native steering"},
+		{name: "new plan reaches admission", plan: true},
+		{name: "rejection is not submitted twice", steerErr: errors.New("provider rejected input"), failed: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, err := sqlitestore.New(t.TempDir())
@@ -44,12 +42,12 @@ func TestACPStreamFollowUpAdmission(t *testing.T) {
 			}
 			manager := &fakeACPManager{
 				job:            acp.Job{ID: session.ID, State: acp.StateRunning},
-				steerSupported: tc.supported, steerErr: tc.steerErr,
+				steerSupported: true, steerErr: tc.steerErr,
 			}
 			server := &Server{Store: store, ACP: manager}
 			res := httptest.NewRecorder()
-			server.streamACPSession(res, res, context.Background(), session, acpStreamTurn{
-				Message: "also check this", PlanRequested: tc.plan,
+			server.streamACPSession(res, res, context.Background(), session, acp.SendRequest{
+				Session: session.ID, Message: "also check this", PlanRequested: tc.plan, FromUser: true,
 				Contexts: []storage.MessageContext{{Type: "selection", Text: "selected code"}},
 			})
 			loaded, err := store.LoadSession(session.ID)
@@ -62,7 +60,7 @@ func TestACPStreamFollowUpAdmission(t *testing.T) {
 			if strings.Contains(res.Body.String(), `"type":"accepted"`) == tc.failed || strings.Contains(res.Body.String(), `"type":"error"`) != tc.failed {
 				t.Fatalf("unexpected acceptance: %s", res.Body.String())
 			}
-			if tc.supported && (manager.steered.Message != "also check this" || len(manager.steered.Contexts) != 1 || manager.steered.PlanRequested != tc.plan || !manager.steered.FromUser) {
+			if manager.steered.Message != "also check this" || len(manager.steered.Contexts) != 1 || manager.steered.PlanRequested != tc.plan || !manager.steered.FromUser {
 				t.Fatalf("follow-up lost its payload: %#v", manager.steered)
 			}
 		})

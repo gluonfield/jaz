@@ -33,7 +33,7 @@ func TestRequestShutdownOnlyMarksActiveTurns(t *testing.T) {
 
 func TestShutdownPreservesUserCancellation(t *testing.T) {
 	job := &jobState{Job: Job{State: StateRunning}, turn: &activeTurn{done: make(chan struct{})}}
-	job.requestCancel()
+	job.requestTurnCancel(StopReasonCancelled, nil)
 	if running, done := job.requestShutdown(); running || done != job.turn.done {
 		t.Fatal("shutdown must wait for the cancelled turn without making it resumable")
 	}
@@ -42,7 +42,7 @@ func TestShutdownPreservesUserCancellation(t *testing.T) {
 	}
 	job = &jobState{Job: Job{State: StateRunning}, turn: &activeTurn{done: make(chan struct{})}}
 	job.requestShutdown()
-	job.requestCancel()
+	job.requestTurnCancel(StopReasonCancelled, nil)
 	if reason, _ := job.cancelReason(); reason != StopReasonCancelled {
 		t.Fatalf("user cancellation during shutdown = %q", reason)
 	}

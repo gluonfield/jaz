@@ -14,18 +14,21 @@ import (
 // Cancel asks the agent to stop the current turn and tears down an agent that
 // ignores the protocol cancellation deadline.
 func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
-	return m.cancel(ctx, ref, "unknown")
+	return m.cancel(ctx, ref, "unknown", nil)
 }
 
 // Stop records the user's decision to abandon this task, including after
 // its question's tool waiter has already been removed.
 func (m *Manager) Stop(ctx context.Context, ref string) (Job, error) {
-	return m.cancel(ctx, ref, "user_stop")
+	return m.cancel(ctx, ref, "user_stop", nil)
 }
 
-func (m *Manager) cancel(ctx context.Context, ref, origin string) (Job, error) {
+func (m *Manager) cancel(ctx context.Context, ref, origin string, replacing <-chan struct{}) (Job, error) {
 	job, err := m.job(ref)
 	if err != nil {
+		if replacing != nil {
+			return Job{}, nil
+		}
 		return m.cancelStored(ref, origin)
 	}
 	if origin == "user_stop" {
@@ -33,17 +36,18 @@ func (m *Manager) cancel(ctx context.Context, ref, origin string) (Job, error) {
 			return Job{}, err
 		}
 	}
+	if replacing == nil && m.clearGoalOnCancel(job) {
+		m.publishGoalClear(job)
+	}
+	running, done := job.requestTurnCancel(StopReasonCancelled, replacing)
+	if replacing != nil && !running {
+		return job.Snapshot(), nil
+	}
 	event := EventFromJob(job.Snapshot())
 	event.Origin = origin
 	m.publishOrderedACPEvents(job.eventView(), sessionevents.Event{
 		SessionID: job.ID, Type: "acp", ACP: event,
 	})
-	// The goal ends before the turn can, so the thread's next turn does not
-	// go on with it.
-	if m.clearGoalOnCancel(job) {
-		m.publishGoalClear(job)
-	}
-	running, done := job.requestCancel()
 	m.log.Info("acp cancel requested", "session", job.ID, "agent", job.ACPAgent, "running", running)
 	// A local agent's turn, or a turn waiting to retry a failed prompt, stops
 	// through its own cancel; no prompt of it is with the agent.

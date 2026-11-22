@@ -1,18 +1,145 @@
 package acp_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"image"
+	"image/png"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/sessiongoal"
 	"github.com/wins/jaz/backend/internal/storage"
 )
+
+func TestChatSendInterruptsWhenAgentCannotSteer(t *testing.T) {
+	t.Run("agent without steering", func(t *testing.T) {
+		testChatInterrupt(t, acp.AgentAntigravity, map[string]string{}, false)
+	})
+	t.Run("plan needs a new turn", func(t *testing.T) {
+		testChatInterrupt(t, acp.AgentCodex, map[string]string{
+			"JAZ_FAKE_ACP_NATIVE_STEERING": "1",
+			"JAZ_FAKE_ACP_PLAN_CONFIG":     "1",
+			"JAZ_FAKE_ACP_SET_CONFIG":      "1",
+		}, true)
+	})
+}
+
+func testChatInterrupt(t *testing.T, agent string, env map[string]string, plan bool) {
+	t.Helper()
+	store, root := newTestStore(t)
+	jaz := startJazAgent(t, testContext(t), store, root, agent, env)
+	jaz.server.Workspace = root
+	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: thread.ID, Message: "work on the original request, block until cancelled", GoalRequested: true}); err != nil {
+		t.Fatal(err)
+	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, thread.ID)
+	if _, err := sessiongoal.New(store, jaz.events).Create(jaz.ctx, thread.ID, sessiongoal.CreateInput{Objective: "Explain the deployment questions"}); err != nil {
+		t.Fatal(err)
+	}
+	nativeSession := jaz.session(thread.ID).RuntimeRef.SessionID
+	jaz.queueUser(thread.ID, `{"text":"do this later"}`)
+	handler := jaz.server.Handler()
+	path := "/v1/sessions/" + thread.ID
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	part, err := form.CreateFormFile("file", "questions.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(part, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, path+"/attachments", &body)
+	request.Header.Set("Content-Type", form.FormDataContentType())
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	var attachment storage.Attachment
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &attachment) != nil || attachment.ID == "" {
+		t.Fatalf("upload = %d %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, path+"/messages:stream", strings.NewReader(`{"message":"explain the questions until released","contexts":[{"type":"selection","text":"the deployment question"}],"attachment_ids":["`+attachment.ID+`"],"plan_requested":`+strconv.FormatBool(plan)+`}`))
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"type":"accepted"`) || strings.Contains(response.Body.String(), `"type":"error"`) {
+		t.Fatalf("send = %d %s", response.Code, response.Body.String())
+	}
+	stored := jaz.session(thread.ID)
+	if stored.Turn == nil || stored.Turn.PlanRequested != plan || stored.RuntimeRef.SessionID != nativeSession || len(stored.QueuedMessages) != 1 || stored.QueuedMessages[0].Text != "do this later" {
+		t.Fatalf("Send now should resume the same thread ahead of the queue: %+v, prompts = %q", stored, jaz.prompts())
+	}
+	if stored.Goal == nil || stored.Goal.Objective != "Explain the deployment questions" {
+		t.Fatalf("replacing the turn cleared its goal: %+v", stored.Goal)
+	}
+	jaz.eventually("follow-up delivered", func() bool { return jaz.promptsContaining("explain the questions") == 1 })
+	requests, err := os.ReadFile(filepath.Join(root, "requests.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel := bytes.Index(requests, []byte(`"method":"session/cancel"`))
+	if cancel < 0 || cancel > bytes.Index(requests, []byte("explain the questions")) || jaz.promptsContaining("do this later") != 0 {
+		t.Fatalf("ACP did not cancel the current turn first: %s", requests)
+	}
+	if err := jaz.manager.ClearGoal(jaz.ctx, thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	jaz.release()
+	jaz.idle(thread.ID)
+	prompt := jaz.promptWith("explain the questions")
+	if len(jaz.prompts()) != 3 || !strings.Contains(prompt, "the deployment question") || !strings.Contains(prompt, attachment.ID+"-questions.png") || jaz.promptsContaining("do this later") != 1 {
+		t.Fatalf("follow-up payload or delivery count changed: %q", jaz.prompts())
+	}
+}
+
+func TestChatSendInterruptsUnsupportedProviderRetry(t *testing.T) {
+	acp.SetProviderRetryDelays(t, time.Hour)
+	store, root := newTestStore(t)
+	jaz := startJazAgent(t, testContext(t), store, root, acp.AgentAntigravity, failingProvider(root))
+	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: thread.ID, Message: "obsolete request provider fails 1 disconnected"}); err != nil {
+		t.Fatal(err)
+	}
+	jaz.eventually("the provider retry waiting", func() bool { return strings.Contains(jaz.status(thread.ID).Error, "Retrying in") })
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+thread.ID+"/messages:stream", strings.NewReader(`{"message":"new request"}`))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		jaz.server.Handler().ServeHTTP(response, request)
+	}()
+	select {
+	case <-done:
+	case <-jaz.ctx.Done():
+		t.Fatal("Send now waited for the unsupported provider to retry")
+	}
+	if !strings.Contains(response.Body.String(), `"type":"accepted"`) || strings.Contains(response.Body.String(), `"type":"error"`) {
+		t.Fatalf("Send now = %s", response.Body.String())
+	}
+	jaz.idle(thread.ID)
+	if jaz.promptsContaining("new request") != 1 || jaz.promptsContaining(continuation) != 0 {
+		t.Fatalf("Send now should replace the retry: %q", jaz.prompts())
+	}
+}
 
 func TestBotChatPendingSendIsNotAcknowledgedAcrossRestart(t *testing.T) {
 	jaz := startFailingJaz(t, time.Hour)

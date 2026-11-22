@@ -46,7 +46,7 @@ type ACPManager interface {
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
 	CheckSpawn(acp.SpawnRequest) error
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
-	Input(context.Context, acp.SteerRequest) (acp.Job, error)
+	SendNow(context.Context, acp.SendRequest) (acp.Job, error)
 	ResumeInterruptedTurn(context.Context, string) error
 	StartInternalTurn(context.Context, acp.InternalTurnRequest) (acp.Job, error)
 	ContinueGoal(context.Context, string) (acp.Job, error)
@@ -469,8 +469,14 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	turn := acpStreamTurnFromRequest(req)
-	if turn.compact() {
+	input := acp.SendRequest{
+		Session:       session.ID,
+		Message:       req.Message,
+		FromUser:      true,
+		PlanRequested: req.PlanRequested,
+		GoalRequested: req.GoalRequested,
+	}
+	if isACPCompactCommand(input.Message) {
 		if !sessionview.SupportsCompact(session) {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("compact is not available for this session"))
 			return
@@ -481,9 +487,9 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		turn.Attachments = attachments
-		turn.Contexts = storage.NormalizeMessageContexts(append(storage.SelectionContexts(req.Quotes), req.Contexts...))
-		if !storage.HasMessageContent(req.Message, turn.Contexts, attachments) {
+		input.Attachments = attachments
+		input.Contexts = storage.NormalizeMessageContexts(append(storage.SelectionContexts(req.Quotes), req.Contexts...))
+		if !storage.HasMessageContent(req.Message, input.Contexts, attachments) {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("message is required"))
 			return
 		}
@@ -506,7 +512,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 
 	switch session.Runtime {
 	case storage.RuntimeACP:
-		s.streamACPSession(w, flusher, r.Context(), session, turn)
+		s.streamACPSession(w, flusher, r.Context(), session, input)
 	default:
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: fmt.Sprintf("unknown session runtime %q", session.Runtime)})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})

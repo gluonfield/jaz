@@ -374,6 +374,14 @@ func (s *Server) failGoalContinuation(sessionID string, err error) {
 func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.QueuedMessage, bool, error) {
 	unlock := s.lockSession(sessionID)
 	defer unlock()
+	// Cancelling calls turn completion before returning to the replacement prompt.
+	if s.Locks != nil {
+		unlock, ok := s.Locks.TryLock(promptAdmissionKey(sessionID))
+		if !ok {
+			return storage.Session{}, nil, false, nil
+		}
+		defer unlock()
+	}
 
 	for {
 		session, err := s.Store.LoadSession(sessionID)
@@ -442,6 +450,10 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 	}
 }
 
+func promptAdmissionKey(sessionID string) string {
+	return "prompt:" + sessionID
+}
+
 // takesQueuedTurns reports whether a thread in status can start its next
 // queued turn: its last turn ended, even if it failed, so a failure costs only
 // that turn and not the work queued behind it.
@@ -472,20 +484,25 @@ type steeredQueuedPrompt struct {
 }
 
 func (s *Server) steerQueuedPrompt(sessionID string, req queueRequest) (storage.Session, error) {
+	unlock := s.lockSession(promptAdmissionKey(sessionID))
 	claimed, err := s.claimSteeredQueuedPrompt(sessionID, req)
 	if err != nil {
+		unlock()
 		return storage.Session{}, err
 	}
 	s.publishMessagesChanged(claimed.session.ID)
-	go s.dispatchSteeredQueuedPrompt(claimed)
+	go func() {
+		err := s.startSteeredQueuedPrompt(claimed)
+		if err != nil {
+			s.logger().Error("queued prompt steer failed", "session", sessionID, "error", err)
+			s.restoreQueuedPrompt(sessionID, claimed.prompt, claimed.publicIndex, err.Error())
+		}
+		unlock()
+		if err == nil {
+			s.drainQueueSoon(sessionID)
+		}
+	}()
 	return s.Store.LoadSession(sessionID)
-}
-
-func (s *Server) dispatchSteeredQueuedPrompt(claimed steeredQueuedPrompt) {
-	if err := s.startSteeredQueuedPrompt(claimed); err != nil {
-		s.logger().Error("queued prompt steer failed", "session", claimed.session.ID, "error", err)
-		s.restoreQueuedPrompt(claimed.session.ID, claimed.prompt, claimed.publicIndex, err.Error())
-	}
 }
 
 func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (steeredQueuedPrompt, error) {

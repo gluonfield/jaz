@@ -148,7 +148,8 @@ func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job
 	return f.job, f.sendErr
 }
 
-func (f *fakeACPManager) Input(ctx context.Context, req acp.SteerRequest) (acp.Job, error) {
+func (f *fakeACPManager) SendNow(ctx context.Context, req acp.SendRequest) (acp.Job, error) {
+	req.Completion = acp.CompletionAsync
 	f.mu.Lock()
 	state := f.job.State
 	f.mu.Unlock()
