@@ -1,6 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
 import { Fragment, useState } from 'react'
-import { BackendSwitcher } from '@/components/connection/BackendSwitcher'
 import { SearchField } from '@/components/ui/SearchField'
 import { useHasCloud } from '@/lib/cloudSession'
 import { type SettingsSection, useExperimentalFeaturesEnabled, visibleSettingsSections } from './sections'
@@ -11,12 +10,10 @@ export function SettingsNav({
   section,
   onSectionChange,
   onClose,
-  onOpenConnect,
 }: {
   section?: SettingsSection
   onSectionChange: (section: SettingsSection) => void
   onClose: () => void
-  onOpenConnect: () => void
 }) {
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const hasCloud = useHasCloud()
@@ -34,17 +31,6 @@ export function SettingsNav({
         <ArrowLeft size={15} className="text-ink-3 max-sm:size-[18px]" />
         <span className="flex-1">Back to jaz</span>
       </button>
-
-      {/* The backend these settings apply to — switch above everything. */}
-      <div className="pb-2.5">
-        <BackendSwitcher
-          onConnectServer={() => {
-            onClose()
-            onOpenConnect()
-          }}
-          onOpenCloudSettings={() => onSectionChange('cloud')}
-        />
-      </div>
 
       <div className="pb-2.5">
         <SearchField

@@ -66,7 +66,7 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'browser', label: 'Browser', icon: Globe, group: 'Capabilities' },
   { id: 'computer', label: 'Computer Use', icon: MonitorSmartphone, group: 'Capabilities' },
   { id: 'machines', label: 'Connected Machines', icon: Laptop, group: 'Capabilities', requiresCloud: true },
-  { id: 'cloud', label: 'Jaz Cloud', icon: Cloud, group: 'Account' },
+  { id: 'cloud', label: 'Cloud', icon: Cloud, group: 'Account' },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn, group: 'Account' },
   { id: 'archived', label: 'Archived threads', icon: ArchiveRestore, group: 'Account' },
 ]

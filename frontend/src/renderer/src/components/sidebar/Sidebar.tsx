@@ -1,6 +1,5 @@
 import { Settings } from 'lucide-react'
 import type { ReactNode, PointerEvent as ReactPointerEvent } from 'react'
-import { ConnectionFooterButton } from '@/components/connection/ConnectionFooterButton'
 import { UpdatePanel } from '@/components/update/UpdatePanel'
 
 // The panel beside the content, holding the current tab's list.
@@ -12,8 +11,6 @@ export function Sidebar({
   onResizeStart,
   onResizeReset,
   onOpenSettings,
-  onOpenCloudSettings,
-  onOpenConnect,
   children,
 }: {
   width: number
@@ -23,8 +20,6 @@ export function Sidebar({
   onResizeStart: (e: ReactPointerEvent) => void
   onResizeReset: () => void
   onOpenSettings: () => void
-  onOpenCloudSettings: () => void
-  onOpenConnect: () => void
   children: ReactNode
 }) {
   return (
@@ -43,7 +38,6 @@ export function Sidebar({
 
       <div className="flex shrink-0 flex-col gap-0.5 border-t border-border pl-1.5 pr-3 py-1.5 empty:hidden max-sm:pl-3">
         <UpdatePanel />
-        <ConnectionFooterButton onOpenConnect={onOpenConnect} onOpenCloudSettings={onOpenCloudSettings} />
         {mobile && (
           <button
             type="button"

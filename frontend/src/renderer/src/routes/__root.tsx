@@ -344,15 +344,12 @@ function RootLayout() {
                       onResizeStart={startResize}
                       onResizeReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
                       onOpenSettings={() => openSettings()}
-                      onOpenCloudSettings={() => openSettings('cloud')}
-                      onOpenConnect={() => setConnectOpen(true)}
                     >
                       {settingsMenu ? (
                         <SettingsNav
                           section={settingsSection}
                           onSectionChange={goToSettingsSection}
                           onClose={closeSettings}
-                          onOpenConnect={() => setConnectOpen(true)}
                         />
                       ) : tab === '/bots' ? (
                         <BotsPanel mobile={isMobile} />
@@ -393,7 +390,6 @@ function RootLayout() {
                   section={settingsSection}
                   onSectionChange={goToSettingsSection}
                   onClose={closeSettings}
-                  onOpenConnect={() => setConnectOpen(true)}
                 />
               </div>
               {/* A thread's side panel floats here as its own card. */}

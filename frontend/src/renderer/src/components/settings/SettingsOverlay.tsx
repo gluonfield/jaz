@@ -41,13 +41,11 @@ export function SettingsOverlay({
   section,
   onSectionChange,
   onClose,
-  onOpenConnect,
 }: {
   open: boolean
   section?: SettingsSection
   onSectionChange: (section: SettingsSection, options?: SectionNavigationOptions) => void
   onClose: () => void
-  onOpenConnect: () => void
 }) {
   const reduce = useReducedMotion()
   const isMobile = useIsMobile()
@@ -122,7 +120,6 @@ export function SettingsOverlay({
                   setNavOpen(false)
                 }}
                 onClose={onClose}
-                onOpenConnect={onOpenConnect}
               />
             </aside>
           ) : null}

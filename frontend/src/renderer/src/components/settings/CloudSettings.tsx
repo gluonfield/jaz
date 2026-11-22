@@ -1,10 +1,10 @@
 import { ChartNoAxesColumn, Cloud, Laptop, LoaderCircle, LogIn, LogOut, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { CloudIdentityBadge } from '@/components/connection/BackendSwitcherMenu'
 import { SettingsCard, SettingsRow } from '@/components/settings/SettingsCard'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/toast'
+import type { CloudUser } from '@/lib/api/serverTypes'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { attachCloudSignIn, signOutCloudAccount } from '@/lib/cloudAccount'
 import { DEFAULT_CLOUD_URL, useCloudSession } from '@/lib/cloudSession'
@@ -73,7 +73,7 @@ export function CloudSettings({
   return (
     <section className="flex flex-col gap-5 py-4">
       <div>
-        <h1 className="text-lg font-semibold text-ink">Jaz Cloud</h1>
+        <h1 className="text-lg font-semibold text-ink">Cloud</h1>
         <p className="mt-0.5 text-[13px] text-ink-2">
           {cloud.source === 'primary'
             ? 'Your active Jaz Cloud workspace and organization identity.'
@@ -219,5 +219,34 @@ export function CloudSettings({
         </SettingsCard>
       )}
     </section>
+  )
+}
+
+function CloudIdentityBadge({ user }: { user: CloudUser }) {
+  const initials = (user.display_name || user.email || '?')
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
+  return (
+    <div className="flex items-center gap-2.5 px-2.5 py-1.5">
+      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary-soft text-[11px] font-semibold text-primary">
+        {initials}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-[12.5px] font-medium text-ink">{user.display_name || user.email}</span>
+          {user.role ? (
+            <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-px text-[10px] font-medium text-ink-2">
+              {user.role}
+            </span>
+          ) : null}
+        </div>
+        <p className="truncate text-[11px] text-ink-3">
+          {[user.email, user.org_name || user.org_id].filter(Boolean).join(' · ')}
+        </p>
+      </div>
+    </div>
   )
 }
