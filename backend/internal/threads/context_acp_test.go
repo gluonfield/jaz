@@ -25,30 +25,34 @@ func TestReadThreadFindsDeliveredBotReplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Unix(100, 0).UTC()
-	if err := store.AppendMessageRecords(session.ID, storage.Message{
-		Role: "user", FromUser: true, Content: "What should we improve?", CreatedAt: start,
-	}); err != nil {
+	replies := []string{"Start with recoverable sends.", "Also verify the send landed."}
+	if err := store.AppendMessageRecords(session.ID,
+		storage.Message{Role: "user", FromUser: true, Content: "What should we improve?", CreatedAt: start},
+		storage.Message{Role: "user", Content: "Private handoff about sends.", CreatedAt: start.Add(time.Second)},
+		storage.Message{Role: "assistant", Content: replies[0], CreatedAt: start.Add(4 * time.Second)},
+	); err != nil {
 		t.Fatal(err)
 	}
-	replies := []string{"Start with recoverable sends.", "Also preserve legitimate follow-ups."}
-	for i, reply := range replies {
+	if err := store.AppendSessionEvents(session.ID,
+		sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: replies[0], At: start.Add(time.Second), ACP: &sessionevents.ACPEvent{ID: session.ID}},
+		sessionevents.Event{Type: sessionevents.TypeBotActivity, At: start.Add(4 * time.Second), BotActivity: &sessionevents.BotActivityEvent{
+			Kind: "message_sent", Text: "Internal note about sends.",
+		}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	for i := len(replies) - 1; i >= 0; i-- {
 		_, err := store.DeliverMessage(sessionevents.Event{
 			SessionID: session.ID,
 			Type:      sessionevents.TypeRoomMessage,
-			At:        start.Add(time.Duration(i+1) * time.Second),
+			At:        start.Add(time.Duration(i+2) * time.Second),
 			RoomMessage: &sessionevents.RoomMessageEvent{
-				Speaker: "bot", BotID: session.ID, Text: reply, Answers: start,
+				Speaker: "bot", BotID: session.ID, Text: replies[i], Answers: start,
 			},
 		}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-	}
-	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
-		Type: sessionevents.TypeBotActivity, At: start.Add(3 * time.Second),
-		BotActivity: &sessionevents.BotActivityEvent{Kind: "message_sent", Text: "Internal note about recoverable sends."},
-	}); err != nil {
-		t.Fatal(err)
 	}
 	service := NewService(sqlitestore.NewSearchQueries(store), store)
 	read := func(req ContextRequest) ContextResponse {
@@ -63,20 +67,20 @@ func TestReadThreadFindsDeliveredBotReplies(t *testing.T) {
 	}
 
 	tail := read(ContextRequest{Limit: 2})
-	var got []string
-	for _, message := range tail.Messages {
-		if message.Role != "assistant" {
-			t.Fatalf("tail included a non-assistant message: %#v", message)
-		}
-		got = append(got, message.Text)
+	if !slices.EqualFunc(tail.Messages, replies, func(message ContextMessage, reply string) bool {
+		return message.Role == "assistant" && message.Text == reply
+	}) || !tail.HasMoreBefore || tail.Session.MessageCount != 3 {
+		t.Errorf("tail did not return both deliveries in order: %#v", tail)
 	}
-	if !slices.Equal(got, replies) || !tail.HasMoreBefore || tail.Session.MessageCount != 3 {
-		t.Fatalf("tail did not return both deliveries: %#v", tail)
+	query := read(ContextRequest{Query: "send", Limit: 2, MaxTextChars: 10})
+	if query.MatchCount != 2 || !slices.EqualFunc(query.Messages, []string{"Start with...", "Also verif..."}, func(message ContextMessage, excerpt string) bool {
+		return message.Matched && message.Truncated && message.Text == excerpt
+	}) {
+		t.Fatalf("query did not find each delivered reply once beyond the display limit: %#v", query)
 	}
-	query := read(ContextRequest{Query: "recoverable sends", Limit: 1, MaxTextChars: 10})
-	if query.MatchCount != 1 || len(query.Messages) != 1 || !query.Messages[0].Matched ||
-		!query.Messages[0].Truncated || query.Messages[0].Text != "Start with..." || query.Messages[0].Seq != tail.Messages[0].Seq {
-		t.Fatalf("query did not find the delivered reply beyond the display limit: %#v", query)
+	before := read(ContextRequest{BeforeSeq: query.Messages[0].Seq, Limit: 1})
+	if len(before.Messages) != 1 || before.Messages[0].Role != "user" || before.Messages[0].Text != "What should we improve?" {
+		t.Fatalf("paging did not return the human prompt before the replies: %#v", before)
 	}
 	page := read(ContextRequest{AfterSeq: query.Messages[0].Seq, Limit: 1})
 	if len(page.Messages) != 1 || page.Messages[0].Text != replies[1] || page.HasMoreAfter {

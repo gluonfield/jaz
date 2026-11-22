@@ -122,13 +122,14 @@ func (s *Service) Context(ctx context.Context, req ContextRequest) (ContextRespo
 	if err != nil {
 		return ContextResponse{}, err
 	}
-	visible := visibleContextRecords(records, opts)
+	botChat := session.SourceType == storage.SourceBot
+	visible := visibleContextRecords(records, opts, botChat)
 	events, err := s.context.LoadSessionEvents(session.ID)
 	if err != nil {
 		return ContextResponse{}, err
 	}
 	counts := ToolCounts(records)
-	visible = mergeContextEvents(session.ID, visible, events, opts, counts)
+	visible = mergeContextEvents(session.ID, visible, events, opts, counts, botChat)
 	if opts.includeTools == IncludeToolsNone {
 		withoutTools := visible[:0]
 		for _, record := range visible {
@@ -233,9 +234,12 @@ func contextSession(session storage.Session, count int) ContextSession {
 	}
 }
 
-func visibleContextRecords(records []storage.Message, opts contextOptions) []contextRecord {
+func visibleContextRecords(records []storage.Message, opts contextOptions, botChat bool) []contextRecord {
 	out := make([]contextRecord, 0, len(records))
 	for _, record := range records {
+		if botChat && (record.Role != "user" || !record.FromUser) {
+			continue
+		}
 		if record.Role != "user" && record.Role != "assistant" {
 			continue
 		}
