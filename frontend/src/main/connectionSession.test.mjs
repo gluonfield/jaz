@@ -22,7 +22,7 @@ afterEach(() => {
   }
 })
 
-function fixture({ start, authCheck, authKind = 'bearer', localEnabled = true } = {}) {
+function fixture({ start, authCheck, deviceRegister, authKind = 'bearer', localEnabled = true } = {}) {
   delete process.env.ELECTRON_RENDERER_URL
   const rendererPath = '/fixture/app/out/renderer/index.html'
   const url = pathToFileURL(rendererPath).toString()
@@ -33,6 +33,7 @@ function fixture({ start, authCheck, authKind = 'bearer', localEnabled = true } 
   evaluate((name) => name === 'electron' ? electron : require(name), module, module.exports)
   let starts = 0
   let checks = 0
+  let registers = 0
   let stopped = 0
   const service = module.exports.createConnectionSession({
     rendererPath,
@@ -51,10 +52,13 @@ function fixture({ start, authCheck, authKind = 'bearer', localEnabled = true } 
     if (target.endsWith('/health')) {
       return Response.json({ ok: true, auth_required: true })
     }
+    if (target.endsWith('/v1/devices/register')) {
+      registers += 1
+      return deviceRegister ? deviceRegister(init) : Response.json({ token: 'jaz_legacy_device_token' })
+    }
     checks += 1
     expect(target.endsWith('/v1/auth/check')).toBe(true)
-    expect(init.headers.Authorization).toBe('Bearer local-bearer-key')
-    return authCheck ? authCheck() : Response.json({ ok: true, auth_kind: authKind })
+    return authCheck ? authCheck(init) : Response.json({ ok: true, auth_kind: authKind })
   }
   let nextId = 0
   function window(owner = false, type = 'window') {
@@ -85,7 +89,7 @@ function fixture({ start, authCheck, authKind = 'bearer', localEnabled = true } 
     value.local = (document, revision) => invocations.get('jaz:local-session')(value.event(), document, revision)
     return value
   }
-  return { service, window, url, counts: () => ({ starts, checks, stopped }) }
+  return { service, window, url, counts: () => ({ starts, checks, registers, stopped }) }
 }
 
 test('handoff accepts actual app windows and exact documents, with owner-only publication', () => {
@@ -231,4 +235,36 @@ test('disabling local backend rejects loopback session start and local IPC', asy
   expect(f.counts().starts).toBe(0)
   const remote = owner.call({ operation: 'begin', document, url: 'https://cloud.example' })
   expect(remote.url).toBe('https://cloud.example')
+})
+
+test('adopted legacy local backend returning device_approval_required registers a desktop device token', async () => {
+  let registeredBody = null
+  const f = fixture({
+    authCheck: (init) => {
+      if (init.headers.Authorization === 'Bearer local-bearer-key') {
+        return Response.json({ code: 'device_approval_required', error: 'device approval required' }, { status: 403 })
+      }
+      expect(init.headers.Authorization).toBe('Bearer jaz_legacy_device_token')
+      return Response.json({
+        ok: true,
+        auth_kind: 'device',
+        resource_ticket: { token: 'tk_legacy', expires_at: '2099-01-01T00:00:00Z' },
+      })
+    },
+    deviceRegister: (init) => {
+      expect(init.headers.Authorization).toBe('Bearer local-bearer-key')
+      registeredBody = JSON.parse(init.body)
+      return Response.json({ token: 'jaz_legacy_device_token' })
+    },
+  })
+  const owner = f.window(true)
+  const document = owner.read().document
+  const pending = owner.call({ operation: 'begin', document, url: 'http://127.0.0.1:5299' })
+  const session = await owner.local(document, pending.revision)
+  expect(session.token).toBe('jaz_legacy_device_token')
+  expect(session.ticket?.token).toBe('tk_legacy')
+  expect(registeredBody.kind).toBe('desktop')
+  expect(registeredBody.device_id).toMatch(/^[0-9a-f]{64}$/)
+  expect(f.counts().registers).toBe(1)
+  expect(f.counts().checks).toBe(2)
 })

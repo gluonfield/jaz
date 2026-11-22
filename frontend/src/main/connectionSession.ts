@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { ipcMain, type BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from 'electron'
 import { setTrustedRendererPath, trustedWindow } from '@main/permissions'
@@ -160,6 +161,42 @@ export function createConnectionSession(deps: Dependencies) {
       error: null, localPending: false }, record.window)
   }
 
+  async function issueLegacyLocalDevice(generation: number, rootKey: string): Promise<LocalSession> {
+    const rawKey = createHash('sha256').update('jaz-local-compat-v1:').update(rootKey).digest()
+    const register = await fetch(LOCAL_URL + '/v1/devices/register', {
+      method: 'POST',
+      redirect: 'error',
+      headers: { Authorization: `Bearer ${rootKey}`, 'Content-Type': 'application/json', 'X-Jaz-Client-Platform': 'desktop' },
+      body: JSON.stringify({
+        device_id: createHash('sha256').update(rawKey).digest('hex'),
+        public_key: rawKey.toString('base64url'),
+        kind: 'desktop',
+        name: 'Jaz desktop',
+      }),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (generation !== localGeneration) {
+      throw new Error('Local startup was cancelled')
+    }
+    const registered = await register.json().catch(() => null) as { token?: unknown; error?: unknown } | null
+    if (!register.ok || typeof registered?.token !== 'string' || !registered.token.startsWith('jaz_')) {
+      throw new Error(typeof registered?.error === 'string' && registered.error ? registered.error : 'Local authentication verification failed')
+    }
+    const check = await fetch(LOCAL_URL + '/v1/auth/check', {
+      redirect: 'error',
+      headers: { Authorization: `Bearer ${registered.token}`, 'X-Jaz-Client-Platform': 'desktop' },
+      signal: AbortSignal.timeout(3000),
+    })
+    if (generation !== localGeneration) {
+      throw new Error('Local startup was cancelled')
+    }
+    if (!check.ok) {
+      throw new Error('Local authentication verification failed')
+    }
+    const access = verifiedAccess(await check.json())
+    return { url: LOCAL_URL, token: registered.token, ticket: access.ticket, remembered: false }
+  }
+
   async function issueLocal(generation: number): Promise<LocalSession> {
     const local = await deps.startLocal()
     if (generation !== localGeneration) {
@@ -188,11 +225,20 @@ export function createConnectionSession(deps: Dependencies) {
     const check = await fetch(LOCAL_URL + '/v1/auth/check', {
       redirect: 'error', headers: { Authorization: `Bearer ${local.key}`, 'X-Jaz-Client-Platform': 'desktop' }, signal: AbortSignal.timeout(3000),
     })
-    if (!check.ok) {
-      throw new Error('Local authentication verification failed')
+    if (generation !== localGeneration) {
+      throw new Error('Local startup was cancelled')
     }
-    const access = verifiedAccess(await check.json())
-    return { url: LOCAL_URL, token: local.key, ticket: access.ticket, remembered: false }
+    if (check.ok) {
+      const access = verifiedAccess(await check.json())
+      return { url: LOCAL_URL, token: local.key, ticket: access.ticket, remembered: false }
+    }
+    if (check.status === 403) {
+      const body = await check.json().catch(() => null) as { code?: unknown } | null
+      if (body?.code === 'device_approval_required') {
+        return issueLegacyLocalDevice(generation, local.key)
+      }
+    }
+    throw new Error('Local authentication verification failed')
   }
 
   async function local(event: IpcMainInvokeEvent, document: number, revision: number): Promise<LocalSession> {

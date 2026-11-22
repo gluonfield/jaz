@@ -1,7 +1,7 @@
 export const CONNECTION_SESSION_CHANNEL = 'jaz:connection-session'
 export const LOCAL_SESSION_CHANNEL = 'jaz:local-session'
 
-export type AuthKind = 'bearer' | 'oidc'
+export type AuthKind = 'bearer' | 'oidc' | 'device'
 export type ResourceTicket = { token: string; expires_at: string }
 export type VerifiedSession = { url: string; token: string; remembered: boolean }
 export type LocalSession = VerifiedSession & { ticket?: ResourceTicket }
@@ -39,7 +39,7 @@ export function validBackendOrigin(value: string): boolean {
 export function verifiedAccess(value: unknown): { kind: AuthKind; ticket?: ResourceTicket } {
   const body = value as { ok?: unknown; auth_kind?: unknown; resource_ticket?: ResourceTicket } | null
   const kind = body?.auth_kind
-  if (!body || body.ok !== true || (kind !== 'bearer' && kind !== 'oidc')) {
+  if (!body || body.ok !== true || (kind !== 'bearer' && kind !== 'oidc' && kind !== 'device')) {
     throw new Error('Backend did not verify the session credential')
   }
   const ticket = body.resource_ticket
