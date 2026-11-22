@@ -141,7 +141,7 @@ export function AgentModelControls({
   return (
     <ModelSelect
       {...model}
-      agent={{ value: controls.runtime, options: controls.showAgentPicker ? controls.agents : [], onChange: controls.selectRuntime }}
+      agent={{ value: controls.runtime, options: controls.agents, onChange: controls.selectRuntime }}
       placement={placement}
       disabled={disabled}
       onChange={controls.setSelection}
