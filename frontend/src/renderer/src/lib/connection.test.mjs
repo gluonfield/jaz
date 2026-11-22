@@ -234,7 +234,7 @@ test('connecting to an authenticated remote server without a credential fails cl
   expect(connection.useConnection().status).toBe('disconnected')
 })
 
-test('local startup authenticates without touching encrypted storage', async () => {
+test('desktop startup auto-starts local backend without touching encrypted storage', async () => {
   const target = 'http://127.0.0.1:5299'
   let unlocks = 0
   let encryptions = 0
@@ -250,13 +250,14 @@ test('local startup authenticates without touching encrypted storage', async () 
     },
     startLocalBackend: async () => ({ ok: true, url: target, key: 'local-bootstrap-key' }),
   })
-  expect(await connection.startLocal()).toBeNull()
   expect(connection.useConnection().status).toBe('connected')
   expect(connection.cachedApiAuthToken(target)).toBe('local-bearer-token')
   expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:previous-ciphertext')
   connection.disconnectBackend()
   expect(connection.cachedApiAuthToken(target)).toBe('')
   expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:previous-ciphertext')
+  expect(await connection.startLocal()).toBeNull()
+  expect(connection.useConnection().status).toBe('connected')
   expect(unlocks).toBe(0)
   expect(encryptions).toBe(0)
 })

@@ -749,19 +749,19 @@ async function init(): Promise<void> {
     }
   }
   const preference = connectionPreference()
-  if (preference?.mode === 'local' && clientRuntime.capabilities.localBackend) {
-    await startLocal()
-    return
-  }
   if (preference?.mode === 'remote' && preference.remoteUrl) {
     await restore(preference.remoteUrl)
     return
   }
-  if (clientRuntime.cloudUrl && !clientRuntime.capabilities.localBackend) {
+  if (clientRuntime.capabilities.localBackend) {
+    await startLocal()
+    return
+  }
+  if (clientRuntime.cloudUrl) {
     await connectRemote(clientRuntime.cloudUrl)
     return
   }
-  if (!clientRuntime.capabilities.localBackend && clientRuntime.kind === 'electron') {
+  if (clientRuntime.kind === 'electron') {
     block(null)
     return
   }
