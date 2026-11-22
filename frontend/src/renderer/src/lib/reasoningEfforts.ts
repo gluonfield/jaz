@@ -28,8 +28,8 @@ function acpReasoningEffortOptions(
   agent: string,
 ): ReasoningEffortOption[] {
   // An explicit empty list means the agent has no reasoning efforts of its own —
-  // e.g. Antigravity, whose thinking level is baked into the model name. Honor
-  // that; only fall back to a generic list when the agent's options haven't loaded.
+  // e.g. Antigravity, whose levels come with each model. Honor that; only fall
+  // back to a generic list when the agent's options haven't loaded.
   return settings?.acp_options?.[agent]?.reasoning_efforts ?? REASONING_EFFORT_OPTIONS
 }
 
@@ -114,9 +114,11 @@ export function modelReasoningSelection({
     }
   }
   const options = reasoningOptions(settings, agent, model, catalog.suggestions, settingsMode)
+  // A saved Antigravity id such as gemini-4-neon-high names the level it runs at.
+  const named = suggestion?.reasoning.efforts?.find((level) => model === `${suggestion.value}-${level}`)
   return {
     options,
-    effectiveEffort: effectiveReasoningEffort(effort, options),
+    effectiveEffort: effectiveReasoningEffort(effort || named || '', options),
     supported: supportedReasoningEffort(effort, options),
     status: 'ready',
     blocked: false,

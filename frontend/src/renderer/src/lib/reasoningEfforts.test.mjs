@@ -95,6 +95,24 @@ describe('modelReasoningSelection', () => {
     expect(filterModelSuggestions(suggestions, 'gpt-test')).toEqual(suggestions)
   })
 
+  test('runs a saved per-level model id at the level it names until another is picked', () => {
+    const catalog = {
+      status: 'ready',
+      unknownModel: 'ready',
+      suggestions: [{
+        value: 'gemini-4-neon',
+        label: 'Gemini 4 Neon',
+        aliases: ['gemini-4-neon-high', 'gemini-4-neon-xhigh'],
+        reasoning: { status: 'ready', efforts: ['high', 'xhigh'] },
+      }],
+    }
+    const saved = { ...input, agent: 'antigravity', model: 'gemini-4-neon-high', catalog }
+
+    expect(modelReasoningSelection({ ...saved, requested: '' }).effectiveEffort).toBe('high')
+    expect(modelReasoningSelection({ ...saved, requested: 'xhigh' }).effectiveEffort).toBe('xhigh')
+    expect(modelReasoningSelection({ ...saved, model: 'gemini-4-neon', requested: '' }).effectiveEffort).toBe('')
+  })
+
   test('preserves effort when a ready catalog still marks the model pending', () => {
     const selection = modelReasoningSelection({
       ...input,
