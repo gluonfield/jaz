@@ -24,7 +24,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 		}},
 	}}}}}
 	capable := json.RawMessage(`{"agentCapabilities":{"mcpCapabilities":{"http":true}}}`)
-	servers := m.mcpServersForAgent(context.Background(), capable, MCPServerPolicyAll, AgentOpenCode, false)
+	servers := m.mcpServersForAgent(context.Background(), capable, MCPServerPolicyAll, false)
 	if len(servers) != 1 {
 		t.Fatalf("expected configured jaz entry, got %v", servers)
 	}
@@ -43,7 +43,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 	if got := headerValue(entry.Headers, mcpsession.HeaderName); got != "" {
 		t.Fatalf("unexpected session header without context: %q", got)
 	}
-	servers = m.mcpServersForAgent(mcpsession.With(context.Background(), "thread-1"), capable, MCPServerPolicyAll, AgentOpenCode, false)
+	servers = m.mcpServersForAgent(mcpsession.With(context.Background(), "thread-1"), capable, MCPServerPolicyAll, false)
 	if len(servers) != 1 {
 		t.Fatalf("expected configured jaz entry with session context, got %v", servers)
 	}
@@ -55,7 +55,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 	}
 
 	incapable := json.RawMessage(`{"agentCapabilities":{}}`)
-	if servers := m.mcpServersForAgent(context.Background(), incapable, MCPServerPolicyAll, AgentOpenCode, false); len(servers) != 0 {
+	if servers := m.mcpServersForAgent(context.Background(), incapable, MCPServerPolicyAll, true); len(servers) != 0 {
 		t.Fatalf("non-http-capable agent must get nothing, got %v", servers)
 	}
 }
@@ -84,7 +84,7 @@ func TestMCPServersForJaztoolsOnlyPolicyOnlyExposesJaztools(t *testing.T) {
 		}}},
 	}
 	capable := json.RawMessage(`{"agentCapabilities":{"mcpCapabilities":{"http":true}}}`)
-	servers := m.mcpServersForAgent(mcpsession.With(context.Background(), "search-session"), capable, MCPServerPolicyMemorySearchWorker, AgentOpenCode, false)
+	servers := m.mcpServersForAgent(mcpsession.With(context.Background(), "search-session"), capable, MCPServerPolicyMemorySearchWorker, false)
 	if len(servers) != 1 {
 		t.Fatalf("servers = %d, want only jaztools", len(servers))
 	}
@@ -117,22 +117,26 @@ func TestDeferredMCPDiscoveryPreservesAllowedConnections(t *testing.T) {
 	capable := json.RawMessage(`{"agentCapabilities":{"mcpCapabilities":{"http":true}}}`)
 	for _, tc := range []struct {
 		agent, policy string
-		optedIn       bool
+		override      *bool
 		deferred      bool
 	}{
-		{AgentOpenCode, MCPServerPolicyBot, false, true},
-		{AgentOpenCode, MCPServerPolicyAll, false, false},
-		{AgentCodex, MCPServerPolicyBot, false, false},
-		{AgentAntigravity, MCPServerPolicyBot, false, true},
-		{AgentAntigravity, MCPServerPolicyAll, false, false},
-		{AgentAntigravity, MCPServerPolicyWidget, false, false},
-		{AgentAntigravity, MCPServerPolicyAll, true, true},
-		{AgentCodex, MCPServerPolicyAll, true, true},
-		{AgentOpenCode, MCPServerPolicyMemorySearchWorker, false, false},
-		{AgentAntigravity, MCPServerPolicyMemorySearchWorker, false, false},
-		{AgentAntigravity, MCPServerPolicyMemorySearchWorker, true, true},
+		{AgentOpenCode, MCPServerPolicyAll, nil, false},
+		{AgentGrok, MCPServerPolicyAll, nil, true},
+		{AgentKimi, MCPServerPolicyAll, nil, true},
+		{AgentMuse, MCPServerPolicyAll, nil, true},
+		{AgentCopilot, MCPServerPolicyAll, nil, false},
+		{AgentCodex, MCPServerPolicyAll, nil, false},
+		{AgentClaude, MCPServerPolicyAll, nil, false},
+		{AgentAntigravity, MCPServerPolicyBot, nil, true},
+		{AgentAntigravity, MCPServerPolicyAll, nil, true},
+		{AgentAntigravity, MCPServerPolicyWidget, nil, true},
+		{AgentAntigravity, MCPServerPolicyAll, new(false), false},
+		{AgentCodex, MCPServerPolicyAll, new(true), true},
+		{AgentAntigravity, MCPServerPolicyMemorySearchWorker, nil, false},
+		{AgentAntigravity, MCPServerPolicyMemorySearchWorker, new(true), true},
 	} {
-		servers := m.mcpServersForAgent(t.Context(), capable, tc.policy, tc.agent, tc.optedIn)
+		deferred := useMCPDiscoveryGateway(tc.agent, tc.policy, tc.override)
+		servers := m.mcpServersForAgent(t.Context(), capable, tc.policy, deferred)
 		wantCount := 3
 		if tc.policy == MCPServerPolicyMemorySearchWorker {
 			wantCount = 1

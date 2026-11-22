@@ -497,7 +497,7 @@ func withSignInHint(err error) error {
 	return err
 }
 
-func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd string, session storage.Session, systemPromptExtensions promptmodule.Modules) (acpSessionInfo, error) {
+func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd string, session storage.Session, deferred bool, systemPromptExtensions promptmodule.Modules) (acpSessionInfo, error) {
 	meta, err := m.sessionMeta(ctx, agent, cfg, cwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, session.SourceType, systemPromptExtensions)
 	if err != nil {
 		return acpSessionInfo{}, err
@@ -505,7 +505,7 @@ func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string
 	return m.newACPProtocolSession(ctx, ac, "agent", newSessionRequest{
 		Meta:       meta,
 		Cwd:        cwd,
-		MCPServers: m.mcpServersForAgent(ctx, ac.initRaw, session.RuntimeRef.MCPServerPolicy, agent, session.RuntimeRef.DeferredMCPTools),
+		MCPServers: m.mcpServersForAgent(ctx, ac.initRaw, session.RuntimeRef.MCPServerPolicy, deferred),
 	})
 }
 
@@ -621,7 +621,8 @@ func (m *Manager) startSession(ctx context.Context, created createdSession, stat
 		return nil, err
 	}
 	mcpRevision := m.mcpRevision()
-	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, cfg, absCwd, session, req.SystemPromptExtensions)
+	deferred := useMCPDiscoveryGateway(req.ACPAgent, session.RuntimeRef.MCPServerPolicy, session.RuntimeRef.DeferredMCPTools)
+	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, cfg, absCwd, session, deferred, req.SystemPromptExtensions)
 	if err != nil {
 		ac.close()
 		return nil, err
@@ -642,7 +643,7 @@ func (m *Manager) startSession(ctx context.Context, created createdSession, stat
 	}
 	process := newAgentProcess(ac)
 	process.mcpPolicy = session.RuntimeRef.MCPServerPolicy
-	process.mcpDeferred = session.RuntimeRef.DeferredMCPTools
+	process.mcpDeferred = deferred
 	process.mcpRevision = mcpRevision
 	process.mcpRefresh = supportedMCPRefresh(ac.initRaw, session.RuntimeRef.MCPServerPolicy)
 	job := newIdleJob(session, req.ACPAgent, acpSessionID, absCwd, modes)

@@ -32,14 +32,14 @@ func (m *Manager) SetDeferredMCPTools(ctx context.Context, ref string, deferred 
 	if m.configuredLocal(session.RuntimeRef.Agent) {
 		return fmt.Errorf("agent %q does not use an external MCP client", session.RuntimeRef.Agent)
 	}
-	if session.RuntimeRef.DeferredMCPTools == deferred {
+	if previous := session.RuntimeRef.DeferredMCPTools; previous != nil && *previous == deferred {
 		return nil
 	}
 	job := m.jobByID(session.ID)
 	if job != nil && (m.subagentsRunning(job) || m.hasLivePermissionWaiter(job.ID) || !job.retire()) {
 		return fmt.Errorf("wait for the agent to become idle before changing MCP discovery")
 	}
-	session.RuntimeRef.DeferredMCPTools = deferred
+	session.RuntimeRef.DeferredMCPTools = new(deferred)
 	if err := m.store.SaveSession(session); err != nil {
 		if job != nil {
 			job.mu.Lock()

@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/storage"
@@ -18,7 +19,7 @@ func TestDeferredMCPToolsRoundTripPreservesRuntimeAndPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, deferred := range []bool{true, false} {
+	for _, deferred := range []*bool{nil, new(true), new(false)} {
 		session.RuntimeRef.DeferredMCPTools = deferred
 		if err := store.SaveSession(session); err != nil {
 			t.Fatal(err)
@@ -27,7 +28,7 @@ func TestDeferredMCPToolsRoundTripPreservesRuntimeAndPolicy(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if *loaded.RuntimeRef != *session.RuntimeRef {
+		if !reflect.DeepEqual(loaded.RuntimeRef, session.RuntimeRef) {
 			t.Fatalf("runtime changed: got %#v, want %#v", loaded.RuntimeRef, session.RuntimeRef)
 		}
 	}

@@ -48,12 +48,12 @@ func TestDeferredMCPToolsRetiresOnlyIdleTargetAndKeepsNativeSession(t *testing.T
 	if !job.lease() {
 		t.Fatal("could not lease idle process")
 	}
-	if err := manager.SetDeferredMCPTools(ctx, target.SessionID, true); err == nil {
+	if err := manager.SetDeferredMCPTools(ctx, target.SessionID, false); err == nil {
 		t.Fatal("retired a process another caller was using")
 	}
 	job.release()
 	unchanged, err := store.LoadSession(target.SessionID)
-	if err != nil || unchanged.RuntimeRef.DeferredMCPTools {
+	if err != nil || unchanged.RuntimeRef.DeferredMCPTools != nil {
 		t.Fatalf("busy selection persisted: %#v, %v", unchanged.RuntimeRef, err)
 	}
 	if manager.jobByID(target.SessionID) != job {
@@ -79,7 +79,7 @@ func TestDeferredMCPToolsRetiresOnlyIdleTargetAndKeepsNativeSession(t *testing.T
 	}
 	changed := make(chan error, 1)
 	go func() {
-		changed <- manager.SetDeferredMCPTools(ctx, target.Slug, true)
+		changed <- manager.SetDeferredMCPTools(ctx, target.Slug, false)
 	}()
 	select {
 	case err := <-changed:
@@ -97,7 +97,7 @@ func TestDeferredMCPToolsRetiresOnlyIdleTargetAndKeepsNativeSession(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !session.RuntimeRef.DeferredMCPTools || session.RuntimeRef.SessionID != native {
+	if choice := session.RuntimeRef.DeferredMCPTools; choice == nil || *choice || session.RuntimeRef.SessionID != native {
 		t.Fatalf("selection replaced native session: %#v", session.RuntimeRef)
 	}
 	if _, err := manager.Send(ctx, SendRequest{Session: target.SessionID, Message: "hello", Completion: CompletionInline}); err != nil {
