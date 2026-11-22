@@ -122,10 +122,10 @@ function begin(url: string, announce = true): Attempt {
   return value
 }
 
-function block(error: string | null): void {
+function block(error: string | null, keepPreference = false): void {
   invalidate()
   if (ownsConnection) {
-    clearConnectionPreference()
+    if (!keepPreference) clearConnectionPreference()
     if (bridge && desktop) {
       authoritative = bridge.update({ operation: 'clear', document: desktop.document, error })
     }
@@ -386,7 +386,7 @@ export async function connectRemote(input: string): Promise<string | null> {
 export async function startLocal(): Promise<string | null> {
   const cached = cachedApiAuthToken(LOCAL_URL)
   const value = begin(LOCAL_URL)
-  clearConnectionPreference()
+  if (connectionPreference()?.mode !== 'local') clearConnectionPreference()
   try {
     if (cached) {
       const local = await clientRuntime.startLocalBackend?.()
@@ -412,7 +412,7 @@ export async function startLocal(): Promise<string | null> {
       return null
     }
     const message = error instanceof Error ? error.message : 'Could not start local Jaz'
-    block(message)
+    block(message, true)
     return message
   }
 }
@@ -482,6 +482,7 @@ async function hydrate(snapshot: SessionSnapshot): Promise<void> {
     attempt.revision = snapshot.revision
     return
   }
+  const wasConnected = authoritative?.phase === 'connected'
   authoritative = snapshot
   invalidate()
   if (snapshot.phase === 'connected' && snapshot.session) {
@@ -495,7 +496,7 @@ async function hydrate(snapshot: SessionSnapshot): Promise<void> {
     await startLocal()
   }
   else {
-    if (ownsConnection && snapshot.phase === 'blocked') {
+    if (ownsConnection && snapshot.phase === 'blocked' && (wasConnected || snapshot.url !== LOCAL_URL)) {
       clearConnectionPreference()
     }
     setState({ status: snapshot.phase === 'pending' || snapshot.phase === 'initial' ? 'checking' : 'disconnected', url: snapshot.url || state.url, pairing: null, error: snapshot.error })
