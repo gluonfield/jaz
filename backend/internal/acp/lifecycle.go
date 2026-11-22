@@ -12,7 +12,6 @@ import (
 
 type agentProcess struct {
 	mcpPolicy   string
-	mcpDeferred bool
 	mcpRefresh  string
 	mcpRevision uint64
 	conn        *promptTrackingConn

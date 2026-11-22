@@ -37,7 +37,7 @@ func TestEnabledHTTPMCPServersEmitsConfiguredHTTPPayloads(t *testing.T) {
 			Enabled:   true,
 			Transport: "stdio",
 		},
-	}}, MCPServerPolicyAll, false)
+	}}, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestEnabledHTTPMCPServersAppliesPolicyBeforeResolvingHeaders(t *testing.T) 
 			Enabled:   true,
 			Transport: mcpconfig.TransportStreamableHTTP,
 		},
-	}}, MCPServerPolicyMemorySearchWorker, false)
+	}}, MCPServerPolicyMemorySearchWorker)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestEnabledHTTPMCPServersMemorySourcePolicyRestrictsToJaztoolsWithSurface(t
 	servers, err := enabledHTTPMCPServers(context.Background(), staticMCPServerStore{servers: []mcpconfig.Server{
 		{ID: "docs", Name: "Docs", URL: "https://docs.example.com/mcp", Enabled: true, Transport: mcpconfig.TransportStreamableHTTP},
 		{ID: "jaztools", Name: "jaztools", URL: "http://127.0.0.1:5299/mcp/jaztools", Enabled: true, Transport: mcpconfig.TransportStreamableHTTP},
-	}}, MCPServerPolicyMemorySourceWorker, false)
+	}}, MCPServerPolicyMemorySourceWorker)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestEnabledHTTPMCPServersAllPolicyLeavesURLUnchanged(t *testing.T) {
 		URL:       "http://127.0.0.1:5299/mcp/jaztools",
 		Enabled:   true,
 		Transport: mcpconfig.TransportStreamableHTTP,
-	}}}, MCPServerPolicyAll, false)
+	}}}, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestEnabledHTTPMCPServersWidgetPolicyKeepsConnectionsAndAddsJaztoolsSurface
 			Enabled:   true,
 			Transport: mcpconfig.TransportStreamableHTTP,
 		},
-	}}, MCPServerPolicyWidget, false)
+	}}, MCPServerPolicyWidget)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestEnabledHTTPMCPServersUnknownPolicyFailsClosed(t *testing.T) {
 		URL:       "https://docs.example.com/mcp",
 		Enabled:   true,
 		Transport: mcpconfig.TransportStreamableHTTP,
-	}}}, "unknown-policy", false)
+	}}}, "unknown-policy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestEnabledHTTPMCPServersResolvesConfiguredHeaders(t *testing.T) {
 				{Name: mcpsession.HeaderName, Value: mcpsession.HeaderPlaceholder},
 			},
 		},
-	}}, MCPServerPolicyAll, false)
+	}}, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestEnabledHTTPMCPServersDropsMissingEnvHeaders(t *testing.T) {
 				{Name: mcpsession.HeaderName, Value: mcpsession.HeaderPlaceholder},
 			},
 		},
-	}}, MCPServerPolicyAll, false)
+	}}, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestEnabledHTTPMCPServersEmitsEmptyHeadersArray(t *testing.T) {
 			Enabled:   true,
 			Transport: mcpconfig.TransportStreamableHTTP,
 		},
-	}}, MCPServerPolicyAll, false)
+	}}, MCPServerPolicyAll)
 	if err != nil {
 		t.Fatal(err)
 	}

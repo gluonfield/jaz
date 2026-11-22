@@ -19,7 +19,7 @@ func TestChangedCatalogRelaunchesOnlyAnIdleCodexProcess(t *testing.T) {
 		revision       *catalogRevision
 		send           func(string)
 		launches       func() (starts, resumed int)
-		deferDiscovery func()
+		deferDiscovery func() error
 	}
 	start := func(t *testing.T, agent string) thread {
 		logs := t.TempDir()
@@ -40,11 +40,8 @@ func TestChangedCatalogRelaunchesOnlyAnIdleCodexProcess(t *testing.T) {
 			launches: func() (int, int) {
 				return processStarts(t, startLog), requestsSent(t, requestLog, "session/resume")
 			},
-			deferDiscovery: func() {
-				t.Helper()
-				if err := manager.SetDeferredMCPTools(ctx, id, true); err != nil {
-					t.Fatal(err)
-				}
+			deferDiscovery: func() error {
+				return manager.SetDeferredMCPTools(ctx, id, true)
 			},
 		}
 	}
@@ -71,14 +68,18 @@ func TestChangedCatalogRelaunchesOnlyAnIdleCodexProcess(t *testing.T) {
 		}
 	})
 
-	t.Run("codex with deferred discovery", func(t *testing.T) {
+	t.Run("codex keeps native discovery", func(t *testing.T) {
 		codex := start(t, acp.AgentCodex)
-		codex.deferDiscovery()
-		codex.send("deferred")
+		if err := codex.deferDiscovery(); err == nil {
+			t.Fatal("gateway opt-in replaced native tool names")
+		}
+		if starts, _ := codex.launches(); starts != 1 {
+			t.Fatalf("rejected gateway opt-in restarted the agent: %d starts", starts)
+		}
 		codex.revision.Add(1)
 		codex.send("changed catalog")
-		if starts, _ := codex.launches(); starts != 2 {
-			t.Fatalf("process starts = %d, want only the relaunch that enabled deferred discovery", starts)
+		if starts, resumed := codex.launches(); starts != 2 || resumed != 1 {
+			t.Fatalf("native catalogue change did not resume: %d starts, %d resumes", starts, resumed)
 		}
 	})
 

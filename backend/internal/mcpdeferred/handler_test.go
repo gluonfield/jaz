@@ -162,6 +162,42 @@ func TestDeferredDoesNotEscapeRestrictedSurface(t *testing.T) {
 	}
 }
 
+func TestDeferredSearchRanksThreadMessagingFromNaturalLanguage(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1"}, &mcp.ServerOptions{PageSize: 2})
+	for _, spec := range []struct{ name, description string }{
+		{"ask_user", "Ask the user a question and wait for a response."},
+		{"browser_click", "Click an element in a browser tab."},
+		{"gmail_send_draft", "Send a previously drafted email message."},
+		{"read_thread", "Read the messages in a saved Jaz thread."},
+		{"send_message_to_thread", "Send a follow-up to a Jaz thread. The prompt becomes a visible user message."},
+		{"wait_threads", "Wait for one or more Jaz threads to complete."},
+	} {
+		server.AddTool(&mcp.Tool{Name: spec.name, Description: spec.description, InputSchema: json.RawMessage(`{"type":"object"}`)}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{}, nil
+		})
+	}
+	host := httptest.NewServer(Wrap(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{JSONResponse: true})))
+	t.Cleanup(host.Close)
+	client := mcp.NewClient(&mcp.Implementation{Name: "client", Version: "1"}, nil)
+	session, err := client.Connect(t.Context(), &mcp.StreamableClientTransport{Endpoint: host.URL + "?" + QueryParam + "=1"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = session.Close() })
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "search_tools",
+		Arguments: map[string]any{"query": "send a message to another thread", "limit": 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var page struct{ Tools []mcp.Tool }
+	data, _ := json.Marshal(result.StructuredContent)
+	if err := json.Unmarshal(data, &page); err != nil || len(page.Tools) != 1 || page.Tools[0].Name != "send_message_to_thread" {
+		t.Fatalf("expected send_message_to_thread first, got %s (%v)", data, err)
+	}
+}
+
 func TestDeferredTracksCatalogueChangesAndForwardsProgress(t *testing.T) {
 	server := mcp.NewServer(&mcp.Implementation{Name: "dynamic", Version: "1"}, nil)
 	server.AddTool(&mcp.Tool{Name: "initial", InputSchema: json.RawMessage(`{"type":"object"}`)}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {

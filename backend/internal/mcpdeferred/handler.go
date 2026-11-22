@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+
+	"github.com/wins/jaz/backend/internal/toolsearch"
 )
 
 const QueryParam = "jaz_deferred_tools"
 
-var gatewayTools = json.RawMessage(`{"tools":[{"name":"search_tools","description":"Find available tools by English keywords (for example: command, memory, thread, browser, email). Returns the original tool names, descriptions and complete input schemas. Use an empty query to browse; follow next_offset for more results. Discover a tool before calling it with call_tool. All tools remain available through this catalogue.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":10}},"additionalProperties":false},"annotations":{"readOnlyHint":true}},{"name":"call_tool","description":"Execute an available tool discovered with search_tools. Pass its exact name and arguments matching its input schema. The original permissions, session context, validation, results and errors apply. This does not bypass user approval or access restrictions.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"arguments":{"type":"object","additionalProperties":true}},"required":["name","arguments"],"additionalProperties":false}}]}`)
+var gatewayTools = json.RawMessage(`{"tools":[{"name":"search_tools","description":"Find available tools by describing what you want to do. Returns the original tool names, descriptions and complete input schemas. Use an empty query to browse; follow next_offset for more results. Discover a tool before calling it with call_tool. All tools remain available through this catalogue.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":10}},"additionalProperties":false},"annotations":{"readOnlyHint":true}},{"name":"call_tool","description":"Execute an available tool discovered with search_tools. Pass its exact name and arguments matching its input schema. The original server validates the call and applies its access rules.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"arguments":{"type":"object","additionalProperties":true}},"required":["name","arguments"],"additionalProperties":false}}]}`)
 
 type message struct {
 	JSONRPC string                     `json:"jsonrpc"`
@@ -157,7 +159,7 @@ func search(next http.Handler, w http.ResponseWriter, r *http.Request, request m
 		invalid(w, request.ID, "search_tools requires offset >= 0 and limit between 1 and 10")
 		return
 	}
-	matches := make([]json.RawMessage, 0)
+	catalogue := make([]json.RawMessage, 0)
 	var last *response
 	cursor := ""
 	seen := map[string]bool{}
@@ -177,14 +179,7 @@ func search(next http.Handler, w http.ResponseWriter, r *http.Request, request m
 			invalid(w, request.ID, "invalid tool catalogue")
 			return
 		}
-		for _, tool := range page.Tools {
-			var spec struct{ Name, Description string }
-			_ = json.Unmarshal(tool, &spec)
-			text := strings.ToLower(spec.Name + " " + spec.Description)
-			if slices.ContainsFunc(strings.Fields(strings.ToLower(input.Query)), func(word string) bool { return strings.Contains(text, word) }) || strings.TrimSpace(input.Query) == "" {
-				matches = append(matches, tool)
-			}
-		}
+		catalogue = append(catalogue, page.Tools...)
 		cursor = page.NextCursor
 		if cursor == "" {
 			break
@@ -195,6 +190,7 @@ func search(next http.Handler, w http.ResponseWriter, r *http.Request, request m
 		}
 		seen[cursor] = true
 	}
+	matches := rankTools(input.Query, catalogue)
 	start := min(input.Offset, len(matches))
 	end := min(start+input.Limit, len(matches))
 	result := map[string]any{"tools": matches[start:end], "total_matches": len(matches)}
@@ -205,4 +201,26 @@ func search(next http.Handler, w http.ResponseWriter, r *http.Request, request m
 	payload, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": string(text)}}, "structuredContent": result})
 	last.replaceResult(request.ID, payload)
 	last.write(w)
+}
+
+func rankTools(query string, catalogue []json.RawMessage) []json.RawMessage {
+	if strings.TrimSpace(query) == "" {
+		return catalogue
+	}
+	documents := make([]toolsearch.Document, len(catalogue))
+	for i, raw := range catalogue {
+		var spec struct {
+			Name        string
+			Description string
+			InputSchema map[string]any
+		}
+		_ = json.Unmarshal(raw, &spec)
+		documents[i] = toolsearch.Document{Name: spec.Name, Description: spec.Description, Parameters: spec.InputSchema}
+	}
+	ranked := toolsearch.New(documents).Rank(query)
+	matches := make([]json.RawMessage, len(ranked))
+	for i, position := range ranked {
+		matches[i] = catalogue[position]
+	}
+	return matches
 }

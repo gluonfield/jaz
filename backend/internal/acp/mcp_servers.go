@@ -8,9 +8,7 @@ import (
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
-	"github.com/wins/jaz/backend/internal/mcpdeferred"
 	"github.com/wins/jaz/backend/internal/mcpsession"
-	"github.com/wins/jaz/backend/internal/serverconfig"
 )
 
 const jaztoolsSurfaceQueryParam = "jaztools_surface"
@@ -22,19 +20,7 @@ type httpMCPServer struct {
 	Headers []mcpconfig.Header `json:"headers"`
 }
 
-func useMCPDiscoveryGateway(agent, policy string, override *bool) bool {
-	if override != nil {
-		return *override
-	}
-	switch agent {
-	case AgentCodex, AgentClaude, AgentOpenCode, AgentCopilot:
-		return false
-	default:
-		return fullMCPPolicy(policy)
-	}
-}
-
-func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessage, policy string, deferred bool) []json.RawMessage {
+func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessage, policy string) []json.RawMessage {
 	var init struct {
 		AgentCapabilities acpschema.AgentCapabilities `json:"agentCapabilities"`
 	}
@@ -44,7 +30,7 @@ func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessag
 	if init.AgentCapabilities.MCPCapabilities == nil || !init.AgentCapabilities.MCPCapabilities.HTTP {
 		return []json.RawMessage{}
 	}
-	servers, err := enabledHTTPMCPServers(ctx, m.cfg.MCPStore, policy, deferred)
+	servers, err := enabledHTTPMCPServers(ctx, m.cfg.MCPStore, policy)
 	if err != nil {
 		m.log.Warn("load mcp servers for acp failed", "error", err)
 		servers = nil
@@ -55,7 +41,7 @@ func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessag
 	return servers
 }
 
-func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, policy string, deferred bool) ([]json.RawMessage, error) {
+func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, policy string) ([]json.RawMessage, error) {
 	if store == nil {
 		return nil, nil
 	}
@@ -82,7 +68,7 @@ func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, po
 		payload := httpMCPServer{
 			Type:    "http",
 			Name:    server.Name,
-			URL:     mcpServerURL(policy, server, deferred),
+			URL:     mcpServerURL(policy, server),
 			Headers: headers,
 		}
 		data, err := json.Marshal(payload)
@@ -105,24 +91,12 @@ func mcpServerAllowed(policy string, server mcpconfig.Server) bool {
 // mcpServerURL routes the jaztools server to the tool surface named by the
 // policy itself: the policy string and the jaztools surface query param are one
 // and the same, so they cannot drift out of sync.
-func mcpServerURL(policy string, server mcpconfig.Server, deferred bool) string {
+func mcpServerURL(policy string, server mcpconfig.Server) string {
 	policy = strings.TrimSpace(policy)
-	raw := server.URL
-	jaztools := isJaztoolsServer(server)
-	if jaztools && policy != MCPServerPolicyAll {
-		raw = jaztoolsSurfaceURL(raw, policy)
+	if policy != MCPServerPolicyAll && isJaztoolsServer(server) {
+		return jaztoolsSurfaceURL(server.URL, policy)
 	}
-	if !deferred || (!jaztools && server.ID != "jaz_mcp") {
-		return raw
-	}
-	u, err := url.Parse(raw)
-	if err != nil || (u.Path != serverconfig.JazToolsMCPPath && u.Path != serverconfig.MCPProxyPath) {
-		return raw
-	}
-	query := u.Query()
-	query.Set(mcpdeferred.QueryParam, "1")
-	u.RawQuery = query.Encode()
-	return u.String()
+	return server.URL
 }
 
 func isJaztoolsServer(server mcpconfig.Server) bool {

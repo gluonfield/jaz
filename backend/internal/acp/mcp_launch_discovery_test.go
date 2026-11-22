@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestAntigravityThreadDiscoveryOnNaturalProcessStart(t *testing.T) {
+func TestAntigravityKeepsNativeToolsOnStartAndResume(t *testing.T) {
 	root := t.TempDir()
 	store, err := jsonstore.New(root)
 	if err != nil {
@@ -39,6 +40,10 @@ func TestAntigravityThreadDiscoveryOnNaturalProcessStart(t *testing.T) {
 	}
 	start := func() *acp.Manager {
 		manager := newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentAntigravity, env, "", "", func(config *acp.Config) {
+			agent := acp.BuiltinAgents()[acp.AgentAntigravity]
+			agent.Env = config.Agents[acp.AgentAntigravity].Env
+			config.Agents[acp.AgentAntigravity] = agent
+			config.Adapters = fakeAdapterResolver{launch: acp.AdapterLaunch{Command: os.Args[0], Args: []string{"-test.run=TestFakeACPAgentProcess", "--"}}}
 			config.MCPStore = staticMCPStore{servers: []mcpconfig.Server{
 				jaztools.ServerConfig("http://127.0.0.1:5299/mcp/jaztools"),
 				mcpruntime.ProxyServerConfig("http://127.0.0.1:5299/mcp/proxy"),
@@ -69,6 +74,14 @@ func TestAntigravityThreadDiscoveryOnNaturalProcessStart(t *testing.T) {
 		t.Fatal("catalogue changes retired the running process")
 	}
 	first.Close()
+	saved, err := store.LoadSession(thread.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved.RuntimeRef.DeferredMCPTools = new(true)
+	if err := store.SaveSession(saved); err != nil {
+		t.Fatal(err)
+	}
 	second := start()
 	if err := turn(ctx, second, thread.SessionID, "Continue the same work."); err != nil {
 		t.Fatal(err)
@@ -77,7 +90,7 @@ func TestAntigravityThreadDiscoveryOnNaturalProcessStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if native == "" || persisted.RuntimeRef.SessionID != native || persisted.RuntimeRef.DeferredMCPTools != nil {
+	if native == "" || persisted.RuntimeRef.SessionID != native || persisted.RuntimeRef.DeferredMCPTools == nil || !*persisted.RuntimeRef.DeferredMCPTools {
 		t.Fatalf("startup changed native identity or saved choice: %+v", persisted.RuntimeRef)
 	}
 	var attached []string
@@ -105,8 +118,8 @@ func TestAntigravityThreadDiscoveryOnNaturalProcessStart(t *testing.T) {
 		}
 		for _, server := range params.MCPServers {
 			endpoint, err := url.Parse(server.URL)
-			if err != nil || endpoint.Query().Get("jaz_deferred_tools") != "1" {
-				t.Fatalf("%s left %s eager: %s", request.Method, server.Name, server.URL)
+			if err != nil || endpoint.Query().Has("jaz_deferred_tools") {
+				t.Errorf("%s replaced native tools on %s: %s", request.Method, server.Name, server.URL)
 			}
 			if len(server.Headers) != 1 || server.Headers[0].Name != mcpsession.HeaderName || server.Headers[0].Value != thread.SessionID {
 				t.Fatalf("%s lost its session context: %+v", server.Name, server.Headers)
