@@ -105,6 +105,22 @@ function Fixture() {
       console.warn(JSON.stringify({ stage: next, elapsed: Math.round(performance.now() - started) }))
       stage = next
     }
+    const exerciseComposer = async () => {
+      progress('qualified plugin skill completion and rendering')
+      await exerciseComposerSkills()
+      progress('composer submission across chat navigation')
+      await exerciseComposerSend()
+      progress('bot chat composer rows as the draft wraps')
+      await exerciseComposerWrap()
+      progress('predicted prompt in an empty idle composer')
+      await exerciseComposerSuggestion()
+      progress('send menu offers Send now and Queue while a turn runs')
+      await exerciseComposerSendMenu()
+      progress('folder drops into the composer')
+      await exerciseFolderDrop()
+      progress('many attachments behind a +N control')
+      await exerciseComposerAttachments()
+    }
     const timeout = setTimeout(() => window.smoke.result({ ok: false, error: 'Browser smoke timed out', stage, pending: [...pending.values()] }), Number(new URLSearchParams(location.search).get('timeout') || 30000))
     const serveBrowser = (socket: WebSocket) => {
       socket.onmessage = async (event) => {
@@ -127,6 +143,11 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (suite === 'composer') {
+        await exerciseComposer()
+        window.smoke.result({ ok: true, checks: ['composer skills, submission, wrapping, suggestions, send menu, folder drops and attachments'] })
+        return
+      }
       if (!suite || suite === 'tool-label-reveal') {
         progress('new tool label reveals')
         await exerciseToolLabelReveal()
@@ -305,22 +326,9 @@ function Fixture() {
         window.smoke.result({ ok: true, checks: ['sandboxed app page history, cross-app Back/Forward, remembered pages, tool-target entry, repeated opens, query restoration, focused keyboard shortcuts, threads started only by the app in use, titlebar New chat except Bots; trusted Chat/Bots rail clicks expand collapsed sidebars, keep open sidebars open and return to the last chat, including an already selected Bots tab; app navigation keeps the sidebar hidden'] })
         return
       }
-      progress('qualified plugin skill completion and rendering')
-      await exerciseComposerSkills()
-      progress('composer submission across chat navigation')
-      await exerciseComposerSend()
-      progress('bot chat composer rows as the draft wraps')
-      await exerciseComposerWrap()
-      progress('predicted prompt in an empty idle composer')
-      await exerciseComposerSuggestion()
-      progress('send menu offers Send now and Queue while a turn runs')
-      await exerciseComposerSendMenu()
+      await exerciseComposer()
       progress('tooltips in place of native titles')
       await exerciseTooltips()
-      progress('folder drops into the composer')
-      await exerciseFolderDrop()
-      progress('many attachments behind a +N control')
-      await exerciseComposerAttachments()
       progress('bot chat history window')
       await exerciseChatHistory()
       progress('a bot chat opening with its hello')
@@ -333,10 +341,6 @@ function Fixture() {
       await exerciseBotFaces()
       progress('connect card sign-in from chat')
       await exerciseConnectCard()
-      if (new URLSearchParams(location.search).get('suite') === 'composer') {
-        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; a wrapping bot chat draft spans the composer above its buttons; an empty idle thread or bot chat composer offers the predicted prompt, Tab writes it and a draft or running turn hides it; while a turn runs, hovering send offers Send now and Queue, the menu stays open on the way to it, press-and-hold opens it on touch and each row reaches its handler; Enter sends and Command-Enter queues, and holding Command turns the send button into Queue; titled controls show the app tooltip with their shortcut, at once after the first, and get their title back; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; nine attachments show four previews and a +N control without growing the composer, its menu flags failed and uploading files and removes any of them, and every remaining file sends; bot chats render a recent window and page earlier history on scroll; a bot chat opens with a hello that a new bot types first, starters send and leave once the person speaks; a bot panel lists what runs now and what the bot did by day, runs, pauses and deletes routines from their modal, and saves AGENTS.md and MEMORY.md only when edited and never over a newer write by the bot; live bot faces move, act out each change of mood once and hold still with effects off or off screen; connect cards start OAuth from chat and show the new account'] })
-        return
-      }
       progress('Tab-only focus rings')
       await exerciseKeyboardFocus()
       progress('model picker efforts, animation, focus and persistence')

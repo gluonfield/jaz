@@ -47,7 +47,10 @@ export async function exerciseComposerAttachments(): Promise<void> {
   const previews = () => [...element.querySelectorAll('[aria-label^="Remove "]')].map((button) => button.getAttribute('aria-label')!.slice(7))
   const overflow = () => element.querySelector<HTMLButtonElement>('button[aria-label$=" more attachment"], button[aria-label$=" more attachments"]')
   const more = () => overflow()?.getAttribute('aria-label') ?? ''
-  const listed = () => [...document.body.querySelectorAll(':scope > [data-escape-surface] [aria-label^="Remove "]')]
+  const menu = () => [...document.querySelectorAll<HTMLElement>('[data-escape-surface]')].find(
+    (surface) => !element.contains(surface) && surface.querySelector('button[aria-label^="Remove "]'),
+  )
+  const listed = () => [...(menu()?.querySelectorAll('button[aria-label^="Remove "]') ?? [])]
   const listedNames = () => listed().map((button) => button.getAttribute('aria-label')!.slice(7)).join()
   const card = () => element.firstElementChild!.getBoundingClientRect()
   try {
@@ -85,9 +88,9 @@ export async function exerciseComposerAttachments(): Promise<void> {
     await until(() => overflow()!.querySelector('[role="status"]')?.textContent === 'Failed')
 
     await click(overflow()!)
-    await until(() => listedNames() === 'e.txt,f.txt,g.txt,h.png,i.txt' && getComputedStyle(document.body.querySelector(':scope > [data-escape-surface]')!).opacity === '1')
+    await until(() => listedNames() === 'e.txt,f.txt,g.txt,h.png,i.txt' && getComputedStyle(menu()!).opacity === '1')
     await window.smoke.capture('composer-attachments')
-    const statuses = [...document.body.querySelectorAll(':scope > [data-escape-surface] [role="status"]')].map((status) => status.textContent).join()
+    const statuses = [...menu()!.querySelectorAll('[role="status"]')].map((status) => status.textContent).join()
     if (statuses !== 'Failed,Uploading' || overflow()!.getAttribute('aria-expanded') !== 'true') {
       throw new Error('The +N menu did not flag the failed and uploading attachments: ' + statuses)
     }
@@ -100,7 +103,7 @@ export async function exerciseComposerAttachments(): Promise<void> {
       throw new Error('Removing the failed attachment left the +N control flagged as failed')
     }
     upload('g.txt')
-    await until(() => !overflow()!.querySelector('[role="status"]') && !document.body.querySelector(':scope > [data-escape-surface] [role="status"]'))
+    await until(() => !overflow()!.querySelector('[role="status"]') && menu()?.querySelector('[role="status"]') === null)
 
     await click(overflow()!)
     await until(() => listed().length === 0 && overflow()!.getAttribute('aria-expanded') === 'false')
