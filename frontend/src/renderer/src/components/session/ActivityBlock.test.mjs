@@ -403,7 +403,9 @@ const { QuestionPermissionCard } = await import('./QuestionPermissionCard')
 const event = {
   session_id: 'thread', type: 'permission_request',
   permission: { id: 'questions', status: 'pending', questions: [
-    { id: 'scope', question: 'Which workloads?', multi_select: true, is_other: true, options: [{ label: 'SQL' }, { label: 'Spark' }, { label: 'ML' }] },
+    { id: 'scope', question: 'Which workloads?', multi_select: true, is_other: true, options: [
+      { label: '1', description: 'SQL warehouses' }, { label: 'Spark' }, { label: 'ML' },
+    ] },
     { id: 'goal', question: 'What is the goal?', is_other: true },
     { id: 'secret', question: 'Private answer?', is_secret: true, is_other: true },
   ] },
@@ -415,10 +417,14 @@ function render(resolution) {
   ))
 }
 
+test('a pending question shows the description alongside a numeric option', () => {
+  expect(render()).toContain('1 — SQL warehouses')
+})
+
 test('a fresh mount renders saved choices and custom answers as visible read-only history', () => {
-  const html = render({ ...event.permission, status: 'selected', answers: { scope: ['SQL', 'Spark', 'Custom scripts'], goal: [], secret: ['private-value'] } })
+  const html = render({ ...event.permission, status: 'selected', answers: { scope: ['1', 'Spark', 'Custom scripts'], goal: [], secret: ['private-value'] } })
   expect(html).toContain('Which workloads?')
-  expect(html).toContain('SQL')
+  expect(html).toContain('1 — SQL warehouses')
   expect(html).toContain('Spark')
   expect(html).toContain('Custom scripts')
   expect(html).not.toContain('ML')
