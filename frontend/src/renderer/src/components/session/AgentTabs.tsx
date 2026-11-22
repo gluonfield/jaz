@@ -17,6 +17,11 @@ export function agentTabsWidth(count: number): number {
   return NAMED + (count - 1) * STEP
 }
 
+function selectTab(agent: AgentChoice, index: number, within: HTMLElement) {
+  agent.onChange(agent.options[index])
+  within.querySelectorAll<HTMLButtonElement>('[role="tab"]')[index]?.focus()
+}
+
 // A horizontal touchpad swipe anywhere in the picker moves one agent along.
 export function useAgentSwipe(agent?: AgentChoice) {
   const [swipe] = useState(createSwipe)
@@ -27,8 +32,7 @@ export function useAgentSwipe(agent?: AgentChoice) {
     const step = swipe(event.deltaX, event.timeStamp)
     const next = agent.options.indexOf(agent.value) + step
     if (step && agent.options[next]) {
-      agent.onChange(agent.options[next])
-      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+      selectTab(agent, next, event.currentTarget)
     }
   }
 }
@@ -48,8 +52,7 @@ export function AgentTabs({ value, options, onChange, disabled }: AgentChoice & 
         }
         event.preventDefault()
         const next = (index + (event.key === 'ArrowRight' ? 1 : options.length - 1)) % options.length
-        onChange(options[next])
-        event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+        selectTab({ value, options, onChange }, next, event.currentTarget)
       }}
     >
       <span

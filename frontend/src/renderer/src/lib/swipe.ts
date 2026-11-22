@@ -1,3 +1,6 @@
+const GESTURE_GAP_MS = 120
+const STEP_TRAVEL = 40
+
 // Turns a stream of horizontal wheel deltas into one step per touchpad swipe.
 // The touchpad keeps sending coasting deltas for about a second after the fingers lift,
 // so a new swipe is recognised by the deltas growing again after they had been shrinking.
@@ -15,7 +18,7 @@ export function createSwipe(): (deltaX: number, time: number) => -1 | 0 | 1 {
         low = Math.min(low, size)
       }
     }
-    if (time - at > 120 || Math.sign(deltaX) !== Math.sign(travel) || size > low * 2 + 4) {
+    if (time - at > GESTURE_GAP_MS || Math.sign(deltaX) !== Math.sign(travel) || size > low * 2 + 4) {
       travel = 0
       done = false
       peak = 0
@@ -23,7 +26,7 @@ export function createSwipe(): (deltaX: number, time: number) => -1 | 0 | 1 {
     }
     at = time
     travel += deltaX
-    if (done || Math.abs(travel) < 40) {
+    if (done || Math.abs(travel) < STEP_TRAVEL) {
       return 0
     }
     done = true
