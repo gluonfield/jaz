@@ -3,9 +3,12 @@
 package browsercontrol_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -13,6 +16,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
+	serverapi "github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -30,6 +34,17 @@ func mountBotChatFixture(t *testing.T, mux *http.ServeMux, store *sqlitestore.St
 		t.Fatal(err)
 	}
 	at := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)
+	api := &serverapi.Server{Store: store, Workspace: t.TempDir(), AuthKey: "browser-smoke-credential"}
+	const filename = "sample.bin"
+	data := []byte{0, 1, 2, 0xff, 0x80}
+	if err := os.WriteFile(filepath.Join(os.Getenv("JAZ_BROWSER_SMOKE_DIR"), filename), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := api.SaveAttachment(bot.ID, filename, bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux.Handle("GET /v1/sessions/{session}/attachments/{id}", api.Handler())
 	var events []sessionevents.Event
 	var messages []storage.Message
 	for i := range 20 {
@@ -39,6 +54,9 @@ func mountBotChatFixture(t *testing.T, mux *http.ServeMux, store *sqlitestore.St
 			storage.Message{Role: "user", Content: "Private worker coordination", CreatedAt: when},
 		)
 		events = append(events, sessionevents.Event{Type: "room_message", At: when.Add(time.Minute), RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Name: "Paint Bot", Text: fmt.Sprintf("Bot response %02d", i)}})
+		if i == 19 {
+			events[len(events)-1].RoomMessage.Attachments = []storage.Attachment{{ID: file.ID, Name: file.Name, Size: file.Size}}
+		}
 	}
 	for i := range 300 {
 		events = append(events,

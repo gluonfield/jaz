@@ -42,9 +42,14 @@ func (t *MCPTools) AddBotTo(server *mcp.Server) {
 	}
 	updateSchema.Properties["status"].Enum = []any{storage.CommitmentPending, storage.CommitmentInProgress, storage.CommitmentWaitingForUser, storage.CommitmentStopped, storage.CommitmentDone, storage.CommitmentDropped}
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "register_file",
+		Title:       "Register a file for delivery",
+		Description: "Register a file you created in .jaz-outbox in this session's working directory so it can be sent as an attachment. Pass only the file name, not a path. Returns the ID for send_message.",
+	}, t.RegisterFile)
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "send_message",
 		Title:       "Send a chat message",
-		Description: "Send a text message as yourself. In a group chat turn it posts to the group, when answering a bot it goes to that bot, and otherwise it reaches the user in your chat. App presentation tools can also deliver a visible answer; do not repeat a result the host has already presented.",
+		Description: "Send a message with optional file attachments as yourself. In a group chat turn it posts to the group, when answering a bot it goes to that bot, and otherwise it reaches the user in your chat. Attachments can go to your chat or a group. App presentation tools can also deliver a visible answer; do not repeat a result the host has already presented.",
 	}, t.Send)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "bot_task_create",
@@ -99,6 +104,22 @@ type MCPMessageOutput struct {
 	Delivered bool `json:"delivered"`
 }
 
+type MCPRegisterFileInput struct {
+	Name string `json:"name" jsonschema:"File name in .jaz-outbox in this session's working directory; paths are not accepted."`
+}
+
+type MCPRegisterFileOutput struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	MimeType string `json:"mime_type"`
+	Size     int64  `json:"size"`
+}
+
+func (t *MCPTools) RegisterFile(_ context.Context, req *mcp.CallToolRequest, input MCPRegisterFileInput) (*mcp.CallToolResult, MCPRegisterFileOutput, error) {
+	attachment, err := t.service.RegisterFile(mcpsession.SessionID(req), input.Name)
+	return nil, MCPRegisterFileOutput{ID: attachment.ID, Name: attachment.Name, MimeType: attachment.MimeType, Size: attachment.Size}, err
+}
+
 func (t *MCPTools) Message(_ context.Context, req *mcp.CallToolRequest, input MCPMessageInput) (*mcp.CallToolResult, MCPMessageOutput, error) {
 	if err := t.service.Message(mcpsession.SessionID(req), input.Bot, input.Message, input.Done...); err != nil {
 		return nil, MCPMessageOutput{}, err
@@ -107,8 +128,10 @@ func (t *MCPTools) Message(_ context.Context, req *mcp.CallToolRequest, input MC
 }
 
 type MCPSendInput struct {
-	Message string  `json:"message"`
-	Done    []int64 `json:"done,omitempty" jsonschema:"Your task ids whose requested outcomes this message actually delivers; a finished worker alone is not enough. They close as it reaches whoever they are owed to. bot_task_update with status completed also delivers and closes a task."`
+	Message             string   `json:"message,omitempty"`
+	Attachments         []string `json:"attachment_ids,omitempty" jsonschema:"IDs of uploaded files to attach; only for messages to your chat or a group."`
+	AttachmentSessionID string   `json:"attachment_session_id,omitempty" jsonschema:"The related bot-owned thread where the files were uploaded; omit for this chat."`
+	Done                []int64  `json:"done,omitempty" jsonschema:"Your task ids whose requested outcomes this message actually delivers; a finished worker alone is not enough. They close as it reaches whoever they are owed to. bot_task_update with status completed also delivers and closes a task."`
 }
 
 type MCPSendOutput struct {
@@ -116,10 +139,8 @@ type MCPSendOutput struct {
 }
 
 func (t *MCPTools) Send(_ context.Context, req *mcp.CallToolRequest, input MCPSendInput) (*mcp.CallToolResult, MCPSendOutput, error) {
-	if err := t.service.Say(mcpsession.SessionID(req), input.Message, input.Done...); err != nil {
-		return nil, MCPSendOutput{}, err
-	}
-	return nil, MCPSendOutput{Sent: true}, nil
+	err := t.service.SayWithAttachments(mcpsession.SessionID(req), input.Message, input.AttachmentSessionID, input.Attachments, input.Done...)
+	return nil, MCPSendOutput{Sent: err == nil}, err
 }
 
 type MCPTaskCreateInput struct {

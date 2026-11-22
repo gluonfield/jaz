@@ -22,31 +22,7 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	jaz.write(bot.ID, "Compare the supplier quotes.")
 	jaz.settles(bot.ID, 0, 0)
 	legacy := owe(t, store, bot.ID)
-	server := mcp.NewServer(&mcp.Implementation{Name: "jaztools", Version: "1"}, nil)
-	bots.NewMCPTools(jaz.bots).AddBotTo(server)
-	acp.NewMCPTools(jaz.manager).AddTo(server)
-	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
-		return server
-	}, &mcp.StreamableHTTPOptions{JSONResponse: true})
-	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Header.Set(mcpsession.HeaderName, bot.ID)
-		handler.ServeHTTP(w, r)
-	}))
-	defer httpServer.Close()
-	client, err := mcp.NewClient(&mcp.Implementation{Name: "agent", Version: "1"}, nil).Connect(jaz.ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer client.Close()
-	call := func(name string, args map[string]any, fails bool) *mcp.CallToolResult {
-		t.Helper()
-		result, err := client.CallTool(jaz.ctx, &mcp.CallToolParams{Name: name, Arguments: args})
-		failed := err != nil || result.IsError
-		if failed != fails {
-			t.Fatalf("%s returned %+v, %v; want failure %v", name, result, err, fails)
-		}
-		return result
-	}
+	call := jaz.botToolCaller(bot.ID)
 	create := func(request string) int64 {
 		t.Helper()
 		result := call("bot_task_create", map[string]any{"name": "Delivery", "request": request, "next": "check the result"}, false)
@@ -200,6 +176,39 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	decodeMCPTaskResult(t, call("bot_task_list", map[string]any{}, false), &tasks)
 	if len(tasks.Tasks) != 101 {
 		t.Fatalf("task list was truncated or crossed bot ownership: %d tasks", len(tasks.Tasks))
+	}
+}
+
+func (jaz *jazProcess) botToolCaller(threadID string) func(string, map[string]any, bool) *mcp.CallToolResult {
+	t := jaz.t
+	t.Helper()
+	server := mcp.NewServer(&mcp.Implementation{Name: "jaztools", Version: "1"}, nil)
+	bots.NewMCPTools(jaz.bots).AddBotTo(server)
+	acp.NewMCPTools(jaz.manager).AddTo(server)
+	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+		return server
+	}, &mcp.StreamableHTTPOptions{JSONResponse: true})
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set(mcpsession.HeaderName, threadID)
+		handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(httpServer.Close)
+	client, err := mcp.NewClient(&mcp.Implementation{Name: "agent", Version: "1"}, nil).Connect(jaz.ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	return func(name string, args map[string]any, fails bool) *mcp.CallToolResult {
+		t.Helper()
+		result, err := client.CallTool(jaz.ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+		if err != nil {
+			t.Fatal(err)
+		}
+		failed := result.IsError
+		if failed != fails {
+			t.Fatalf("%s returned %+v, %v; want failure %v", name, result, err, fails)
+		}
+		return result
 	}
 }
 

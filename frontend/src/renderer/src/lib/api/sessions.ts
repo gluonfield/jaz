@@ -136,6 +136,19 @@ export function sessionAttachmentUrl(sessionId: string, attachmentId: string): s
   )
 }
 
+export async function downloadSessionAttachment(sessionId: string, attachmentId: string, name: string): Promise<void> {
+  const response = await apiFetch(`/v1/sessions/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(attachmentId)}`)
+  if (!response.ok) throw new ApiError(response.status, `could not download ${name}`)
+  const url = URL.createObjectURL(await response.blob())
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.append(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
   const form = new FormData()
   form.append('file', file)

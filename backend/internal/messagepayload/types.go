@@ -51,6 +51,7 @@ type BrowserAnnotationViewport struct {
 
 type Attachment struct {
 	ID         string `json:"id"`
+	SessionID  string `json:"session_id,omitempty"`
 	Name       string `json:"name"`
 	MimeType   string `json:"mime_type,omitempty"`
 	Size       int64  `json:"size,omitempty"`

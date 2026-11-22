@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"slices"
 	"strings"
@@ -422,9 +423,13 @@ func newTestService(world *fakeWorld) *Service {
 func (w *fakeWorld) ResolveAttachments(thread string, ids []string) ([]storage.Attachment, error) {
 	attachments := make([]storage.Attachment, 0, len(ids))
 	for _, id := range ids {
-		attachments = append(attachments, storage.Attachment{ID: id, Name: id + ".pdf", ServerPath: "/attachments/" + thread + "/" + id + ".pdf"})
+		attachments = append(attachments, storage.Attachment{ID: id, Name: id + ".pdf", MimeType: "application/pdf", Size: 4, ServerPath: "/attachments/" + thread + "/" + id + ".pdf"})
 	}
 	return attachments, nil
+}
+
+func (w *fakeWorld) SaveAttachment(thread, name string, source io.Reader) (storage.Attachment, error) {
+	return storage.Attachment{}, errors.New("unexpected attachment write")
 }
 
 func (w *fakeWorld) addBot(id, name string) {
@@ -926,6 +931,37 @@ func TestSayOutsideAServiceTurnReachesTheBotsOwnChat(t *testing.T) {
 	}
 }
 
+func TestSayForwardsUploadedAttachmentIntoOwnChat(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("gimli", "Gimli")
+	service := newTestService(world)
+	id := "0123456789abcdef0123456789abcdef"
+	if err := service.SayWithAttachments("gimli", "", "", []string{id}); err != nil {
+		t.Fatal(err)
+	}
+	events := world.events["gimli"]
+	if len(events) != 1 || events[0].RoomMessage == nil {
+		t.Fatalf("events = %#v", events)
+	}
+	message := events[0].RoomMessage
+	if message.Text != "" || len(message.Attachments) != 1 || message.Attachments[0].ID != id || message.Attachments[0].Name != id+".pdf" || message.Attachments[0].MimeType != "application/pdf" || message.Attachments[0].Size != 4 || message.Attachments[0].ServerPath != "" {
+		t.Fatalf("room message = %#v", message)
+	}
+	world.sessions["worker"] = storage.Session{ID: "worker", ParentID: "gimli", SourceType: storage.SourceBotWorker, SourceID: "gimli"}
+	if err := service.SayWithAttachments("gimli", "", "worker", []string{id}); err != nil {
+		t.Fatal(err)
+	}
+	message = world.events["gimli"][1].RoomMessage
+	if len(message.Attachments) != 1 || message.Attachments[0].SessionID != "worker" {
+		t.Fatalf("related-thread attachment = %#v", message.Attachments)
+	}
+	world.addBot("other", "Other")
+	world.sessions["other-worker"] = storage.Session{ID: "other-worker", ParentID: "other", SourceType: storage.SourceBotWorker, SourceID: "other"}
+	if err := service.SayWithAttachments("gimli", "", "other-worker", []string{id}); err == nil {
+		t.Fatal("a file from another bot was sent")
+	}
+}
+
 func TestAdoptLoopsGivesEachOwnerlessLoopItsOwnBotExceptBoardWidgets(t *testing.T) {
 	world := newFakeWorld()
 	world.addBot("gimli", "Gimli")
@@ -994,6 +1030,24 @@ func TestGroupTurnsRunInTheBotsGroupThreadAndPostAsTheBot(t *testing.T) {
 	}) {
 		t.Fatalf("group threads created as %+v", world.created)
 	}
+}
+
+func TestBotAttachmentInGroupKeepsMemberSource(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Research")
+	world.addBot("b", "Marketing")
+	service := newTestService(world)
+	group, member, _ := newGroup(t, service)
+	if err := service.SayWithAttachments(member, "", "", []string{"report"}); err != nil {
+		t.Fatal(err)
+	}
+	world.settle(t)
+	for _, event := range world.events[group.ID] {
+		if msg := event.RoomMessage; msg != nil && len(msg.Attachments) == 1 && msg.Attachments[0].ID == "report" && msg.Attachments[0].SessionID == member {
+			return
+		}
+	}
+	t.Fatal("group conversation lost the attachment's source session")
 }
 
 func TestFilesPostedToAGroupReachEveryMember(t *testing.T) {

@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/attachments"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/messagepayload"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -96,13 +98,54 @@ func (s *Service) exchanged(from, sender, to, recipient, text string) {
 // chat. The commitments in done close as the message reaches whoever they
 // are owed to.
 func (s *Service) Say(threadID, text string, done ...int64) error {
+	return s.SayWithAttachments(threadID, text, "", nil, done...)
+}
+
+func (s *Service) RegisterFile(threadID, name string) (storage.Attachment, error) {
+	session, err := s.store.LoadSession(threadID)
+	if err != nil || !isBot(s.store, session.Owner()) || session.RuntimeRef == nil || session.RuntimeRef.Cwd == "" {
+		return storage.Attachment{}, errors.New("bot working directory is unavailable")
+	}
+	file, err := attachments.OpenOutboxFile(session.RuntimeRef.Cwd, name)
+	if err != nil {
+		return storage.Attachment{}, err
+	}
+	defer file.Close()
+	return s.attachments.SaveAttachment(threadID, name, file)
+}
+
+func (s *Service) SayWithAttachments(threadID, text, attachmentSessionID string, attachmentIDs []string, done ...int64) error {
 	text = strings.TrimSpace(text)
-	if text == "" {
+	if text == "" && len(attachmentIDs) == 0 {
 		return errors.New("message is required")
+	}
+	if len(attachmentIDs) == 0 && attachmentSessionID != "" {
+		return errors.New("attachment_session_id requires attachment_ids")
 	}
 	session, err := s.store.LoadSession(threadID)
 	if err != nil {
 		return err
+	}
+	var attachments []messagepayload.Attachment
+	if len(attachmentIDs) > 0 {
+		if attachmentSessionID == "" {
+			attachmentSessionID = threadID
+		}
+		owner := botOf(s.store, threadID)
+		if owner == "" || owner != botOf(s.store, attachmentSessionID) {
+			return errors.New("attachments must be uploaded to this chat or a thread owned by the same bot")
+		}
+		resolved, err := s.attachments.ResolveAttachments(attachmentSessionID, attachmentIDs)
+		if err != nil {
+			return err
+		}
+		if len(resolved) != len(attachmentIDs) {
+			return errors.New("attachment_ids must reference files uploaded to this chat")
+		}
+		attachments = make([]messagepayload.Attachment, 0, len(resolved))
+		for _, attachment := range resolved {
+			attachments = append(attachments, messagepayload.Attachment{ID: attachment.ID, SessionID: attachmentSessionID, Name: attachment.Name, MimeType: attachment.MimeType, Size: attachment.Size})
+		}
 	}
 	var output *storage.TurnOutput
 	to := ""
@@ -111,6 +154,9 @@ func (s *Service) Say(threadID, text string, done ...int64) error {
 		if to, err = recipient(s.store, output.ReplyTo); err != nil {
 			return err
 		}
+	}
+	if output != nil && len(attachments) > 0 {
+		return errors.New("attachments can only be sent to your chat or group")
 	}
 	if err := s.delivers(threadID, to, done); err != nil {
 		return err
@@ -137,7 +183,7 @@ func (s *Service) Say(threadID, text string, done ...int64) error {
 	if err != nil || record.Kind != KindBot {
 		return errors.New("only a Jaz bot can send messages")
 	}
-	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: bot, Name: botSession.Title, Text: text, Answers: answering(session)}
+	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: bot, Name: botSession.Title, Text: text, Attachments: attachments, Answers: answering(session)}
 	if len(done) > 0 {
 		message.Task = &sessionevents.TaskChange{IDs: done, Status: storage.CommitmentDone}
 	}

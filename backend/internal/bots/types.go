@@ -2,6 +2,7 @@ package bots
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
@@ -106,9 +107,10 @@ type TurnQueue interface {
 	QueueInternalTurn(context.Context, storage.TurnDelivery) error
 }
 
-// Attachments finds the files uploaded to a thread by their ids.
+// Attachments stores and resolves files in their owning thread.
 type Attachments interface {
 	ResolveAttachments(threadID string, ids []string) ([]storage.Attachment, error)
+	SaveAttachment(threadID, name string, source io.Reader) (storage.Attachment, error)
 }
 
 // Store keeps bot records and the threads they live in.

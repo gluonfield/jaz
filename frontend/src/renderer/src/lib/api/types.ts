@@ -496,6 +496,7 @@ export type MessageBlock =
 
 export interface Attachment {
   id: string
+  session_id?: string
   name: string
   mime_type?: string
   size?: number
