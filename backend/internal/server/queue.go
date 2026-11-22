@@ -60,6 +60,21 @@ func (s *Server) updateSessionQueue(sessionID string, req queueRequest) (storage
 	return updated, nil
 }
 
+func (s *Server) queueUserFollowUp(sessionID string, prompt storage.QueuedMessage) error {
+	prompt.SentAt = time.Now().UTC()
+	unlock := s.lockSession(sessionID)
+	err := s.Store.QueueTurn(storage.TurnDelivery{SessionID: sessionID, Message: prompt})
+	unlock()
+	if err != nil {
+		return err
+	}
+	if err := s.Store.TouchSessionAttention(sessionID); err != nil {
+		s.logger().Warn("touch queued follow-up attention", "session", sessionID, "error", err)
+	}
+	s.drainQueueSoon(sessionID)
+	return nil
+}
+
 func (s *Server) mutateSessionQueue(sessionID string, req queueRequest) (storage.Session, error) {
 	unlock := s.lockSession(sessionID)
 	defer unlock()

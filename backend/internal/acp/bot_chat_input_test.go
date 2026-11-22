@@ -1,11 +1,17 @@
 package acp_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"image"
+	"image/png"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +19,71 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/storage"
 )
+
+func TestChatSendQueuesFollowUpWhenAgentCannotSteer(t *testing.T) {
+	t.Run("agent without steering", func(t *testing.T) {
+		testChatQueuedFollowUp(t, acp.AgentAntigravity, map[string]string{}, false)
+	})
+	t.Run("plan needs a new turn", func(t *testing.T) {
+		testChatQueuedFollowUp(t, acp.AgentCodex, map[string]string{
+			"JAZ_FAKE_ACP_NATIVE_STEERING": "1",
+			"JAZ_FAKE_ACP_PLAN_CONFIG":     "1",
+			"JAZ_FAKE_ACP_SET_CONFIG":      "1",
+		}, true)
+	})
+}
+
+func testChatQueuedFollowUp(t *testing.T, agent string, env map[string]string, plan bool) {
+	t.Helper()
+	store, root := newTestStore(t)
+	jaz := startJazAgent(t, testContext(t), store, root, agent, env)
+	jaz.server.Workspace = root
+	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	jaz.busy(thread.ID)
+	handler := jaz.server.Handler()
+	path := "/v1/sessions/" + thread.ID
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	part, err := form.CreateFormFile("file", "questions.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(part, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, path+"/attachments", &body)
+	request.Header.Set("Content-Type", form.FormDataContentType())
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	var attachment storage.Attachment
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &attachment) != nil || attachment.ID == "" {
+		t.Fatalf("upload = %d %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, path+"/messages:stream", strings.NewReader(`{"message":"explain the questions","contexts":[{"type":"selection","text":"the deployment question"}],"attachment_ids":["`+attachment.ID+`"],"plan_requested":`+strconv.FormatBool(plan)+`}`))
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"type":"accepted"`) || strings.Contains(response.Body.String(), `"type":"error"`) {
+		t.Fatalf("send = %d %s", response.Code, response.Body.String())
+	}
+	stored := jaz.session(thread.ID)
+	if stored.Status != storage.StatusRunning || len(stored.QueuedMessages) != 1 || stored.QueuedMessages[0].PlanRequested != plan || jaz.promptsContaining("explain the questions") != 0 {
+		t.Fatalf("follow-up did not wait for the active turn: %+v, prompts = %q", stored, jaz.prompts())
+	}
+	jaz.release()
+	jaz.eventually("follow-up delivered", func() bool { return jaz.promptsContaining("explain the questions") == 1 })
+	jaz.idle(thread.ID)
+	prompt := jaz.promptWith("explain the questions")
+	if len(jaz.prompts()) != 2 || !strings.Contains(prompt, "the deployment question") || !strings.Contains(prompt, attachment.ID+"-questions.png") || len(jaz.queued(thread.ID)) != 0 {
+		t.Fatalf("follow-up payload or delivery count changed: %q", jaz.prompts())
+	}
+}
 
 func TestBotChatPendingSendIsNotAcknowledgedAcrossRestart(t *testing.T) {
 	jaz := startFailingJaz(t, time.Hour)

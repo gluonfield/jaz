@@ -469,8 +469,13 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	turn := acpStreamTurnFromRequest(req)
-	if turn.compact() {
+	turn := acpStreamTurn{QueuedMessage: storage.QueuedMessage{
+		Text:          req.Message,
+		AttachmentIDs: req.AttachmentIDs,
+		PlanRequested: req.PlanRequested,
+		GoalRequested: req.GoalRequested,
+	}}
+	if isACPCompactCommand(turn.Text) {
 		if !sessionview.SupportsCompact(session) {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("compact is not available for this session"))
 			return

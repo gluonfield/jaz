@@ -309,7 +309,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		return Job{}, errTurnEnded
 	}
 	if req.PlanRequested && !planRequested {
-		return Job{}, fmt.Errorf("cannot switch a running turn to plan mode")
+		return Job{}, fmt.Errorf("%w: cannot switch a running turn to plan mode", ErrSteeringUnsupported)
 	}
 	if retrying {
 		return Job{}, errPromptPending

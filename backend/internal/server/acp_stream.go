@@ -13,40 +13,11 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-type acpTurnKind int
-
-const (
-	acpTurnPrompt acpTurnKind = iota
-	acpTurnCompact
-)
-
 var errACPTurnRunning = errors.New("session is already running")
 
 type acpStreamTurn struct {
-	Kind          acpTurnKind
-	Message       string
-	Contexts      []storage.MessageContext
-	Attachments   []storage.Attachment
-	PlanRequested bool
-	GoalRequested bool
-}
-
-func acpStreamTurnFromRequest(req streamRequest) acpStreamTurn {
-	turn := acpStreamTurn{
-		Kind:          acpTurnPrompt,
-		Message:       req.Message,
-		PlanRequested: req.PlanRequested,
-		GoalRequested: req.GoalRequested,
-	}
-	if isACPCompactCommand(req.Message) {
-		turn.Kind = acpTurnCompact
-		turn.GoalRequested = false
-	}
-	return turn
-}
-
-func (t acpStreamTurn) compact() bool {
-	return t.Kind == acpTurnCompact
+	storage.QueuedMessage
+	Attachments []storage.Attachment
 }
 
 func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, clientCtx context.Context, session storage.Session, turn acpStreamTurn) {
@@ -56,9 +27,10 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		return
 	}
 
-	followUp := !turn.compact() && s.sessionRuntimeRunning(session)
+	compact := isACPCompactCommand(turn.Text)
+	followUp := !compact && s.sessionRuntimeRunning(session)
 	var err error
-	if turn.compact() {
+	if compact {
 		session, err = s.beginACPTurn(clientCtx, session, "Compact")
 	} else {
 		err = s.ensureManagedWorktree(clientCtx, session)
@@ -72,24 +44,28 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	defer releaseStream()
 	startCtx, cancelStart := serverACPBootstrapContextFrom(clientCtx)
 	var job acp.Job
-	if turn.compact() {
+	if compact {
 		job, err = s.ACP.Compact(startCtx, acp.CompactRequest{Session: session.ID})
 	} else {
 		job, err = s.ACP.Input(startCtx, acp.SendRequest{
 			Session:       session.ID,
-			Message:       turn.Message,
+			Message:       turn.Text,
 			Contexts:      turn.Contexts,
 			Attachments:   turn.Attachments,
 			FromUser:      true,
 			PlanRequested: turn.PlanRequested,
 			GoalRequested: turn.GoalRequested,
 		})
+		if errors.Is(err, acp.ErrSteeringUnsupported) {
+			err = s.queueUserFollowUp(session.ID, turn.QueuedMessage)
+			followUp = true
+		}
 	}
 	cancelStart()
 	if err != nil {
 		sendErr := acpSendError(session, err)
 		s.logger().Error("acp send failed", "session", session.ID, "error", sendErr)
-		if turn.compact() {
+		if compact {
 			s.setSessionError(session, sendErr.Error())
 		}
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: sendErr.Error()})
