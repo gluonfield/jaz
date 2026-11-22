@@ -265,8 +265,33 @@ func (s *Service) DisconnectAccount(ctx context.Context, accountID string) (conn
 		if clearErr := s.clearPluginMCPTokens(ctx, result.Provider); clearErr != nil {
 			return connections.DisconnectResult{}, clearErr
 		}
+		if err := s.removeIfRemoteMCPOnly(ctx, result.Provider); err != nil {
+			return connections.DisconnectResult{}, err
+		}
 	}
 	return result, nil
+}
+
+func (s *Service) removeIfRemoteMCPOnly(ctx context.Context, pluginID string) error {
+	if s.store == nil || (s.connections != nil && s.connections.Catalog() != nil && s.connections.Catalog().IsNative(pluginID)) {
+		return nil
+	}
+	plugin, err := s.store.Read(ctx, pluginID)
+	if err != nil {
+		return nil
+	}
+	if len(plugin.Skills) > 0 || len(plugin.Views) > 0 || len(plugin.MCPServers) == 0 {
+		return nil
+	}
+	if s.connections != nil {
+		if accounts, err := s.connections.ListAccounts(ctx, pluginID); err == nil && len(accounts) > 0 {
+			return nil
+		}
+	}
+	if err := s.store.Remove(pluginID); err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	return nil
 }
 
 func (s *Service) Install(ctx context.Context, input RepositoryInput) (InstallResult, error) {

@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { SearchField } from '@/components/ui/SearchField'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import {
   addPluginSource,
@@ -14,7 +13,6 @@ import {
   refreshPluginSources,
   removePlugin,
   removePluginSource,
-  setPluginEnabled,
   updatePlugin,
   type Plugin,
   type PluginInstallInput,
@@ -25,7 +23,7 @@ import { AddPluginModal, type AddPluginMode } from './AddPluginModal'
 import { ConnectionQRModal } from './ConnectionQRModal'
 import { MarketplacesModal } from './MarketplacesModal'
 import { PluginDetailModal } from './PluginDetailModal'
-import { categoryLabel, pluginActionLabel, pluginCanConnect, pluginSummary } from './pluginFormatting'
+import { categoryLabel, pluginCanConnect, pluginSummary } from './pluginFormatting'
 import { PluginAvatar } from './PluginVisuals'
 import { usePluginSignIn } from './usePluginSignIn'
 
@@ -85,12 +83,6 @@ export function PluginsSettings() {
     mutationFn: (accountID: string) => disconnectPluginAccount(accountID),
     onSuccess: () => toast('Disconnected'),
     onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
-    onSettled: invalidateAll,
-  })
-
-  const toggleEnabled = useMutation({
-    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setPluginEnabled(id, enabled),
-    onError: (error: Error) => toast(`Couldn't update plugin: ${error.message}`, 'danger'),
     onSettled: invalidateAll,
   })
 
@@ -243,21 +235,19 @@ export function PluginsSettings() {
               <div className="divide-y divide-border/50 rounded-card bg-surface">
                 {connectedPlugins.map((plugin) => {
                   const accounts = plugin.auth?.accounts ?? []
-                  const singleAccount =
-                    plugin.auth?.connected && !plugin.auth.multi_account && accounts.length === 1 ? accounts[0] : null
+                  const singleAccount = accounts.length === 1 ? accounts[0] : null
+                  const canRemove = !plugin.auth && plugin.installed && plugin.origin !== 'builtin'
                   return (
                     <ConnectedPluginRow
                       key={plugin.id}
                       plugin={plugin}
-                      connecting={signIn.isConnecting && signIn.connectingPluginID === plugin.id}
-                      disconnecting={Boolean(singleAccount && disconnect.isPending && disconnect.variables === singleAccount.id)}
+                      disconnecting={Boolean(singleAccount && disconnectingAccountID === singleAccount.id)}
+                      removing={remove.isPending && remove.variables === plugin.id}
                       updating={update.isPending && update.variables === plugin.id}
-                      toggling={toggleEnabled.isPending && toggleEnabled.variables?.id === plugin.id}
                       onOpen={() => setSelectedID(plugin.id)}
-                      onConnect={() => signIn.start(plugin)}
                       onDisconnect={singleAccount ? () => disconnect.mutate(singleAccount.id) : undefined}
+                      onRemove={canRemove ? () => remove.mutate(plugin.id) : undefined}
                       onUpdate={() => update.mutate(plugin.id)}
-                      onToggle={(enabled) => toggleEnabled.mutate({ id: plugin.id, enabled })}
                     />
                   )
                 })}
@@ -296,14 +286,12 @@ export function PluginsSettings() {
         installing={install.isPending && install.variables?.plugin_id === selected?.id}
         updating={update.isPending && update.variables === selected?.id}
         removing={remove.isPending && remove.variables === selected?.id}
-        toggling={toggleEnabled.isPending && toggleEnabled.variables?.id === selected?.id}
         onClose={() => setSelectedID(null)}
         onConnect={(plugin) => signIn.start(plugin)}
         onDisconnect={(accountID) => disconnect.mutate(accountID)}
         onInstall={installMarketplacePlugin}
         onUpdate={(plugin) => update.mutate(plugin.id)}
         onRemove={(plugin) => remove.mutate(plugin.id)}
-        onToggleEnabled={(plugin, enabled) => toggleEnabled.mutate({ id: plugin.id, enabled })}
       />
 
       {addMode ? (
@@ -338,42 +326,31 @@ export function PluginsSettings() {
 
 function ConnectedPluginRow({
   plugin,
-  connecting,
   disconnecting,
+  removing,
   updating,
-  toggling,
   onOpen,
-  onConnect,
   onDisconnect,
+  onRemove,
   onUpdate,
-  onToggle,
 }: {
   plugin: Plugin
-  connecting: boolean
   disconnecting: boolean
+  removing: boolean
   updating: boolean
-  toggling: boolean
   onOpen: () => void
-  onConnect: () => void
   onDisconnect?: () => void
+  onRemove?: () => void
   onUpdate: () => void
-  onToggle: (enabled: boolean) => void
 }) {
-  const connected = Boolean(plugin.auth?.connected)
-  const needsConnect = Boolean(plugin.auth && !connected && pluginCanConnect(plugin))
-  const summary = needsConnect ? 'Not connected' : pluginSummary(plugin)
+  const summary = pluginSummary(plugin)
 
   return (
     <div className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/40">
       <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 text-left">
         <PluginAvatar plugin={plugin} size="md" />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="truncate text-[13.5px] font-medium text-ink">{plugin.display_name}</p>
-            {!plugin.enabled ? (
-              <span className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-ink-3">Paused</span>
-            ) : null}
-          </div>
+          <p className="truncate text-[13.5px] font-medium text-ink">{plugin.display_name}</p>
           {summary ? <p className="mt-0.5 truncate text-[12px] text-ink-2">{summary}</p> : null}
         </div>
       </button>
@@ -385,23 +362,17 @@ function ConnectedPluginRow({
             Update
           </Button>
         ) : null}
-        {needsConnect ? (
-          <Button size="sm" variant="secondary" disabled={connecting} onClick={onConnect}>
-            {connecting ? <Loader2 size={12} className="animate-spin" /> : null}
-            {pluginActionLabel(plugin, connecting)}
-          </Button>
-        ) : onDisconnect ? (
+        {onDisconnect ? (
           <Button size="sm" variant="ghost" disabled={disconnecting} onClick={onDisconnect}>
             {disconnecting ? <Loader2 size={12} className="animate-spin" /> : null}
             Disconnect
           </Button>
+        ) : onRemove ? (
+          <Button size="sm" variant="ghost" disabled={removing} onClick={onRemove}>
+            {removing ? <Loader2 size={12} className="animate-spin" /> : null}
+            Remove
+          </Button>
         ) : null}
-        <Switch
-          checked={plugin.enabled}
-          disabled={toggling}
-          aria-label={`Enable ${plugin.display_name}`}
-          onChange={onToggle}
-        />
       </div>
     </div>
   )
@@ -444,7 +415,7 @@ function CatalogPluginRow({
 }
 
 function isActivePlugin(plugin: Plugin): boolean {
-  if (plugin.auth?.connected) return true
+  if (plugin.auth) return plugin.auth.connected
   return plugin.installed && plugin.origin !== 'builtin'
 }
 

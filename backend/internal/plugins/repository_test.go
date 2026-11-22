@@ -284,7 +284,8 @@ func TestDisconnectAndRemoveClearPluginConnectionsAndMCPTokens(t *testing.T) {
 		}
 	}
 
-	// Disconnect must remove both the legacy connection row and the plugin's MCP OAuth token.
+	// Disconnect must remove the legacy connection row, the MCP OAuth token, and
+	// auto-uninstall a pure remote-MCP plugin so no ghost server remains.
 	saveConnected()
 	res, err := svc.DisconnectAccount(t.Context(), legacyConn.ID)
 	if err != nil || !res.MCPServersChanged {
@@ -293,12 +294,15 @@ func TestDisconnectAndRemoveClearPluginConnectionsAndMCPTokens(t *testing.T) {
 	if _, ok, err := db.LoadToken(t.Context(), tokenKey); err != nil || ok {
 		t.Fatalf("expected MCP OAuth token deleted after disconnect, ok=%v err=%v", ok, err)
 	}
-	got, err := svc.Get(t.Context(), "granola", false)
-	if err != nil || got.Auth == nil || got.Auth.Connected || len(got.Auth.Accounts) != 0 {
-		t.Fatalf("expected disconnected granola after DisconnectAccount: %+v, %v", got.Auth, err)
+	if _, err := svc.Get(t.Context(), "granola", false); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected pure remote-MCP granola removed after disconnect, got err=%v", err)
 	}
 
-	// Remove must also disconnect accounts and wipe tokens so reinstalling starts disconnected.
+	// Reinstall + connect, then Remove must also disconnect accounts and wipe tokens
+	// so reinstalling again starts disconnected.
+	if _, err := svc.Install(t.Context(), RepositoryInput{Repository: repo}); err != nil {
+		t.Fatal(err)
+	}
 	saveConnected()
 	if err := svc.Remove(t.Context(), "granola"); err != nil {
 		t.Fatal(err)
