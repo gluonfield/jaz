@@ -394,6 +394,27 @@ test('a failed local launch reports its error before touching saved credentials'
   expect(unlocks).toBe(0)
 })
 
+test.each([false, true])('a failed remembered local startup is retried on the next launch (renderer reloaded: %j)', async (reloaded) => {
+  const target = 'http://127.0.0.1:5299'
+  const error = 'Backend startup timed out'
+  const failed = await fixture({
+    storedValues: [['jaz.connection', JSON.stringify({ mode: 'local' })]],
+    initialSnapshot: reloaded
+      ? { revision: 2, phase: 'blocked', url: target, session: null, error, localPending: false }
+      : undefined,
+    startLocalBackend: async () => ({ ok: false, error }),
+  })
+  expect(failed.connection.useConnection()).toMatchObject({ status: 'disconnected', error })
+
+  const { connection } = await fixture({
+    storedValues: [...failed.stored],
+    startLocalBackend: async () => ({ ok: true, url: target }),
+  })
+  expect(connection.useConnection()).toMatchObject({ status: 'connected', url: target })
+  connection.disconnectBackend()
+  expect(connection.connectionPreference()).toBeNull()
+})
+
 test.each([false, true])('notifications use only credentials resolved by connection verification (auth_required: %j)', async (authRequired) => {
   const target = 'https://jaz.example'
   let unlocks = 0

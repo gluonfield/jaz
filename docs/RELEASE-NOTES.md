@@ -1,7 +1,11 @@
-Changes since v0.0.297:
+Changes since v0.0.298:
 
-- Displays spreadsheets on white sheets with cell borders, fitted column widths and a one-line formula bar.
-- Limits bot Activity to the newest 30 visible rows, including routine runs that have their own threads.
-- Separates Antigravity model selection from its thought level, while retaining saved model choices.
-- Queues chat messages when live steering is unavailable; Send now targets the active turn and preserves the goal when interrupting it.
-- Makes Max selectable when a model offers Max without XHigh.
+- Unifies connected services and installed packages in Plugins, with a Git-backed catalog and clear Connect/Disconnect or Install/Remove actions.
+- Improves connection cleanup, failed-install rollback, catalog refresh and multi-account support. Connected plugins use compact rows with a Show all control.
+- Includes delivered bot replies exactly once in thread read-back, in order, while excluding private handoffs.
+- Preserves original skill paths when a secondary native plugin manifest cannot be loaded.
+
+Upgrade notes:
+
+- Reconnect Tasks, CRM, Granola and Zoom once in Plugins after updating; they now come from the official Git marketplace. Existing native accounts and installed plugin folders are preserved.
+- The Deployink integration is removed.

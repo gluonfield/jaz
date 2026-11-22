@@ -16,6 +16,7 @@ import (
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/skills"
+	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -163,5 +164,105 @@ func TestNativePluginOwnershipAcrossNewAndRestore(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDisabledPluginExcludedFromNativeAndCatalogueFallback(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"plugins/enabled-broken/plugin.json":              `{"name":"enabled-broken"}`,
+		"plugins/enabled-broken/skills/query/SKILL.md":    "---\nname: query\ndescription: Enabled fallback skill\n---\n",
+		"plugins/disabled-broken/plugin.json":             `{"name":"disabled-broken"}`,
+		"plugins/disabled-broken/skills/query/SKILL.md":   "---\nname: query\ndescription: Disabled fallback skill\n---\n",
+		"plugins/disabled-native/plugin.json":             `{"name":"disabled-native"}`,
+		"plugins/disabled-native/skills/native/SKILL.md":  "---\nname: native\ndescription: Disabled native skill\n---\n",
+	}
+	for path, body := range files {
+		path = filepath.Join(root, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"enabled-broken", "disabled-broken"} {
+		if err := os.MkdirAll(filepath.Join(root, "plugins", name, ".claude-plugin", "plugin.json"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	for _, id := range []string{"disabled-broken", "disabled-native"} {
+		if err := store.SavePluginState(t.Context(), storage.PluginStateRecord{PluginID: id, Enabled: false}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	installed := plugins.New(runtimefiles.New(root)).WithStateStore(store)
+	workspace := filepath.Join(root, "work")
+	if err := os.MkdirAll(workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	requests := filepath.Join(root, "requests.jsonl")
+	manager := newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentClaude, map[string]string{"JAZ_FAKE_ACP_REQUEST_LOG": requests}, "", "", func(cfg *acp.Config) {
+		cfg.ClaudePlugins = installed.ClaudePlugins
+		cfg.Workspace = workspace
+		cfg.SystemPrompt = coordinator.NewBuilder(root, workspace, "", nil).WithPluginFilter(func(id string) bool {
+			return installed.IsEnabled(context.Background(), id)
+		})
+		agent := cfg.Agents[acp.AgentClaude]
+		agent.ManagedAdapter = acp.AgentClaude
+		agent.Command = ""
+		agent.Args = nil
+		cfg.Agents[acp.AgentClaude] = agent
+		cfg.Adapters = fakeAdapterResolver{launch: acp.AdapterLaunch{Command: os.Args[0], Args: []string{"-test.run=TestFakeACPAgentProcess"}}}
+	})
+	t.Cleanup(manager.Close)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	job, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentClaude, Slug: "disabled-plugin", Directory: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sendAndWait(t, ctx, manager, job.SessionID, "hello")
+
+	seenNew := 0
+	for _, request := range readFakeACPRequests(t, requests) {
+		if request.Method != "session/new" {
+			continue
+		}
+		seenNew++
+		var params struct {
+			Meta struct {
+				SystemPrompt map[string]any `json:"systemPrompt"`
+				ClaudeCode   struct {
+					Options struct {
+						Plugins []map[string]any `json:"plugins"`
+					} `json:"options"`
+				} `json:"claudeCode"`
+			} `json:"_meta"`
+		}
+		if err := json.Unmarshal(request.Params, &params); err != nil {
+			t.Fatal(err)
+		}
+		prompt, _ := params.Meta.SystemPrompt["append"].(string)
+		if !strings.Contains(prompt, "<name>enabled-broken:query</name>") || !strings.Contains(prompt, filepath.Join(root, "plugins", "enabled-broken", "skills", "query", "SKILL.md")) {
+			t.Fatalf("enabled fallback plugin missing original skill path in catalogue: %s", prompt)
+		}
+		if strings.Contains(prompt, "disabled-broken:query") || strings.Contains(prompt, "disabled-native:native") {
+			t.Fatalf("explicitly disabled plugin leaked into catalogue: %s", prompt)
+		}
+		if len(params.Meta.ClaudeCode.Options.Plugins) != 0 {
+			t.Fatalf("disabled or broken plugins passed to native Claude options: %+v", params.Meta.ClaudeCode.Options.Plugins)
+		}
+	}
+	if seenNew != 1 {
+		t.Fatalf("session/new count = %d, want 1", seenNew)
 	}
 }

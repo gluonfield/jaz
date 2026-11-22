@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import { RuntimeSelect } from '@/components/session/NewThreadControls'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
 import type { CreateSessionInput } from '@/lib/api/sessions'
@@ -126,31 +125,26 @@ export function AgentModelControls({
       <span className="px-1.5 text-[13px] text-ink-3">Connect an agent in Settings</span>
     ) : null
   }
+  if (!controls.showModelPicker && !controls.showAgentPicker) {
+    return null
+  }
+  const model = controls.showModelPicker
+    ? {
+        value: controls.model,
+        suggestions: controls.modelSuggestions,
+        loading: controls.modelsLoading,
+        effort: controls.effort,
+        effortOptions: pickerEffortOptions(controls.effortOptions),
+        fastMode: controls.fastMode ? { ...controls.fastMode, disabled } : undefined,
+      }
+    : { value: '', suggestions: [], effort: '', effortOptions: [] }
   return (
-    <>
-      {controls.showAgentPicker ? (
-        <RuntimeSelect
-          value={controls.runtime}
-          agents={controls.agents}
-          placement={placement}
-          disabled={disabled}
-          onChange={controls.selectRuntime}
-        />
-      ) : null}
-      {controls.showModelPicker ? (
-        <ModelSelect
-          key={controls.runtime}
-          value={controls.model}
-          suggestions={controls.modelSuggestions}
-          loading={controls.modelsLoading}
-          placement={placement}
-          disabled={disabled}
-          onChange={controls.setSelection}
-          effort={controls.effort}
-          effortOptions={pickerEffortOptions(controls.effortOptions)}
-          fastMode={controls.fastMode ? { ...controls.fastMode, disabled } : undefined}
-        />
-      ) : null}
-    </>
+    <ModelSelect
+      {...model}
+      agent={{ value: controls.runtime, options: controls.agents, onChange: controls.selectRuntime }}
+      placement={placement}
+      disabled={disabled}
+      onChange={controls.setSelection}
+    />
   )
 }

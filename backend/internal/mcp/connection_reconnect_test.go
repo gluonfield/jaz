@@ -2,10 +2,13 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,6 +18,8 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/plugins"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/server"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
@@ -25,26 +30,57 @@ import (
 
 type reconnectInventory struct {
 	*sqlitestore.Store
-	server     mcpconfig.Server
+	plugins    *plugins.Store
 	unrelated  mcpconfig.Server
 	beforeSave func(context.Context)
 }
 
-func (s reconnectInventory) ListMCPServers() ([]mcpconfig.Server, error) {
+func (s *reconnectInventory) ListMCPServers() ([]mcpconfig.Server, error) {
 	servers := []mcpconfig.Server{s.unrelated}
-	if _, ok, err := s.LoadConnection(context.Background(), s.server.ID); err != nil {
+	installed, err := s.plugins.ListMCPServers()
+	if err != nil {
 		return nil, err
-	} else if ok {
-		servers = append(servers, s.server)
 	}
-	return servers, nil
+	return append(servers, installed...), nil
 }
 
-func (s reconnectInventory) SaveConnection(ctx context.Context, connection integrations.Connection) error {
+func (s *reconnectInventory) SaveConnection(ctx context.Context, connection integrations.Connection) error {
 	if s.beforeSave != nil {
 		s.beforeSave(ctx)
 	}
 	return s.Store.SaveConnection(ctx, connection)
+}
+
+func writeRemoteMCPPlugin(t *testing.T, layout runtimefiles.Layout, pluginID, displayName, endpointURL string) {
+	t.Helper()
+	dir := filepath.Join(layout.Plugins, pluginID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifestJSON, err := json.Marshal(map[string]any{
+		"name":        pluginID,
+		"displayName": displayName,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcpJSON, err := json.Marshal(map[string]any{
+		"mcpServers": map[string]any{
+			pluginID: map[string]any{
+				"type": "http",
+				"url":  endpointURL,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), manifestJSON, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), mcpJSON, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
@@ -95,17 +131,27 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 				http.Error(w, "unrelated unavailable", http.StatusServiceUnavailable)
 			}))
 			defer other.Close()
-			plugin := integrations.Plugin{ID: "fixture", Name: "Fixture", Provider: integrations.Provider{ID: "fixture", Name: "Fixture"}, Auth: []integrations.AuthOption{{Kind: integrations.AuthKindMCPConnection}}, RemoteMCP: &integrations.RemoteMCP{URL: auth.URL + "/mcp"}}
-			id, err := integrations.ConnectionID(plugin.ID, plugin.RemoteMCP.URL)
-			if err != nil {
-				t.Fatal(err)
-			}
-			store, err := sqlitestore.New(t.TempDir())
+
+			root := t.TempDir()
+			layout := runtimefiles.New(root)
+			endpointURL := auth.URL + "/mcp"
+			writeRemoteMCPPlugin(t, layout, "fixture", "Fixture", endpointURL)
+
+			store, err := sqlitestore.New(root)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer store.Close()
-			inventory := reconnectInventory{Store: store, server: mcpconfig.Server{ID: id, Name: plugin.Name, URL: plugin.RemoteMCP.URL, Enabled: true}, unrelated: mcpconfig.Server{ID: "unrelated", URL: other.URL, Enabled: true}}
+
+			catalog := connections.NewCatalog(nil)
+			pluginStore := plugins.NewStore(layout, store, catalog)
+			id := plugins.MCPServerID("fixture", "fixture")
+			targetServer := mcpconfig.Server{ID: id, Name: "fixture:fixture", Transport: mcpconfig.TransportStreamableHTTP, URL: endpointURL, Enabled: true}
+			inventory := &reconnectInventory{
+				Store:     store,
+				plugins:   pluginStore,
+				unrelated: mcpconfig.Server{ID: "unrelated", URL: other.URL, Enabled: true},
+			}
 			saving := make(chan struct{})
 			saveAllowed := make(chan struct{})
 			if test.retry {
@@ -117,7 +163,7 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 					}
 				}
 			}
-			if err := store.SaveConnection(ctx, integrations.Connection{ID: id, Provider: plugin.ID, AccountID: plugin.RemoteMCP.URL}); err != nil {
+			if err := store.SaveConnection(ctx, integrations.Connection{ID: id, Provider: "fixture", AccountID: endpointURL, AccountName: "Fixture"}); err != nil {
 				t.Fatal(err)
 			}
 			old := integrationoauth.Token{AccessToken: "expired", RefreshToken: "old-refresh", ClientID: "old-client", TokenURL: auth.URL + "/old-token", AuthStyle: int(oauth2.AuthStyleInParams), Expiry: time.Now().Add(-time.Hour)}
@@ -125,20 +171,26 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 				old.AccessToken = "unexpired-old"
 				old.Expiry = time.Now().Add(time.Hour)
 			}
-			if err := store.SaveToken(ctx, inventory.server.TokenID(), old); err != nil {
+			if err := store.SaveToken(ctx, targetServer.TokenID(), old); err != nil {
 				t.Fatal(err)
 			}
 			registry := tools.NewRegistry()
 			manager := NewManager(inventory, store, registry, log.New(io.Discard))
 			defer manager.Close()
+
+			connService := connections.NewService(catalog, store)
+			connector := connections.NewMCPConnectionConnector(inventory, manager)
+			connectService := connections.NewConnectService(catalog, nil, nil, connector)
+			pluginService := plugins.NewService(pluginStore, store, connService, connectService, nil, nil)
+
 			var existing *mcpsdk.ClientSession
 			if test.warmed {
 				allowOld.Store(true)
-				client, err := (integrationoauth.Refresher{Store: store}).Client(ctx, inventory.server.TokenID())
+				client, err := (integrationoauth.Refresher{Store: store}).Client(ctx, targetServer.TokenID())
 				if err != nil {
 					t.Fatal(err)
 				}
-				existing, err = mcpsdk.NewClient(&mcpsdk.Implementation{Name: "existing-client"}, nil).Connect(ctx, &mcpsdk.StreamableClientTransport{Endpoint: inventory.server.URL, HTTPClient: client, MaxRetries: -1, DisableStandaloneSSE: true}, nil)
+				existing, err = mcpsdk.NewClient(&mcpsdk.Implementation{Name: "existing-client"}, nil).Connect(ctx, &mcpsdk.StreamableClientTransport{Endpoint: targetServer.URL, HTTPClient: client, MaxRetries: -1, DisableStandaloneSSE: true}, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -157,9 +209,12 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 			if test.unavailable {
 				inventory.beforeSave = func(context.Context) { fail.Store(true) }
 			}
-			connector := connections.NewMCPConnectionConnector(inventory, manager)
 			opts := mcpconfig.AuthorizeOptions{RedirectURL: "http://127.0.0.1:5599/callback"}
-			start, err := connector.Connect(ctx, plugin, mcpconfig.OAuthConfig{}, opts)
+			startConnect := func() (connections.ConnectStart, error) {
+				result, err := pluginService.Connect(ctx, "fixture", connections.StartOptions{MCP: opts})
+				return result.Start, err
+			}
+			start, err := startConnect()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -172,9 +227,9 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 			}
 			if test.retry {
 				manager.authMu.Lock()
-				oldAttempt := manager.authFlows[inventory.server.TokenID()]
+				oldAttempt := manager.authFlows[targetServer.TokenID()]
 				manager.authMu.Unlock()
-				replacement, err := connector.Connect(ctx, plugin, mcpconfig.OAuthConfig{}, opts)
+				replacement, err := startConnect()
 				if err != nil || authorizationStateFromURL(start.AuthURL) == authorizationStateFromURL(replacement.AuthURL) {
 					t.Fatalf("retry did not start a fresh sign-in: %v", err)
 				}
@@ -183,13 +238,13 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 				case <-ctx.Done():
 					t.Fatal("abandoned OAuth attempt did not finish")
 				}
-				if conflict := manager.Authorize(ctx, inventory.server, opts); !strings.Contains(conflict.Error, "already in progress") {
+				if conflict := manager.Authorize(ctx, targetServer, opts); !strings.Contains(conflict.Error, "already in progress") {
 					t.Fatalf("old attempt cleanup cleared replacement: %+v", conflict)
 				}
 				if late := respond(start.AuthURL, "late-code"); late.Code != http.StatusBadRequest {
 					t.Fatalf("abandoned OAuth callback accepted: status = %d", late.Code)
 				}
-				if grant, ok, err := store.LoadToken(ctx, inventory.server.TokenID()); err != nil || !ok || grant.AccessToken != old.AccessToken {
+				if grant, ok, err := store.LoadToken(ctx, targetServer.TokenID()); err != nil || !ok || grant.AccessToken != old.AccessToken {
 					t.Fatal("abandoned callback changed the previous grant")
 				}
 				start = replacement
@@ -212,7 +267,7 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 				case <-ctx.Done():
 					t.Fatal("replacement callback did not reach connection save")
 				}
-				_, err := connector.Connect(ctx, plugin, mcpconfig.OAuthConfig{}, opts)
+				_, err := startConnect()
 				close(saveAllowed)
 				if err == nil || !strings.Contains(err.Error(), "already in progress") {
 					t.Fatalf("retry accepted after consent: %v", err)
@@ -224,7 +279,7 @@ func TestConnectionsSignInReconcilesActualTargetTools(t *testing.T) {
 			if unrelatedRequests.Load() != before {
 				t.Fatal("sign-in reconciled an unrelated server")
 			}
-			grant, ok, loadErr := store.LoadToken(ctx, inventory.server.TokenID())
+			grant, ok, loadErr := store.LoadToken(ctx, targetServer.TokenID())
 			if loadErr != nil || !ok || grant.ClientID != "dynamic-client-id" || grant.RefreshToken != "refresh-token-456" {
 				t.Fatalf("reconnect did not persist new grant/client: %+v, %v", grant, loadErr)
 			}
