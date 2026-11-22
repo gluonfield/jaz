@@ -357,8 +357,16 @@ func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.P
 			return nil, nil
 		}
 		model = options.defaultModel
-	case policy.modelConfiguredAtLaunch || policy.modelMetaKey != "":
+	case policy.modelMetaKey != "":
 		return nil, nil
+	case policy.modelConfiguredAtLaunch:
+		// The launch carried the model, unless it was judged against an older
+		// model list than this session's that lacked it.
+		base, _, _ := cutReasoningEffort(model)
+		if policy.unadvertisedModel != unadvertisedModelSkipped || options.currentModel == base {
+			return nil, nil
+		}
+		model = base
 	}
 	if model == "" {
 		return nil, nil
