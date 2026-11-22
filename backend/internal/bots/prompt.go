@@ -123,14 +123,21 @@ A thread inherits your agent, model, reasoning effort and working directory by d
 
 ### Tasks
 Your tasks are what you owe beyond the turn you were asked in: work you hand to threads and answers you owe once something arrives. A turn opens with the open ones that are new or changed since you last saw them, the numbers of the rest and of those that closed, so you never re-read threads to know what you owe.
-- Before you start a thread, create a task with bot_task_create. Give it a compact name for headings and lists. In request, state the outcome owed and a concrete check for when it is done; do not use a vague work title alone. Put the next step in next and keep instructions and context in the work thread. It is owed to whoever this turn answers. Pass its id to create_thread as task; one task can have several threads.
-- Before closing a task, compare the result with its requested outcome and completion check. A worker or thread ending is not task completion. Mark completed only when the outcome is reached, and say how in message. Keep partial work in_progress and update next with what remains; use waiting_for_user for a missing answer or stopped when no useful path remains. To deliver to another bot from a different turn, use message_bot with done set only to task ids whose requested outcomes this message delivers. Completion and delivery happen together. Progress and questions use send_message without done.
+- Before you start a thread, create a task with bot_task_create. Give it a compact name for headings and lists. Put the next step in next and keep instructions and context in the work thread. One task can have several threads.
 - Reconcile unfinished tasks on every wake. Stopped tasks remain dormant and require no effort. Each other task has active work, an unmet prerequisite recorded in depends_on, or an actual question recorded by waiting_for_user. A thread's result that falls short is not the end: follow up or start the next thread.
 - An outside job is a thread's work. Its brief says to start the job in a session of its own, so it outlives the command that launched it and a restart of Jaz (setsid, or Python's start_new_session on macOS), with its output in files, then to wait for it inside the thread's turn and report the result: a Codex thread sleeps with clock.sleep for the job's expected remaining time in one call (up to 12 hours), not in short polls; a Claude thread waits in blocking checks of up to 10 minutes each, repeated until the job ends, because a background task's notification does not reach you yet. After a restart the thread's turn resumes and checks the job again. Keep that task in_progress while its thread monitors the job.
 - When an unfinished task has no active worker or prerequisite, Jaz wakes you with an [owed] turn. Recovery retries after a delay if work still has not resumed.
-- Keep request as the stable requested outcome and completion check, and keep next and status current with bot_task_update. Status is pending, in_progress, waiting_for_user, stopped, completed or cancelled. Use stopped with message when current conditions leave no useful path: explain attempts, the obstacle and what would justify a retry, or honestly no known useful retry condition. Missing user input belongs in waiting_for_user; temporary infrastructure trouble or slow work does not establish impossibility. Stop known owned outside jobs through their owner and verify cessation before stopping monitoring threads; stop_thread only stops the turn. Jaz refuses Stopped while recorded foreground/background work remains active. Resume stopped work only to pending with message explaining relevant user direction or changed conditions. Unrelated messages and stale results never justify resumption. After resuming, issue fresh reviewed worker instructions. Set waiting_for_user with message containing the actual missing question; Jaz delivers it and links the wait to that question. After a new user reply, resume only the task whose question it answers: set pending or in_progress with answered_question equal to its current question_seq. Unrelated messages leave human waits unchanged. Use check_at (RFC3339) for a future check on active work, or an empty string to clear it; the watchdog waits until then. Record prerequisite task ids in depends_on and leave dependent work pending until they end. Cancel with status cancelled and message explaining why. Use bot_task_list to read all unfinished tasks.
-- A quick answer in the same turn needs none.`
+- A quick answer in the same turn needs none.` + taskLifecycleSection
 }
+
+const taskLifecycleSection = `
+### Task tool lifecycle
+When using task tools:
+- A task records the requested outcome and completion check, owed to whoever this turn answers. Pass its id as task to create_thread or send_message_to_thread to link new or reused work; existing task links remain.
+- Before closing a task, compare the result with its requested outcome and completion check. A worker or thread ending is not task completion. Mark completed only when the outcome is reached, and say how in message. Keep partial work in_progress and update next with what remains; use waiting_for_user for a missing answer or stopped when no useful path remains. To deliver to another bot from a different turn, use message_bot with done set only to task ids whose requested outcomes this message delivers. Completion and delivery happen together. Progress and questions use send_message without done.
+- Keep request as the stable requested outcome and completion check, and keep next and status current with bot_task_update. Status is pending, in_progress, waiting_for_user, stopped, completed or cancelled. Use stopped with message when current conditions leave no useful path: explain attempts, the obstacle and what would justify a retry, or honestly no known useful retry condition. Missing user input belongs in waiting_for_user; temporary infrastructure trouble or slow work does not establish impossibility. Stop known owned outside jobs through their owner and verify cessation before stopping monitoring threads; stop_thread only stops the turn. Jaz refuses Stopped while recorded foreground/background work remains active. Resume stopped work only to pending with message explaining relevant user direction or changed conditions. Unrelated messages and stale results never justify resumption. After resuming, issue fresh reviewed worker instructions. Set waiting_for_user with message containing the actual missing question; Jaz delivers it and links the wait to that question. After a new user reply, resume only the task whose question it answers: set pending or in_progress with answered_question equal to its current question_seq. Unrelated messages leave human waits unchanged. Use check_at (RFC3339) for a future check on active work, or an empty string to clear it; the watchdog waits until then. Record prerequisite task ids in depends_on and leave dependent work pending until they end. Cancel with status cancelled and message explaining why. Use bot_task_list to read all unfinished tasks.
+- Omit fields to preserve them; depends_on=[] clears prerequisites.
+`
 
 // mainRole sets the user's main bot apart from the bots it hands work to.
 const mainRole = `
@@ -150,7 +157,7 @@ Post to the group with send_message, in short, plain messages. Everything else y
 `, name, group, group) + lookupSection + homeSection + judgementSection("then ask in the group with send_message; nobody sees questions asked any other way here") + `
 ### Other bots
 Reach a bot outside this group with message_bot; its answer arrives later as a new turn here, and a [reply from …] turn posts to the group too.
-`
+` + taskLifecycleSection
 }
 
 const lookupSection = `
@@ -181,19 +188,22 @@ Act by default within the user's authorization: choose the sensible option, go a
 `
 }
 
-// RoutineInstructions gives a worker access to its bot's shared knowledge,
-// without inheriting the bot's identity or coordination policy.
+// RoutineInstructions gives a worker its owner's knowledge and task-tool usage,
+// without inheriting its identity or coordinator duties.
 func RoutineInstructions(store PromptStore) func(loops.Loop, loops.Run) string {
 	return func(loop loops.Loop, _ loops.Run) string {
 		bot, err := store.LoadSession(loop.BotID)
-		if err != nil || bot.SourceType != storage.SourceBot || bot.RuntimeRef == nil || bot.RuntimeRef.Cwd == "" {
+		if err != nil || bot.SourceType != storage.SourceBot {
 			return ""
+		}
+		if bot.RuntimeRef == nil || bot.RuntimeRef.Cwd == "" {
+			return taskLifecycleSection
 		}
 		record, err := store.LoadBot(bot.ID)
 		if err != nil {
-			return fmt.Sprintf("Before you start, read %s in your bot's home, %s.", memoryFile, bot.RuntimeRef.Cwd)
+			return fmt.Sprintf("Before you start, read %s in your bot's home, %s.", memoryFile, bot.RuntimeRef.Cwd) + taskLifecycleSection
 		}
-		return fmt.Sprintf("Before you start, read %s in your bot's home, %s.\n\n%s", memoryFile, bot.RuntimeRef.Cwd, workspaceInstructions(record.Workspaces))
+		return fmt.Sprintf("Before you start, read %s in your bot's home, %s.\n\n%s", memoryFile, bot.RuntimeRef.Cwd, workspaceInstructions(record.Workspaces)) + taskLifecycleSection
 	}
 }
 

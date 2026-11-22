@@ -120,5 +120,13 @@ func TestARoutineWorkerDoesNotInheritItsBotsCoordinationPolicy(t *testing.T) {
 		if strings.Contains(prompt, "Sign every report as Gimli.") {
 			t.Fatalf("routine worker inherited its bot's role: %q", prompt)
 		}
+		want := 0
+		if owner != "" {
+			want = 1
+		}
+		assertTaskLifecycleGuidance(t, prompt, want)
+		if strings.Contains(prompt, "Before you start a thread, create a task") || strings.Contains(prompt, "Reconcile unfinished tasks on every wake") {
+			t.Fatal("routine worker received coordinator duties")
+		}
 	}
 }
