@@ -315,12 +315,22 @@ func filteredExecEnv(environ []string) []string {
 		if !ok {
 			continue
 		}
-		if strings.HasPrefix(strings.ToUpper(key), "JAZ_") {
-			continue
+		if isAllowedExecEnvKey(key) {
+			out = append(out, entry)
 		}
-		out = append(out, entry)
 	}
 	return out
+}
+
+func isAllowedExecEnvKey(key string) bool {
+	upper := strings.ToUpper(key)
+	switch upper {
+	case "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG",
+		"TMPDIR", "TEMP", "TMP", "SSL_CERT_FILE", "SSL_CERT_DIR",
+		"SYSTEMROOT", "COMSPEC", "PATHEXT", "WINDIR":
+		return true
+	}
+	return strings.HasPrefix(upper, "LC_") || strings.HasPrefix(upper, "XDG_")
 }
 
 // scanForLoopbackWSEndpoint reads lines of arbitrary length without failing on >64 KiB output.

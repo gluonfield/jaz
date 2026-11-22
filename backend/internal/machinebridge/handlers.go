@@ -26,6 +26,7 @@ const (
 	defaultSearchResults  = 100
 	maxSearchResults      = 500
 	maxSearchFileBytes    = 2 << 20
+	defaultMaxStageBytes  = 100 << 20
 	maxSnippetBytes       = 240
 	defaultHTTPTimeout    = 5 * time.Minute
 )
@@ -366,7 +367,10 @@ func (h *Handler) stageOne(ctx context.Context, maxBytes int64, resolved Resolve
 		return StagedFile{}, fmt.Errorf("%w: %s is not a regular file", ErrInvalidRequest, resolved.RelPath)
 	}
 	size := info.Size()
-	if maxBytes > 0 && size > maxBytes {
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxStageBytes
+	}
+	if size > maxBytes {
 		return StagedFile{}, fmt.Errorf("%w: %s size %d exceeds max_stage_bytes %d", ErrInvalidRequest, resolved.RelPath, size, maxBytes)
 	}
 
@@ -594,17 +598,17 @@ func (h *Handler) downloadCommitTemp(ctx context.Context, maxBytes int64, resolv
 		}
 	}()
 
-	reader := io.Reader(resp.Body)
-	if maxBytes > 0 {
-		reader = io.LimitReader(resp.Body, maxBytes+1)
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxStageBytes
 	}
+	reader := io.LimitReader(resp.Body, maxBytes+1)
 	hasher := sha256.New()
 	written, err := io.Copy(io.MultiWriter(tmp, hasher), reader)
 	if err != nil {
 		_ = tmp.Close()
 		return "", "", 0, err
 	}
-	if maxBytes > 0 && written > maxBytes {
+	if written > maxBytes {
 		_ = tmp.Close()
 		return "", "", 0, fmt.Errorf("%w: %s download exceeds max_stage_bytes %d", ErrInvalidRequest, resolved.RelPath, maxBytes)
 	}

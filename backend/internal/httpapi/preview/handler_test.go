@@ -134,6 +134,7 @@ func TestHostProxyRewritesLoopbackRedirect(t *testing.T) {
 	addProxy(handler, testCapabilityID, testCapabilityID+".preview.example.test", mustParseURL(t, upstream.URL), time.Now().Add(time.Hour))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "127.0.0.1:4321"
 	req.Host = testCapabilityID + ".preview.example.test"
 	req.Header.Set("X-Forwarded-Proto", "https")
 	res := httptest.NewRecorder()

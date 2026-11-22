@@ -81,6 +81,18 @@ func TestInternalEndpointsRequireCredentialsBehindTunnel(t *testing.T) {
 	if res.Code != http.StatusForbidden || res.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatalf("website-origin request status=%d headers=%v", res.Code, res.Header())
 	}
+
+	nullPreflight := httptest.NewRequest(http.MethodOptions, "http://127.0.0.1:5299/health", nil)
+	nullPreflight.RemoteAddr = "127.0.0.1:12345"
+	nullPreflight.Header.Set("Origin", "null")
+	nullPreflight.Header.Set("Access-Control-Request-Private-Network", "true")
+	nullRes := httptest.NewRecorder()
+	(&Server{AuthKey: "root"}).Handler().ServeHTTP(nullRes, nullPreflight)
+	if nullRes.Code != http.StatusForbidden ||
+		nullRes.Header().Get("Access-Control-Allow-Origin") != "" ||
+		nullRes.Header().Get("Access-Control-Allow-Private-Network") != "" {
+		t.Fatalf("null-origin PNA preflight status=%d headers=%v", nullRes.Code, nullRes.Header())
+	}
 }
 
 func TestResourceTicketsAreStatelessScopedAndInvalidateOnKeyRotation(t *testing.T) {

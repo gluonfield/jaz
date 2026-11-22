@@ -41,6 +41,7 @@ type ClientConfig struct {
 	Dialer                 *websocket.Dialer
 	ExecLauncher           ExecLauncher
 	ExecLauncherFactory    func(*PolicyGuard) (ExecLauncher, error)
+	AllowedTransferHosts   []string
 	AllowLoopbackTransfers bool
 	MaxConcurrency         int
 	PingInterval           time.Duration
@@ -92,6 +93,16 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	if cfg.AllowLoopbackTransfers {
 		guardOpts = append(guardOpts, WithAllowLoopbackTransfers())
 	}
+	allowedHosts := cfg.AllowedTransferHosts
+	if len(allowedHosts) == 0 {
+		allowedHosts = []string{defaultTransferHost}
+		if parsedConnect, parseErr := url.Parse(connectURL); parseErr == nil {
+			if cloudHost := normalizeTransferHost(parsedConnect.Hostname()); cloudHost != "" && cloudHost != defaultTransferHost {
+				allowedHosts = append(allowedHosts, cloudHost)
+			}
+		}
+	}
+	guardOpts = append(guardOpts, WithAllowedTransferHosts(allowedHosts...))
 	guard, err := NewPolicyGuard(cfg.FolderGrants, guardOpts...)
 	if err != nil {
 		return nil, err

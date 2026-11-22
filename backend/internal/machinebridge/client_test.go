@@ -835,6 +835,58 @@ func TestHandlerTransferRedirectsAndTwoPhaseCommitAtomicity(t *testing.T) {
 	if got, err := os.ReadFile(targetFile); err != nil || string(got) != "keep-real\n" {
 		t.Fatalf("symlink delete touched target: (%q, %v)", string(got), err)
 	}
+
+	// Client auto-defaults AllowedTransferHosts from CloudURL host + storage.googleapis.com and rejects arbitrary HTTPS hosts.
+	cloudClient, err := NewClient(ClientConfig{
+		CloudURL:     "https://cloud.jaz.dev",
+		Token:        "tok",
+		DeviceID:     "dev-pin",
+		FolderGrants: []FolderGrant{{ID: "rw", Mode: AccessReadWrite, RootPath: dir}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cloudClient.Close() })
+	if _, err := cloudClient.guard.ValidateStageRequest(DeviceStageRequest{
+		GrantID: "rw",
+		RunID:   "r-pin-ok",
+		Files: []StageFileTarget{
+			{RelPath: "keep.txt", UploadURL: "https://cloud.jaz.dev/v1/blobs/up"},
+			{RelPath: "keep.txt", UploadURL: "https://storage.googleapis.com/jaz-bucket/up"},
+		},
+	}); err != nil {
+		t.Fatalf("default CloudURL/GCS transfer hosts rejected: %v", err)
+	}
+	if _, err := cloudClient.guard.ValidateStageRequest(DeviceStageRequest{
+		GrantID: "rw",
+		RunID:   "r-pin-evil",
+		Files:   []StageFileTarget{{RelPath: "keep.txt", UploadURL: "https://evil-exfil.example/steal"}},
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("third-party HTTPS exfil host err = %v, want ErrInvalidRequest", err)
+	}
+
+	// Fallback download cap (defaultMaxStageBytes = 100 MiB) rejects unbounded downloads when MaxStageBytes == 0.
+	hugeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(w, io.LimitReader(zeroReader{}, defaultMaxStageBytes+2))
+	}))
+	defer hugeServer.Close()
+	if _, err := handler.CommitFiles(t.Context(), Capabilities{FileStaging: true, MaxStageBytes: 0}, DeviceCommitRequest{
+		GrantID: "rwd",
+		RunID:   "r-huge-fallback",
+		Files:   []CommitFileEntry{{RelPath: "huge.bin", DownloadURL: hugeServer.URL + "/huge"}},
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("oversize fallback download err = %v, want ErrInvalidRequest", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "huge.bin")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("oversize fallback download wrote huge.bin: err=%v", err)
+	}
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	clear(p)
+	return len(p), nil
 }
 
 func TestClientReconnectsAfterServerDrop(t *testing.T) {

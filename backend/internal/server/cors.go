@@ -2,29 +2,12 @@ package server
 
 import (
 	"net/http"
-	"net/url"
+
+	"github.com/wins/jaz/backend/internal/httpapi"
 )
 
 func allowedOrigin(origin string, trusted ...string) bool {
-	if origin == "null" || origin == "file://" {
-		return true
-	}
-	u, err := url.Parse(origin)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return false
-	}
-	if origin == "https://web.jaz.chat" || origin == "https://jaz.chat" {
-		return true
-	}
-	if u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1" {
-		return true
-	}
-	for _, candidate := range trusted {
-		if origin == candidate {
-			return true
-		}
-	}
-	return false
+	return httpapi.AllowedOrigin(origin, trusted...)
 }
 
 func withCORS(next http.Handler, trusted ...string) http.Handler {
@@ -50,6 +33,6 @@ func withCORS(next http.Handler, trusted ...string) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(httpapi.WithTrustedOrigins(r.Context(), trusted)))
 	})
 }

@@ -232,6 +232,8 @@ func TestValidateStageCommitRequestsSSRFAndPreconditions(t *testing.T) {
 
 	blockedURLs := []string{
 		"http://insecure.example/key",
+		"https://evil-exfil.example/steal",
+		"https://attacker.s3.amazonaws.com/key",
 		"http://127.0.0.1:8080/key",
 		"https://127.0.0.1/key",
 		"https://localhost/key",
@@ -254,6 +256,28 @@ func TestValidateStageCommitRequestsSSRFAndPreconditions(t *testing.T) {
 		}); !errors.Is(err, ErrInvalidRequest) {
 			t.Errorf("prod ValidateStageRequest(%q) err = %v, want ErrInvalidRequest", bad, err)
 		}
+	}
+
+	pinnedGuard, err := NewPolicyGuard([]FolderGrant{
+		{ID: "ro", RootPath: dir, Mode: AccessReadOnly},
+	}, WithAllowedTransferHosts("s3.us-east-1.amazonaws.com"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pinnedGuard.Close() })
+	if _, err := pinnedGuard.ValidateStageRequest(DeviceStageRequest{
+		GrantID: "ro",
+		RunID:   "run-pin",
+		Files:   []StageFileTarget{{RelPath: "calc.xlsx", UploadURL: "https://s3.us-east-1.amazonaws.com/bucket/key"}},
+	}); err != nil {
+		t.Fatalf("explicitly pinned transfer host failed: %v", err)
+	}
+	if _, err := pinnedGuard.ValidateStageRequest(DeviceStageRequest{
+		GrantID: "ro",
+		RunID:   "run-pin-miss",
+		Files:   []StageFileTarget{{RelPath: "calc.xlsx", UploadURL: "https://evil-exfil.example/key"}},
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("unpinned third-party host err = %v, want ErrInvalidRequest", err)
 	}
 
 	if _, err := prodGuard.ValidateStageRequest(DeviceStageRequest{

@@ -17,6 +17,8 @@ import (
 	"syscall"
 )
 
+const defaultTransferHost = "storage.googleapis.com"
+
 var cgnatPrefix = netip.MustParsePrefix("100.64.0.0/10")
 
 type PolicyOption func(*PolicyGuard)
@@ -26,6 +28,22 @@ type PolicyOption func(*PolicyGuard)
 func WithAllowLoopbackTransfers() PolicyOption {
 	return func(g *PolicyGuard) {
 		g.allowLoopbackTransfers = true
+	}
+}
+
+// WithAllowedTransferHosts pins permitted remote transfer hostnames (e.g.
+// storage.googleapis.com and the CloudURL host) so a compromised token cannot
+// exfiltrate local files to an arbitrary third-party HTTPS server.
+func WithAllowedTransferHosts(hosts ...string) PolicyOption {
+	return func(g *PolicyGuard) {
+		if g.allowedTransferHosts == nil {
+			g.allowedTransferHosts = make(map[string]struct{}, len(hosts))
+		}
+		for _, h := range hosts {
+			if norm := normalizeTransferHost(h); norm != "" {
+				g.allowedTransferHosts[norm] = struct{}{}
+			}
+		}
 	}
 }
 
@@ -49,6 +67,7 @@ type ResolvedPath struct {
 type PolicyGuard struct {
 	grants                 map[string]grantEntry
 	allowLoopbackTransfers bool
+	allowedTransferHosts   map[string]struct{}
 }
 
 func NewPolicyGuard(grants []FolderGrant, opts ...PolicyOption) (*PolicyGuard, error) {
@@ -111,6 +130,9 @@ func NewPolicyGuard(grants []FolderGrant, opts ...PolicyOption) (*PolicyGuard, e
 		if opt != nil {
 			opt(guard)
 		}
+	}
+	if len(guard.allowedTransferHosts) == 0 {
+		guard.allowedTransferHosts = map[string]struct{}{defaultTransferHost: {}}
 	}
 	return guard, nil
 }
@@ -212,7 +234,7 @@ func (g *PolicyGuard) ValidateStageRequest(req DeviceStageRequest) ([]ResolvedPa
 	}
 	resolved := make([]ResolvedPath, 0, len(req.Files))
 	for _, file := range req.Files {
-		if err := validateTransferURL(file.UploadURL, g.allowLoopbackTransfers); err != nil {
+		if err := validateTransferURL(file.UploadURL, g.allowLoopbackTransfers, g.allowedTransferHosts); err != nil {
 			return nil, err
 		}
 		if err := validateTransferHeaders(file.UploadHeaders); err != nil {
@@ -237,7 +259,7 @@ func (g *PolicyGuard) ValidateCommitRequest(req DeviceCommitRequest) ([]Resolved
 		if file.Delete {
 			op = OpDelete
 		} else {
-			if err := validateTransferURL(file.DownloadURL, g.allowLoopbackTransfers); err != nil {
+			if err := validateTransferURL(file.DownloadURL, g.allowLoopbackTransfers, g.allowedTransferHosts); err != nil {
 				return nil, err
 			}
 			if err := validateTransferHeaders(file.DownloadHeaders); err != nil {
@@ -447,7 +469,7 @@ func checkRelativeSegments(cleanRel string) error {
 	return nil
 }
 
-func validateTransferURL(raw string, allowLoopback bool) error {
+func validateTransferURL(raw string, allowLoopback bool, allowedHosts map[string]struct{}) error {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || parsed.Host == "" || parsed.User != nil {
 		return fmt.Errorf("%w: valid transfer URL is required", ErrInvalidRequest)
@@ -472,10 +494,36 @@ func validateTransferURL(raw string, allowLoopback bool) error {
 		}
 		return nil
 	}
-	if ip := net.ParseIP(host); ip != nil && isDisallowedTransferIP(ip, allowLoopback) {
-		return fmt.Errorf("%w: private or loopback transfer address %q is not allowed", ErrInvalidRequest, host)
+	if ip := net.ParseIP(host); ip != nil {
+		if isDisallowedTransferIP(ip, allowLoopback) {
+			return fmt.Errorf("%w: private or loopback transfer address %q is not allowed", ErrInvalidRequest, host)
+		}
+		if allowLoopback && ip.IsLoopback() {
+			return nil
+		}
+	}
+	normHost := normalizeTransferHost(host)
+	if _, ok := allowedHosts[normHost]; !ok {
+		return fmt.Errorf("%w: transfer host %q is not allowed", ErrInvalidRequest, host)
 	}
 	return nil
+}
+
+func normalizeTransferHost(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	if strings.Contains(s, "://") {
+		if parsed, err := url.Parse(s); err == nil {
+			s = parsed.Hostname()
+		}
+	} else if host, _, err := net.SplitHostPort(s); err == nil {
+		s = host
+	}
+	s = strings.Trim(s, "[]")
+	s = strings.TrimSuffix(s, ".")
+	return strings.ToLower(strings.TrimSpace(s))
 }
 
 func validateTransferHeaders(headers map[string]string) error {

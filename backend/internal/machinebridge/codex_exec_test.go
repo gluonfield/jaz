@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -20,12 +21,12 @@ import (
 )
 
 // TestHelperCodexExecServer acts as a fake `codex exec-server` subprocess when
-// TEST_FAKE_CODEX_EXEC=1 is set in the environment.
+// invoked with the sentinel argument "--fake-codex-exec".
 func TestHelperCodexExecServer(t *testing.T) {
-	if os.Getenv("TEST_FAKE_CODEX_EXEC") != "1" {
+	if !slices.Contains(os.Args, "--fake-codex-exec") {
 		return
 	}
-	if delay := os.Getenv("TEST_FAKE_CODEX_DELAY_MS"); delay != "" {
+	if slices.Contains(os.Args, "--fake-codex-delay") {
 		time.Sleep(250 * time.Millisecond)
 	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -37,7 +38,7 @@ func TestHelperCodexExecServer(t *testing.T) {
 
 	if wd, err := os.Getwd(); err == nil {
 		_ = os.WriteFile(filepath.Join(wd, ".exec-server-started"), []byte(ln.Addr().String()), 0o600)
-		_ = os.WriteFile(filepath.Join(wd, ".exec-server-jaz-token"), []byte(os.Getenv("JAZ_CLOUD_TOKEN")), 0o600)
+		_ = os.WriteFile(filepath.Join(wd, ".exec-server-env"), []byte(strings.Join(os.Environ(), "\n")), 0o600)
 	}
 	// Emit a >64 KiB stdout line first to verify scanner/reader handles huge lines cleanly.
 	fmt.Println(strings.Repeat("x", 80*1024))
@@ -59,13 +60,13 @@ func TestHelperCodexExecServer(t *testing.T) {
 	os.Exit(0)
 }
 
-func newTestCodexLauncher(t *testing.T, guard *PolicyGuard) *CodexExecLauncher {
+func newTestCodexLauncher(t *testing.T, guard *PolicyGuard, extraArgs ...string) *CodexExecLauncher {
 	t.Helper()
-	t.Setenv("TEST_FAKE_CODEX_EXEC", "1")
+	args := append([]string{"-test.run=^TestHelperCodexExecServer$", "--", "--fake-codex-exec"}, extraArgs...)
 	launcher, err := NewCodexExecLauncher(CodexExecConfig{
 		Guard:          guard,
 		Binary:         os.Args[0],
-		Args:           []string{"-test.run=^TestHelperCodexExecServer$"},
+		Args:           args,
 		StartupTimeout: 5 * time.Second,
 	})
 	if err != nil {
@@ -73,6 +74,52 @@ func newTestCodexLauncher(t *testing.T, guard *PolicyGuard) *CodexExecLauncher {
 	}
 	t.Cleanup(func() { _ = launcher.Close() })
 	return launcher
+}
+
+func TestFilteredExecEnvStrictAllowlist(t *testing.T) {
+	in := []string{
+		"PATH=/usr/bin:/bin",
+		"HOME=/home/alice",
+		"LANG=en_US.UTF-8",
+		"LC_ALL=en_US.UTF-8",
+		"XDG_CONFIG_HOME=/home/alice/.config",
+		"SSL_CERT_FILE=/etc/ssl/cert.pem",
+		"JAZ_CLOUD_TOKEN=secret-cloud",
+		"AWS_SECRET_ACCESS_KEY=secret-aws",
+		"AWS_ACCESS_KEY_ID=AKIAEXAMPLE",
+		"OPENAI_API_KEY=sk-openai-secret",
+		"ANTHROPIC_API_KEY=sk-ant-secret",
+		"GITHUB_TOKEN=ghp_secret",
+		"SSH_AUTH_SOCK=/tmp/ssh-agent.sock",
+	}
+	got := filteredExecEnv(in)
+	for _, want := range []string{
+		"PATH=/usr/bin:/bin",
+		"HOME=/home/alice",
+		"LANG=en_US.UTF-8",
+		"LC_ALL=en_US.UTF-8",
+		"XDG_CONFIG_HOME=/home/alice/.config",
+		"SSL_CERT_FILE=/etc/ssl/cert.pem",
+	} {
+		if !slices.Contains(got, want) {
+			t.Errorf("filteredExecEnv dropped allowed entry %q: %v", want, got)
+		}
+	}
+	for _, forbidden := range []string{
+		"JAZ_CLOUD_TOKEN",
+		"AWS_SECRET_ACCESS_KEY",
+		"AWS_ACCESS_KEY_ID",
+		"OPENAI_API_KEY",
+		"ANTHROPIC_API_KEY",
+		"GITHUB_TOKEN",
+		"SSH_AUTH_SOCK",
+	} {
+		for _, entry := range got {
+			if strings.HasPrefix(entry, forbidden+"=") {
+				t.Errorf("filteredExecEnv leaked forbidden secret %q", entry)
+			}
+		}
+	}
 }
 
 func TestCodexExecLauncherStartStopPermissionsAndEnvFiltering(t *testing.T) {
@@ -87,6 +134,9 @@ func TestCodexExecLauncherStartStopPermissionsAndEnvFiltering(t *testing.T) {
 	}
 
 	t.Setenv("JAZ_CLOUD_TOKEN", "secret-cloud-bearer-token")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret-aws-key")
+	t.Setenv("OPENAI_API_KEY", "sk-openai-secret")
+	t.Setenv("GITHUB_TOKEN", "ghp-secret")
 	guard, err := NewPolicyGuard([]FolderGrant{
 		{ID: "ro", Mode: AccessReadOnly, RootPath: roDir},
 		{ID: "work", Mode: AccessReadWrite, RootPath: grantDir},
@@ -114,7 +164,7 @@ func TestCodexExecLauncherStartStopPermissionsAndEnvFiltering(t *testing.T) {
 		t.Fatalf("rejected starts left %d active sessions", launcher.ActiveCount())
 	}
 
-	// Valid start inside rw grant root spawns process, strips JAZ_* env, handles >64KiB stdout, and returns AuthToken.
+	// Valid start inside rw grant root spawns process, enforces strict env allowlist, handles >64KiB stdout, and returns AuthToken.
 	started, err := launcher.Start(ctx, ExecStartRequest{GrantID: "work", RunID: "r-ok"})
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -129,9 +179,15 @@ func TestCodexExecLauncherStartStopPermissionsAndEnvFiltering(t *testing.T) {
 	if err != nil || !strings.HasSuffix(started.Endpoint, string(marker)) {
 		t.Fatalf("helper cwd marker = (%q, %v), endpoint = %q", string(marker), err, started.Endpoint)
 	}
-	leakedToken, err := os.ReadFile(filepath.Join(grantDir, ".exec-server-jaz-token"))
-	if err != nil || len(leakedToken) != 0 {
-		t.Fatalf("JAZ_CLOUD_TOKEN leaked to child env: %q (err=%v)", string(leakedToken), err)
+	childEnv, err := os.ReadFile(filepath.Join(grantDir, ".exec-server-env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	envText := string(childEnv)
+	for _, secret := range []string{"JAZ_CLOUD_TOKEN=", "AWS_SECRET_ACCESS_KEY=", "OPENAI_API_KEY=", "GITHUB_TOKEN="} {
+		if strings.Contains(envText, secret) {
+			t.Fatalf("host secret %q leaked into child env:\n%s", secret, envText)
+		}
 	}
 
 	parsed, err := url.Parse(started.Endpoint)
@@ -162,8 +218,6 @@ func TestCodexExecLauncherStartStopPermissionsAndEnvFiltering(t *testing.T) {
 
 func TestCodexExecLauncherCloseWaitsForInFlightStartAndKillsAllSessions(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("TEST_FAKE_CODEX_EXEC", "1")
-	t.Setenv("TEST_FAKE_CODEX_DELAY_MS", "250")
 
 	var capturedLauncher *CodexExecLauncher
 	client, err := NewClient(ClientConfig{
@@ -176,7 +230,7 @@ func TestCodexExecLauncherCloseWaitsForInFlightStartAndKillsAllSessions(t *testi
 			l, err := NewCodexExecLauncher(CodexExecConfig{
 				Guard:          guard,
 				Binary:         os.Args[0],
-				Args:           []string{"-test.run=^TestHelperCodexExecServer$"},
+				Args:           []string{"-test.run=^TestHelperCodexExecServer$", "--", "--fake-codex-exec", "--fake-codex-delay"},
 				StartupTimeout: 5 * time.Second,
 			})
 			capturedLauncher = l
@@ -238,6 +292,7 @@ func TestCodexExecLauncherRealBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("JAZ_CLOUD_TOKEN", "do-not-leak-to-codex")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "do-not-leak-aws")
 
 	guard, err := NewPolicyGuard([]FolderGrant{
 		{ID: "ro", Mode: AccessReadOnly, RootPath: roDir},

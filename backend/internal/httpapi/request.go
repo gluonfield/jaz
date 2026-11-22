@@ -8,15 +8,18 @@ import (
 )
 
 func RequestBaseURL(r *http.Request) string {
-	host := firstHeaderValue(r.Header.Get("X-Forwarded-Host"))
+	var host, proto string
+	if LoopbackRequest(r) {
+		host = firstHeaderValue(r.Header.Get("X-Forwarded-Host"))
+		proto = strings.ToLower(firstHeaderValue(r.Header.Get("X-Forwarded-Proto")))
+	}
 	if host == "" {
 		host = strings.TrimSpace(r.Host)
 	}
 	if host == "" {
 		return ""
 	}
-	proto := firstHeaderValue(r.Header.Get("X-Forwarded-Proto"))
-	if proto == "" {
+	if proto != "http" && proto != "https" {
 		proto = "http"
 		if r.TLS != nil {
 			proto = "https"

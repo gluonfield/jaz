@@ -39,6 +39,7 @@ func TestPackagedBrowserOriginPreservesAuthentication(t *testing.T) {
 		{"packaged desktop", "file://", token, http.StatusSwitchingProtocols},
 		{"missing credential", "file://", "", http.StatusUnauthorized},
 		{"invalid credential", "file://", "invalid", http.StatusUnauthorized},
+		{"null origin rejected", "null", token, http.StatusForbidden},
 		{"untrusted website", "https://untrusted.example", token, http.StatusForbidden},
 		{"file host", "file://untrusted.example", token, http.StatusForbidden},
 	} {

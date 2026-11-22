@@ -26,14 +26,27 @@ func TestTrustedLocalRequest(t *testing.T) {
 	}
 }
 
-func TestRequestBaseURLUsesForwardedHost(t *testing.T) {
+func TestRequestBaseURLUsesForwardedHostFromLoopbackProxy(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "127.0.0.1:4321"
 	req.Host = "internal:5299"
 	req.Header.Set("X-Forwarded-Host", "jaz.example.com, proxy.local")
 	req.Header.Set("X-Forwarded-Proto", "https")
 
 	if got := RequestBaseURL(req); got != "https://jaz.example.com" {
 		t.Fatalf("RequestBaseURL = %q", got)
+	}
+}
+
+func TestRequestBaseURLIgnoresSpoofedForwardedHeadersFromRemotePeer(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "198.51.100.7:4321"
+	req.Host = "jaz.local:5299"
+	req.Header.Set("X-Forwarded-Host", "evil.example")
+	req.Header.Set("X-Forwarded-Proto", "https")
+
+	if got := RequestBaseURL(req); got != "http://jaz.local:5299" {
+		t.Fatalf("RequestBaseURL = %q, want http://jaz.local:5299", got)
 	}
 }
 
