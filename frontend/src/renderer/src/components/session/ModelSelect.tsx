@@ -14,7 +14,6 @@ import type { ModelPickerOption, ModelSelection } from '@/lib/modelPicker'
 import { modelSuggestionFor, modelSuggestionLabel } from '@/lib/modelSuggestion'
 import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 
-
 const list = {
   rest: { transition: { staggerChildren: 0.025, delayChildren: 0.03 } },
   exit: (direction: number) => ({ x: direction * -16, opacity: 0, transition: { duration: 0.14 } }),
@@ -44,7 +43,7 @@ function ModelList({
   onPick: (model: ModelPickerOption) => void
 }) {
   return (
-    <div className="relative h-[168px] overflow-hidden">
+    <div className="relative h-42 overflow-hidden">
       <AnimatePresence mode="popLayout" custom={direction}>
         <motion.div
           key={id}
@@ -86,7 +85,7 @@ function ModelList({
               </motion.button>
             )
           })}
-          {!models.length && loading ? <div className="h-7 px-2.5 text-[12px] leading-7 text-ink-3">Loading models…</div> : null}
+          {models.length ? null : <div className="h-7 px-2.5 text-[12px] leading-7 text-ink-3">{loading ? 'Loading models…' : 'No models'}</div>}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -139,7 +138,7 @@ export function ModelSelect({
   const effortDirection = useDirection(effortOptions.findIndex((option) => option.value === effortValue))
   useWidthTransition(triggerRef, `${agent?.value}/${label}/${effortLabel}/${fast}`)
   const adjustable = effortOptions.length > 1
-  const listed = suggestions.length > 0 || Boolean(loading)
+  const listed = Boolean(tabs || suggestions.length || loading)
   const focusSelection = useCallback((dialog: HTMLElement | null) => {
     const model = dialog?.querySelector<HTMLElement>('[role="menuitemradio"][tabindex="0"]')
     const target = model ?? dialog?.querySelector<HTMLElement>('[role="tab"][tabindex="0"]')
