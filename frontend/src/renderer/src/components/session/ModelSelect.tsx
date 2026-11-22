@@ -1,9 +1,10 @@
 import { ChevronDown, Zap } from 'lucide-react'
-import { AnimatePresence, MotionConfig, motion, useReducedMotion } from 'motion/react'
-import { type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { AnimatePresence, MotionConfig, motion } from 'motion/react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
 import { AgentTabs, agentTabsWidth, type AgentChoice } from '@/components/session/AgentTabs'
+import { EASE, Pop, Roll, SWAP, Tick, useDirection, useWidthTransition } from '@/components/session/pickerMotion'
 import { Button } from '@/components/ui/Button'
 import { Popover } from '@/components/ui/Popover'
 import { agentLabel } from '@/lib/agentLabel'
@@ -13,19 +14,9 @@ import type { ModelPickerOption, ModelSelection } from '@/lib/modelPicker'
 import { modelSuggestionFor, modelSuggestionLabel } from '@/lib/modelSuggestion'
 import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 
-const EASE = [0.2, 0, 0, 1] as const
-const SWAP = { duration: 0.22, ease: EASE }
 const ROW = 28
+const RESIZE = { duration: 0.26, ease: EASE }
 
-const roll = {
-  enter: (direction: number) => ({ y: `${direction * 100}%`, opacity: 0 }),
-  rest: { y: 0, opacity: 1 },
-  exit: (direction: number) => ({ y: `${direction * -100}%`, opacity: 0 }),
-}
-const pop = {
-  enter: { scale: 0.4, opacity: 0, filter: 'blur(3px)' },
-  rest: { scale: 1, opacity: 1, filter: 'blur(0px)' },
-}
 const list = {
   rest: { transition: { staggerChildren: 0.025, delayChildren: 0.03 } },
   exit: (direction: number) => ({ x: direction * -16, opacity: 0, transition: { duration: 0.14 } }),
@@ -35,77 +26,76 @@ const row = {
   rest: { x: 0, opacity: 1, transition: SWAP },
 }
 
-// Which way the value last moved, so entering content follows it.
-function useDirection(index: number): number {
-  const [last, setLast] = useState({ index, direction: 1 })
-  if (last.index === index) {
-    return last.direction
-  }
-  const next = { index, direction: index > last.index ? 1 : -1 }
-  setLast(next)
-  return next.direction
-}
-
-function useWidthTransition(ref: RefObject<HTMLElement | null>, content: string) {
-  const reduceMotion = useReducedMotion()
-  const settled = useRef<number>(undefined)
-  const running = useRef<Animation>(undefined)
-  useLayoutEffect(() => {
-    const element = ref.current
-    if (!element) {
-      return
-    }
-    const from = running.current?.playState === 'running' ? element.offsetWidth : settled.current
-    running.current?.cancel()
-    const to = element.offsetWidth
-    settled.current = to
-    if (!reduceMotion && from !== undefined && from !== to) {
-      running.current = element.animate({ width: [`${from}px`, `${to}px`] }, { duration: 240, easing: `cubic-bezier(${EASE.join()})` })
-    }
-  }, [ref, content, reduceMotion])
-}
-
-function Roll({ value, direction, className = '' }: { value: string; direction: number; className?: string }) {
+// One agent's models. A new `id` slides the old list out and the new one in along `direction`.
+function ModelList({
+  id,
+  direction,
+  models,
+  selected,
+  loading,
+  disabled,
+  onPick,
+}: {
+  id: string
+  direction: number
+  models: ModelPickerOption[]
+  selected?: ModelPickerOption
+  loading?: boolean
+  disabled?: boolean
+  onPick: (model: ModelPickerOption) => void
+}) {
   return (
-    <span className="relative inline-flex h-4 shrink-0 overflow-hidden leading-4">
-      <AnimatePresence mode="popLayout" initial={false} custom={direction}>
-        <motion.span
-          key={value}
+    <motion.div
+      className="relative overflow-hidden"
+      initial={false}
+      animate={{ height: models.length ? Math.min(224, models.length * ROW) : loading ? ROW : 0 }}
+      transition={RESIZE}
+    >
+      <AnimatePresence mode="popLayout" custom={direction}>
+        <motion.div
+          key={id}
+          role="menu"
+          aria-label="Models"
           custom={direction}
-          variants={roll}
+          variants={list}
           initial="enter"
           animate="rest"
           exit="exit"
-          transition={SWAP}
-          className={`truncate ${className}`}
+          className="max-h-56 w-full overflow-y-auto"
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+              return
+            }
+            event.preventDefault()
+            const rows = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')]
+            const current = rows.indexOf(document.activeElement as HTMLButtonElement)
+            rows[(current + (event.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length]?.focus()
+          }}
         >
-          {value}
-        </motion.span>
+          {models.map((model, index) => {
+            const on = model === selected
+            return (
+              <motion.button
+                key={model.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={on}
+                tabIndex={on || (!selected && index === 0) ? 0 : -1}
+                custom={direction}
+                variants={row}
+                disabled={disabled}
+                onClick={() => onPick(model)}
+                className={`flex h-7 w-full items-center gap-2 rounded-control px-2.5 text-left text-[12px] transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 ${on ? 'text-ink' : 'text-ink-2'}`}
+              >
+                <span className="min-w-0 flex-1 truncate">{model.label}</span>
+                <Tick on={on} />
+              </motion.button>
+            )
+          })}
+          {!models.length && loading ? <div className="h-7 px-2.5 text-[12px] leading-7 text-ink-3">Loading models…</div> : null}
+        </motion.div>
       </AnimatePresence>
-    </span>
-  )
-}
-
-function Pop({ id, children }: { id: string; children: ReactNode }) {
-  return (
-    <AnimatePresence mode="popLayout" initial={false}>
-      <motion.span key={id} variants={pop} initial="enter" animate="rest" exit="enter" transition={SWAP} className="grid shrink-0 place-items-center">
-        {children}
-      </motion.span>
-    </AnimatePresence>
-  )
-}
-
-function Tick({ on }: { on: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" className="size-[13px] shrink-0 text-ink-3" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <motion.path
-        d="M4 12l5 5L20 6"
-        initial={false}
-        animate={{ pathLength: on ? 1 : 0, opacity: on ? 1 : 0 }}
-        transition={{ duration: on ? 0.26 : 0.1, ease: EASE }}
-      />
-    </svg>
+    </motion.div>
   )
 }
 
@@ -159,7 +149,6 @@ export function ModelSelect({
     const target = model ?? dialog?.querySelector<HTMLElement>('[role="tab"][tabindex="0"]')
     target?.focus()
   }, [])
-  const listHeight = suggestions.length ? Math.min(224, suggestions.length * ROW) : loading ? ROW : 0
 
   return (
     <MotionConfig reducedMotion="user">
@@ -176,11 +165,12 @@ export function ModelSelect({
             ref={triggerRef}
             variant="secondary"
             size="sm"
-            className="model-picker relative justify-start overflow-hidden focus-visible:bg-surface-2"
+            className="model-picker relative overflow-hidden focus-visible:bg-surface-2"
+            style={{ justifyContent: 'flex-start' }}
             aria-haspopup="dialog"
             aria-expanded={open && !disabled}
             aria-label={`Model: ${label}${effortLabel ? `, reasoning effort: ${effortLabel}` : ''}${agent ? `, agent: ${agentLabel(agent.value)}` : ''}${fast ? ', Fast Mode' : ''}`}
-            title={`${label} ${effortLabel}${fast ? ' · Fast Mode' : ''}`}
+            title={[label, effortLabel].filter(Boolean).join(' ') + (fast ? ' · Fast Mode' : '')}
             disabled={disabled}
             onClick={() => setOpen(!open)}
           >
@@ -200,60 +190,18 @@ export function ModelSelect({
           style={{ width: Math.max(256, tabs ? agentTabsWidth(tabs.options.length) : 0) }}
         >
           {tabs ? <AgentTabs {...tabs} disabled={disabled} /> : null}
-          <motion.div
-            className="relative overflow-hidden"
-            initial={false}
-            animate={{ height: listHeight }}
-            transition={{ duration: 0.26, ease: EASE }}
-          >
-            <AnimatePresence mode="popLayout" custom={agentDirection}>
-              <motion.div
-                key={agent?.value ?? ''}
-                role="menu"
-                aria-label="Models"
-                custom={agentDirection}
-                variants={list}
-                initial="enter"
-                animate="rest"
-                exit="exit"
-                className="max-h-56 w-full overflow-y-auto"
-                onKeyDown={(event) => {
-                  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
-                    return
-                  }
-                  event.preventDefault()
-                  const rows = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')]
-                  const current = rows.indexOf(document.activeElement as HTMLButtonElement)
-                  rows[(current + (event.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length]?.focus()
-                }}
-              >
-                {suggestions.map((model, index) => {
-                  const on = model.value === selected?.value
-                  return (
-                    <motion.button
-                      key={model.value}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={on}
-                      tabIndex={on || (!selected && index === 0) ? 0 : -1}
-                      custom={agentDirection}
-                      variants={row}
-                      disabled={disabled}
-                      onClick={() => onChange({
-                        model: model.value,
-                        effort: model.reasoning && !model.reasoning.efforts?.includes(effortValue) ? model.reasoning.default_effort ?? '' : effortValue,
-                      })}
-                      className={`flex h-7 w-full items-center gap-2 rounded-control px-2.5 text-left text-[12px] transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 ${on ? 'text-ink' : 'text-ink-2'}`}
-                    >
-                      <span className="min-w-0 flex-1 truncate">{model.label}</span>
-                      <Tick on={on} />
-                    </motion.button>
-                  )
-                })}
-                {!suggestions.length && loading ? <div className="h-7 px-2.5 text-[12px] leading-7 text-ink-3">Loading models…</div> : null}
-              </motion.div>
-            </AnimatePresence>
-          </motion.div>
+          <ModelList
+            id={agent?.value ?? ''}
+            direction={agentDirection}
+            models={suggestions}
+            selected={selected}
+            loading={loading}
+            disabled={disabled}
+            onPick={(model) => onChange({
+              model: model.value,
+              effort: model.reasoning && !model.reasoning.efforts?.includes(effortValue) ? model.reasoning.default_effort ?? '' : effortValue,
+            })}
+          />
           <AnimatePresence initial={false}>
             {effortOptions.length > 1 || fastMode ? (
               <motion.div
@@ -261,10 +209,10 @@ export function ModelSelect({
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.26, ease: EASE }}
+                transition={RESIZE}
                 className="overflow-hidden"
               >
-                <div className={`px-1 pt-1 ${tabs || listHeight ? 'mt-1.5 border-t border-border' : ''}`}>
+                <div className={`px-1 pt-1 ${tabs || suggestions.length || loading ? 'mt-1.5 border-t border-border' : ''}`}>
                   <div className="flex h-6 items-center px-1.5 text-[12px] font-medium">
                     <Roll value={effortLabel} direction={effortDirection} className={effortClass || 'text-ink'} />
                     {fastMode ? (
