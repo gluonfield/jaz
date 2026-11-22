@@ -385,26 +385,28 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Runs in threads of their own are listed; a run in the bot's own thread
+	// A run in a thread of its own is listed; one in the bot's own thread
 	// shows in its chat instead.
-	runThread := func() string {
-		thread, err := store.CreateSession(storage.CreateSession{Slug: "morning-brief", Title: "Morning brief", ParentID: research.ID, SourceType: storage.SourceLoopRun, SourceID: routine.ID})
-		if err != nil {
+	run := func(at time.Time, status, failure string, own bool) {
+		id := store.NewRunID()
+		thread := research.ID
+		if own {
+			session, err := store.CreateSession(storage.CreateSession{Slug: "morning-brief", Title: "Morning brief", ParentID: research.ID, SourceType: storage.SourceLoopRun, SourceID: id})
+			if err != nil {
+				t.Fatal(err)
+			}
+			thread = session.ID
+		}
+		if err := store.SaveRun(loops.Run{ID: id, LoopID: routine.ID, ThreadID: thread, ScheduledFor: at, StartedAt: at, FinishedAt: at, Status: status, Error: failure, CreatedAt: at}); err != nil {
 			t.Fatal(err)
 		}
-		return thread.ID
 	}
-	for thread, status := range map[string]string{runThread(): loops.RunStatusOK, runThread(): loops.RunStatusError, research.ID: loops.RunStatusOK} {
-		at := time.Now().UTC()
-		if err := store.SaveRun(loops.Run{ID: store.NewRunID(), LoopID: routine.ID, ThreadID: thread, ScheduledFor: at, StartedAt: at, FinishedAt: at, Status: status, Error: map[bool]string{true: "Gmail sign-in expired"}[status == loops.RunStatusError], CreatedAt: at}); err != nil {
-			t.Fatal(err)
-		}
-	}
+	now := time.Now().UTC()
+	run(now, loops.RunStatusOK, "", true)
+	run(now, loops.RunStatusError, "Gmail sign-in expired", true)
+	run(now, loops.RunStatusOK, "", false)
 	// A run older than Activity looks back is left out.
-	old := time.Now().Add(-40 * 24 * time.Hour).UTC()
-	if err := store.SaveRun(loops.Run{ID: store.NewRunID(), LoopID: routine.ID, ThreadID: runThread(), ScheduledFor: old, StartedAt: old, FinishedAt: old, Status: loops.RunStatusOK, CreatedAt: old}); err != nil {
-		t.Fatal(err)
-	}
+	run(now.Add(-40*24*time.Hour), loops.RunStatusOK, "", true)
 	// A bot writes to another and answers in a turn another bot gave it.
 	if err := service.Message(research.ID, "Operations", "Which fixes matter this week?"); err != nil {
 		t.Fatal(err)

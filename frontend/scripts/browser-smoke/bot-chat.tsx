@@ -196,6 +196,7 @@ export async function exerciseBotChat() {
       await window.smoke.pointer('mouseUp', x, y)
     }
     await click('Revisit the saved question')
+    await click('Answer in chat')
     await sleep(450)
     await painted('Bot response 05', 'bot-chat-repeated-deep-link')
     const linkedTop = viewport().scrollTop
