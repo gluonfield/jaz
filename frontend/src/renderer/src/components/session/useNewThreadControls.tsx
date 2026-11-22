@@ -36,7 +36,7 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
     if (usingCloudProfiles) {
       return cloudProfiles.map(cloudProfileToAgentOption)
     }
-    return enabledACPAgents(agentSettings).map((id) => ({ id, location: 'local' as const }))
+    return enabledACPAgents(agentSettings).map((id) => ({ id }))
   }, [agentSettings, cloudProfiles, usingCloudProfiles])
 
   const agents = useMemo(() => agentItems.map((item) => item.id), [agentItems])
@@ -145,7 +145,7 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
     runtimeReady,
     runtimeAvailable,
     // Picker visibility lives here so the controls and the mobile summary agree.
-    showAgentPicker: agents.length > 1 || usingCloudProfiles,
+    showAgentPicker: agents.length > 1,
     showModelPicker: !composer.hideModelPicker,
     showProjectPicker: !composer.hideProjectPicker && !usingCloudProfiles,
     runtime,

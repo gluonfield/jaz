@@ -230,7 +230,6 @@ export function cloudProfileToAgentOption(profile: CloudModelProfile): PickerAge
     id: profile.profile_id,
     label: profile.display_name?.trim() || defaults?.label || profile.provider || profile.profile_id,
     logoAgent: profile.agent?.trim() || defaults?.logoAgent || 'codex',
-    location: 'cloud',
     provider,
   }
 }

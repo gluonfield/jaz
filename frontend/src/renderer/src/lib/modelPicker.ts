@@ -1,32 +1,14 @@
 import type { ReasoningEffortOption } from '@/lib/api/types'
 import type { ModelSuggestion } from '@/lib/modelSuggestion'
 
-export type AgentLocation = 'cloud' | 'local'
-
 export interface PickerAgentOption {
   id: string
   label?: string
   logoAgent?: string
-  location: AgentLocation
   provider?: string
 }
 
-export interface PickerAgentGroup {
-  location: AgentLocation
-  label: string
-  items: PickerAgentOption[]
-}
-
 export type ModelPickerOption = Pick<ModelSuggestion, 'value' | 'label' | 'aliases'> & { reasoning?: ModelSuggestion['reasoning'] }
-
-export function groupPickerAgents(items: PickerAgentOption[]): PickerAgentGroup[] {
-  const cloud = items.filter((item) => item.location === 'cloud')
-  const local = items.filter((item) => item.location === 'local')
-  const groups: PickerAgentGroup[] = []
-  if (cloud.length > 0) groups.push({ location: 'cloud', label: 'Cloud', items: cloud })
-  if (local.length > 0) groups.push({ location: 'local', label: 'Local', items: local })
-  return groups
-}
 
 export interface ModelSelection {
   model: string

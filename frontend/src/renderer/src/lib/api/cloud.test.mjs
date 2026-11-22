@@ -542,7 +542,7 @@ test('renameBackend derives managed from cloudUrl without persisting managed: tr
   expect(api.knownBackend('https://cloud.acme.example')?.managed).toBe(true)
 })
 
-test('cloud model profiles read /v1/models { models } including string[] models (Vertex AI) and map into grouped Cloud vs Local picker options', async () => {
+test('cloud model profiles read /v1/models { models } including string[] models (Vertex AI) and map into picker agent options', async () => {
   const { api } = fixture()
   replace('fetch', async (url) => {
     expect(new URL(String(url)).pathname).toBe('/v1/models')
@@ -571,18 +571,10 @@ test('cloud model profiles read /v1/models { models } including string[] models 
   ])
   const cloudItems = profiles.map(api.cloudProfileToAgentOption)
   expect(cloudItems).toEqual([
-    { id: 'openai-prod', label: 'Codex', logoAgent: 'codex', location: 'cloud', provider: 'openai' },
-    { id: 'anthropic-prod', label: 'Claude', logoAgent: 'claude', location: 'cloud', provider: 'anthropic' },
-    { id: 'xai-prod', label: 'Grok', logoAgent: 'grok', location: 'cloud', provider: 'xai' },
-    { id: 'vertex-gemini', label: 'Vertex AI', logoAgent: 'codex', location: 'cloud', provider: 'vertex' },
-  ])
-  const grouped = api.groupPickerAgents([
-    ...cloudItems,
-    { id: 'codex', location: 'local' },
-  ])
-  expect(grouped.map((group) => [group.location, group.label, group.items.length])).toEqual([
-    ['cloud', 'Cloud', 4],
-    ['local', 'Local', 1],
+    { id: 'openai-prod', label: 'Codex', logoAgent: 'codex', provider: 'openai' },
+    { id: 'anthropic-prod', label: 'Claude', logoAgent: 'claude', provider: 'anthropic' },
+    { id: 'xai-prod', label: 'Grok', logoAgent: 'grok', provider: 'xai' },
+    { id: 'vertex-gemini', label: 'Vertex AI', logoAgent: 'codex', provider: 'vertex' },
   ])
 })
 

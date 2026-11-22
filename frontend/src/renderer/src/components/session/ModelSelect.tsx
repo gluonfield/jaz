@@ -1,4 +1,4 @@
-import { ChevronDown, Cloud, Zap } from 'lucide-react'
+import { ChevronDown, Zap } from 'lucide-react'
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
@@ -118,8 +118,7 @@ export function ModelSelect({
   align?: 'start' | 'end'
   onChange: (selection: ModelSelection) => void
 }) {
-  const hasCloudItems = Boolean(agent?.items?.some((item) => item.location === 'cloud'))
-  const tabs = agent && (agent.options.length > 1 || hasCloudItems) ? agent : undefined
+  const tabs = agent && agent.options.length > 1 ? agent : undefined
   const activeAgentItem = agent?.items?.find((item) => item.id === agent.value)
   const activeAgentLogo = activeAgentItem?.logoAgent || agent?.value || ''
   const activeAgentLabel = activeAgentItem?.label || (agent ? agentLabel(agent.value) : '')
@@ -174,7 +173,6 @@ export function ModelSelect({
             disabled={disabled}
             onClick={() => setOpen(!open)}
           >
-            {activeAgentItem?.location === 'cloud' ? <Cloud size={12} className="shrink-0 text-primary" /> : null}
             {activeAgentLogo && hasAgentLogo(activeAgentLogo) ? <Pop id={activeAgentLogo}><AgentLogo agent={activeAgentLogo} size={14} /></Pop> : null}
             <Roll value={label} direction={agentDirection} className="max-w-28" />
             {effortLabel ? <Roll value={effortLabel} direction={effortDirection} className={effortClass || 'text-ink-3'} /> : null}
