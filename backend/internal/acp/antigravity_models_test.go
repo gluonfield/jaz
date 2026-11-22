@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -64,20 +65,26 @@ func TestAntigravityDiscoveryReadsNativeCatalogWithoutChangingSavedChoice(t *tes
 		Env: map[string]string{"JAZ_TEST_AGY_MODELS": root},
 	}}
 	manager := &Manager{agents: source, cfg: Config{ModelCatalog: modelcatalog.NewService(nil)}}
-	write(" native-z\tNative Z (High)\n\nnative-a\tNative A\nnative-unlabelled\n")
+	write(" neon-high\tNeon (High)\nneon-xhigh\tNeon (XHigh)\n\nneon-low\tNeon (Low)\nnative-z\tNative Z (High)\nnative-a\tNative A\nnative-unlabelled\n")
 	catalog, err := manager.DiscoverModels(t.Context(), AgentAntigravity)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Models) != 3 || catalog.DefaultModel != "" {
+	if len(catalog.Models) != 4 || catalog.DefaultModel != "" {
 		t.Fatalf("catalog = %#v", catalog)
+	}
+	neon := catalog.Models[0]
+	if neon.Value != "neon" || neon.Label != "Neon" || neon.Reasoning.Status != modelcatalog.ReasoningReady ||
+		!slices.Equal(neon.Reasoning.Efforts, []string{"low", "high", "xhigh"}) ||
+		!slices.Equal(neon.Aliases, []string{"neon-high", "neon-xhigh", "neon-low"}) || neon.Reasoning.DefaultEffort != "" {
+		t.Fatalf("levels of one model were not listed as its efforts: %#v", neon)
 	}
 	for i, want := range []struct{ id, label string }{
 		{"native-z", "Native Z (High)"}, {"native-a", "Native A"}, {"native-unlabelled", "native-unlabelled"},
 	} {
-		got := catalog.Models[i]
+		got := catalog.Models[i+1]
 		if got.Value != want.id || got.Label != want.label || got.ContextLength != 0 ||
-			got.Reasoning.Status != modelcatalog.ReasoningPending || len(got.Reasoning.Efforts) != 0 ||
+			got.Reasoning.Status != modelcatalog.ReasoningUnavailable || len(got.Reasoning.Efforts) != 0 ||
 			got.Reasoning.DefaultEffort != "" || got.Reasoning.Mandatory || got.Reasoning.Automatic {
 			t.Fatalf("native metadata changed or invented: %#v", got)
 		}

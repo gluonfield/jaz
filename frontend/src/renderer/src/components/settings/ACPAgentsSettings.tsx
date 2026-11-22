@@ -429,8 +429,7 @@ function ACPAgentRow({
           />
         </SettingsRow>
 
-        {/* Show only when there's an effort to choose beyond "None": agents whose
-            thinking level is model-encoded (Antigravity) advertise no efforts. */}
+        {/* Show only when the model has an effort to choose beyond "None". */}
         {reasoningOptions.some((option) => option.value !== '') ? (
           <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
             <Select
