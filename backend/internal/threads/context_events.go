@@ -1,53 +1,47 @@
 package threads
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func mergeContextEvents(id string, records []contextRecord, events []sessionevents.Event, opts contextOptions, counts map[string]int) []contextRecord {
-	var outputs []contextRecord
+func mergeContextEvents(id string, records []contextRecord, events []sessionevents.Event, opts contextOptions, counts map[string]int, botChat bool) []contextRecord {
+	recordCount := len(records)
 	for _, event := range sessionevents.CompactTranscript(storage.DisplayEvents(events)) {
-		if event.ACP == nil || event.ACP.ID != id {
-			continue
-		}
 		message := ContextMessage{Role: "assistant", CreatedAt: event.At}
-		text := ""
-		switch event.Type {
-		case sessionevents.TypeACPMessage:
-			text = event.Content
-			message.Text, message.Truncated = clampText(text, opts.maxTextChars)
-		case "acp_tool":
+		searchText := ""
+		switch {
+		case botChat && event.SessionID == id && event.RoomMessage != nil && event.RoomMessage.Speaker == "bot":
+			message.Text = event.RoomMessage.Text
+		case event.ACP == nil || event.ACP.ID != id:
+			continue
+		case !botChat && event.Type == sessionevents.TypeACPMessage:
+			message.Text = event.Content
+		case event.Type == "acp_tool":
 			for _, call := range event.ACP.ToolCalls {
 				name := firstNonEmpty(call.ToolName, call.Title, "unknown")
 				counts[name]++
-				text += " " + name
+				searchText += " " + name
 				message.Tools = append(message.Tools, ContextTool{Name: name})
 			}
 		}
+		searchText += message.Text
+		message.Text, message.Truncated = clampText(message.Text, opts.maxTextChars)
 		if message.Text != "" || len(message.Tools) > 0 {
-			outputs = append(outputs, contextRecord{message: message, searchText: strings.ToLower(text)})
+			records = append(records, contextRecord{message: message, searchText: strings.ToLower(searchText)})
 		}
 	}
-	if len(outputs) == 0 {
+	if len(records) == recordCount {
 		return records
 	}
-	merged := make([]contextRecord, 0, len(records)+len(outputs))
-	for len(records) > 0 && len(outputs) > 0 {
-		if outputs[0].message.CreatedAt.Before(records[0].message.CreatedAt) {
-			merged = append(merged, outputs[0])
-			outputs = outputs[1:]
-		} else {
-			merged = append(merged, records[0])
-			records = records[1:]
-		}
+	slices.SortStableFunc(records, func(a, b contextRecord) int {
+		return a.message.CreatedAt.Compare(b.message.CreatedAt)
+	})
+	for i := range records {
+		records[i].message.Seq = int64(i + 1)
 	}
-	merged = append(merged, records...)
-	merged = append(merged, outputs...)
-	for i := range merged {
-		merged[i].message.Seq = int64(i + 1)
-	}
-	return merged
+	return records
 }
