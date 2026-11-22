@@ -135,10 +135,8 @@ export async function exerciseModelPicker(): Promise<void> {
     await click(button(name))
     await until(config)
     await measuring
-    const first = heights[0]
-    const last = heights.at(-1)!
-    if (Math.abs(last - first) > 10 && !heights.some((height) => height > Math.min(first, last) + 2 && height < Math.max(first, last) - 2)) {
-      throw new Error('Model list height jumped instead of animating')
+    if (heights.some((height) => Math.abs(height - heights[0]) > 1)) {
+      throw new Error('Switching agent changed the picker height')
     }
     if (document.activeElement?.getAttribute('aria-selected') !== 'true' || document.activeElement.getAttribute('aria-label') !== name) {
       throw new Error('Switching agent moved focus off its tab')
@@ -207,6 +205,25 @@ export async function exerciseModelPicker(): Promise<void> {
     await window.smoke.capture('codex-picker')
     await switchAgent('Claude', () => configIs('claude', 'opus[1m]', 'xhigh'))
     await window.smoke.capture('claude-models')
+    const swipe = (deltaX: number, deltaY = 0) => {
+      for (let step = 0; step < 6; step++) {
+        document.querySelector('[role="menu"]')!.dispatchEvent(new WheelEvent('wheel', { deltaX, deltaY, bubbles: true }))
+      }
+    }
+    swipe(0, 30)
+    swipe(30)
+    await frame()
+    if (!configIs('claude', 'opus[1m]', 'xhigh')) {
+      throw new Error('A vertical scroll or a swipe past the last agent changed the agent')
+    }
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 150))
+    await pause()
+    swipe(-30)
+    await until(() => document.activeElement?.getAttribute('aria-label') === 'Codex' && Boolean(button('GPT-6 Astra')))
+    await pause()
+    swipe(30)
+    await until(() => document.activeElement?.getAttribute('aria-label') === 'Claude' && configIs('claude', 'opus[1m]', 'xhigh'))
+    await until(() => document.querySelectorAll('[role="menu"]').length === 1)
     await window.smoke.key('Tab')
     await until(() => document.activeElement?.textContent === 'Opus 5.5')
     await window.smoke.key('Down')

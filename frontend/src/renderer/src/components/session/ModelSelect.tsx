@@ -3,7 +3,7 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
-import { AgentTabs, agentTabsWidth, type AgentChoice } from '@/components/session/AgentTabs'
+import { AgentTabs, agentTabsWidth, useAgentSwipe, type AgentChoice } from '@/components/session/AgentTabs'
 import { Pop, Roll, SWAP, Tick, useDirection, useWidthTransition } from '@/components/session/pickerMotion'
 import { Button } from '@/components/ui/Button'
 import { Popover } from '@/components/ui/Popover'
@@ -13,7 +13,6 @@ import type { FastModeControl } from '@/lib/agentConfig'
 import type { ModelPickerOption, ModelSelection } from '@/lib/modelPicker'
 import { modelSuggestionFor, modelSuggestionLabel } from '@/lib/modelSuggestion'
 import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
-
 
 const list = {
   rest: { transition: { staggerChildren: 0.025, delayChildren: 0.03 } },
@@ -44,7 +43,7 @@ function ModelList({
   onPick: (model: ModelPickerOption) => void
 }) {
   return (
-    <div className="relative h-[168px] overflow-hidden">
+    <div className="relative h-42 overflow-hidden">
       <AnimatePresence mode="popLayout" custom={direction}>
         <motion.div
           key={id}
@@ -86,7 +85,7 @@ function ModelList({
               </motion.button>
             )
           })}
-          {!models.length && loading ? <div className="h-7 px-2.5 text-[12px] leading-7 text-ink-3">Loading models…</div> : null}
+          {models.length ? null : <div className="h-7 px-2.5 text-[12px] leading-7 text-ink-3">{loading ? 'Loading models…' : 'No models'}</div>}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -138,8 +137,9 @@ export function ModelSelect({
   const agentDirection = useDirection(agent ? agent.options.indexOf(agent.value) : 0)
   const effortDirection = useDirection(effortOptions.findIndex((option) => option.value === effortValue))
   useWidthTransition(triggerRef, `${agent?.value}/${label}/${effortLabel}/${fast}`)
+  const swipeAgent = useAgentSwipe(disabled ? undefined : tabs)
   const adjustable = effortOptions.length > 1
-  const listed = suggestions.length > 0 || Boolean(loading)
+  const listed = Boolean(tabs || suggestions.length || loading)
   const focusSelection = useCallback((dialog: HTMLElement | null) => {
     const model = dialog?.querySelector<HTMLElement>('[role="menuitemradio"][tabindex="0"]')
     const target = model ?? dialog?.querySelector<HTMLElement>('[role="tab"][tabindex="0"]')
@@ -182,6 +182,7 @@ export function ModelSelect({
           ref={focusSelection}
           role="dialog"
           aria-label="Model and effort"
+          onWheel={swipeAgent}
           className="model-picker max-w-[calc(100vw-32px)]"
           style={{ width: Math.max(256, tabs ? agentTabsWidth(tabs.options.length) : 0) }}
         >
