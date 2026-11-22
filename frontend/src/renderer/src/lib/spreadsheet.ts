@@ -1,14 +1,25 @@
 import { read, utils, type CellAddress, type CellObject, type Range, type WorkSheet } from 'xlsx'
-import { spreadsheetMetadata, type SpreadsheetMetadata, type SpreadsheetStyle } from '@/lib/spreadsheetMetadata'
+import type { SpreadsheetCorner, SpreadsheetMetadata, SpreadsheetStyle } from '@/lib/spreadsheetFormat'
+import { spreadsheetMetadata } from '@/lib/spreadsheetMetadata'
 
 export type SpreadsheetSelection = { anchor: CellAddress; focus: CellAddress }
 
-export interface SpreadsheetSheet extends Omit<SpreadsheetMetadata, 'defaultColumnCharacters'> {
+export interface SpreadsheetImage {
+  type: string
+  data: Uint8Array<ArrayBuffer>
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+export interface SpreadsheetSheet extends Omit<SpreadsheetMetadata, 'defaultColumnCharacters' | 'images'> {
   name: string
   source: WorkSheet
   rows: number[]
   columns: number[]
   defaultColumnWidth: number
+  images: SpreadsheetImage[]
   merges: Range[]
   used: Range
 }
@@ -25,23 +36,29 @@ export function readSpreadsheet(data: ArrayBuffer, digitWidth: (font: Spreadshee
   return book.SheetNames.map((name) => {
     const source = book.Sheets[name]
     const range = utils.decode_range(source['!ref'] ?? 'A1')
-    const { defaultColumnCharacters, ...meta } = metadata.get(source)!
+    const { defaultColumnCharacters, images, ...meta } = metadata.get(source)!
     const digit = digitWidth(meta.defaultStyle)
     const pixels = (width: number) => Math.floor((256 * width + Math.floor(128 / digit)) / 256 * digit)
     const merges = source['!merges'] ?? []
-    const rowCount = merges.reduce((count, merge) => Math.max(count, merge.e.r + 1), range.e.r + 1)
-    const columnCount = merges.reduce((count, merge) => Math.max(count, merge.e.c + 1), range.e.c + 1)
+    const last = [range.e, ...merges.map((merge) => merge.e), ...images.map((image) => 'to' in image ? image.to : image.from)]
+    const rows = offsets(Math.max(...last.map((point) => point.r)) + 1, (index) => {
+      const row = source['!rows']?.[index]
+      return row?.hidden ? 0 : row?.hpt !== undefined ? row.hpt * 4 / 3 : row?.hpx ?? meta.defaultRowHeight
+    })
+    const columns = offsets(Math.max(...last.map((point) => point.c)) + 1, (index) => {
+      const col = source['!cols']?.[index]
+      return col?.hidden ? 0 : col?.width !== undefined ? pixels(col.width) : col?.wpx ?? pixels(defaultColumnCharacters)
+    })
     return {
-      name, source, ...meta, merges, used: range,
+      name, source, ...meta, merges, used: range, rows, columns,
       defaultColumnWidth: pixels(defaultColumnCharacters),
-      frozen: { r: Math.min(rowCount, meta.frozen.r), c: Math.min(columnCount, meta.frozen.c) },
-      rows: offsets(rowCount, (index) => {
-        const row = source['!rows']?.[index]
-        return row?.hidden ? 0 : row?.hpt !== undefined ? row.hpt * 4 / 3 : row?.hpx ?? meta.defaultRowHeight
-      }),
-      columns: offsets(columnCount, (index) => {
-        const col = source['!cols']?.[index]
-        return col?.hidden ? 0 : col?.width !== undefined ? pixels(col.width) : col?.wpx ?? pixels(defaultColumnCharacters)
+      frozen: { r: Math.min(rows.length - 1, meta.frozen.r), c: Math.min(columns.length - 1, meta.frozen.c) },
+      images: images.map((image) => {
+        const scale = (axis: number[], index: number) => image.offsets === 'pixels' ? 1 : axis[index + 1] - axis[index]
+        const place = (corner: SpreadsheetCorner) => ({ left: columns[corner.c] + corner.x * scale(columns, corner.c), top: rows[corner.r] + corner.y * scale(rows, corner.r) })
+        const start = place(image.from)
+        const end = 'to' in image ? place(image.to) : { left: start.left + image.size.width, top: start.top + image.size.height }
+        return { type: image.type, data: image.data, ...start, width: end.left - start.left, height: end.top - start.top }
       }),
     }
   })

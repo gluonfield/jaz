@@ -1,36 +1,8 @@
-import { parser as createXMLParser } from 'sax'
-import { legacySpreadsheetPanes } from '@/lib/spreadsheetLegacy'
-import { utils, type CellObject, type WorkBook, type WorkSheet } from 'xlsx'
-
-export interface SpreadsheetStyle {
-  bold?: boolean
-  italic?: boolean
-  fontSize?: number
-  fontFamily?: string
-  color?: string
-  fill?: string
-  horizontal?: 'left' | 'center' | 'right' | 'justify'
-  vertical?: 'top' | 'center' | 'bottom'
-  wrap?: boolean
-  border?: SpreadsheetBorder
-}
-
-type SpreadsheetBorder = Partial<Record<'top' | 'right' | 'bottom' | 'left', string>>
-
-const BORDER_LINES: Record<string, string> = {
-  medium: '2px solid',
-  thick: '3px solid',
-  double: '3px double',
-  dotted: '1px dotted',
-  hair: '1px dotted',
-  dashed: '1px dashed',
-  dashDot: '1px dashed',
-  dashDotDot: '1px dashed',
-  mediumDashed: '2px dashed',
-  mediumDashDot: '2px dashed',
-  mediumDashDotDot: '2px dashed',
-  slantDashDot: '2px dashed',
-}
+import { sheetImages } from '@/lib/spreadsheetDrawings'
+import { borderLine, type SpreadsheetBorder, type SpreadsheetMetadata, type SpreadsheetStyle } from '@/lib/spreadsheetFormat'
+import { legacySpreadsheet } from '@/lib/spreadsheetLegacy'
+import { relationships, visit } from '@/lib/spreadsheetXML'
+import { utils, type WorkBook, type WorkSheet } from 'xlsx'
 
 interface Color {
   rgb?: string
@@ -52,36 +24,21 @@ interface StyledWorkbook extends WorkBook {
   }
 }
 
-export interface SpreadsheetMetadata {
-  formats: Map<CellObject, SpreadsheetStyle>
-  defaultStyle: SpreadsheetStyle
-  frozen: { r: number; c: number }
-  defaultRowHeight: number
-  defaultColumnCharacters: number
-}
-
 function color(value?: Color) {
   return value?.rgb && /^(?:[\da-f]{2})?[\da-f]{6}$/i.test(value.rgb) ? `#${value.rgb.slice(-6)}` : undefined
 }
 
-function visit(xml: string, onTag: (name: string, attributes: Record<string, string>) => void) {
-  if (!xml) return
-  const parser = createXMLParser(true, { xmlns: true })
-  parser.onopentag = (tag) => onTag(tag.local, Object.fromEntries(Object.values(tag.attributes).map((attribute) => [attribute.local, attribute.value])))
-  parser.write(xml).close()
-}
-
 function spreadsheetBorders(styles: string): SpreadsheetBorder[] {
   const borders: SpreadsheetBorder[] = []
-  let side: { name: keyof SpreadsheetBorder; line: string } | undefined
+  let side: { name: keyof SpreadsheetBorder; style: string } | undefined
   visit(styles, (name, attrs) => {
     const border = borders.at(-1)
     if (name === 'border') borders.push({})
     else if (border && attrs.style && (name === 'top' || name === 'right' || name === 'bottom' || name === 'left')) {
-      side = { name, line: BORDER_LINES[attrs.style] ?? '1px solid' }
-      border[name] = `${side.line} #000`
+      side = { name, style: attrs.style }
+      border[name] = borderLine(attrs.style)
     } else {
-      if (border && side && name === 'color') border[side.name] = `${side.line} ${color(attrs) ?? '#000'}`
+      if (border && side && name === 'color') border[side.name] = borderLine(side.style, color(attrs))
       side = undefined
     }
   })
@@ -112,27 +69,19 @@ export function spreadsheetMetadata(workbook: WorkBook): Map<WorkSheet, Spreadsh
       border: borders[style.borderId ?? 0],
     }
   })
-  const relationships = new Map<string, string>()
-  visit(xml('xl/_rels/workbook.xml.rels'), (name, attrs) => {
-    if (name === 'Relationship' && attrs.TargetMode !== 'External') {
-      const parts: string[] = []
-      for (const part of (attrs.Target.startsWith('/') ? attrs.Target.slice(1) : `xl/${attrs.Target}`).split('/')) {
-        if (part === '..') parts.pop()
-        else if (part !== '.') parts.push(part)
-      }
-      relationships.set(attrs.Id, parts.join('/'))
-    }
-  })
+  const parts = relationships(xml, 'xl/workbook.xml')
   const paths = new Map<string, string>()
   visit(xml('xl/workbook.xml'), (name, attrs) => {
-    if (name === 'sheet') paths.set(attrs.name, relationships.get(attrs.id) ?? '')
+    if (name === 'sheet') paths.set(attrs.name, parts.get(attrs.id)?.path ?? '')
   })
   const result = new Map<WorkSheet, SpreadsheetMetadata>()
-  const legacyPanes = legacySpreadsheetPanes(book)
+  const legacy = legacySpreadsheet(book)
   for (const name of book.SheetNames) {
     const sheet = book.Sheets[name]
-    const metadata: SpreadsheetMetadata = { formats: new Map(), defaultStyle: styles[0] ?? {}, frozen: legacyPanes[book.SheetNames.indexOf(name)] ?? { r: 0, c: 0 }, defaultRowHeight: 20, defaultColumnCharacters: 9.140625 }
-    visit(xml(paths.get(name) ?? ''), (tag, attrs) => {
+    const path = paths.get(name) ?? ''
+    const metadata: SpreadsheetMetadata = { formats: new Map(), defaultStyle: styles[0] ?? {}, frozen: { r: 0, c: 0 }, gridlines: true, images: sheetImages(xml, (path) => book.files?.[path]?.content, path), defaultRowHeight: 20, defaultColumnCharacters: 9.140625, ...legacy[book.SheetNames.indexOf(name)] }
+    visit(xml(path), (tag, attrs) => {
+      if (tag === 'sheetView' && attrs.showGridLines === '0') metadata.gridlines = false
       if (tag === 'pane' && (attrs.state === 'frozen' || attrs.state === 'frozenSplit')) {
         metadata.frozen = { r: Math.max(0, Math.floor(Number(attrs.ySplit) || 0)), c: Math.max(0, Math.floor(Number(attrs.xSplit) || 0)) }
       }
@@ -147,7 +96,7 @@ export function spreadsheetMetadata(workbook: WorkBook): Map<WorkSheet, Spreadsh
         if (cell && style) metadata.formats.set(cell, style)
       }
     })
-    if (!paths.has(name)) {
+    if (!path && !metadata.formats.size) {
       for (const row of sheet['!data'] ?? []) {
         for (const cell of row ?? []) {
           const fill = cell?.s as { patternType?: string; fgColor?: Color } | undefined
