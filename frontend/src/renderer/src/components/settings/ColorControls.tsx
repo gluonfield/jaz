@@ -12,7 +12,7 @@ import {
 import { type ThemePref, useTheme } from '@/lib/theme'
 
 // The colour pickers, after Zen's (Arc's): a dotted pad, a wavy strength
-// slider and a notched grid dial.
+// slider and a notched grain dial.
 
 // A colour at the picker's lightness for the mode (--swatch-l in globals.css).
 export const swatch = (hue: number, saturation: number) =>
@@ -235,7 +235,7 @@ const DIAL = 64
 const RING = 28
 const NOTCHES = 16
 
-// Sixteen notches round a face that shows the drawing grid itself; the handle sits
+// Sixteen notches round a face that shows the grain itself; the handle sits
 // at the chosen notch, counted clockwise from the top.
 export function GrainDial({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   const point = (turn: number, inset = 0) => {
@@ -252,7 +252,7 @@ export function GrainDial({ value, onChange }: { value: number; onChange: (value
     <div
       role="slider"
       tabIndex={0}
-      aria-label="Grid"
+      aria-label="Grain"
       aria-valuemin={0}
       aria-valuemax={NOTCHES - 1}
       aria-valuenow={Math.round(value * NOTCHES)}
@@ -274,7 +274,7 @@ export function GrainDial({ value, onChange }: { value: number; onChange: (value
           style={point(notch / NOTCHES, 1.5)}
         />
       ))}
-      <span aria-hidden className="absolute inset-[13px] rounded-full" style={{ background: 'var(--drawing-grid)', opacity: value }} />
+      <span aria-hidden className="absolute inset-[13px] rounded-full" style={{ background: 'var(--film)', opacity: value }} />
       <span
         aria-hidden
         className="absolute inset-[13px] rounded-full border border-border/50 bg-[linear-gradient(-45deg,transparent_-10%,rgb(0_0_0/0.1)_110%)] dark:bg-[linear-gradient(-45deg,transparent_-10%,rgb(255_255_255/0.1)_110%)]"
