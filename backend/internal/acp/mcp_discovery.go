@@ -29,8 +29,12 @@ func (m *Manager) SetDeferredMCPTools(ctx context.Context, ref string, deferred 
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return fmt.Errorf("session %s is not acp-backed", session.ID)
 	}
-	if m.configuredLocal(session.RuntimeRef.Agent) {
-		return fmt.Errorf("agent %q does not use an external MCP client", session.RuntimeRef.Agent)
+	agent := session.RuntimeRef.Agent
+	if m.configuredLocal(agent) {
+		return fmt.Errorf("agent %q does not use an external MCP client", agent)
+	}
+	if deferred {
+		return fmt.Errorf("agent %q requires native MCP tool names for permission checks", agent)
 	}
 	if previous := session.RuntimeRef.DeferredMCPTools; previous != nil && *previous == deferred {
 		return nil

@@ -61,7 +61,7 @@ func supportedMCPRefresh(raw json.RawMessage, policy string) string {
 // Codex keeps a loaded thread's tool catalog through reloads and tool-list
 // notifications, so only a relaunch that resumes the thread reads the new one.
 func (m *Manager) retireStaleCodexCatalog(job *jobState, process *agentProcess) {
-	if job.ACPAgent != AgentCodex || process.mcpRefresh != "" || process.mcpDeferred || !fullMCPPolicy(process.mcpPolicy) || process.mcpRevision == m.mcpRevision() {
+	if job.ACPAgent != AgentCodex || process.mcpRefresh != "" || !fullMCPPolicy(process.mcpPolicy) || process.mcpRevision == m.mcpRevision() {
 		return
 	}
 	if !m.subagentsRunning(job) && !m.hasLivePermissionWaiter(job.ID) {
@@ -82,7 +82,7 @@ func (m *Manager) refreshMCPBeforeTurn(ctx context.Context, job *jobState) error
 	}
 	params := map[string]any{"sessionId": job.ACPSession}
 	if process.mcpRefresh == grokMCPUpdateMethod {
-		servers, err := m.grokMCPServers(ctx, job, process.mcpPolicy, process.mcpDeferred, revision)
+		servers, err := m.grokMCPServers(ctx, job, process.mcpPolicy, revision)
 		if err != nil {
 			return err
 		}
@@ -108,8 +108,8 @@ func (m *Manager) refreshMCPBeforeTurn(ctx context.Context, job *jobState) error
 	return nil
 }
 
-func (m *Manager) grokMCPServers(ctx context.Context, job *jobState, policy string, deferred bool, revision uint64) ([]json.RawMessage, error) {
-	servers, err := enabledHTTPMCPServers(mcpsession.With(ctx, job.ID), m.cfg.MCPStore, policy, deferred)
+func (m *Manager) grokMCPServers(ctx context.Context, job *jobState, policy string, revision uint64) ([]json.RawMessage, error) {
+	servers, err := enabledHTTPMCPServers(mcpsession.With(ctx, job.ID), m.cfg.MCPStore, policy)
 	if err != nil {
 		return nil, err
 	}
