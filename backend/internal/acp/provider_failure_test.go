@@ -109,6 +109,50 @@ func TestAFailureTheProviderDidNotRetryIsRetried(t *testing.T) {
 	}
 }
 
+// Antigravity gives up on a turn with the reason as its last message and a
+// plain end_turn. Jaz goes on with a turn whose model connection kept
+// dropping until the model answers, fails one Vertex AI rejected at once, and
+// shows the reason as the turn's error, never as its answer.
+func TestAnAntigravityTurnItGaveUpOnIsRetriedOnlyWhenRetryCanHelp(t *testing.T) {
+	for _, tc := range []struct {
+		kind          string
+		continuations int
+		status        string
+		error         string
+	}{
+		{kind: "2 disconnected", continuations: 2, status: storage.StatusIdle},
+		{kind: "1 invalid", status: storage.StatusError, error: "Unable to submit request because"},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			acp.SetProviderRetryDelays(t, time.Millisecond, time.Millisecond, time.Millisecond)
+			store, root := newTestStore(t)
+			jaz := startJazAgent(t, testContext(t), store, root, acp.AgentAntigravity, failingProvider(root))
+			thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: jaz.root})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: thread.ID, Message: "plan the trip provider fails " + tc.kind, Completion: acp.CompletionAsync}); err != nil {
+				t.Fatal(err)
+			}
+
+			jaz.eventually("the turn ending", func() bool { return jaz.session(thread.ID).Turn == nil })
+			session := jaz.session(thread.ID)
+			if session.Status != tc.status || !strings.HasPrefix(session.Error, tc.error) || jaz.promptsContaining(continuation) != tc.continuations {
+				t.Fatalf("thread = %s %q, prompts = %q", session.Status, session.Error, jaz.prompts())
+			}
+			events, err := jaz.store.LoadSessionEvents(thread.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, event := range events {
+				if strings.Contains(event.Content, "⚠") {
+					t.Fatalf("transcript shows the failure as an answer: %q", event.Content)
+				}
+			}
+		})
+	}
+}
+
 // A failure that outlasts every retry ends the turn as failed: the run closes
 // as an error with the provider's reason.
 func TestARoutineTurnTheProviderKeepsFailingClosesItsRunAsAnError(t *testing.T) {
