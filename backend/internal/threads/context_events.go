@@ -10,25 +10,29 @@ import (
 func mergeContextEvents(id string, records []contextRecord, events []sessionevents.Event, opts contextOptions, counts map[string]int) []contextRecord {
 	var outputs []contextRecord
 	for _, event := range sessionevents.CompactTranscript(storage.DisplayEvents(events)) {
-		if event.ACP == nil || event.ACP.ID != id {
-			continue
-		}
 		message := ContextMessage{Role: "assistant", CreatedAt: event.At}
-		text := ""
-		switch event.Type {
-		case sessionevents.TypeACPMessage:
-			text = event.Content
-			message.Text, message.Truncated = clampText(text, opts.maxTextChars)
-		case "acp_tool":
+		searchText := ""
+		switch {
+		case event.Type == sessionevents.TypeRoomMessage:
+			if room := event.RoomMessage; event.SessionID == id && room != nil && room.Speaker == "bot" {
+				message.Text = room.Text
+			}
+		case event.ACP == nil || event.ACP.ID != id:
+			continue
+		case event.Type == sessionevents.TypeACPMessage:
+			message.Text = event.Content
+		case event.Type == "acp_tool":
 			for _, call := range event.ACP.ToolCalls {
 				name := firstNonEmpty(call.ToolName, call.Title, "unknown")
 				counts[name]++
-				text += " " + name
+				searchText += " " + name
 				message.Tools = append(message.Tools, ContextTool{Name: name})
 			}
 		}
+		searchText += message.Text
+		message.Text, message.Truncated = clampText(message.Text, opts.maxTextChars)
 		if message.Text != "" || len(message.Tools) > 0 {
-			outputs = append(outputs, contextRecord{message: message, searchText: strings.ToLower(text)})
+			outputs = append(outputs, contextRecord{message: message, searchText: strings.ToLower(searchText)})
 		}
 	}
 	if len(outputs) == 0 {

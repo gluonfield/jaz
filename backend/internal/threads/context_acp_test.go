@@ -2,6 +2,7 @@ package threads
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,78 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
+
+func TestReadThreadFindsDeliveredBotReplies(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+	session, err := store.CreateSession(storage.CreateSession{SourceType: storage.SourceBot, Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Unix(100, 0).UTC()
+	if err := store.AppendMessageRecords(session.ID, storage.Message{
+		Role: "user", FromUser: true, Content: "What should we improve?", CreatedAt: start,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	replies := []string{"Start with recoverable sends.", "Also preserve legitimate follow-ups."}
+	for i, reply := range replies {
+		_, err := store.DeliverMessage(sessionevents.Event{
+			SessionID: session.ID,
+			Type:      sessionevents.TypeRoomMessage,
+			At:        start.Add(time.Duration(i+1) * time.Second),
+			RoomMessage: &sessionevents.RoomMessageEvent{
+				Speaker: "bot", BotID: session.ID, Text: reply, Answers: start,
+			},
+		}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		Type: sessionevents.TypeBotActivity, At: start.Add(3 * time.Second),
+		BotActivity: &sessionevents.BotActivityEvent{Kind: "message_sent", Text: "Internal note about recoverable sends."},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(sqlitestore.NewSearchQueries(store), store)
+	read := func(req ContextRequest) ContextResponse {
+		t.Helper()
+		req.Session = session.ID
+		req.IncludeTools = IncludeToolsNone
+		_, result, err := service.ContextMCP(t.Context(), nil, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+
+	tail := read(ContextRequest{Limit: 2})
+	var got []string
+	for _, message := range tail.Messages {
+		if message.Role != "assistant" {
+			t.Fatalf("tail included a non-assistant message: %#v", message)
+		}
+		got = append(got, message.Text)
+	}
+	if !slices.Equal(got, replies) || !tail.HasMoreBefore || tail.Session.MessageCount != 3 {
+		t.Fatalf("tail did not return both deliveries: %#v", tail)
+	}
+	query := read(ContextRequest{Query: "recoverable sends", Limit: 1, MaxTextChars: 10})
+	if query.MatchCount != 1 || len(query.Messages) != 1 || !query.Messages[0].Matched ||
+		!query.Messages[0].Truncated || query.Messages[0].Text != "Start with..." || query.Messages[0].Seq != tail.Messages[0].Seq {
+		t.Fatalf("query did not find the delivered reply beyond the display limit: %#v", query)
+	}
+	page := read(ContextRequest{AfterSeq: query.Messages[0].Seq, Limit: 1})
+	if len(page.Messages) != 1 || page.Messages[0].Text != replies[1] || page.HasMoreAfter {
+		t.Fatalf("paging missed the follow-up: %#v", page)
+	}
+}
 
 func TestThreadToolsReadAndSearchEventBackedAnswers(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
