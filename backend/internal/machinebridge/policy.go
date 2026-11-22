@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 )
@@ -74,6 +76,48 @@ func NewPolicyGuard(grants []FolderGrant) (*PolicyGuard, error) {
 		}
 	}
 	return &PolicyGuard{grants: entries}, nil
+}
+
+func (g *PolicyGuard) Grants() []FolderGrant {
+	out := make([]FolderGrant, 0, len(g.grants))
+	for _, entry := range g.grants {
+		out = append(out, entry.grant)
+	}
+	slices.SortFunc(out, func(a, b FolderGrant) int {
+		return strings.Compare(a.ID, b.ID)
+	})
+	return out
+}
+
+// ParseGrantSpec parses "<id>=<mode>:<path>" into a FolderGrant.
+// Splitting on the first ":" preserves Windows drive letters (e.g. "work=rw:C:\Proj").
+func ParseGrantSpec(spec string) (FolderGrant, error) {
+	id, rest, ok := strings.Cut(strings.TrimSpace(spec), "=")
+	if !ok {
+		return FolderGrant{}, fmt.Errorf("%w: grant must have form id=mode:path", ErrInvalidRequest)
+	}
+	modeRaw, rootPath, ok := strings.Cut(rest, ":")
+	if !ok {
+		return FolderGrant{}, fmt.Errorf("%w: grant must have form id=mode:path", ErrInvalidRequest)
+	}
+	id = strings.TrimSpace(id)
+	mode := AccessMode(strings.TrimSpace(modeRaw))
+	rootPath = strings.TrimSpace(rootPath)
+	if id == "" || !mode.Valid() || rootPath == "" {
+		return FolderGrant{}, fmt.Errorf("%w: invalid grant %q (expected id=ro|rw|rwd:path)", ErrInvalidRequest, spec)
+	}
+	if !filepath.IsAbs(rootPath) && !isWindowsAbs(rootPath) {
+		abs, err := filepath.Abs(rootPath)
+		if err != nil {
+			return FolderGrant{}, fmt.Errorf("%w: resolve grant path %q: %v", ErrInvalidRequest, rootPath, err)
+		}
+		rootPath = abs
+	}
+	return FolderGrant{
+		ID:       id,
+		Mode:     mode,
+		RootPath: rootPath,
+	}, nil
 }
 
 func (g *PolicyGuard) Resolve(grantID, target string, op Operation) (ResolvedPath, error) {
@@ -357,10 +401,21 @@ func validateTransferURL(raw string) error {
 	if err != nil || parsed.Host == "" {
 		return fmt.Errorf("%w: valid transfer URL is required", ErrInvalidRequest)
 	}
-	if parsed.Scheme != "https" {
-		return fmt.Errorf("%w: transfer URL must use https", ErrInvalidRequest)
+	if parsed.Scheme == "https" {
+		return nil
 	}
-	return nil
+	if parsed.Scheme == "http" && isLoopbackHost(parsed.Hostname()) {
+		return nil
+	}
+	return fmt.Errorf("%w: transfer URL must use https", ErrInvalidRequest)
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func fileSHA256(path string) (string, error) {

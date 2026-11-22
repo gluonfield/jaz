@@ -30,13 +30,15 @@ const (
 type ErrorCode string
 
 const (
-	CodeDeviceOffline          ErrorCode = "device_offline"
-	CodeAccessDenied           ErrorCode = "access_denied"
-	CodePathOutsideGrant       ErrorCode = "path_outside_grant"
-	CodeSymlinkEscape          ErrorCode = "symlink_escape"
-	CodeConflict               ErrorCode = "conflict"
-	CodeUnsupportedCapability  ErrorCode = "unsupported_capability"
-	CodeInvalidRequest         ErrorCode = "invalid_request"
+	CodeDeviceOffline         ErrorCode = "device_offline"
+	CodeAccessDenied          ErrorCode = "access_denied"
+	CodePathOutsideGrant      ErrorCode = "path_outside_grant"
+	CodeSymlinkEscape         ErrorCode = "symlink_escape"
+	CodeConflict              ErrorCode = "conflict"
+	CodeUnsupportedCapability ErrorCode = "unsupported_capability"
+	CodeInvalidRequest        ErrorCode = "invalid_request"
+	CodeNotFound              ErrorCode = "not_found"
+	CodeInternal              ErrorCode = "internal_error"
 )
 
 var (
@@ -47,6 +49,7 @@ var (
 	ErrConflict              = errors.New("conflict")
 	ErrUnsupportedCapability = errors.New("unsupported_capability")
 	ErrInvalidRequest        = errors.New("invalid_request")
+	ErrNotFound              = errors.New("not_found")
 )
 
 type AccessMode string
@@ -267,4 +270,8 @@ type ExecStartResponse struct {
 
 type ExecStopRequest struct {
 	SessionID string `json:"session_id"`
+}
+
+type ExecStopResponse struct {
+	Stopped bool `json:"stopped"`
 }

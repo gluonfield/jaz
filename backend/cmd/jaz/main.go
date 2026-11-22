@@ -31,6 +31,12 @@ func main() {
 			os.Exit(1)
 		}
 		return
+	case mainConnectCloud:
+		if err := runConnectCloud(args, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "connect-cloud:", err)
+			os.Exit(1)
+		}
+		return
 	}
 	if err := runServe(args); err != nil {
 		fmt.Fprintln(os.Stderr, "serve:", err)
@@ -47,6 +53,7 @@ const (
 	mainInvalid
 	mainDevices
 	mainUpdate
+	mainConnectCloud
 )
 
 func commandArgs(args []string) ([]string, mainAction) {
@@ -63,6 +70,8 @@ func commandArgs(args []string) ([]string, mainAction) {
 		return args[1:], mainDevices
 	case "update":
 		return args[1:], mainUpdate
+	case "connect-cloud":
+		return args[1:], mainConnectCloud
 	case "help":
 		return nil, mainHelp
 	}
@@ -83,5 +92,5 @@ func isHelp(arg string) bool {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, "usage: jaz [--addr addr] [--public-url url] [--preview-url-template url]\n       jaz --version\n       jaz update [--latest|--version vX.Y.Z]\n       jaz serve [flags]\n       jaz server [flags]\n       jaz devices [--root path]\n       jaz devices [--root path] approve <pairing-or-device-id>\n\nRun and administer Jaz.")
+	fmt.Fprintln(w, "usage: jaz [--addr addr] [--public-url url] [--preview-url-template url]\n       jaz --version\n       jaz update [--latest|--version vX.Y.Z]\n       jaz serve [flags]\n       jaz server [flags]\n       jaz devices [--root path]\n       jaz devices [--root path] approve <pairing-or-device-id>\n       jaz connect-cloud --url <url> --token <token> --device-id <id> [--name <display>] [--grant <id=mode:path>...] [--allow-exec]\n\nRun and administer Jaz.")
 }

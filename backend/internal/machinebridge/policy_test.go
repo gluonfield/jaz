@@ -249,6 +249,13 @@ func TestValidateStageCommitRequestsAndPreconditions(t *testing.T) {
 	}); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("http upload URL err = %v, want ErrInvalidRequest", err)
 	}
+	if _, err := guard.ValidateStageRequest(DeviceStageRequest{
+		GrantID: "ro",
+		RunID:   "run-1",
+		Files:   []StageFileTarget{{RelPath: "calc.xlsx", UploadURL: "http://127.0.0.1:8080/key"}},
+	}); err != nil {
+		t.Fatalf("loopback http upload URL failed: %v", err)
+	}
 
 	if _, err := guard.ValidateCommitRequest(DeviceCommitRequest{
 		GrantID: "rw",
