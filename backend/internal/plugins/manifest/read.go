@@ -34,7 +34,10 @@ func Read(dir string) (Manifest, error) {
 			continue
 		}
 		if err != nil {
-			return Manifest{}, err
+			if !found {
+				return Manifest{}, err
+			}
+			continue
 		}
 		parsed, err := parseManifest(data, rel, filepath.Base(dir))
 		if err != nil {
