@@ -107,10 +107,11 @@ export function PluginsSettings() {
     mutationFn: refreshPluginSources,
     onSuccess: (updated) => {
       queryClient.setQueryData(keys.plugins, updated)
+      void queryClient.invalidateQueries({ queryKey: keys.mcpServers })
+      void queryClient.invalidateQueries({ queryKey: keys.mcpApps })
       toast('Checked plugin catalogs for updates')
     },
     onError: (error: Error) => toast(`Couldn't refresh catalogs: ${error.message}`, 'danger'),
-    onSettled: invalidateAll,
   })
 
   const autoRefreshed = useRef(false)
@@ -119,7 +120,7 @@ export function PluginsSettings() {
     const staleBefore = Date.now() - 60_000
     const isStale =
       sources.length === 0 ||
-      sources.some((source) => !source.checked_at || Date.parse(source.checked_at) < staleBefore)
+      sources.some((source) => !source.checked_at || !(Date.parse(source.checked_at) >= staleBefore))
     if (!isStale) return
     autoRefreshed.current = true
     void refreshPluginSources()

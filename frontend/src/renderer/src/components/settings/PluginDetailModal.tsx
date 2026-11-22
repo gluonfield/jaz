@@ -60,7 +60,7 @@ export function PluginDetailModal({
   const hasMCP = (plugin.mcp_servers?.length ?? 0) > 0
   const singleConnectedAccount =
     plugin.auth?.connected && !plugin.auth.multi_account && accounts.length === 1 ? accounts[0] : null
-  const isRemoteMCPOnly = Boolean(plugin.auth && !hasSkills && !hasTools && !(plugin.views?.length ?? 0))
+  const isRemoteMCPOnly = Boolean(plugin.auth && !hasSkills && !(plugin.views?.length ?? 0))
   const canRemove = plugin.installed && plugin.origin !== 'builtin' && !isRemoteMCPOnly
 
   return (
