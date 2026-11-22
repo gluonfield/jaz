@@ -75,7 +75,7 @@
 /* The colour theme (Settings → Appearance, lib/appearanceScheme.ts): the main
  * hue every token takes a trace of, whether it is tinted at all (graphite is
  * not), the three wash hues for the window with their chroma and how strongly
- * they mix in, and how strongly the wind streaks show. Zero specificity lets the Appearance
+ * they mix in, and how strongly the globe lines show. Zero specificity lets the Appearance
  * override win whichever stylesheet loads first. */
 :where(:root) {
   --hue: 264;
@@ -844,7 +844,7 @@ body {
 }
 
 /* The window behind the cards takes the theme's washes in Zen's (Arc's)
- * shapes: one from each top corner and one rising from the bottom. Wind streaks sit over the wash, under everything else.
+ * shapes: one from each top corner and one rising from the bottom. Globe lines sit over the wash, under everything else.
  * The Appearance theme tiles reuse the rule in each mode's colours. On macOS,
  * index.html adds .vibrant: the page goes transparent so the rail and thread
  * list show the native material through a weak surface tint under the wash;
@@ -882,10 +882,11 @@ body {
     z-index: -1;
     pointer-events: none;
     opacity: var(--grain);
-    /* Short streaks along one wind field, drawn in the ink colour so they
-     * read in both modes. Opacity is the Wind setting. */
+    /* A globe's latitude and longitude lines rising from the bottom left, twice
+     * the window's height across, drawn in the ink colour so they read in both
+     * modes. Opacity is the Globe setting. */
     background-color: var(--color-ink);
-    mask-image: url('../assets/wind.svg');
+    mask: url('../assets/globe.svg') calc(30vw - 105vh) -10vh / 210vh no-repeat;
   }
   html.vibrant .app-chrome {
     --chrome-ground: color-mix(in oklab, var(--color-surface) 30%, transparent);

@@ -4,7 +4,7 @@ import { SettingsCard } from './SettingsCard'
 
 // Named starting points: two neutrals (no colours, so only a trace of the hue
 // shows: cool or warm), muted single colours, then the vivid linked ones. None
-// of them touch the wind streaks.
+// of them touch the globe lines.
 const THEMES: { name: string; theme: Partial<ColorTheme> }[] = [
   { name: 'Graphite', theme: { hue: 264, colors: 0 } },
   { name: 'Charcoal', theme: { hue: 90, colors: 0 } },
@@ -97,7 +97,7 @@ export function ColorThemeSettings() {
             </div>
             <div>
               <GrainDial value={theme.grain} onChange={(grain) => setColorTheme({ grain })} />
-              <p className="mt-1 text-center text-[12px] text-ink-3">Wind</p>
+              <p className="mt-1 text-center text-[12px] text-ink-3">Globe</p>
             </div>
           </div>
         </div>
