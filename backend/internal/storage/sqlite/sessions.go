@@ -486,7 +486,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		Cwd:                   nullDBString(runtimeRef.Cwd),
 		ArtifactSurface:       nullDBString(runtimeRef.ArtifactSurface),
 		McpServerPolicy:       nullDBString(runtimeRef.MCPServerPolicy),
-		DeferredMcpTools:      boolInt(runtimeRef.DeferredMCPTools),
+		DeferredMcpTools:      mcpDiscoveryColumn(runtimeRef.DeferredMCPTools),
 		ProjectPath:           nullDBString(runtimeRef.ProjectPath),
 		Error:                 nullDBString(session.Error),
 		ModelProvider:         nullDBString(session.ModelProvider),
@@ -589,7 +589,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 			ProjectPath:      row.ProjectPath.String,
 			ArtifactSurface:  row.ArtifactSurface.String,
 			MCPServerPolicy:  row.McpServerPolicy.String,
-			DeferredMCPTools: row.DeferredMcpTools != 0,
+			DeferredMCPTools: mcpDiscoveryOverride(row.DeferredMcpTools),
 		}
 	}
 	return session, nil
@@ -689,7 +689,7 @@ type runtimeRefColumnsRow struct {
 	Cwd              string
 	ArtifactSurface  string
 	MCPServerPolicy  string
-	DeferredMCPTools bool
+	DeferredMCPTools *bool
 	ProjectPath      string
 }
 
@@ -706,6 +706,23 @@ func runtimeRefColumns(session storage.Session) runtimeRefColumnsRow {
 		DeferredMCPTools: session.RuntimeRef.DeferredMCPTools,
 		ProjectPath:      session.RuntimeRef.ProjectPath,
 	}
+}
+
+func mcpDiscoveryColumn(override *bool) int64 {
+	if override == nil {
+		return 0
+	}
+	if *override {
+		return 1
+	}
+	return -1
+}
+
+func mcpDiscoveryOverride(column int64) *bool {
+	if column == 0 {
+		return nil
+	}
+	return new(column > 0)
 }
 
 func firstNonEmpty(values ...string) string {

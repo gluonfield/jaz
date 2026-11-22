@@ -83,7 +83,7 @@ type RuntimeRef struct {
 	ProjectPath      string `json:"project_path,omitempty"`
 	ArtifactSurface  string `json:"artifact_surface,omitempty"`
 	MCPServerPolicy  string `json:"mcp_server_policy,omitempty"`
-	DeferredMCPTools bool   `json:"deferred_mcp_tools,omitempty"`
+	DeferredMCPTools *bool  `json:"deferred_mcp_tools,omitempty"`
 }
 
 // Usage follows provider-facing token vocabulary: InputTokens includes cache

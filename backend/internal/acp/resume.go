@@ -135,7 +135,8 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 		return nil, err
 	}
 	mcpRevision := m.mcpRevision()
-	acpSessionID, modes, loaded, err := m.restoreACPSession(ctx, ac, agentName, session, cfg, cwd, mcpServerPolicy, systemPromptExtensions)
+	deferred := useMCPDiscoveryGateway(agentName, mcpServerPolicy, session.RuntimeRef.DeferredMCPTools)
+	acpSessionID, modes, loaded, err := m.restoreACPSession(ctx, ac, agentName, session, cfg, cwd, mcpServerPolicy, deferred, systemPromptExtensions)
 	if err != nil {
 		ac.close()
 		return nil, err
@@ -170,7 +171,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 	m.trackPromptSends(ac, job)
 	process := newAgentProcess(ac)
 	process.mcpPolicy = mcpServerPolicy
-	process.mcpDeferred = session.RuntimeRef.DeferredMCPTools
+	process.mcpDeferred = deferred
 	process.mcpRevision = mcpRevision
 	process.mcpRefresh = supportedMCPRefresh(ac.initRaw, mcpServerPolicy)
 	m.disconnectAgentWork(job)
@@ -198,7 +199,7 @@ func (m *Manager) resumeSystemPromptExtensions(session storage.Session) (promptm
 
 // session/resume restores provider state without replaying history. The job is
 // registered after the legacy session/load fallback so its replay is dropped.
-func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentName string, session storage.Session, cfg AgentConfig, cwd, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (string, ModeState, bool, error) {
+func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentName string, session storage.Session, cfg AgentConfig, cwd, mcpServerPolicy string, deferred bool, systemPromptExtensions promptmodule.Modules) (string, ModeState, bool, error) {
 	agentName = CanonicalAgentName(agentName)
 	storedID := session.RuntimeRef.SessionID
 	restoreMethod := sessionRestoreMethod(ac.initRaw)
@@ -218,7 +219,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}{
 			Meta:       meta,
 			Cwd:        cwd,
-			MCPServers: m.mcpServersForAgent(ctx, ac.initRaw, mcpServerPolicy, agentName, session.RuntimeRef.DeferredMCPTools),
+			MCPServers: m.mcpServersForAgent(ctx, ac.initRaw, mcpServerPolicy, deferred),
 			SessionID:  acpschema.SessionID(storedID),
 		})
 		if err == nil {
@@ -242,7 +243,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}
 		m.log.Warn("replacing unmaterialized agent session", "agent", agentName, "session", session.ID, "acp_session", storedID)
 	}
-	acpSession, err := m.newACPSession(ctx, ac, agentName, cfg, cwd, session, systemPromptExtensions)
+	acpSession, err := m.newACPSession(ctx, ac, agentName, cfg, cwd, session, deferred, systemPromptExtensions)
 	if err != nil {
 		return "", ModeState{}, false, err
 	}

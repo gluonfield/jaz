@@ -22,7 +22,19 @@ type httpMCPServer struct {
 	Headers []mcpconfig.Header `json:"headers"`
 }
 
-func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessage, policy, agent string, deferred bool) []json.RawMessage {
+func useMCPDiscoveryGateway(agent, policy string, override *bool) bool {
+	if override != nil {
+		return *override
+	}
+	switch agent {
+	case AgentCodex, AgentClaude, AgentOpenCode, AgentCopilot:
+		return false
+	default:
+		return fullMCPPolicy(policy)
+	}
+}
+
+func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessage, policy string, deferred bool) []json.RawMessage {
 	var init struct {
 		AgentCapabilities acpschema.AgentCapabilities `json:"agentCapabilities"`
 	}
@@ -32,8 +44,6 @@ func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessag
 	if init.AgentCapabilities.MCPCapabilities == nil || !init.AgentCapabilities.MCPCapabilities.HTTP {
 		return []json.RawMessage{}
 	}
-	agent = CanonicalAgentName(agent)
-	deferred = deferred || (policy == MCPServerPolicyBot && (agent == AgentOpenCode || agent == AgentAntigravity))
 	servers, err := enabledHTTPMCPServers(ctx, m.cfg.MCPStore, policy, deferred)
 	if err != nil {
 		m.log.Warn("load mcp servers for acp failed", "error", err)

@@ -18,11 +18,10 @@ import (
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
-	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestAntigravityBotDiscoveryOnNaturalProcessStart(t *testing.T) {
+func TestAntigravityThreadDiscoveryOnNaturalProcessStart(t *testing.T) {
 	root := t.TempDir()
 	store, err := jsonstore.New(root)
 	if err != nil {
@@ -55,31 +54,31 @@ func TestAntigravityBotDiscoveryOnNaturalProcessStart(t *testing.T) {
 	first := start()
 	revision := &catalogRevision{}
 	first.SetMCPRevisionSource(revision)
-	bot, err := first.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentAntigravity, Slug: "scout", SourceType: storage.SourceBot})
+	thread, err := first.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentAntigravity, Slug: "scout"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	native := bot.Session.RuntimeRef.SessionID
+	native := thread.Session.RuntimeRef.SessionID
 	for range 2 {
 		revision.Add(1)
-		if err := turn(ctx, first, bot.SessionID, "Inspect the existing work."); err != nil {
+		if err := turn(ctx, first, thread.SessionID, "Inspect the existing work."); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if processStarts(t, starts) != 1 {
-		t.Fatal("catalogue changes retired the running bot process")
+		t.Fatal("catalogue changes retired the running process")
 	}
 	first.Close()
 	second := start()
-	if err := turn(ctx, second, bot.SessionID, "Continue the same work."); err != nil {
+	if err := turn(ctx, second, thread.SessionID, "Continue the same work."); err != nil {
 		t.Fatal(err)
 	}
-	persisted, err := store.LoadSession(bot.SessionID)
+	persisted, err := store.LoadSession(thread.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if native == "" || persisted.RuntimeRef.SessionID != native || persisted.SourceType != storage.SourceBot || persisted.RuntimeRef.DeferredMCPTools {
-		t.Fatalf("startup changed native identity, ownership or saved choice: %+v", persisted.RuntimeRef)
+	if native == "" || persisted.RuntimeRef.SessionID != native || persisted.RuntimeRef.DeferredMCPTools != nil {
+		t.Fatalf("startup changed native identity or saved choice: %+v", persisted.RuntimeRef)
 	}
 	var attached []string
 	for _, request := range readFakeACPRequests(t, requests) {
@@ -109,10 +108,7 @@ func TestAntigravityBotDiscoveryOnNaturalProcessStart(t *testing.T) {
 			if err != nil || endpoint.Query().Get("jaz_deferred_tools") != "1" {
 				t.Fatalf("%s left %s eager: %s", request.Method, server.Name, server.URL)
 			}
-			if server.Name == "jaztools" && endpoint.Query().Get("jaztools_surface") != "bot" {
-				t.Fatal("lost bot surface")
-			}
-			if len(server.Headers) != 1 || server.Headers[0].Name != mcpsession.HeaderName || server.Headers[0].Value != bot.SessionID {
+			if len(server.Headers) != 1 || server.Headers[0].Name != mcpsession.HeaderName || server.Headers[0].Value != thread.SessionID {
 				t.Fatalf("%s lost its session context: %+v", server.Name, server.Headers)
 			}
 		}
