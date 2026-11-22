@@ -93,7 +93,7 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 	if warning != nil && warning.notice() {
 		update = noticeMessage(*warning)
 	}
-	if codexHiddenWarning(job.ACPAgent, update) {
+	if codexHiddenWarning(job.ACPAgent, update) || job.holdAgentFailure(update) {
 		return
 	}
 	recordTool := func(src sessionevents.ACPToolCall, create bool) {
@@ -221,6 +221,9 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 		progress := warning == nil && (messageChunk != "" || thoughtChunk != "" || toolEvent != nil || planned)
 		job.turn.trackProviderRetries(warning, progress)
 		retrying := warning != nil && !warning.notice()
+		if progress {
+			job.turn.agentFailure = nil
+		}
 		if progress || retrying {
 			nextError := ""
 			if retrying {

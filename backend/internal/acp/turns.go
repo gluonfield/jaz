@@ -2,6 +2,7 @@ package acp
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -100,6 +101,7 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 		job.mu.Unlock()
 		return
 	}
+	failure, turn.agentFailure = cmp.Or(failure, turn.agentFailure), nil
 	if failure != nil {
 		turn.promptFailure = failure
 		turn.failureStopReason = stopReason

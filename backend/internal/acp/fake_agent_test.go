@@ -940,11 +940,37 @@ func sendResult(conn jsonrpc.MessageConn, req *jsonrpc.Message, result any) {
 				option["currentValue"] = selection.Value
 			}
 		}
+		if os.Getenv("JAZ_FAKE_ACP_MODEL_LEVELS") == "1" {
+			fakeSpreadModelLevel(options, selection.Value)
+		}
+		if req.Method == "session/set_config_option" {
+			raw, _ := json.Marshal(options)
+			_ = os.Setenv("JAZ_FAKE_ACP_SESSION_OPTIONS", string(raw))
+		}
 		result.(map[string]any)["configOptions"] = options
 	}
 	resp, err := jsonrpc.NewResult(*req.ID, result)
 	if err == nil {
 		_ = conn.Send(context.Background(), resp)
+	}
+}
+
+// fakeSpreadModelLevel answers a model set to one of Antigravity's catalogue
+// ids, "<model>-<level>", as Antigravity does: its model option lists only the
+// model, so the session moves to that model and its thought level to the level.
+func fakeSpreadModelLevel(options []map[string]any, value string) {
+	cut := strings.LastIndex(value, "-")
+	model := slices.IndexFunc(options, func(option map[string]any) bool {
+		return option["category"] == "model" && option["currentValue"] == value
+	})
+	if cut < 0 || model < 0 {
+		return
+	}
+	options[model]["currentValue"] = value[:cut]
+	for _, option := range options {
+		if option["category"] == "thought_level" {
+			option["currentValue"] = value[cut+1:]
+		}
 	}
 }
 

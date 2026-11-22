@@ -44,6 +44,11 @@ type jazProcess struct {
 
 func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root string, env map[string]string) *jazProcess {
 	t.Helper()
+	return startJazAgent(t, ctx, store, root, acp.AgentCodex, env)
+}
+
+func startJazAgent(t *testing.T, ctx context.Context, store *sqlitestore.Store, root, agent string, env map[string]string) *jazProcess {
+	t.Helper()
 	env["JAZ_FAKE_ACP_RELEASE_FILE"] = filepath.Join(root, "release")
 	if env["JAZ_FAKE_ACP_THINK_HOLD"] == "" {
 		env["JAZ_FAKE_ACP_THINK_HOLD"] = filepath.Join(root, "scripted-turn")
@@ -51,7 +56,7 @@ func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root 
 	env["JAZ_FAKE_ACP_REQUEST_LOG"] = filepath.Join(root, "requests.jsonl")
 	env["JAZ_FAKE_ACP_TURN_LOG"] = filepath.Join(root, "turns.log")
 	// Turns open with the note Jaz gives bots, as in production.
-	manager := newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, env, "", "", func(cfg *acp.Config) {
+	manager := newFakeNamedAgentManagerWithOptions(t, store, root, agent, env, "", "", func(cfg *acp.Config) {
 		cfg.TurnNote = bots.TurnNote(store)
 		cfg.SteerNote = bots.SteerNote(store)
 	})

@@ -165,10 +165,12 @@ type activeTurn struct {
 	// retries counts the continuations sent after provider failures; while
 	// retrying, the turn waits to send the next one. providerRetried holds
 	// the failure categories the provider retried since the turn last made
-	// progress.
+	// progress. agentFailure is a failure the agent sent as a message, which
+	// ends the prompt call it came in unless the turn goes on after it.
 	retries         int
 	retrying        bool
 	providerRetried map[string]bool
+	agentFailure    *sessionFailure
 	// unsent counts the turn's prompt calls not yet sent, and prompts holds
 	// the ids of those sent whose responses the connection has not yet read.
 	unsent  int
