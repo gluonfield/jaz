@@ -57,6 +57,7 @@ export function usePluginSignIn({ onStartAccepted }: { onStartAccepted?: () => v
     onSuccess: (result, request) => {
       if (result.type === 'oauth' && result.auth_url) {
         onStartAccepted?.()
+        void queryClient.invalidateQueries({ queryKey: keys.plugins })
         setPollUntil(Date.now() + 90_000)
         openExternal(result.auth_url)
         toast('Finish sign-in in your browser')

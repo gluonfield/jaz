@@ -271,7 +271,7 @@ func (h *Handler) RemoveSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RefreshSources(w http.ResponseWriter, r *http.Request) {
-	if err := h.service.RefreshSources(r.Context()); err != nil {
+	if err := h.service.SyncSources(r.Context()); err != nil {
 		httpapi.WriteError(w, http.StatusBadGateway, err)
 		return
 	}
