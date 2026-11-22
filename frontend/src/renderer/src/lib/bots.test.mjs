@@ -181,3 +181,8 @@ test('task state distinguishes active work and blockers from worker completion',
   expect(taskStateLabel({ status: 'waiting_for_user' })).toBe('Waiting for you')
   expect(taskStateLabel({ status: 'stopped' })).toBe('Stopped')
 })
+
+test('a closed task says how it closed, whatever its threads did', () => {
+  expect(taskStateLabel({ status: 'completed', threads: [{ state: 'finished' }] })).toBe('Done')
+  expect(taskStateLabel({ status: 'cancelled', threads: [{ state: 'failed' }] })).toBe('Dropped')
+})

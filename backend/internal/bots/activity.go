@@ -18,25 +18,28 @@ const (
 	activityShown = 200
 )
 
-// Activity is a thread a bot started: a side chat, or a routine run in a
-// thread of its own. Runs in the bot's own thread show in its chat, and
-// messages between bots stay in its thread.
+// Activity is what a bot did: a task it closed, or a thread it started, a
+// side chat or a routine run in a thread of its own. Runs in the bot's own
+// thread show in its chat, and messages between bots stay in its thread.
 type Activity struct {
-	// Kind is side_chat or routine.
+	// Kind is task, side_chat or routine.
 	Kind string `json:"kind"`
 	// At is when a running item started, or else when it happened or ended.
 	At      time.Time `json:"at"`
 	Running bool      `json:"running,omitempty"`
-	// Title is the side chat's or routine's name.
+	// Title is the task's, side chat's or routine's name.
 	Title string `json:"title"`
 	// Text is a run's error.
 	Text     string `json:"text,omitempty"`
 	Status   string `json:"status,omitempty"`
 	ThreadID string `json:"thread_id,omitempty"`
 	LoopID   string `json:"loop_id,omitempty"`
+	// Task is a task item's closed task.
+	Task *Owed `json:"task,omitempty"`
 }
 
-// Owed is a commitment a bot has not closed yet.
+// Owed is a commitment a bot took on: open, or closed when it is an
+// Activity's Task.
 type Owed struct {
 	ID      int64  `json:"id"`
 	Name    string `json:"name,omitempty"`
@@ -76,9 +79,9 @@ type ActivityView struct {
 }
 
 // Activity lists what a bot owes, then what it is doing and what it did in
-// the last activityWindow, newest first. A thread serving an open commitment shows
-// through the commitment; after it closes, the thread shows in history;
-// a side chat another side chat started shows under it.
+// the last activityWindow, newest first. A thread serving a commitment shows
+// through it, open or closed, unless it works again after the commitment
+// closed; a side chat another side chat started shows under it.
 func (s *Service) Activity(botID string) (ActivityView, error) {
 	if !isBot(s.store, botID) {
 		return ActivityView{}, storage.ErrBotNotFound
@@ -89,18 +92,32 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 		return ActivityView{}, err
 	}
 	view := ActivityView{Owed: make([]Owed, 0, len(open)), Started: map[string][]Activity{}}
-	owing := map[string]bool{}
+	tasked := map[string]bool{}
 	for _, commitment := range open {
 		owed, err := s.taskView(commitment)
 		if err != nil {
 			return ActivityView{}, err
 		}
 		for _, thread := range commitment.Threads {
-			owing[thread.ID] = true
+			tasked[thread.ID] = true
 		}
 		view.Owed = append(view.Owed, owed)
 	}
+	closed, err := s.store.ListClosedCommitments(botID, since, activityShown)
+	if err != nil {
+		return ActivityView{}, err
+	}
 	var out []Activity
+	for _, commitment := range closed {
+		task, err := s.taskView(commitment)
+		if err != nil {
+			return ActivityView{}, err
+		}
+		for _, thread := range commitment.Threads {
+			tasked[thread.ID] = tasked[thread.ID] || thread.State != "working" && thread.State != "background"
+		}
+		out = append(out, Activity{Kind: "task", At: commitment.ClosedAt, Title: cmp.Or(task.Name, task.Request), Status: commitment.Status, Task: &task})
+	}
 	var chats []storage.Session
 	for _, archived := range []bool{false, true} {
 		listed, err := s.store.ListSessions(storage.SessionFilter{SourceType: storage.SourceBotWorker, SourceID: botID, IncludeChildren: true, Archived: archived, UpdatedSince: since})
@@ -122,7 +139,7 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 			view.Started[chat.ParentID] = append(view.Started[chat.ParentID], item)
 			continue
 		}
-		if owing[chat.ID] {
+		if tasked[chat.ID] {
 			continue
 		}
 		out = append(out, item)
