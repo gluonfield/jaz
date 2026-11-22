@@ -3,6 +3,8 @@ import { CFB, read, utils, write } from 'xlsx'
 import { cellTextBounds, initialSpreadsheetSelection, moveSpreadsheetSelection, readSpreadsheet, selectionRange, selectionTSV, spreadsheetCell, spreadsheetLayout, spreadsheetStyle, spreadsheetText, visibleIndices } from './spreadsheet'
 import { spreadsheetMetadata } from './spreadsheetMetadata'
 
+const load = (data, digit = 7) => readSpreadsheet(data, () => digit)
+
 function workbook(rows, bookType = 'xlsx') {
   const book = utils.book_new()
   utils.book_append_sheet(book, utils.aoa_to_sheet(rows), 'Data')
@@ -28,7 +30,8 @@ function styledWorkbook() {
       }
     } else {
       xml = xml.replace('<fonts count="1">', '<fonts count="2"><font><b/><sz val="12"/><color rgb="FF17365D"/></font>')
-      xml = xml.replace('<cellXfs count="3">', '<cellXfs count="5">').replace('</cellXfs>', '<xf fontId="0" fillId="0" numFmtId="0"><alignment horizontal="center" vertical="center"/></xf><xf fontId="1" fillId="0" numFmtId="0"><alignment wrapText="1" vertical="top"/></xf></cellXfs>')
+      xml = xml.replace('</borders>', '<border><left style="thin"><color indexed="64"/></left><right/><top style="medium"><color rgb="FFFF0000"/></top><bottom style="dashed"/><diagonal/></border></borders>')
+      xml = xml.replace('<cellXfs count="3">', '<cellXfs count="5">').replace('</cellXfs>', '<xf fontId="0" fillId="0" borderId="1" numFmtId="0"><alignment horizontal="center" vertical="center"/></xf><xf fontId="1" fillId="0" numFmtId="0"><alignment wrapText="1" vertical="top"/></xf></cellXfs>')
     }
     CFB.utils.cfb_add(zip, `Root Entry/${name}`, new TextEncoder().encode(xml))
   }
@@ -36,7 +39,7 @@ function styledWorkbook() {
 }
 
 test('CSV preserves text, leading zeroes and quoted newlines; copy produces escaped TSV', () => {
-  const sheet = readSpreadsheet(new TextEncoder().encode('Name,Code,Note\r\n"Motor, large",00123,"line one\nline two"\r\n1-2,00456,plain').buffer)[0]
+  const sheet = load(new TextEncoder().encode('Name,Code,Note\r\n"Motor, large",00123,"line one\nline two"\r\n1-2,00456,plain').buffer)[0]
   expect(spreadsheetText(sheet, { r: 2, c: 0 })).toBe('1-2')
   expect(selectionTSV(sheet, initialSpreadsheetSelection(sheet, 'A2:C3'))).toBe('Motor, large\t00123\t"line one\nline two"\n1-2\t00456\tplain')
 })
@@ -50,7 +53,7 @@ test.each(['xlsx', 'xls'])('%s preserves all sheets, cached formula values, date
   sheet['!rows'] = [{ hpt: 30 }]
   sheet['!merges'] = [utils.decode_range('A3:C3')]
   utils.book_append_sheet(book, utils.aoa_to_sheet([[500]]), 'Other')
-  const loaded = readSpreadsheet(save())
+  const loaded = load(save())
   expect(loaded.map((sheet) => sheet.name)).toEqual(['Data', 'Other'])
   expect(spreadsheetText(loaded[0], { r: 1, c: 1 })).toBe('$12.50')
   if (bookType === 'xlsx') expect(spreadsheetCell(loaded[0], { r: 1, c: 1 }).f).toBe('SUM(10,2.5)')
@@ -60,7 +63,7 @@ test.each(['xlsx', 'xls'])('%s preserves all sheets, cached formula values, date
   expect(selectionTSV(loaded[0], initialSpreadsheetSelection(loaded[0], 'B3'))).toBe('Merged\t\t')
 })
 
-test('XLSX recovers frozen panes, font, alignment and explicit wrap without altering SheetJS metadata', () => {
+test('XLSX recovers frozen panes, font, alignment, borders and explicit wrap without altering SheetJS metadata', () => {
   const data = styledWorkbook()
   const raw = read(data, { type: 'array', dense: true, cellStyles: true, bookFiles: true })
   const before = structuredClone(raw.Styles)
@@ -68,23 +71,25 @@ test('XLSX recovers frozen panes, font, alignment and explicit wrap without alte
   spreadsheetMetadata(raw)
   expect(raw.Styles).toEqual(before)
   expect(raw.Sheets.Data['!data']).toEqual(cells)
-  const sheet = readSpreadsheet(data)[0]
+  const sheet = load(data)[0]
   expect(sheet.frozen).toEqual({ r: 1, c: 1 })
+  expect(sheet.columns[1]).toBe(132)
+  expect(load(data, 9)[0].columns[1]).toBe(169)
   expect(sheet.rows[3] - sheet.rows[2]).toBeCloseTo(80)
   expect(visibleIndices(sheet.rows, 0, Infinity)).toEqual([0, 1, 2, 3])
-  expect(spreadsheetStyle(sheet, { r: 0, c: 0 })).toMatchObject({ bold: true, color: '#17365D', horizontal: 'center', vertical: 'center', wrap: false })
+  expect(spreadsheetStyle(sheet, { r: 0, c: 0 })).toMatchObject({ bold: true, color: '#17365D', horizontal: 'center', vertical: 'center', wrap: false, border: { left: '1px solid #000', top: '2px solid #FF0000', bottom: '1px dashed #000' } })
   expect(spreadsheetStyle(sheet, { r: 2, c: 0 })).toMatchObject({ wrap: true, vertical: 'top' })
 })
 
 test('nonwrapped text overflows styled empty neighbours, stops at content, and wrapping stays within its cell', () => {
-  const sheet = readSpreadsheet(styledWorkbook())[0]
+  const sheet = load(styledWorkbook())[0]
   expect(cellTextBounds(sheet, utils.decode_range('A2')).width).toBe(sheet.columns[2])
   expect(cellTextBounds(sheet, utils.decode_range('A3')).width).toBe(sheet.columns[1])
   expect(cellTextBounds(sheet, utils.decode_range('A1')).width).toBe(sheet.columns[1])
 })
 
 test('selection expands merges, arrows skip merged and hidden cells, shift extends the anchor', () => {
-  const sheet = readSpreadsheet(styledWorkbook())[0]
+  const sheet = load(styledWorkbook())[0]
   let selection = initialSpreadsheetSelection(sheet, 'C4')
   expect(selectionRange(sheet, selection)).toEqual(utils.decode_range('A4:C4'))
   selection = moveSpreadsheetSelection(sheet, selection, 'ArrowUp', false, false)
@@ -99,11 +104,11 @@ test('selection expands merges, arrows skip merged and hidden cells, shift exten
 
 test('large CSV has no row cap and virtualization visits only visible cells; blank grid fills the viewport', () => {
   const csv = Array.from({ length: 50000 }, (_, index) => `${index},value`).join('\n')
-  const sheet = readSpreadsheet(new TextEncoder().encode(csv).buffer)[0]
+  const sheet = load(new TextEncoder().encode(csv).buffer)[0]
   expect(sheet.rows).toHaveLength(50001)
   expect(spreadsheetText(sheet, { r: 49999, c: 1 })).toBe('value')
   expect(visibleIndices(sheet.rows, 800000, 800500)).toHaveLength(25)
-  const filled = spreadsheetLayout(readSpreadsheet(workbook([['Small']]).save())[0], 1200, 900)
+  const filled = spreadsheetLayout(load(workbook([['Small']]).save())[0], 1200, 900)
   expect(filled.columns.at(-1)).toBeGreaterThanOrEqual(1200)
   expect(filled.rows.at(-1)).toBeGreaterThanOrEqual(900)
   expect(filled.used).toEqual(utils.decode_range('A1'))
@@ -133,7 +138,7 @@ test.each([true, false])('legacy XLS distinguishes frozen panes from ordinary sp
   records.writeUInt16LE(1, 26)
   records.writeUInt16LE(2, 28)
   CFB.utils.cfb_add(container, `${container.FullPaths[0]}Workbook`, Buffer.concat([source.subarray(0, end), records, source.subarray(end)]))
-  const sheet = readSpreadsheet(CFB.write(container, { type: 'buffer', fileType: 'cfb' }))[0]
+  const sheet = load(CFB.write(container, { type: 'buffer', fileType: 'cfb' }))[0]
   expect(sheet.frozen).toEqual(frozen ? { r: 2, c: 1 } : { r: 0, c: 0 })
   expect(spreadsheetText(sheet, { r: 2, c: 1 })).toBe('F')
 })

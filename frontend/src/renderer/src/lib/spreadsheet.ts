@@ -3,11 +3,12 @@ import { spreadsheetMetadata, type SpreadsheetMetadata, type SpreadsheetStyle } 
 
 export type SpreadsheetSelection = { anchor: CellAddress; focus: CellAddress }
 
-export interface SpreadsheetSheet extends SpreadsheetMetadata {
+export interface SpreadsheetSheet extends Omit<SpreadsheetMetadata, 'defaultColumnCharacters'> {
   name: string
   source: WorkSheet
   rows: number[]
   columns: number[]
+  defaultColumnWidth: number
   merges: Range[]
   used: Range
 }
@@ -18,18 +19,21 @@ function offsets(length: number, size: (index: number) => number): number[] {
   return result
 }
 
-export function readSpreadsheet(data: ArrayBuffer): SpreadsheetSheet[] {
+export function readSpreadsheet(data: ArrayBuffer, digitWidth: (font: SpreadsheetStyle) => number): SpreadsheetSheet[] {
   const book = read(data, { type: 'array', dense: true, raw: true, cellStyles: true, cellNF: true, cellHTML: false, bookFiles: true, sheetStubs: true })
   const metadata = spreadsheetMetadata(book)
   return book.SheetNames.map((name) => {
     const source = book.Sheets[name]
     const range = utils.decode_range(source['!ref'] ?? 'A1')
-    const meta = metadata.get(source)!
+    const { defaultColumnCharacters, ...meta } = metadata.get(source)!
+    const digit = digitWidth(meta.defaultStyle)
+    const pixels = (width: number) => Math.floor((256 * width + Math.floor(128 / digit)) / 256 * digit)
     const merges = source['!merges'] ?? []
     const rowCount = merges.reduce((count, merge) => Math.max(count, merge.e.r + 1), range.e.r + 1)
     const columnCount = merges.reduce((count, merge) => Math.max(count, merge.e.c + 1), range.e.c + 1)
     return {
       name, source, ...meta, merges, used: range,
+      defaultColumnWidth: pixels(defaultColumnCharacters),
       frozen: { r: Math.min(rowCount, meta.frozen.r), c: Math.min(columnCount, meta.frozen.c) },
       rows: offsets(rowCount, (index) => {
         const row = source['!rows']?.[index]
@@ -37,7 +41,7 @@ export function readSpreadsheet(data: ArrayBuffer): SpreadsheetSheet[] {
       }),
       columns: offsets(columnCount, (index) => {
         const col = source['!cols']?.[index]
-        return col?.hidden ? 0 : col?.width !== undefined ? Math.floor((256 * col.width + 18) / 256 * 7) : col?.wpx ?? meta.defaultColumnWidth
+        return col?.hidden ? 0 : col?.width !== undefined ? pixels(col.width) : col?.wpx ?? pixels(defaultColumnCharacters)
       }),
     }
   })

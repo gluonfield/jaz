@@ -12,6 +12,24 @@ export interface SpreadsheetStyle {
   horizontal?: 'left' | 'center' | 'right' | 'justify'
   vertical?: 'top' | 'center' | 'bottom'
   wrap?: boolean
+  border?: SpreadsheetBorder
+}
+
+type SpreadsheetBorder = Partial<Record<'top' | 'right' | 'bottom' | 'left', string>>
+
+const BORDER_LINES: Record<string, string> = {
+  medium: '2px solid',
+  thick: '3px solid',
+  double: '3px double',
+  dotted: '1px dotted',
+  hair: '1px dotted',
+  dashed: '1px dashed',
+  dashDot: '1px dashed',
+  dashDotDot: '1px dashed',
+  mediumDashed: '2px dashed',
+  mediumDashDot: '2px dashed',
+  mediumDashDotDot: '2px dashed',
+  slantDashDot: '2px dashed',
 }
 
 interface Color {
@@ -21,6 +39,7 @@ interface Color {
 interface RawStyle {
   fontId?: number
   fillId?: number
+  borderId?: number
   alignment?: { horizontal?: string; vertical?: string; wrapText?: boolean }
 }
 
@@ -38,7 +57,7 @@ export interface SpreadsheetMetadata {
   defaultStyle: SpreadsheetStyle
   frozen: { r: number; c: number }
   defaultRowHeight: number
-  defaultColumnWidth: number
+  defaultColumnCharacters: number
 }
 
 function color(value?: Color) {
@@ -52,12 +71,30 @@ function visit(xml: string, onTag: (name: string, attributes: Record<string, str
   parser.write(xml).close()
 }
 
+function spreadsheetBorders(styles: string): SpreadsheetBorder[] {
+  const borders: SpreadsheetBorder[] = []
+  let side: { name: keyof SpreadsheetBorder; line: string } | undefined
+  visit(styles, (name, attrs) => {
+    const border = borders.at(-1)
+    if (name === 'border') borders.push({})
+    else if (border && attrs.style && (name === 'top' || name === 'right' || name === 'bottom' || name === 'left')) {
+      side = { name, line: BORDER_LINES[attrs.style] ?? '1px solid' }
+      border[name] = `${side.line} #000`
+    } else {
+      if (border && side && name === 'color') border[side.name] = `${side.line} ${color(attrs) ?? '#000'}`
+      side = undefined
+    }
+  })
+  return borders
+}
+
 export function spreadsheetMetadata(workbook: WorkBook): Map<WorkSheet, SpreadsheetMetadata> {
   const book = workbook as StyledWorkbook
   const xml = (path: string) => {
     const content = book.files?.[path]?.content
     return content ? new TextDecoder().decode(content) : ''
   }
+  const borders = spreadsheetBorders(xml('xl/styles.xml'))
   const styles = (book.Styles?.CellXf ?? []).map((style): SpreadsheetStyle => {
     const font = book.Styles?.Fonts?.[style.fontId ?? 0]
     const fill = book.Styles?.Fills?.[style.fillId ?? 0]
@@ -72,6 +109,7 @@ export function spreadsheetMetadata(workbook: WorkBook): Map<WorkSheet, Spreadsh
       horizontal: ['left', 'center', 'right', 'justify'].includes(alignment?.horizontal ?? '') ? alignment?.horizontal as SpreadsheetStyle['horizontal'] : undefined,
       vertical: alignment?.vertical === 'center' || alignment?.vertical === 'top' ? alignment.vertical : 'bottom',
       wrap: Boolean(alignment?.wrapText),
+      border: borders[style.borderId ?? 0],
     }
   })
   const relationships = new Map<string, string>()
@@ -93,14 +131,14 @@ export function spreadsheetMetadata(workbook: WorkBook): Map<WorkSheet, Spreadsh
   const legacyPanes = legacySpreadsheetPanes(book)
   for (const name of book.SheetNames) {
     const sheet = book.Sheets[name]
-    const metadata: SpreadsheetMetadata = { formats: new Map(), defaultStyle: styles[0] ?? {}, frozen: legacyPanes[book.SheetNames.indexOf(name)] ?? { r: 0, c: 0 }, defaultRowHeight: 20, defaultColumnWidth: 64 }
+    const metadata: SpreadsheetMetadata = { formats: new Map(), defaultStyle: styles[0] ?? {}, frozen: legacyPanes[book.SheetNames.indexOf(name)] ?? { r: 0, c: 0 }, defaultRowHeight: 20, defaultColumnCharacters: 9.140625 }
     visit(xml(paths.get(name) ?? ''), (tag, attrs) => {
       if (tag === 'pane' && (attrs.state === 'frozen' || attrs.state === 'frozenSplit')) {
         metadata.frozen = { r: Math.max(0, Math.floor(Number(attrs.ySplit) || 0)), c: Math.max(0, Math.floor(Number(attrs.xSplit) || 0)) }
       }
       if (tag === 'sheetFormatPr') {
         if (Number(attrs.defaultRowHeight) > 0) metadata.defaultRowHeight = Number(attrs.defaultRowHeight) * 4 / 3
-        if (Number(attrs.defaultColWidth) > 0) metadata.defaultColumnWidth = Number(attrs.defaultColWidth) * 7
+        if (Number(attrs.defaultColWidth) > 0) metadata.defaultColumnCharacters = Number(attrs.defaultColWidth)
       }
       if (tag === 'c' && attrs.r && attrs.s) {
         const point = utils.decode_cell(attrs.r)
