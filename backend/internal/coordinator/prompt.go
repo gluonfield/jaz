@@ -202,7 +202,12 @@ func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skill
 	if err != nil {
 		return "", err
 	}
-	memory, err := memoryData(memoryRoot, now)
+	var memory *jazplatform.MemoryData
+	if cloud != nil && inst != nil {
+		memory, err = cloudMemoryData(ctx, inst, cloud)
+	} else {
+		memory, err = memoryData(memoryRoot, now)
+	}
 	if err != nil {
 		return "", err
 	}

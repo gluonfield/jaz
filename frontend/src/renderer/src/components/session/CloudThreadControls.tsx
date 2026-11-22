@@ -3,7 +3,7 @@ import { Lock, ShieldOff, ShieldCheck, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
-import { isCloudThread } from '@/lib/api/cloudClient'
+import { isCloudApiSession } from '@/lib/api/client'
 import { spacesQuery, updateThreadUserState } from '@/lib/api/cloudSpaces'
 import type { Session } from '@/lib/api/types'
 import { useHasCloud } from '@/lib/cloudSession'
@@ -13,7 +13,7 @@ import { keys } from '@/lib/query/keys'
 // Personal Sources opt-in switch (default OFF) on shared Space threads.
 export function CloudThreadControls({ session }: { session: Session }) {
   const hasCloud = useHasCloud()
-  const isCloudSession = session.backend === 'cloud' || isCloudThread(session.id)
+  const isCloudSession = session.backend === 'cloud' || isCloudApiSession()
   const queryClient = useQueryClient()
   const toast = useToast()
   const spaces = useQuery({ ...spacesQuery, enabled: isCloudSession && hasCloud })

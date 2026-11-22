@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/charmbracelet/log"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/connections"
 	driveconnector "github.com/wins/jaz/backend/internal/connectors/drive"
 	"github.com/wins/jaz/backend/internal/jaztools"
@@ -43,8 +44,8 @@ func DeclareMCPServers(cfg Config, store *sqlitestore.Store) error {
 	return mcpconfig.Declare(store, cfg.MCPServers)
 }
 
-func NewMCPManager(installed *plugins.Store, store *sqlitestore.Store, catalog *connections.Catalog, registry *tools.Registry, jaz *jaztools.Service, events *sessionevents.Bus, broker oauthbroker.Broker, logger *log.Logger) *mcpruntime.Manager {
-	reader := connectionMCPServerReader{store: store, catalog: catalog, plugins: installed, enabled: installed.IsEnabled}
+func NewMCPManager(installed *plugins.Store, store *sqlitestore.Store, catalog *connections.Catalog, registry *tools.Registry, jaz *jaztools.Service, events *sessionevents.Bus, broker oauthbroker.Broker, cloud *cloudsync.Service, logger *log.Logger) *mcpruntime.Manager {
+	reader := connectionMCPServerReader{store: store, catalog: catalog, plugins: installed, enabled: installed.IsEnabled, cloudMCP: cloud.MCPServer}
 	return mcpruntime.NewManager(reader, store, registry, logger,
 		mcpruntime.WithBuiltinServerProvider(jaztools.ServerConfig(jaz.URL()), jaz.Server),
 		mcpruntime.WithSessionEvents(store, events),
@@ -58,10 +59,11 @@ type connectionTokenStore interface {
 }
 
 type connectionMCPServerReader struct {
-	plugins mcpconfig.ServerReader
-	enabled func(context.Context, string) bool
-	store   connectionTokenStore
-	catalog *connections.Catalog
+	plugins  mcpconfig.ServerReader
+	enabled  func(context.Context, string) bool
+	store    connectionTokenStore
+	catalog  *connections.Catalog
+	cloudMCP func(context.Context) (mcpconfig.Server, bool)
 }
 
 func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) {
@@ -77,6 +79,11 @@ func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) 
 		servers = append(servers, derived...)
 	}
 	ctx := context.Background()
+	if r.cloudMCP != nil {
+		if cloudServer, ok := r.cloudMCP(ctx); ok {
+			servers = append(servers, cloudServer)
+		}
+	}
 	for _, plugin := range r.catalog.ListPlugins() {
 		if r.enabled != nil && !r.enabled(ctx, plugin.ID) {
 			continue

@@ -22,6 +22,7 @@ var tmpl = template.Must(template.New("jazplatform").ParseFS(promptTemplates, "*
 // and the whole memory block, protocol included, is omitted.
 type MemoryData struct {
 	Root                string
+	CloudDB             bool
 	LongTerm            string
 	ShortTerm           string
 	ShortTermCharacters int

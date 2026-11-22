@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { isCloudThread } from '@/lib/api/cloudClient'
+import { isCloudApiSession } from '@/lib/api/client'
 import { createCloudTurn } from '@/lib/api/cloudThreads'
 import { uploadCloudFile } from '@/lib/api/cloudUploads'
 import { uploadSessionAttachment } from '@/lib/api/sessions'
@@ -64,7 +64,7 @@ export function useLiveSessionSend({
     setStreaming(true)
 
     const runId = history?.session.run_id || sessionId
-    const isCloud = history?.session.backend === 'cloud' || isCloudThread(sessionId)
+    const isCloud = history?.session.backend === 'cloud' || isCloudApiSession()
     const started = (async () => {
       const attachments = files.length
         ? await Promise.all(

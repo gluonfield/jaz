@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '@/lib/query/keys'
-import { cloudGet, cloudPost, cloudPut } from './cloudClient'
+import { get as cloudGet, post as cloudPost, put as cloudPut } from './client'
 
 export interface CloudSpaceMember {
   space_id?: string

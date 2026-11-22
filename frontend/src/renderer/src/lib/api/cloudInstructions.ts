@@ -1,11 +1,11 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
 import { keys } from '@/lib/query/keys'
-import { cloudGet, cloudPut } from './cloudClient'
+import { get as cloudGet, put as cloudPut } from './client'
 import type { CloudUser } from './serverTypes'
 
 export type InstructionScope = 'org' | 'space' | 'user' | 'bot'
-export type InstructionKind = 'agents' | 'soul' | 'bots' | 'memory'
+export type InstructionKind = 'agents' | 'soul' | 'bots' | 'memory' | 'short_term' | 'long_term'
 
 export interface CloudInstructionKey {
   org_id?: string
@@ -26,7 +26,7 @@ export interface CloudInstructionDocument {
 export const INSTRUCTION_SCOPE_KINDS: Record<InstructionScope, InstructionKind[]> = {
   org: ['agents'],
   space: ['agents'],
-  user: ['agents', 'soul'],
+  user: ['agents', 'soul', 'short_term', 'long_term'],
   bot: ['bots', 'memory'],
 }
 
@@ -35,6 +35,8 @@ export const INSTRUCTION_KIND_FILENAME: Record<InstructionKind, string> = {
   soul: 'SOUL.md',
   bots: 'BOTS.md',
   memory: 'MEMORY.md',
+  short_term: 'SHORT_TERM',
+  long_term: 'LONG_TERM',
 }
 
 export function canEditCloudInstruction(user: CloudUser | null | undefined, scope: InstructionScope): boolean {

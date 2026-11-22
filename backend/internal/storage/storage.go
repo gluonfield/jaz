@@ -139,31 +139,36 @@ func (u Usage) Countable() bool {
 }
 
 type Session struct {
-	ID              string          `json:"id"`
-	Slug            string          `json:"slug"`
-	Title           string          `json:"title,omitempty"`
-	ManualTitle     bool            `json:"manual_title,omitempty"`
-	TitleLocked     bool            `json:"title_locked,omitempty"`
-	ParentID        string          `json:"parent_id,omitempty"`
-	Status          string          `json:"status"`
-	Turn            *Turn           `json:"turn,omitempty"`
-	Error           string          `json:"error,omitempty"`
-	Runtime         string          `json:"runtime"`
-	RuntimeRef      *RuntimeRef     `json:"runtime_ref,omitempty"`
-	ModelProvider   string          `json:"model_provider,omitempty"`
-	Model           string          `json:"model,omitempty"`
-	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
-	Goal            *goal.State     `json:"goal,omitempty"`
-	Usage           Usage           `json:"usage,omitempty"`
-	QueuedMessages  []QueuedMessage `json:"queued_messages,omitempty"`
-	PendingSteer    *QueuedMessage  `json:"pending_steer_message,omitempty"`
-	SourceType      string          `json:"source_type,omitempty"`
-	SourceID        string          `json:"source_id,omitempty"`
-	Archived        bool            `json:"archived,omitempty"`
-	Pinned          bool            `json:"pinned,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
-	LastAttentionAt time.Time       `json:"last_attention_at"`
+	ID                     string          `json:"id"`
+	Slug                   string          `json:"slug"`
+	Title                  string          `json:"title,omitempty"`
+	ManualTitle            bool            `json:"manual_title,omitempty"`
+	TitleLocked            bool            `json:"title_locked,omitempty"`
+	ParentID               string          `json:"parent_id,omitempty"`
+	Status                 string          `json:"status"`
+	Turn                   *Turn           `json:"turn,omitempty"`
+	Error                  string          `json:"error,omitempty"`
+	Runtime                string          `json:"runtime"`
+	RuntimeRef             *RuntimeRef     `json:"runtime_ref,omitempty"`
+	ModelProvider          string          `json:"model_provider,omitempty"`
+	Model                  string          `json:"model,omitempty"`
+	ReasoningEffort        string          `json:"reasoning_effort,omitempty"`
+	Goal                   *goal.State     `json:"goal,omitempty"`
+	Usage                  Usage           `json:"usage,omitempty"`
+	QueuedMessages         []QueuedMessage `json:"queued_messages,omitempty"`
+	PendingSteer           *QueuedMessage  `json:"pending_steer_message,omitempty"`
+	SourceType             string          `json:"source_type,omitempty"`
+	SourceID               string          `json:"source_id,omitempty"`
+	SpaceID                string          `json:"space_id,omitempty"`
+	Visibility             string          `json:"visibility,omitempty"`
+	RunID                  string          `json:"run_id,omitempty"`
+	PersonalSourcesEnabled bool            `json:"personal_sources_enabled,omitempty"`
+	Backend                string          `json:"backend,omitempty"`
+	Archived               bool            `json:"archived,omitempty"`
+	Pinned                 bool            `json:"pinned,omitempty"`
+	CreatedAt              time.Time       `json:"created_at"`
+	UpdatedAt              time.Time       `json:"updated_at"`
+	LastAttentionAt        time.Time       `json:"last_attention_at"`
 	// CompletedAt is when the thread's last successful turn ended, and
 	// CompletedTurnStartedAt when it started.
 	CompletedAt            time.Time `json:"completed_at,omitzero"`
@@ -417,7 +422,10 @@ type Message struct {
 	CreatedAt time.Time `json:"created_at"`
 	// FromUser explicitly records human authorship; unmarked messages never
 	// count as user activity.
-	FromUser bool `json:"from_user,omitempty"`
+	FromUser         bool   `json:"from_user,omitempty"`
+	ActorUserID      string `json:"actor_user_id,omitempty"`
+	ActorDisplayName string `json:"actor_display_name,omitempty"`
+	ActorEmail       string `json:"actor_email,omitempty"`
 }
 
 type CreateSession struct {

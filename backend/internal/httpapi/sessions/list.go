@@ -1,8 +1,10 @@
 package sessions
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,8 +19,13 @@ type sessionListStore interface {
 	LastRootSession() (storage.Session, error)
 }
 
+type CloudSessionLister interface {
+	ListSessions(context.Context, bool) ([]storage.Session, error)
+}
+
 type ListHandler struct {
 	store sessionListStore
+	cloud CloudSessionLister
 }
 
 type listResponse struct {
@@ -28,6 +35,11 @@ type listResponse struct {
 
 func NewListHandler(store sessionListStore) *ListHandler {
 	return &ListHandler{store: store}
+}
+
+func (h *ListHandler) WithCloud(cloud CloudSessionLister) *ListHandler {
+	h.cloud = cloud
+	return h
 }
 
 func (h *ListHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +101,11 @@ func (h *ListHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if h.cloud != nil && !filter.ParentOnly {
+		if cloudSessions, cloudErr := h.cloud.ListSessions(r.Context(), filter.Archived); cloudErr == nil && len(cloudSessions) > 0 {
+			sessions = mergeSessionLists(sessions, filterCloudSessions(cloudSessions, filter))
+		}
+	}
 	var nextCursor string
 	if limit > 0 && len(sessions) > limit {
 		sessions = sessions[:limit]
@@ -96,4 +113,64 @@ func (h *ListHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		nextCursor = fmt.Sprintf("%d:%s", storage.SessionAttentionAt(last).UnixMilli(), last.ID)
 	}
 	httpapi.WriteJSON(w, http.StatusOK, listResponse{Sessions: sessionview.Responses(sessions), NextCursor: nextCursor})
+}
+
+func filterCloudSessions(items []storage.Session, filter storage.SessionFilter) []storage.Session {
+	q := strings.ToLower(filter.Query)
+	out := make([]storage.Session, 0, len(items))
+	for _, s := range items {
+		if filter.Runtime != "" && s.Runtime != filter.Runtime {
+			continue
+		}
+		if filter.SourceType != "" && s.SourceType != filter.SourceType {
+			continue
+		}
+		if filter.SourceID != "" && s.SourceID != filter.SourceID {
+			continue
+		}
+		if !filter.IncludeSourced && filter.SourceType == "" && s.SourceType != "" {
+			continue
+		}
+		if !filter.UpdatedSince.IsZero() && !s.UpdatedAt.After(filter.UpdatedSince) {
+			continue
+		}
+		if q != "" && !strings.Contains(strings.ToLower(s.Title), q) && !strings.Contains(strings.ToLower(s.ID), q) {
+			continue
+		}
+		if filter.After != nil {
+			at := storage.SessionAttentionAt(s)
+			if at.After(filter.After.AttentionAt) || (at.Equal(filter.After.AttentionAt) && s.ID <= filter.After.ID) {
+				continue
+			}
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+func mergeSessionLists(local, cloud []storage.Session) []storage.Session {
+	if len(cloud) == 0 {
+		return local
+	}
+	seen := make(map[string]struct{}, len(local)+len(cloud))
+	merged := make([]storage.Session, 0, len(local)+len(cloud))
+	for _, s := range local {
+		seen[s.ID] = struct{}{}
+		merged = append(merged, s)
+	}
+	for _, s := range cloud {
+		if _, ok := seen[s.ID]; !ok {
+			seen[s.ID] = struct{}{}
+			merged = append(merged, s)
+		}
+	}
+	sort.Slice(merged, func(i, j int) bool {
+		ti := storage.SessionAttentionAt(merged[i])
+		tj := storage.SessionAttentionAt(merged[j])
+		if !ti.Equal(tj) {
+			return ti.After(tj)
+		}
+		return merged[i].ID < merged[j].ID
+	})
+	return merged
 }

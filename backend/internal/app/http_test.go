@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/connections"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	"github.com/wins/jaz/backend/internal/m365copilot"
@@ -74,7 +75,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	var publicRoutes server.PublicRoutes
 	app := fx.New(
 		fx.NopLogger,
-		fx.Supply(mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil), Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager, acp.AgentCatalog{}, runtimefiles.New(store.RootDir())),
+		fx.Supply(mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil), cloudsync.New(store, nil), Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager, acp.AgentCatalog{}, runtimefiles.New(store.RootDir())),
 		fx.Provide(NewOAuthBroker, NewMicrosoftCopilotAuth, NewProviderSource, sessionevents.New, fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus)))),
 		fx.Provide(func() storage.Store { return store }),
 		fx.Provide(func() storage.PluginStore { return store }),
@@ -113,6 +114,14 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "PUT /v1/settings/voice")
 	requireRoute(t, routes, "POST /v1/voice/connect")
 	requireRoute(t, routes, "POST /v1/sessions/{session}/voice/transcript")
+	requireRoute(t, routes, "GET /v1/cloud/status")
+	requireRoute(t, routes, "POST /v1/cloud/connect")
+	requireRoute(t, routes, "POST /v1/cloud/disconnect")
+	requireRoute(t, routes, "POST /v1/cloud/sync")
+	requireRoute(t, routes, "GET /v1/spaces")
+	requireRoute(t, routes, "GET /v1/models")
+	requireRoute(t, routes, "GET /v1/machines")
+	requireRoute(t, routes, "GET /v1/instructions/{scope}/{scope_id}/{kind}")
 	requireRoute(t, routes, "/v1/preview/")
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/v1/sessions?archived=true&limit=1", nil)

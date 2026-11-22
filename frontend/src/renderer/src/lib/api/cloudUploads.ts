@@ -1,6 +1,5 @@
 import { ApiError } from '@/lib/api/response'
-import { secureBackendConnection } from './client'
-import { cloudEmbeddedGetUrl, cloudPost } from './cloudClient'
+import { apiEmbeddedGetUrl as cloudEmbeddedGetUrl, post as cloudPost, secureBackendConnection } from './client'
 import type { Attachment } from './types'
 
 export interface PresignUploadInput {

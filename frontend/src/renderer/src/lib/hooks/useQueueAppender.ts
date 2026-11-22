@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { useToast } from '@/components/ui/toast'
 import { mutateSessionQueue, type QueueMutation } from '@/lib/api/sessions'
-import type { QueuedAction } from '@/lib/api/types'
+import type { QueuedAction, SessionMessages } from '@/lib/api/types'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
 import { queuedActionMessage } from '@/lib/sessionQueue'
@@ -28,12 +28,16 @@ export function useQueueAppender(sessionId: string, append?: QueueAppendRunner) 
 
   const queuePrompt: SendMessageHandler = useCallback(async (text, options = {}) => {
     try {
-      await appendSessionPrompt(sessionId, text, options, 'queued', appendQueue)
+      const cached = queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))?.session
+      const cloud = cached?.backend === 'cloud'
+        ? { isCloud: true, runId: cached.run_id || sessionId }
+        : undefined
+      await appendSessionPrompt(sessionId, text, options, 'queued', appendQueue, cloud)
     } catch (error) {
       toast(`Queue update failed: ${(error as Error).message}`, 'danger')
       throw error
     }
-  }, [appendQueue, sessionId, toast])
+  }, [appendQueue, queryClient, sessionId, toast])
 
   const queueAction = useCallback((action: QueuedAction, label: string) => {
     return appendQueue({ op: 'append', message: queuedActionMessage(action, label) })

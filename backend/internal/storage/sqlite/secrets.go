@@ -5,12 +5,15 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/cloudmirror"
 	oauthdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationoauth"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/mcpdb"
 )
@@ -34,6 +37,12 @@ func (s *Store) protectSecrets() error {
 	if err != nil {
 		return err
 	}
+	cloudq := cloudmirror.New(s.db).WithTx(tx)
+	cloudAccount, err := cloudq.GetCloudAccount(ctx)
+	hasCloudAccount := err == nil
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	keyPath := strings.TrimSpace(os.Getenv("JAZ_SECRET_KEY_FILE"))
 	if keyPath == "" {
 		keyPath = filepath.Join(s.root, "secrets.key")
@@ -50,6 +59,9 @@ func (s *Store) protectSecrets() error {
 			if strings.HasPrefix(row.BearerToken.String, secretPrefix) || strings.HasPrefix(row.HeadersJson, secretPrefix) || strings.HasPrefix(row.StdioJson, secretPrefix) {
 				return fmt.Errorf("MCP secrets require their original key file: %s", keyPath)
 			}
+		}
+		if hasCloudAccount && strings.HasPrefix(cloudAccount.TokenEncrypted, secretPrefix) {
+			return fmt.Errorf("Cloud session secrets require their original key file: %s", keyPath)
 		}
 		key = make([]byte, 32)
 		if _, err := rand.Read(key); err != nil {
@@ -127,6 +139,18 @@ func (s *Store) protectSecrets() error {
 			return err
 		}
 		changed = true
+	}
+	if hasCloudAccount && cloudAccount.TokenEncrypted != "" {
+		sealed, err := s.protectSecret(cloudAccountSecretID, cloudAccount.TokenEncrypted)
+		if err != nil {
+			return err
+		}
+		if sealed != cloudAccount.TokenEncrypted {
+			if err := cloudq.UpdateCloudAccountToken(ctx, sealed); err != nil {
+				return err
+			}
+			changed = true
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return err

@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionview"
@@ -21,8 +23,13 @@ const (
 	maxTurns     = 48
 )
 
+type CloudTranscriptLoader interface {
+	LoadTranscript(context.Context, string) (cloudsync.ProjectedTranscript, bool, error)
+}
+
 type MessagesHandler struct {
 	service *transcript.Service
+	cloud   CloudTranscriptLoader
 }
 
 type messagesResponse struct {
@@ -60,14 +67,44 @@ func NewMessagesHandler(service *transcript.Service) *MessagesHandler {
 	return &MessagesHandler{service: service}
 }
 
+func (h *MessagesHandler) WithCloud(cloud CloudTranscriptLoader) *MessagesHandler {
+	h.cloud = cloud
+	return h
+}
+
 func (h *MessagesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	request, err := pageRequest(r)
 	if err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
-	view, err := h.service.Load(r.Context(), r.PathValue("session"), request)
+	sessionID := r.PathValue("session")
+	view, err := h.service.Load(r.Context(), sessionID, request)
 	if err != nil {
+		if errors.Is(err, storage.ErrSessionNotFound) && h.cloud != nil {
+			projected, found, cloudErr := h.cloud.LoadTranscript(r.Context(), sessionID)
+			if cloudErr != nil {
+				httpapi.WriteError(w, http.StatusBadGateway, cloudErr)
+				return
+			}
+			if found {
+				response := messagesResponse{
+					Session:         sessionview.Public(projected.Session),
+					Messages:        sessionview.Messages(projected.Messages),
+					Events:          sessionview.Events(projected.Events),
+					HasEarlier:      false,
+					HistoryRevision: projected.HistoryRevision,
+					LatestEventSeq:  projected.LatestSeq,
+					acpStateResponse: &acpStateResponse{
+						ACPState:     projected.ACPState,
+						ACPAssistant: projected.ACPAssistant,
+						ACPError:     projected.ACPError,
+					},
+				}
+				httpapi.WriteJSON(w, http.StatusOK, response)
+				return
+			}
+		}
 		switch {
 		case errors.Is(err, storage.ErrSessionNotFound):
 			httpapi.WriteError(w, http.StatusNotFound, err)

@@ -6,12 +6,14 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	feedcore "github.com/wins/jaz/backend/internal/feed"
 	agentsessionsapi "github.com/wins/jaz/backend/internal/httpapi/agentsessions"
 	botsapi "github.com/wins/jaz/backend/internal/httpapi/bots"
 	browserapi "github.com/wins/jaz/backend/internal/httpapi/browser"
 	canvasapi "github.com/wins/jaz/backend/internal/httpapi/canvas"
+	cloudapi "github.com/wins/jaz/backend/internal/httpapi/cloud"
 	computerapi "github.com/wins/jaz/backend/internal/httpapi/computer"
 	feedapi "github.com/wins/jaz/backend/internal/httpapi/feed"
 	filesystemapi "github.com/wins/jaz/backend/internal/httpapi/filesystem"
@@ -65,14 +67,20 @@ type routeDeps struct {
 	VoiceRelay       *voiceapi.RelayHandler
 	Push             *mobilepush.Service
 	MicrosoftCopilot *m365copilotapi.Handler
+	Cloud            *cloudsync.Service `optional:"true"`
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
+	listHandler := sessionsapi.NewListHandler(deps.Store)
+	if deps.Cloud != nil {
+		listHandler.WithCloud(deps.Cloud)
+		deps.SessionMessages.WithCloud(deps.Cloud)
+	}
 	routes := server.Routes{
 		{Pattern: "GET /v1/acp/agents/{agent}/models", Handler: modelcapabilitiesapi.NewAgentModelsHandler(deps.ACP)},
 		{Pattern: "GET " + m365copilot.OAuthCallbackPath, Handler: http.HandlerFunc(deps.MicrosoftCopilot.Callback)},
 		{Pattern: "POST /v1/filesystem/dirs", Handler: http.HandlerFunc(filesystemapi.CreateDirectory)},
-		{Pattern: "GET /v1/sessions", Handler: sessionsapi.NewListHandler(deps.Store)},
+		{Pattern: "GET /v1/sessions", Handler: listHandler},
 		{Pattern: "PUT /v1/sessions/{session}/agent/config", Handler: http.HandlerFunc(deps.AgentSession.SetConfig)},
 		{Pattern: "PUT /v1/sessions/{session}/mcp/discovery", Handler: http.HandlerFunc(deps.AgentSession.SetMCPDiscovery)},
 		{Pattern: "POST /v1/sessions/{session}/agent/tasks/{task}/stop", Handler: http.HandlerFunc(deps.AgentSession.StopTask)},
@@ -118,7 +126,34 @@ func NewRoutes(deps routeDeps) server.Routes {
 	}
 	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser, deps.Store)
 	routes = appendMCPRoutes(routes, deps.MCP)
+	routes = appendCloudRoutes(routes, deps.Cloud)
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
+}
+
+func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service) server.Routes {
+	if cloud == nil {
+		return routes
+	}
+	h := cloudapi.NewHandler(cloud)
+	return append(routes,
+		server.Route{Pattern: "GET /v1/cloud/status", Handler: httpHandlerFunc(h.Status)},
+		server.Route{Pattern: "POST /v1/cloud/connect", Handler: httpHandlerFunc(h.Connect)},
+		server.Route{Pattern: "POST /v1/cloud/disconnect", Handler: httpHandlerFunc(h.Disconnect)},
+		server.Route{Pattern: "POST /v1/cloud/sync", Handler: httpHandlerFunc(h.Sync)},
+		server.Route{Pattern: "GET /v1/models", Handler: httpHandlerFunc(h.ListModels)},
+		server.Route{Pattern: "GET /v1/machines", Handler: httpHandlerFunc(h.ListMachines)},
+		server.Route{Pattern: "GET /v1/spaces", Handler: httpHandlerFunc(h.ListSpaces)},
+		server.Route{Pattern: "POST /v1/spaces", Handler: httpHandlerFunc(h.CreateSpace)},
+		server.Route{Pattern: "POST /v1/spaces/{id}/members", Handler: httpHandlerFunc(h.AddSpaceMember)},
+		server.Route{Pattern: "GET /v1/instructions/{scope}/{scope_id}/{kind}", Handler: httpHandlerFunc(h.GetInstruction)},
+		server.Route{Pattern: "PUT /v1/instructions/{scope}/{scope_id}/{kind}", Handler: httpHandlerFunc(h.PutInstruction)},
+		server.Route{Pattern: "GET /v1/usage/summary", Handler: httpHandlerFunc(h.UsageSummary)},
+		server.Route{Pattern: "POST /v1/threads/{id}/turns", Handler: httpHandlerFunc(h.CreateTurn)},
+		server.Route{Pattern: "PUT /v1/threads/{id}/user-state", Handler: httpHandlerFunc(h.UpdateThreadUserState)},
+		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/presign", Handler: httpHandlerFunc(h.PresignUpload)},
+		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/commit", Handler: httpHandlerFunc(h.CommitUpload)},
+		server.Route{Pattern: "GET /v1/runs/{run_id}/files/{path...}", Handler: httpHandlerFunc(h.ProxyRunFile)},
+	)
 }
 
 func modelCapabilityRoutes(catalog *modelcatalog.Service) server.Routes {

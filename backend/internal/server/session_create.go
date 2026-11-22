@@ -2,11 +2,13 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/visualize"
@@ -22,15 +24,24 @@ type createSessionRequest struct {
 	// ArtifactSurface is fixed at creation: "chat" (default) or "canvas".
 	ArtifactSurface string `json:"artifact_surface,omitempty"`
 
+	Backend         string `json:"backend,omitempty"`
 	ModelProvider   string `json:"model_provider,omitempty"`
+	ModelProfileID  string `json:"model_profile_id,omitempty"`
 	Model           string `json:"model,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	SpaceID         string `json:"space_id,omitempty"`
+	MachineID       string `json:"machine_id,omitempty"`
+	ExecutorTarget  string `json:"executor_target,omitempty"`
 }
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	var req createSessionRequest
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+	if strings.EqualFold(strings.TrimSpace(req.Backend), "cloud") || strings.TrimSpace(req.ModelProfileID) != "" {
+		s.createCloudSession(w, r, req)
+		return
 	}
 	switch strings.TrimSpace(req.Runtime) {
 	case "", storage.RuntimeACP:
@@ -40,6 +51,39 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("unsupported session runtime %q; use acp", req.Runtime))
 		return
 	}
+}
+
+func (s *Server) createCloudSession(w http.ResponseWriter, r *http.Request, req createSessionRequest) {
+	if s.Cloud == nil {
+		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("Jaz Cloud is not configured"))
+		return
+	}
+	target := strings.TrimSpace(req.ExecutorTarget)
+	if target == "" {
+		target = strings.TrimSpace(req.MachineID)
+	}
+	session, err := s.Cloud.CreateThread(r.Context(), cloudsync.CreateThreadRequest{
+		Title:           strings.TrimSpace(req.Title),
+		SpaceID:         strings.TrimSpace(req.SpaceID),
+		ModelProfileID:  strings.TrimSpace(req.ModelProfileID),
+		Model:           strings.TrimSpace(req.Model),
+		ReasoningEffort: strings.TrimSpace(req.ReasoningEffort),
+		ExecutorTarget:  target,
+	})
+	if err != nil {
+		var uerr *cloudsync.UpstreamError
+		if errors.As(err, &uerr) {
+			writeError(w, uerr.StatusCode, uerr)
+			return
+		}
+		if errors.Is(err, cloudsync.ErrNotConnected) {
+			writeError(w, http.StatusUnauthorized, err)
+			return
+		}
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, sessionview.Public(session))
 }
 
 func (s *Server) createACPSession(w http.ResponseWriter, req createSessionRequest) {

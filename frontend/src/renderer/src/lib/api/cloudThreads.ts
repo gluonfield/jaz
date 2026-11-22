@@ -3,14 +3,12 @@ import { ApiError } from '@/lib/api/response'
 import type { ModelPickerOption, PickerAgentOption } from '@/lib/modelPicker'
 import { keys } from '@/lib/query/keys'
 import {
-  cloudFetch,
-  cloudGet,
-  cloudPost,
-  cloudSessionRevision,
-  onCloudSessionChange,
-  registerCloudThread,
-  registerCloudThreads,
-} from './cloudClient'
+  apiFetch as cloudFetch,
+  apiSessionRevision,
+  get as cloudGet,
+  onApiSessionChange as onCloudSessionChange,
+  post as cloudPost,
+} from './client'
 import type { ConnectedMachine } from './serverTypes'
 import type { Attachment, ChatMessage, MessageBlock, Session, SessionEvent, SessionMessages } from './types'
 
@@ -320,13 +318,11 @@ export function cloudThreadToSession(thread: CloudThread): Session {
 export async function listCloudThreads(spaceId?: string, signal?: AbortSignal): Promise<CloudThread[]> {
   const query = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : ''
   const response = await cloudGet<{ threads?: CloudThread[] | null } | CloudThread[]>(`/v1/threads${query}`, { signal })
-  const threads = Array.isArray(response) ? response : (response.threads ?? [])
-  registerCloudThreads(threads.map((thread) => thread.id))
-  return threads
+  return Array.isArray(response) ? response : (response.threads ?? [])
 }
 
 export async function createCloudThread(input: CreateCloudThreadInput): Promise<CloudThread> {
-  const thread = await cloudPost<CloudThread>('/v1/threads', {
+  return cloudPost<CloudThread>('/v1/threads', {
     ...(input.title ? { title: input.title } : {}),
     ...(input.space_id ? { space_id: input.space_id } : {}),
     ...(input.model_profile_id ? { model_profile_id: input.model_profile_id } : {}),
@@ -334,15 +330,10 @@ export async function createCloudThread(input: CreateCloudThreadInput): Promise<
     ...(input.reasoning_effort ? { reasoning_effort: input.reasoning_effort } : {}),
     ...(input.executor_target ? { executor_target: input.executor_target } : {}),
   })
-  registerCloudThread(thread.id)
-  return thread
 }
 
 export async function getCloudThread(threadId: string, signal?: AbortSignal): Promise<CloudThread> {
-  const thread = await cloudGet<CloudThread>(`/v1/threads/${encodeURIComponent(threadId)}`, { signal })
-  registerCloudThread(thread.id)
-  if (threadId !== thread.id) registerCloudThread(threadId)
-  return thread
+  return cloudGet<CloudThread>(`/v1/threads/${encodeURIComponent(threadId)}`, { signal })
 }
 
 export function createCloudTurn(
@@ -612,7 +603,7 @@ export function openCloudThreadEvents(
   let retryTimer: ReturnType<typeof setTimeout> | undefined
   let activeController: AbortController | null = null
   let streamedAssistant = ''
-  const revision = cloudSessionRevision()
+  const revision = apiSessionRevision()
 
   function emitCloudEvent(parsed: CloudSessionEvent): void {
     if (isCloudUserEvent(parsed.type)) {
@@ -637,7 +628,7 @@ export function openCloudThreadEvents(
   }
 
   async function connect(): Promise<void> {
-    if (closed || cloudSessionRevision() !== revision) return
+    if (closed || apiSessionRevision() !== revision) return
     const controller = new AbortController()
     activeController = controller
     const suffix = lastSeq > 0 ? `?after_seq=${lastSeq}` : ''
@@ -649,7 +640,7 @@ export function openCloudThreadEvents(
       if (!response.ok || !response.body) {
         throw new Error(`Cloud event stream failed (${response.status})`)
       }
-      if (closed || cloudSessionRevision() !== revision) return
+      if (closed || apiSessionRevision() !== revision) return
       onConnection?.(true)
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
@@ -657,7 +648,7 @@ export function openCloudThreadEvents(
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
-        if (closed || cloudSessionRevision() !== revision) return
+        if (closed || apiSessionRevision() !== revision) return
         buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
         let sep = buffer.indexOf('\n\n')
         while (sep !== -1) {
@@ -673,7 +664,7 @@ export function openCloudThreadEvents(
     } catch {
       // Reconnect below unless closed.
     }
-    if (!closed && cloudSessionRevision() === revision) {
+    if (!closed && apiSessionRevision() === revision) {
       onConnection?.(false)
       retryTimer = setTimeout(() => void connect(), 2_000)
     }

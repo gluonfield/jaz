@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/instructions"
@@ -134,15 +135,16 @@ type Workspace string
 type Stores struct {
 	fx.Out
 
-	Store           *sqlitestore.Store
-	ACPStore        acp.Store
-	StorageStore    storage.Store
-	SessionStore    storage.SessionStore
-	SessionEvents   storage.SessionEventAppender
-	UsageEventStore storage.UsageEventStore
-	FeedStore       storage.FeedStore
-	PluginStore     storage.PluginStore
-	PluginSessions  plugins.SessionStore
+	Store            *sqlitestore.Store
+	ACPStore         acp.Store
+	StorageStore     storage.Store
+	SessionStore     storage.SessionStore
+	SessionEvents    storage.SessionEventAppender
+	UsageEventStore  storage.UsageEventStore
+	FeedStore        storage.FeedStore
+	PluginStore      storage.PluginStore
+	PluginSessions   plugins.SessionStore
+	CloudMirrorStore storage.CloudMirrorStore
 }
 
 func NewRuntimeLayout(cfg Config) (runtimefiles.Layout, error) {
@@ -172,15 +174,16 @@ func NewStore(layout runtimefiles.Layout, catalog acp.AgentCatalog) (Stores, err
 		return Stores{}, err
 	}
 	return Stores{
-		Store:           store,
-		ACPStore:        store,
-		StorageStore:    store,
-		SessionStore:    store,
-		SessionEvents:   store,
-		UsageEventStore: store,
-		FeedStore:       store,
-		PluginStore:     store,
-		PluginSessions:  store,
+		Store:            store,
+		ACPStore:         store,
+		StorageStore:     store,
+		SessionStore:     store,
+		SessionEvents:    store,
+		UsageEventStore:  store,
+		FeedStore:        store,
+		PluginStore:      store,
+		PluginSessions:   store,
+		CloudMirrorStore: store,
 	}, nil
 }
 
@@ -204,21 +207,44 @@ func NewMemory(cfg Config, layout runtimefiles.Layout) (*jazmem.Memory, error) {
 	return jazmem.Open(jazmem.Config{Root: memoryRoot, DBPath: dbPath, DisableProviderDreams: true})
 }
 
-func NewInstructionsStore(layout runtimefiles.Layout, store *sqlitestore.Store) instructions.Store {
-	return instructions.NewLocalFSStore(
+func NewInstructionsStore(layout runtimefiles.Layout, store *sqlitestore.Store, cloud *cloudsync.Service) instructions.Store {
+	local := instructions.NewLocalFSStore(
 		layout.Root,
 		instructions.WithBotsRoot(layout.Bots),
 		instructions.WithBotHomeResolver(bots.HomeResolver(store)),
 	)
+	return cloudsync.NewInstructionsStore(cloud, local)
 }
 
-func NewPromptBuilder(store *sqlitestore.Store, inst instructions.Store, workspace Workspace, memory *memoryservice.Service, connections *connections.Service, agents acp.AgentConfigSource, installed *plugins.Store) *coordinator.Builder {
+func NewPromptBuilder(store *sqlitestore.Store, inst instructions.Store, cloud *cloudsync.Service, workspace Workspace, memory *memoryservice.Service, connections *connections.Service, agents acp.AgentConfigSource, installed *plugins.Store) *coordinator.Builder {
 	return coordinator.NewBuilder(store.RootDir(), string(workspace), memory.Root(), memory.Enabled).
 		WithInstructions(inst).
+		WithCloudScopeProvider(cloud.CloudScope).
 		WithConnections(connections).
 		WithAgents(agents).
 		WithBrowserEnabled(func() bool { return agentsettings.BrowserEnabled(store) }).
 		WithPluginFilter(func(id string) bool { return installed.IsEnabled(context.Background(), id) })
+}
+
+func StartCloudSync(lc fx.Lifecycle, cloud *cloudsync.Service, mcpManager *mcpruntime.Manager) {
+	cloud.SetOnAccountChanged(func(ctx context.Context) {
+		mcpManager.Refresh(ctx)
+	})
+	var cancel context.CancelFunc
+	lc.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			ctx, stop := context.WithCancel(context.Background())
+			cancel = stop
+			go cloud.Run(ctx)
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			if cancel != nil {
+				cancel()
+			}
+			return nil
+		},
+	})
 }
 
 func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {

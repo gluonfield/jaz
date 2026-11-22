@@ -138,3 +138,24 @@ func writeSessionEventSSE(w http.ResponseWriter, flusher http.Flusher, event ses
 	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 	flusher.Flush()
 }
+
+func (s *Server) streamCloudSessionEvents(w http.ResponseWriter, r *http.Request, sessionID string) {
+	afterSeq, err := sessionEventsAfterSeq(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("streaming unsupported"))
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+	_ = s.Cloud.StreamEvents(r.Context(), sessionID, afterSeq, func(event sessionevents.Event) {
+		writeSessionEventSSE(w, flusher, event)
+	})
+}

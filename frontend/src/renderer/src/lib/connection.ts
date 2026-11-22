@@ -9,7 +9,6 @@ import {
   peekPendingOidcLogin,
   validateOidcCallback,
 } from '@/lib/api/cloudAuth'
-import { setPrimaryCloudUser } from '@/lib/api/cloudClient'
 import { completeAttachedOidcCallback } from '@/lib/cloudAccount'
 import type {
   CloudUser,
@@ -100,7 +99,6 @@ const listeners = new Set<() => void>()
 
 function setState(next: Partial<ConnectionState>): void {
   state = { ...state, ...next }
-  setPrimaryCloudUser(state.mode === 'cloud' ? state.user : null)
   for (const listener of listeners) {
     listener()
   }

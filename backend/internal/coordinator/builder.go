@@ -20,16 +20,17 @@ type AgentNameSource interface {
 }
 
 type Builder struct {
-	root           string
-	workspace      string
-	memoryRoot     string
-	memoryEnabled  func() bool
-	browserEnabled func() bool
-	pluginFilter   func(string) bool
-	connections    ConnectionSource
-	agents         AgentNameSource
-	instructions   instructions.Store
-	cloud          *CloudScope
+	root               string
+	workspace          string
+	memoryRoot         string
+	memoryEnabled      func() bool
+	browserEnabled     func() bool
+	pluginFilter       func(string) bool
+	connections        ConnectionSource
+	agents             AgentNameSource
+	instructions       instructions.Store
+	cloud              *CloudScope
+	cloudScopeProvider func(context.Context) *CloudScope
 }
 
 func NewBuilder(root, workspace, memoryRoot string, memoryEnabled func() bool) *Builder {
@@ -65,6 +66,19 @@ func (b *Builder) WithCloud(scope CloudScope) *Builder {
 	copyScope := scope
 	b.cloud = &copyScope
 	return b
+}
+
+func (b *Builder) WithCloudScopeProvider(provider func(context.Context) *CloudScope) *Builder {
+	b.cloudScopeProvider = provider
+	return b
+}
+
+func (b *Builder) resolvedCloudScope(ctx context.Context) *CloudScope {
+	base := b.cloud
+	if base == nil && b.cloudScopeProvider != nil {
+		base = b.cloudScopeProvider(ctx)
+	}
+	return mergeCloudScope(base, ctx)
 }
 
 func (b *Builder) SystemPrompt() (string, error) {
@@ -103,7 +117,7 @@ func (b *Builder) ACPPromptForArtifactSurface(cwd, surface string) (string, erro
 }
 
 func (b *Builder) ACPPromptForContext(ctx context.Context, cwd, surface string) (string, error) {
-	cloud := mergeCloudScope(b.cloud, ctx)
+	cloud := b.resolvedCloudScope(ctx)
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {
 		cwd = strings.TrimSpace(b.workspace)
@@ -130,7 +144,7 @@ func (b *Builder) ACPPromptForContext(ctx context.Context, cwd, surface string) 
 }
 
 func (b *Builder) build(ctx context.Context, workspace string, surface visualize.Surface) (system, skillsPrompt string, err error) {
-	cloud := mergeCloudScope(b.cloud, ctx)
+	cloud := b.resolvedCloudScope(ctx)
 	if strings.TrimSpace(workspace) == "" {
 		workspace = b.workspace
 	}

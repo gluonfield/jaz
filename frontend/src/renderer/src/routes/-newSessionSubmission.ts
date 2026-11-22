@@ -23,6 +23,7 @@ export async function submitNewSession(
   const at = new Date().toISOString()
   const session = await createSession(input)
   const appended = await appendSessionPrompt(session.id, text, options, 'initial', undefined, {
+    isCloud: session.backend === 'cloud',
     runId: session.run_id || session.id,
     modelProfileId: input.model_profile_id,
     executorTarget: input.machine_id,

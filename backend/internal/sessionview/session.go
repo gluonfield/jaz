@@ -59,7 +59,7 @@ func Canonical(session storage.Session) storage.Session {
 }
 
 func SupportsCompact(session storage.Session) bool {
-	if session.Runtime != storage.RuntimeACP {
+	if session.Backend == "cloud" || session.Runtime != storage.RuntimeACP {
 		return false
 	}
 	agent := session.ModelProvider

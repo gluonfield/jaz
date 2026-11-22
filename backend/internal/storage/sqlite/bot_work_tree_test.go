@@ -6,7 +6,6 @@ import (
 	"maps"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/pressly/goose/v3"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -57,13 +56,21 @@ func TestUpgradeGivesTheThreadsASubtaskStartedToItsBot(t *testing.T) {
 			slugs[id] = slug
 			threads[slug] = sourceType + "/" + sourceID
 		}
-		events, err := store.UsageEvents(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+		rows, err := store.db.Query(`SELECT thread_id, COALESCE(source_type, '') FROM usage_events`)
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer rows.Close()
 		usage := map[string]string{}
-		for _, event := range events {
-			usage[slugs[event.SessionID]] = event.SourceType
+		for rows.Next() {
+			var sessionID, sourceType string
+			if err := rows.Scan(&sessionID, &sourceType); err != nil {
+				t.Fatal(err)
+			}
+			usage[slugs[sessionID]] = sourceType
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
 		}
 		return threads, usage
 	}

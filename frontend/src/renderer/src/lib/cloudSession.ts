@@ -13,10 +13,11 @@ export interface ActiveCloudSession {
   error: string | null
   oidcLoginUrl: string
   capabilities: ServerCapabilities
+  lastSyncAt: string
 }
 
 // Unified view of whichever Jaz Cloud session is active — either the primary
-// backend (Cloud-only / Web) or an attached Cloud account alongside Local.
+// backend (Cloud-only / Web) or the local Go backend's connected Cloud mirror.
 export function useCloudSession(): ActiveCloudSession {
   const primary = useConnection()
   const attached = useCloudAccount()
@@ -37,6 +38,7 @@ export function useCloudSession(): ActiveCloudSession {
       error: primary.error,
       oidcLoginUrl: primary.oidcLoginUrl,
       capabilities: primary.capabilities,
+      lastSyncAt: '',
     }
   }
 
@@ -49,6 +51,7 @@ export function useCloudSession(): ActiveCloudSession {
     error: attached.error,
     oidcLoginUrl: attached.oidcLoginUrl,
     capabilities: attached.capabilities,
+    lastSyncAt: attached.lastSyncAt,
   }
 }
 

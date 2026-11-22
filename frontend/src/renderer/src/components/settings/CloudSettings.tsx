@@ -1,4 +1,4 @@
-import { ChartNoAxesColumn, Cloud, Laptop, LoaderCircle, LogIn, LogOut, Sparkles } from 'lucide-react'
+import { ChartNoAxesColumn, Cloud, Laptop, LoaderCircle, LogIn, LogOut, RefreshCw, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { SettingsCard, SettingsRow } from '@/components/settings/SettingsCard'
 import { Button } from '@/components/ui/Button'
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/toast'
 import type { CloudUser } from '@/lib/api/serverTypes'
 import { clientRuntime } from '@/lib/clientRuntime'
-import { attachCloudSignIn, signOutCloudAccount } from '@/lib/cloudAccount'
+import { attachCloudSignIn, signOutCloudAccount, syncCloudAccount } from '@/lib/cloudAccount'
 import { DEFAULT_CLOUD_URL, useCloudSession } from '@/lib/cloudSession'
 import { disconnectBackend, startCloudSignIn } from '@/lib/connection'
 import type { SettingsSection } from './sections'
@@ -20,6 +20,7 @@ export function CloudSettings({
   const toast = useToast()
   const [url, setUrl] = useState(() => cloud.url || clientRuntime.cloudUrl || DEFAULT_CLOUD_URL)
   const [busy, setBusy] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [awaitingBrowser, setAwaitingBrowser] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -54,6 +55,21 @@ export function CloudSettings({
       setFormError(error instanceof Error ? error.message : 'Could not start Jaz Cloud sign-in')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const handleSync = async () => {
+    setSyncing(true)
+    setFormError(null)
+    try {
+      const err = await syncCloudAccount()
+      if (err) {
+        setFormError(err)
+      } else {
+        toast('Synced Jaz Cloud')
+      }
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -103,9 +119,23 @@ export function CloudSettings({
 
             <SettingsRow
               title="Cloud server"
-              description={cloud.source === 'attached' ? 'Active alongside This computer.' : 'Primary workspace server.'}
+              description={
+                cloud.source === 'attached'
+                  ? cloud.lastSyncAt
+                    ? `Local SQLite mirror synced ${new Date(cloud.lastSyncAt).toLocaleTimeString()}.`
+                    : 'Mirrored to local SQLite alongside This computer.'
+                  : 'Primary workspace server.'
+              }
             >
-              <span className="font-mono text-[12px] text-ink-2 select-all">{cloud.url}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[12px] text-ink-2 select-all">{cloud.url}</span>
+                {cloud.source === 'attached' ? (
+                  <Button size="sm" variant="ghost" disabled={syncing || busy} onClick={() => void handleSync()}>
+                    <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
+                    Sync
+                  </Button>
+                ) : null}
+              </div>
             </SettingsRow>
 
             <SettingsRow

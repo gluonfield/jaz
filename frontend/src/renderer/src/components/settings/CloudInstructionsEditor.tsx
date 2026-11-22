@@ -34,10 +34,12 @@ const SCOPE_OPTIONS: { value: InstructionScope; label: string }[] = [
 ]
 
 const KIND_DESCRIPTIONS: Record<InstructionKind, string> = {
-  agents: 'Standing instructions applied across matching threads.',
-  soul: 'Assistant personality, tone, and working values.',
+  agents: 'Standing instructions injected from Cloud DB into both local and cloud turns.',
+  soul: 'Assistant personality, tone, and working values injected from Cloud DB.',
   bots: 'Coordination and delegation rules for bot threads.',
   memory: 'Durable working memory for this bot.',
+  short_term: 'Active short-term horizon injected from Cloud DB (keep under 5,000 characters).',
+  long_term: 'Long-term identity and preferences horizon injected from Cloud DB.',
 }
 
 interface SaveVariables {

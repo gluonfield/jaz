@@ -1,5 +1,15 @@
 package server
 
+import (
+	"errors"
+	"fmt"
+	"net/http"
+
+	"github.com/wins/jaz/backend/internal/cloudsync"
+	"github.com/wins/jaz/backend/internal/sessionview"
+	"github.com/wins/jaz/backend/internal/storage"
+)
+
 func knownSessionAction(action string) bool {
 	switch action {
 	case "messages:stream",
@@ -25,4 +35,33 @@ func knownSessionAction(action string) bool {
 	default:
 		return false
 	}
+}
+
+func (s *Server) handleCloudSessionAction(w http.ResponseWriter, r *http.Request, session storage.Session, action string) {
+	var patch storage.CloudThreadUserStatePatch
+	switch action {
+	case "archive", "unarchive":
+		v := action == "archive"
+		patch.Archived = &v
+	case "pin", "unpin":
+		v := action == "pin"
+		patch.Pinned = &v
+	case "seen":
+		v := false
+		patch.Unread = &v
+	default:
+		writeError(w, http.StatusNotFound, fmt.Errorf("action %q is not supported for cloud threads", action))
+		return
+	}
+	updated, _, err := s.Cloud.UpdateUserState(r.Context(), session.ID, patch)
+	if err != nil {
+		var uerr *cloudsync.UpstreamError
+		if errors.As(err, &uerr) {
+			writeError(w, uerr.StatusCode, uerr)
+			return
+		}
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, sessionview.Public(updated))
 }

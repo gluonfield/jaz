@@ -1,12 +1,11 @@
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { apiWebSocketUrl, apiWebSocketProtocols } from '@/lib/api/client'
-import { isCloudThread } from '@/lib/api/cloudClient'
+import { apiWebSocketUrl, apiWebSocketProtocols, isCloudApiSession } from '@/lib/api/client'
 import { computerSettingsQuery } from '@/lib/api/settings'
 import { connectComputer } from '@/lib/computerConnection'
 
 export function useComputerControl(sessionId: string, enabled = true): void {
-  const active = enabled && !isCloudThread(sessionId)
+  const active = enabled && !isCloudApiSession()
   const settings = useQuery({ ...computerSettingsQuery, enabled: active })
   useEffect(() => {
     const host = window.jaz?.computer

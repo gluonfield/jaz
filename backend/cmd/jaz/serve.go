@@ -20,6 +20,7 @@ import (
 	"github.com/wins/jaz/backend/internal/app"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	configloader "github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/connections"
@@ -85,6 +86,7 @@ func serveOptions(args []string) []fx.Option {
 			app.NewACPAgentCatalog,
 			app.NewRuntimeLayout,
 			app.NewStore,
+			cloudsync.New,
 			app.NewRuntimeAuthKey,
 			app.NewWorkspace,
 			app.NewMemory,
@@ -156,6 +158,7 @@ func serveOptions(args []string) []fx.Option {
 			app.StartGmailSync,
 			app.StartModelCatalogWarmup,
 			app.DeclareMCPServers,
+			app.StartCloudSync,
 			startServer,
 		),
 	}
@@ -244,6 +247,7 @@ func startServer(
 	a *agent.Agent,
 	layout runtimefiles.Layout,
 	store *sqlitestore.Store,
+	cloud *cloudsync.Service,
 	manager *acp.Manager,
 	adapters *acpadapter.Manager,
 	managedTools *managedtool.Manager,
@@ -281,6 +285,7 @@ func startServer(
 	handler := &server.Server{
 		Agent:                 a,
 		Store:                 store,
+		Cloud:                 cloud,
 		Routes:                routes,
 		PublicRoutes:          publicRoutes,
 		ACP:                   manager,

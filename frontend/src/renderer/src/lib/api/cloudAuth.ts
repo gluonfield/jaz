@@ -4,10 +4,10 @@ import type { ResourceTicket } from '@shared/connectionSession'
 import {
   CLIENT_PLATFORM,
   CLIENT_PLATFORM_HEADER,
+  get as cloudGet,
   normalizeBaseUrl,
   secureBackendConnection,
 } from './client'
-import { cloudGet } from './cloudClient'
 import type { CloudUser } from './serverTypes'
 
 export const PENDING_OIDC_STORAGE_KEY = 'jaz.oidc.pending'

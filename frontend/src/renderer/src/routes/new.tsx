@@ -1,6 +1,6 @@
 import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
-import { Cloud, Laptop, Lock, Users } from 'lucide-react'
+import { Lock, Users } from 'lucide-react'
 import { ExecutionLocationPicker, type ExecutionLocation } from '@/components/home/ExecutionLocationPicker'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { NewThreadOptions } from '@/components/home/NewThreadOptions'
@@ -101,7 +101,7 @@ function NewSessionPage() {
 
   const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !isPrimaryCloud && !targetIsCloud }).data
   const spaces = useQuery({ ...spacesQuery, enabled: targetIsCloud && cloud.active })
-  const machines = useQuery({ ...machinesQuery, enabled: targetIsCloud && cloud.active })
+  const machines = useQuery({ ...machinesQuery, enabled: cloud.active })
   const onlineMachines = (machines.data ?? []).filter((machine) => machine.online)
   const controls = useNewThreadControls(effectiveLocation)
   const incomingPrompt = useLocation({ select: (loc) => loc.state.newThreadPrompt })
@@ -277,10 +277,13 @@ function NewSessionPage() {
     <>
       <ExecutionLocationPicker
         location={effectiveLocation}
+        machineId={machineId}
+        machines={onlineMachines}
         lockedCloud={isPrimaryCloud}
         placement={controlPlacement}
         disabled={creating}
         onChange={selectLocation}
+        onSelectMachine={setMachineId}
         onConnectCloud={openCloudSettings}
       />
       {targetIsCloud ? (
@@ -302,25 +305,6 @@ function NewSessionPage() {
               ))}
             </select>
           </label>
-          {onlineMachines.length > 0 ? (
-            <label className="inline-flex h-7 items-center gap-1.5 rounded-full bg-surface px-2.5 text-[12px] text-ink-2">
-              {machineId ? <Laptop size={12} className="text-primary" /> : <Cloud size={12} className="text-ink-3" />}
-              <select
-                aria-label="Execution target"
-                value={machineId}
-                disabled={creating}
-                onChange={(event) => setMachineId(event.target.value)}
-                className="cursor-pointer bg-transparent font-medium text-ink outline-none"
-              >
-                <option value="">Cloud Sandbox</option>
-                {onlineMachines.map((machine) => (
-                  <option key={machine.device_id} value={machine.device_id}>
-                    {machine.display_name || machine.device_id}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
           <span className="flex-1" />
         </>
       ) : (

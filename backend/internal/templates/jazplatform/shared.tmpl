@@ -150,6 +150,18 @@ Use the available memory search tool first. `memory_page` entries are directly r
 {{ define "memory" }}{{ if . }}
 
 ## memory
+{{- if .CloudDB }}
+
+Standing memory horizons (`long_term` and `short_term`) are stored in Jaz Cloud rather than local `LONG_TERM.md` / `SHORT_TERM.md` files. Use MCP memory tools (`memory_search` / `memory_get_page`) for detailed recall, and `instruction_get` / `instruction_update` (scope `user`, kind `short_term`) to maintain `short_term` at or below 5,000 characters (current size: {{ .ShortTermCharacters }}/5,000 characters). Never edit `long_term` directly.
+
+## memory/LONG_TERM
+
+{{ .LongTerm }}
+
+## memory/SHORT_TERM
+
+{{ .ShortTerm }}
+{{- else }}
 
 Jaz has persistent markdown memory (jazmem) at {{ .Root }}. The memory/* sections below are broad context from the user's past behavior, preferences, goals, and decisions. They are not the current task or task-specific evidence; apply standing preferences when relevant, but do not let incidental details bias unrelated work.
 
@@ -170,5 +182,6 @@ Jaz has persistent markdown memory (jazmem) at {{ .Root }}. The memory/* section
 ## memory/{{ .TodayName }}
 
 {{ .Today }}
+{{- end }}
 {{- end }}
 {{- end }}{{ end }}

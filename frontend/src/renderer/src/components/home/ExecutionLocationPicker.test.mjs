@@ -52,7 +52,7 @@ function loadPicker(cloudState, { forcePopoverOpen = false } = {}) {
   return mod.exports.ExecutionLocationPicker
 }
 
-test('ExecutionLocationPicker renders This computer, Cloud (connected org vs Sign in…), and locked Cloud-only mode', () => {
+test('ExecutionLocationPicker renders Local (This Mac), Cloud (connected org vs Sign in…), online Connected machines, and locked Cloud-only mode', () => {
   const disconnectedCloud = {
     active: false,
     source: null,
@@ -62,6 +62,7 @@ test('ExecutionLocationPicker renders This computer, Cloud (connected org vs Sig
     error: null,
     oidcLoginUrl: '',
     capabilities: {},
+    lastSyncAt: '',
   }
   const DisconnectedPicker = loadPicker(disconnectedCloud, { forcePopoverOpen: true })
   const disconnectedHtml = renderToStaticMarkup(
@@ -72,7 +73,7 @@ test('ExecutionLocationPicker renders This computer, Cloud (connected org vs Sig
       onConnectCloud: () => {},
     }),
   )
-  expect(disconnectedHtml).toContain('This computer')
+  expect(disconnectedHtml).toContain('Local (This Mac)')
   expect(disconnectedHtml).toContain('Work in')
   expect(disconnectedHtml).toContain('Sign in…')
 
@@ -85,18 +86,23 @@ test('ExecutionLocationPicker renders This computer, Cloud (connected org vs Sig
     error: null,
     oidcLoginUrl: '/v1/auth/login',
     capabilities: { spaces: true },
+    lastSyncAt: '',
   }
   const ConnectedPicker = loadPicker(connectedCloud, { forcePopoverOpen: true })
   const connectedHtml = renderToStaticMarkup(
     React.createElement(ConnectedPicker, {
       location: 'cloud',
+      machines: [{ device_id: 'mac-1', display_name: 'MacBook Pro', platform: 'darwin', online: true }],
       lockedCloud: false,
       onChange: () => {},
+      onSelectMachine: () => {},
       onConnectCloud: () => {},
     }),
   )
   expect(connectedHtml).toContain('aria-label="Work in: Cloud"')
   expect(connectedHtml).toContain('Acme Org')
+  expect(connectedHtml).toContain('MacBook Pro')
+  expect(connectedHtml).toContain('Connected machine')
   expect(connectedHtml).not.toContain('Sign in…')
 
   const lockedHtml = renderToStaticMarkup(

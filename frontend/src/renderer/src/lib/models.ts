@@ -1,6 +1,6 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
 import { get } from './api/client'
-import { isCloudThread } from './api/cloudClient'
+import { isCloudApiSession } from './api/client'
 import { agentSettingsQuery } from './api/settings'
 import { keys } from '@/lib/query/keys'
 import type { AgentSettings, ModelCatalogEntry, Session } from './api/types'
@@ -104,7 +104,7 @@ export function useContextWindow(session: Session): number | null {
         (usage.cached_write_tokens ?? 0) > 0 ||
         (usage.context_tokens ?? 0) > 0),
   )
-  const isCloud = session.backend === 'cloud' || isCloudThread(session.id)
+  const isCloud = session.backend === 'cloud' || isCloudApiSession()
   const agent = session.runtime_ref?.agent
   const settings = useQuery({ ...agentSettingsQuery, enabled: !isCloud })
   const wantsOpenRouter =

@@ -24,7 +24,6 @@ const bundle = await build({
           `export * from ${JSON.stringify(new URL('./sessions.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./sse.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./client.ts', import.meta.url).pathname)}`,
-          `export * from ${JSON.stringify(new URL('./cloudClient.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('../sessionPrompt.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('../cloudMachineConfig.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('../connectionProbe.ts', import.meta.url).pathname)}`,
@@ -369,7 +368,7 @@ test('Spaces, Thread User State, Instructions body_md + 409 conflict, RBAC, and 
     ticket: { token: 'rt_me_1', expires_at: '2099-01-01T00:00:00Z' },
   })
 
-  expect(api.INSTRUCTION_SCOPE_KINDS.user).toEqual(['agents', 'soul'])
+  expect(api.INSTRUCTION_SCOPE_KINDS.user).toEqual(['agents', 'soul', 'short_term', 'long_term'])
   expect(api.canEditCloudInstruction({ id: 'u', org_id: 'o', email: 'v@x', display_name: 'V', role: 'viewer' }, 'user')).toBe(false)
   expect(api.canEditCloudInstruction({ id: 'u', org_id: 'o', email: 'm@x', display_name: 'M', role: 'member' }, 'org')).toBe(false)
   expect(api.canEditCloudInstruction({ id: 'u', org_id: 'o', email: 'm@x', display_name: 'M', role: 'member' }, 'bot')).toBe(false)
@@ -684,77 +683,48 @@ test('Vertex AI defaults include Gemini 4 Hydrogen, Neon, Carbon and Gemini 3 mo
   ])
 })
 
-test('Option A mixed mode: Local primary + attached Cloud routes per thread, merges sidebar, and survives Cloud outage', async () => {
+test('Desktop unified single-origin mode: all session, turn, pin, and sidebar calls go strictly to local Go backend', async () => {
   const { api } = fixture()
-  // Reset primary to Local and attach Cloud alongside it.
   api.setApiBaseUrl('http://127.0.0.1:5299')
   api.setApiServerMode('local')
   api.setApiAuthToken('http://127.0.0.1:5299', 'local-token')
-  api.clearCloudThreads()
-  api.setAttachedCloudSession({
-    baseUrl: 'https://cloud.jaz.example',
-    token: 'cloud-attached-token',
-    ticket: { token: 'rt_attached', expires_at: '2099-01-01T00:00:00Z' },
-    user: { id: 'u1', org_id: 'org_1', org_name: 'CAS', email: 'dev@cas.example', display_name: 'Dev', role: 'admin' },
-  })
 
-  let cloudDown = false
   const calls = []
   replace('fetch', async (url, init) => {
     const parsed = new URL(String(url))
     const method = init?.method || 'GET'
     calls.push({ origin: parsed.origin, method, path: parsed.pathname, auth: new Headers(init?.headers).get('Authorization') })
+    expect(parsed.origin).toBe('http://127.0.0.1:5299')
 
-    if (parsed.origin === 'http://127.0.0.1:5299') {
-      if (parsed.pathname === '/v1/sessions' && method === 'POST') {
-        return Response.json({ id: 'loc_1', slug: 'loc_1', title: 'Local work', status: 'idle', runtime: 'acp', created_at: '2026-11-22T10:00:00Z', updated_at: '2026-11-22T10:00:00Z', last_attention_at: '2026-11-22T10:00:00Z' })
+    if (parsed.pathname === '/v1/sessions' && method === 'POST') {
+      const body = JSON.parse(String(init.body))
+      if (body.model_profile_id) {
+        return Response.json({ id: 'thr_cloud_1', slug: 'thr_cloud_1', run_id: 'run_cloud_1', backend: 'cloud', visibility: 'private', title: 'Cloud Hydrogen', status: 'idle', runtime: 'acp', created_at: '2026-11-22T12:10:00Z', updated_at: '2026-11-22T12:10:00Z', last_attention_at: '2026-11-22T12:10:00Z' })
       }
-      if (parsed.pathname === '/v1/sessions' && method === 'GET') {
-        return Response.json({
-          sessions: [{ id: 'loc_1', slug: 'loc_1', title: 'Local work', status: 'idle', runtime: 'acp', created_at: '2026-11-22T10:00:00Z', updated_at: '2026-11-22T12:00:00Z', last_attention_at: '2026-11-22T12:00:00Z' }],
-        })
-      }
-      if (parsed.pathname === '/v1/sessions/loc_1/queue' && method === 'POST') {
-        return Response.json({ id: 'loc_1' })
-      }
-      if (parsed.pathname === '/v1/sessions/thr_deep_link') {
-        return Response.json({ error: 'not found' }, { status: 404 })
-      }
-      throw new Error(`Unexpected local ${method} ${parsed.pathname}`)
+      return Response.json({ id: 'loc_1', slug: 'loc_1', title: 'Local work', status: 'idle', runtime: 'acp', created_at: '2026-11-22T10:00:00Z', updated_at: '2026-11-22T10:00:00Z', last_attention_at: '2026-11-22T10:00:00Z' })
     }
-
-    if (parsed.origin === 'https://cloud.jaz.example') {
-      if (cloudDown) return Response.json({ error: 'unavailable' }, { status: 503 })
-      if (parsed.pathname === '/v1/threads' && method === 'POST') {
-        return Response.json({ id: 'thr_cloud_1', run_id: 'run_cloud_1', visibility: 'private', title: 'Cloud Hydrogen', status: 'idle', updated_at: '2026-11-22T12:10:00Z' })
-      }
-      if (parsed.pathname === '/v1/threads' && method === 'GET') {
-        return Response.json({
-          threads: [{ id: 'thr_cloud_1', run_id: 'run_cloud_1', visibility: 'private', title: 'Cloud Hydrogen', status: 'idle', updated_at: '2026-11-22T12:10:00Z' }],
-        })
-      }
-      if (parsed.pathname === '/v1/threads/thr_cloud_1/turns' && method === 'POST') {
-        return Response.json({ turn: { id: 'trn_c1', thread_id: 'thr_cloud_1', status: 'queued' }, replayed: false })
-      }
-      if (parsed.pathname === '/v1/threads/thr_cloud_1/user-state' && method === 'PUT') {
-        return Response.json({ ok: true, thread_id: 'thr_cloud_1', pinned: true })
-      }
-      if (parsed.pathname === '/v1/threads/thr_cloud_1' && method === 'GET') {
-        return Response.json({ id: 'thr_cloud_1', run_id: 'run_cloud_1', visibility: 'private', title: 'Cloud Hydrogen', status: 'idle', updated_at: '2026-11-22T12:10:00Z' })
-      }
-      if (parsed.pathname === '/v1/threads/thr_deep_link' && method === 'GET') {
-        return Response.json({ id: 'thr_deep_link', run_id: 'run_dl', visibility: 'private', title: 'Deep Linked', status: 'idle', updated_at: '2026-11-22T11:00:00Z' })
-      }
-      throw new Error(`Unexpected cloud ${method} ${parsed.pathname}`)
+    if (parsed.pathname === '/v1/sessions' && method === 'GET') {
+      return Response.json({
+        sessions: [
+          { id: 'thr_cloud_1', slug: 'thr_cloud_1', backend: 'cloud', title: 'Cloud Hydrogen', status: 'idle', runtime: 'acp', created_at: '2026-11-22T12:10:00Z', updated_at: '2026-11-22T12:10:00Z', last_attention_at: '2026-11-22T12:10:00Z' },
+          { id: 'loc_1', slug: 'loc_1', title: 'Local work', status: 'idle', runtime: 'acp', created_at: '2026-11-22T10:00:00Z', updated_at: '2026-11-22T12:00:00Z', last_attention_at: '2026-11-22T12:00:00Z' },
+        ],
+      })
     }
-
-    throw new Error(`Unexpected origin ${parsed.origin}`)
+    if (parsed.pathname === '/v1/sessions/loc_1/queue' && method === 'POST') {
+      return Response.json({ id: 'loc_1' })
+    }
+    if (parsed.pathname === '/v1/threads/thr_cloud_1/turns' && method === 'POST') {
+      return Response.json({ turn: { id: 'trn_c1', thread_id: 'thr_cloud_1', status: 'queued' }, replayed: false })
+    }
+    if (parsed.pathname === '/v1/sessions/thr_cloud_1/pin' && method === 'POST') {
+      return Response.json({ id: 'thr_cloud_1', slug: 'thr_cloud_1', backend: 'cloud', pinned: true, status: 'idle', runtime: 'acp', created_at: '2026-11-22T12:10:00Z', updated_at: '2026-11-22T12:10:00Z', last_attention_at: '2026-11-22T12:10:00Z' })
+    }
+    throw new Error(`Unexpected local ${method} ${parsed.pathname}`)
   })
 
-  // Create Local thread -> Local backend; Create Cloud thread (with model_profile_id) -> Cloud backend.
   const localCreated = await api.createSession({ title: 'Local work', directory: '/repo' })
   expect(localCreated.id).toBe('loc_1')
-  expect(api.isCloudThread('loc_1')).toBe(false)
 
   const cloudCreated = await api.createSession({
     title: 'Cloud Hydrogen',
@@ -763,38 +733,20 @@ test('Option A mixed mode: Local primary + attached Cloud routes per thread, mer
   })
   expect(cloudCreated.id).toBe('thr_cloud_1')
   expect(cloudCreated.backend).toBe('cloud')
-  expect(api.isCloudThread('thr_cloud_1')).toBe(true)
-  expect(api.apiBaseUrl()).toBe('http://127.0.0.1:5299')
 
-  // Prompts route per-thread: Local -> /v1/sessions/loc_1/queue, Cloud -> /v1/threads/thr_cloud_1/turns.
   await api.appendSessionPrompt('loc_1', 'hello local', {}, 'initial')
   await api.appendSessionPrompt('thr_cloud_1', 'hello cloud', {}, 'initial', undefined, {
+    isCloud: true,
     runId: 'run_cloud_1',
     modelProfileId: 'vertex-prod',
   })
-  await api.setSessionPinned('thr_cloud_1', true)
+  const pinned = await api.setSessionPinned('thr_cloud_1', true)
+  expect(pinned.pinned).toBe(true)
 
-  // Sidebar merges Local + Cloud newest first.
-  const merged = await api.sidebarSessionsQuery.queryFn({ signal: new AbortController().signal })
-  expect(merged.map((s) => [s.id, s.backend ?? 'local'])).toEqual([
+  const sidebar = await api.sidebarSessionsQuery.queryFn({ signal: new AbortController().signal })
+  expect(sidebar.map((s) => [s.id, s.backend ?? 'local'])).toEqual([
     ['thr_cloud_1', 'cloud'],
     ['loc_1', 'local'],
   ])
-
-  // Transient Cloud outage never breaks Local sidebar.
-  cloudDown = true
-  const degraded = await api.sidebarSessionsQuery.queryFn({ signal: new AbortController().signal })
-  expect(degraded.map((s) => s.id)).toEqual(['loc_1'])
-
-  // Cold deep link to an unregistered Cloud thread falls back from Local 404 to Cloud and registers it.
-  cloudDown = false
-  expect(api.isCloudThread('thr_deep_link')).toBe(false)
-  const deepLinked = await api.getSession('thr_deep_link')
-  expect(deepLinked.id).toBe('thr_deep_link')
-  expect(deepLinked.backend).toBe('cloud')
-  expect(api.isCloudThread('thr_deep_link')).toBe(true)
-
-  // Verify strict auth separation between Local and Cloud calls.
-  expect(calls.filter((c) => c.origin === 'http://127.0.0.1:5299').every((c) => c.auth === 'Bearer local-token')).toBe(true)
-  expect(calls.filter((c) => c.origin === 'https://cloud.jaz.example').every((c) => c.auth === 'Bearer cloud-attached-token')).toBe(true)
+  expect(calls.every((c) => c.origin === 'http://127.0.0.1:5299' && c.auth === 'Bearer local-token')).toBe(true)
 })

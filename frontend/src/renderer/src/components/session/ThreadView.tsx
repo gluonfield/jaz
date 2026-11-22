@@ -45,7 +45,7 @@ import { HorizontalResizeHandle } from '@/components/ui/HorizontalResizeHandle'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
-import { isCloudThread } from '@/lib/api/cloudClient'
+import { isCloudApiSession } from '@/lib/api/client'
 import { uploadCloudFile } from '@/lib/api/cloudUploads'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
@@ -170,7 +170,7 @@ export function ThreadView({
     toast(`Couldn't load earlier history: ${message}`, 'danger')
   }, [toast])
   const detail = useSessionHistory(sessionId, reportHistoryError)
-  const isCloudThreadView = detail.data?.session.backend === 'cloud' || isCloudThread(sessionId)
+  const isCloudThreadView = detail.data?.session.backend === 'cloud' || isCloudApiSession()
   useComputerControl(sessionId, !isCloudThreadView)
   const voice = useVoiceMode(sessionId)
   const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !isCloudThreadView }).data

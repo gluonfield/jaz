@@ -14,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/gitinfo"
 	repoapi "github.com/wins/jaz/backend/internal/httpapi/repo"
@@ -89,9 +90,17 @@ type ManagedToolStatusReader interface {
 	Prepare(context.Context, string, map[string]string) error
 }
 
+type CloudBridge interface {
+	GetSession(context.Context, string) (storage.Session, bool, error)
+	CreateThread(context.Context, cloudsync.CreateThreadRequest) (storage.Session, error)
+	StreamEvents(context.Context, string, int64, func(sessionevents.Event)) error
+	UpdateUserState(context.Context, string, storage.CloudThreadUserStatePatch) (storage.Session, json.RawMessage, error)
+}
+
 type Server struct {
 	Agent                *agent.Agent
 	Store                storage.Store
+	Cloud                CloudBridge
 	Routes               Routes
 	PublicRoutes         PublicRoutes
 	ACP                  ACPManager
@@ -261,6 +270,21 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	session, err := s.Store.LoadSession(sessionRef)
 	if err != nil {
+		if s.Cloud != nil {
+			cloudSession, found, cloudErr := s.Cloud.GetSession(r.Context(), sessionRef)
+			if cloudErr == nil && found {
+				if !hasAction {
+					writeJSON(w, http.StatusOK, sessionview.Public(cloudSession))
+					return
+				}
+				if action == "events" {
+					s.streamCloudSessionEvents(w, r, cloudSession.ID)
+					return
+				}
+				writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
+				return
+			}
+		}
 		writeError(w, http.StatusNotFound, err)
 		return
 	}
@@ -307,6 +331,13 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	}
 	session, err := s.Store.LoadSession(sessionRef)
 	if err != nil {
+		if s.Cloud != nil {
+			cloudSession, found, cloudErr := s.Cloud.GetSession(r.Context(), sessionRef)
+			if cloudErr == nil && found {
+				s.handleCloudSessionAction(w, r, cloudSession, action)
+				return
+			}
+		}
 		writeError(w, http.StatusNotFound, err)
 		return
 	}

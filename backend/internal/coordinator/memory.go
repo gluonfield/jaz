@@ -1,13 +1,42 @@
 package coordinator
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/templates/jazplatform"
 )
+
+func cloudMemoryData(ctx context.Context, store instructions.Store, cloud *CloudScope) (*jazplatform.MemoryData, error) {
+	longTerm, err := readInstruction(ctx, store, instructions.Key{
+		OrgID:   cloud.OrgID,
+		Scope:   instructions.ScopeUser,
+		ScopeID: cloud.UserID,
+		Kind:    instructions.KindLongTerm,
+	})
+	if err != nil {
+		return nil, err
+	}
+	shortTerm, err := readInstruction(ctx, store, instructions.Key{
+		OrgID:   cloud.OrgID,
+		Scope:   instructions.ScopeUser,
+		ScopeID: cloud.UserID,
+		Kind:    instructions.KindShortTerm,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &jazplatform.MemoryData{
+		CloudDB:             true,
+		LongTerm:            orEmpty(longTerm),
+		ShortTerm:           orEmpty(shortTerm),
+		ShortTermCharacters: utf8.RuneCountInString(shortTerm),
+	}, nil
+}
 
 // memoryData loads the jazmem horizons injected into every turn. The memory
 // protocol text lives in jazplatform.tmpl next to the rendered block. The

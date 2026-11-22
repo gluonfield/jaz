@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
 import { keys } from '@/lib/query/keys'
-import { cloudGet } from './cloudClient'
+import { get as cloudGet } from './client'
 
 export interface CloudUsageSummary {
   month_start: string
