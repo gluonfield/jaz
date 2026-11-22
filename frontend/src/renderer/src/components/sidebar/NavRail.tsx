@@ -9,6 +9,7 @@ import type { SettingsSection } from '@/components/settings/sections'
 import { botsQuery } from '@/lib/api/bots'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { pluginsQuery } from '@/lib/api/plugins'
+import { useIsCloud } from '@/lib/connection'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
@@ -38,7 +39,8 @@ export function railTab(pathname: string, settingsOpen: boolean): RailTab {
 // Everything beside Chat takes the whole content card: the built-in sections,
 // then each sidebar app a connected MCP server declares.
 export function useRailSections() {
-  const apps = (useQuery(mcpEntrypointsQuery).data ?? []).filter((entry) => entry.type === 'global')
+  const isCloud = useIsCloud()
+  const apps = (useQuery({ ...mcpEntrypointsQuery, enabled: !isCloud }).data ?? []).filter((entry) => entry.type === 'global')
   const plugins = useQuery(pluginsQuery).data ?? []
   return [
     ...SECTIONS.map(({ to, label, Icon }) => ({ path: to, label, icon: <Icon aria-hidden />, link: linkOptions({ to }) })),

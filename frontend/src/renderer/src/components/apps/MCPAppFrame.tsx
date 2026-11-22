@@ -6,6 +6,7 @@ import { use, useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 import { z } from 'zod'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { callMCPAppTool, deepLinkTarget, entrypointKey, mcpAppQuery, mcpEntrypointsQuery } from '@/lib/api/mcp'
+import { useIsCloud } from '@/lib/connection'
 import type { MCPAppEvent, MCPEntrypoint } from '@/lib/api/types'
 import { serveFile, type OpenedFile } from '@/lib/mcpAppFiles'
 import { mcpAppHostContext } from '@/lib/mcpAppHost'
@@ -25,7 +26,8 @@ function viewText(content: { type: string; text?: string }[] = []): string {
 // section is instant and finds the app as the user left it; only the active
 // one is visible, and a deep link's path or a new call's input reaches it.
 export function MCPApps() {
-  const entrypoints = useQuery(mcpEntrypointsQuery).data ?? []
+  const isCloud = useIsCloud()
+  const entrypoints = useQuery({ ...mcpEntrypointsQuery, enabled: !isCloud }).data ?? []
   const { pathname, search: { path, input, settings } } = useRouterState({ select: (state) => state.location })
   const navigate = useNavigate()
   return entrypoints

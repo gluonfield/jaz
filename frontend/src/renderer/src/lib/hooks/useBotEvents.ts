@@ -44,8 +44,8 @@ function openBotEvents(client: QueryClient): () => void {
 
 export function useBotEvents() {
   const client = useQueryClient()
-  const { url, status } = useConnection()
-  const connected = status === 'connected' || status === 'reconnecting'
+  const { url, status, mode } = useConnection()
+  const connected = (status === 'connected' || status === 'reconnecting') && mode !== 'cloud'
   useEffect(() => {
     if (connected) {
       return openBotEvents(client)

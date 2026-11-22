@@ -10,7 +10,7 @@ import { completeOnboarding, onboardingQuery, onboardingStateQuery } from '@/lib
 import { cloneAgentSettings, compactKeys } from '@/lib/agentSettings'
 import { prepareACPAgent, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, AgentSettings, OnboardingStatus } from '@/lib/api/types'
-import { disconnectBackend, isLocalBackendUrl, useConnection } from '@/lib/connection'
+import { disconnectBackend, isLocalBackendUrl, useConnection, useIsCloud } from '@/lib/connection'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { devPreview } from '@/lib/devPreview'
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
@@ -48,15 +48,17 @@ function savedStep(): OnboardingStep {
 const onboardingPreview = devPreview('onboarding') !== null
 
 export function OnboardingGate({ children }: { children: ReactNode }) {
+  const isCloud = useIsCloud()
   const [preview, setPreview] = useState(onboardingPreview)
-  const state = useQuery({ ...onboardingStateQuery, enabled: !preview })
-  const loadFull = preview || state.data?.completed === false || state.isError
+  const skipOnboarding = clientRuntime.windowKind === 'board' || isCloud
+  const state = useQuery({ ...onboardingStateQuery, enabled: !preview && !skipOnboarding })
+  const loadFull = !skipOnboarding && (preview || state.data?.completed === false || state.isError)
   const onboarding = useQuery({ ...onboardingQuery, enabled: loadFull })
   // The preview pin is one-shot: finishing the flow releases it so "Launch
   // jaz" hands over to the app exactly like a real first run.
   const completed = !preview && (state.data?.completed === true || onboarding.data?.completed === true)
 
-  if (clientRuntime.windowKind === 'board') return <>{children}</>
+  if (skipOnboarding) return <>{children}</>
   if (completed) return <>{children}</>
   // One shell across loading → content, so the terrain and titlebar never
   // remount (a remount replays the boot art and reads as a blink).

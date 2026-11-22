@@ -11,8 +11,8 @@ export function DesktopNotifications() {
 
   useEffect(() => {
     if (!configure || !ownsConnection) return
-    const { status, url } = connection
-    void configure(mode !== 'off' && (status === 'connected' || status === 'reconnecting')
+    const { status, url, mode: serverMode } = connection
+    void configure(mode !== 'off' && serverMode !== 'cloud' && (status === 'connected' || status === 'reconnecting')
       ? { mode, baseUrl: url, token: cachedApiAuthToken(url) }
       : { mode: 'off' })
   }, [configure, mode, connection])
