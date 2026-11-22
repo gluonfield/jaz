@@ -75,3 +75,38 @@ func TestRestartPreservesEffortOwnership(t *testing.T) {
 		})
 	}
 }
+
+func TestRestartKeepsTheLevelAnAntigravityModelWasPickedWith(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{
+		"JAZ_FAKE_ACP_SESSION_OPTIONS":  `[{"id":"model","name":"Model","category":"model","type":"select","currentValue":"carbon","options":[{"value":"carbon","name":"Carbon"},{"value":"neon","name":"Neon"}]},{"id":"thought_level","name":"Thinking","category":"thought_level","type":"select","currentValue":"medium","options":[{"value":"medium","name":"Medium"},{"value":"xhigh","name":"XHigh"}]}]`,
+		"JAZ_FAKE_ACP_SET_CONFIG":       "1",
+		"JAZ_FAKE_ACP_MODEL_LEVELS":     "1",
+		"JAZ_FAKE_ACP_EXPECT_CONFIG_ID": "thought_level",
+	}
+	manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), acp.AgentAntigravity, env, "neon-xhigh", "")
+	t.Cleanup(manager.Close)
+	spawned, err := manager.Spawn(t.Context(), acp.SpawnRequest{ACPAgent: acp.AgentAntigravity, Slug: "antigravity-level"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		manager = restartNamedProcessTestManager(t, manager, store, acp.AgentAntigravity, env)
+		if _, err := manager.Send(context.Background(), acp.SendRequest{Session: spawned.SessionID, Message: "continue", Completion: acp.CompletionInline}); err != nil {
+			t.Fatal(err)
+		}
+		if job, err := manager.Wait(t.Context(), acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
+			t.Fatalf("resumed turn = %#v, %v", job, err)
+		}
+		saved, err := store.LoadSession(spawned.SessionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if saved.Model != "neon" || saved.ReasoningEffort != "xhigh" {
+			t.Fatalf("resumed on %s/%s, want neon/xhigh", saved.Model, saved.ReasoningEffort)
+		}
+	}
+}

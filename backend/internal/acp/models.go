@@ -66,7 +66,8 @@ type agentPolicy struct {
 	modelConfigID           string
 	modelMetaKey            string
 	effortConfigID          string
-	effortInModelSuffix     bool
+	effortInModelSuffix     bool // ids such as "gpt-6-luna/high", whose effort Jaz reads
+	modelIDCarriesEffort    bool // ids such as "gemini-4-neon-xhigh", whose effort only the agent's options tell apart
 	providerInLaunch        bool
 	modelConfiguredAtLaunch bool
 	systemPromptAtLaunch    bool
@@ -162,7 +163,8 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 		}
 	case AgentAntigravity:
 		return agentPolicy{
-			modelConfigID: sessionConfigModel,
+			modelConfigID:        sessionConfigModel,
+			modelIDCarriesEffort: true,
 		}
 	case AgentMuse:
 		return agentPolicy{

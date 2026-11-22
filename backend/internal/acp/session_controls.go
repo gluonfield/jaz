@@ -230,19 +230,34 @@ func restoreConfiguredChoices(cfg *AgentConfig, events []sessionevents.Event) {
 	}
 }
 
+// rememberConfiguredChoices marks the options the thread's configured model and
+// effort set as the user's, so a resume applies them again.
 func rememberConfiguredChoices(job *jobState, cfg AgentConfig) {
 	policy := agentPolicyForAgent(job.ACPAgent)
 	choices := map[string]string{"model": policy.sessionConfigModel(cfg), "thought_level": policy.sessionConfigEffort(cfg.ReasoningEffort)}
 	job.mu.Lock()
 	defer job.mu.Unlock()
 	job.agentSession.ConfigOptions = slices.Clone(job.agentSession.ConfigOptions)
+	// The agent set a model id its model option does not list as both the
+	// model and the effort.
+	model := choices["model"]
+	levelled := policy.modelIDCarriesEffort && model != "" && slices.ContainsFunc(job.agentSession.ConfigOptions, func(option sessionevents.AgentConfigOption) bool {
+		return option.Category == "model" && !offers(option, model)
+	})
 	for i := range job.agentSession.ConfigOptions {
 		option := &job.agentSession.ConfigOptions[i]
-		value := choices[option.Category]
-		if value != "" && option.CurrentValue == value && slices.ContainsFunc(option.Options, func(item sessionevents.AgentConfigValue) bool { return item.Value == value }) {
+		value, chosen := choices[option.Category]
+		if levelled && chosen {
+			value = option.CurrentValue
+		}
+		if value != "" && option.CurrentValue == value && offers(*option, value) {
 			option.UserValue = &value
 		}
 	}
+}
+
+func offers(option sessionevents.AgentConfigOption, value string) bool {
+	return slices.ContainsFunc(option.Options, func(item sessionevents.AgentConfigValue) bool { return item.Value == value })
 }
 
 func (m *Manager) restoreSessionControls(ctx context.Context, job *jobState, events []sessionevents.Event) {
