@@ -78,6 +78,14 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	// Startup waits while a hold file sits in the agent's directory, as a
 	// slow login refresh holds an agent up.
 	fakeHold(os.Getenv("JAZ_FAKE_ACP_START_HOLD"))
+	// The agent offers the models its plan had when it started.
+	if path := os.Getenv("JAZ_FAKE_ACP_MODELS_FILE"); path != "" {
+		models, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Setenv("JAZ_FAKE_ACP_MODELS", string(models))
+	}
 	launch, codex := readFakeCodexLaunch(t)
 	if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS"); want != "" {
 		value, set := launch.Features["goals"]
@@ -459,6 +467,8 @@ func TestFakeACPAgentProcess(t *testing.T) {
 						{"id": "model", "category": "model", "type": "select", "options": []map[string]any{{"value": req.Value}}},
 						effort,
 					}
+				} else if codex {
+					addFakeModels(result, currentModel, codex)
 				}
 				sendResult(conn, msg, result)
 				continue
@@ -1012,6 +1022,10 @@ func addFakeModels(result map[string]any, currentModel string, codex bool) {
 		}
 	}
 	var modelOptions []map[string]any
+	// codex-acp lists the model a session runs even when the plan does not offer it.
+	if _, offered := baseModels[currentModel]; codex && !offered && currentModel != "" {
+		modelOptions = append(modelOptions, map[string]any{"value": currentModel, "name": currentModel})
+	}
 	for model := range baseModels {
 		modelOptions = append(modelOptions, map[string]any{"value": model, "name": model})
 	}
@@ -1024,6 +1038,7 @@ func addFakeModels(result map[string]any, currentModel string, codex bool) {
 		"options":      modelOptions,
 	}
 	if codex {
+		option["category"] = "model"
 		option["_meta"] = map[string]any{"jetbrains": map[string]any{"air": map[string]any{"recommendedValue": fakeDefaultModel()}}}
 	}
 	result["configOptions"] = []map[string]any{option}

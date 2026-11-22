@@ -429,3 +429,59 @@ func TestDetachedQuestionDoesNotPinIdleProcess(t *testing.T) {
 		t.Fatal("explicit stop kept the detached question open")
 	}
 }
+
+// Codex's plan can stop offering a model for a while, as while a new model
+// rolls out. A thread on it runs Codex's default meanwhile and returns to its
+// model once its plan offers it again, though the launch is judged against
+// the list the last process saw, which still lacks it.
+func TestACodexThreadReturnsToAModelItsPlanStoppedOfferingForAWhile(t *testing.T) {
+	logs := t.TempDir()
+	starts, models, turns := filepath.Join(logs, "starts"), filepath.Join(logs, "models"), filepath.Join(logs, "turns")
+	offer := func(list string) {
+		if err := os.WriteFile(models, []byte(list), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	offer("gpt-a,gpt-b")
+	env := map[string]string{
+		"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_START_LOG": starts, "JAZ_FAKE_ACP_TURN_LOG": turns,
+		"JAZ_FAKE_ACP_MODELS_FILE": models, "JAZ_FAKE_ACP_SET_CONFIG": "1",
+	}
+	manager := idleManager(t, acp.AgentCodex, env, "gpt-b", "")
+	ctx, id := startIdleThread(t, manager, acp.AgentCodex)
+	stopIdleProcesses(t, manager, acp.IdleTimeouts{Thread: 20 * time.Millisecond})
+	for i, list := range []string{"gpt-a", "gpt-a,gpt-b"} {
+		waitProcessGone(ctx, t, startedPIDs(t, starts)[i])
+		offer(list)
+		if err := turn(ctx, manager, id, "offered "+list); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var ran []string
+	for _, turn := range readFakeTurns(t, turns) {
+		ran = append(ran, turn.Model)
+	}
+	if !slices.Equal(ran, []string{"gpt-b", "gpt-a", "gpt-b"}) {
+		t.Fatalf("turns ran on %v, want gpt-b, Codex's default while gpt-b was not offered, then gpt-b", ran)
+	}
+}
+
+func TestACodexThreadKeepsAModelIDCarryingItsEffortAfterAnIdleStop(t *testing.T) {
+	logs := t.TempDir()
+	starts, turns := filepath.Join(logs, "starts"), filepath.Join(logs, "turns")
+	env := map[string]string{
+		"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_START_LOG": starts, "JAZ_FAKE_ACP_TURN_LOG": turns,
+		"JAZ_FAKE_ACP_MODELS": "gpt-6-sol/medium,gpt-6-luna/high", "JAZ_FAKE_ACP_SET_CONFIG": "1",
+	}
+	manager := idleManager(t, acp.AgentCodex, env, "gpt-6-luna/high", "")
+	ctx, id := startIdleThread(t, manager, acp.AgentCodex)
+	stopIdleProcesses(t, manager, acp.IdleTimeouts{Thread: 20 * time.Millisecond})
+	waitProcessGone(ctx, t, startedPIDs(t, starts)[0])
+	if err := turn(ctx, manager, id, "again"); err != nil {
+		t.Fatal(err)
+	}
+	want := fakeTurn{Model: "gpt-6-luna", Effort: "high"}
+	if turns := readFakeTurns(t, turns); !slices.Equal(turns, []fakeTurn{want, want}) {
+		t.Fatalf("turns = %v, want both on %v", turns, want)
+	}
+}

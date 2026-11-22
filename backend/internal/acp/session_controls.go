@@ -29,6 +29,7 @@ func (m *Manager) applySessionControls(job *jobState, raw json.RawMessage) bool 
 	job.mu.Lock()
 	switch {
 	case update.ConfigOptions != nil:
+		policy := agentPolicyForAgent(job.ACPAgent)
 		model, effort := job.Model, job.ReasoningEffort
 		options := translateConfigOptions(update.ConfigOptions)
 		for _, previous := range job.agentSession.ConfigOptions {
@@ -44,7 +45,7 @@ func (m *Manager) applySessionControls(job *jobState, raw json.RawMessage) bool 
 			// Plan temporarily replaces the permission mode, retaining the user's baseline.
 			temporaryPlan := option.Category == "mode" && option.ID != job.Modes.planConfigID && option.CurrentValue == job.Modes.PlanModeID
 			for _, previous := range job.agentSession.ConfigOptions {
-				if previous.ID == option.ID && previous.UserValue != nil && (option.CurrentValue == *previous.UserValue || temporaryPlan) {
+				if previous.ID == option.ID && previous.UserValue != nil && (option.CurrentValue == *previous.UserValue || temporaryPlan || unlisted(policy, *option, *previous.UserValue)) {
 					option.UserValue = previous.UserValue
 				}
 			}
@@ -230,8 +231,9 @@ func restoreConfiguredChoices(cfg *AgentConfig, events []sessionevents.Event) {
 	}
 }
 
-// rememberConfiguredChoices marks the options the thread's configured model and
-// effort set as the user's, so a resume applies them again.
+// rememberConfiguredChoices marks the thread's configured model and effort as
+// the user's picks on the options they set, and on a model option that does not
+// list the model, so a resume applies them again.
 func rememberConfiguredChoices(job *jobState, cfg AgentConfig) {
 	policy := agentPolicyForAgent(job.ACPAgent)
 	choices := map[string]string{"model": policy.sessionConfigModel(cfg), "thought_level": policy.sessionConfigEffort(cfg.ReasoningEffort)}
@@ -250,10 +252,17 @@ func rememberConfiguredChoices(job *jobState, cfg AgentConfig) {
 		if levelled && chosen {
 			value = option.CurrentValue
 		}
-		if value != "" && option.CurrentValue == value && offers(*option, value) {
+		if value != "" && (option.CurrentValue == value && offers(*option, value) || unlisted(policy, *option, value)) {
 			option.UserValue = &value
 		}
 	}
+}
+
+// unlisted reports whether pick is a model id the agent's model option does not
+// list, because the plan stopped offering the model for now or because the id
+// carries its effort, as "gpt-6-luna/high"; it stays the user's pick.
+func unlisted(policy agentPolicy, option sessionevents.AgentConfigOption, pick string) bool {
+	return policy.unadvertisedModel == unadvertisedModelSkipped && option.Category == "model" && !offers(option, pick)
 }
 
 func offers(option sessionevents.AgentConfigOption, value string) bool {
