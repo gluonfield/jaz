@@ -75,7 +75,7 @@
 /* The colour theme (Settings → Appearance, lib/appearanceScheme.ts): the main
  * hue every token takes a trace of, whether it is tinted at all (graphite is
  * not), the three wash hues for the window with their chroma and how strongly
- * they mix in, and how strongly the drawing grid shows. Zero specificity lets the Appearance
+ * they mix in, and the window grain. Zero specificity lets the Appearance
  * override win whichever stylesheet loads first. */
 :where(:root) {
   --hue: 264;
@@ -96,15 +96,10 @@
   --wash-l: 0.8;
   --swatch-l: 0.76;
 
-  /* Engineering paper in the ink colour: fine squares with a bolder line every
-   * fifth. Shared by the window and the Appearance dial's face. */
-  --grid-fine: color-mix(in oklab, var(--color-ink) 12%, transparent);
-  --grid-bold: color-mix(in oklab, var(--color-ink) 26%, transparent);
-  --drawing-grid:
-    linear-gradient(to right, var(--grid-bold) 1px, transparent 1px) 0 0 / 80px 80px,
-    linear-gradient(to bottom, var(--grid-bold) 1px, transparent 1px) 0 0 / 80px 80px,
-    linear-gradient(to right, var(--grid-fine) 1px, transparent 1px) 0 0 / 16px 16px,
-    linear-gradient(to bottom, var(--grid-fine) 1px, transparent 1px) 0 0 / 16px 16px;
+  /* Film grain with no shapes in it, so it never competes with the text over
+   * it: fine noise as light and dark specks, each only as opaque as it is far
+   * from mid-grey. Shared by the window and the Appearance dial's face. */
+  --film: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256'><filter id='n' color-interpolation-filters='sRGB'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch' result='t'/><feColorMatrix in='t' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 2 0 0 0 -1' result='w'/><feColorMatrix in='t' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2 0 0 0 1' result='b'/><feMerge><feMergeNode in='w'/><feMergeNode in='b'/></feMerge></filter><rect width='256' height='256' filter='url(%23n)'/></svg>");
 
   --thread-max: 760px;
   --prose-max: 80ch;
@@ -854,8 +849,8 @@ body {
 }
 
 /* The window behind the cards takes the theme's washes in Zen's (Arc's)
- * shapes: one from each top corner and one rising from the bottom. A drawing grid sits over the wash, under everything
- * else; its opacity is the Grid setting.
+ * shapes: one from each top corner and one rising from the bottom. A film grain sits over the wash, under everything
+ * else; its opacity is the Grain setting.
  * The Appearance theme tiles reuse the rule in each mode's colours. On macOS,
  * index.html adds .vibrant: the page goes transparent so the rail and thread
  * list show the native material through a weak surface tint under the wash;
@@ -893,7 +888,7 @@ body {
     z-index: -1;
     pointer-events: none;
     opacity: var(--grain);
-    background: var(--drawing-grid);
+    background: var(--film);
   }
   html.vibrant .app-chrome {
     --chrome-ground: color-mix(in oklab, var(--color-surface) 30%, transparent);
