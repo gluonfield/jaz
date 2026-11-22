@@ -16,6 +16,7 @@ import { BrowserPasswordStore } from '@main/browserPasswordStore'
 import { PREVIEW_PARTITION } from '@shared/preview'
 import { assertUntrustedProfileCaller, prepareProfileFixture } from './profiles'
 import { accessibilityFixture, accessibilityFrame } from './accessibility'
+import { exerciseResponseLinks } from './response-link-windows'
 import { exerciseBrowserPopups } from './popups'
 import { configureAppPermissions } from '@main/permissions'
 import { clipboardFixture, exerciseClipboard } from './clipboard'
@@ -237,6 +238,13 @@ server.listen(0, '127.0.0.1', async () => {
     throw new Error('Missing test server address')
   }
   await app.whenReady()
+  if (process.env.JAZ_BROWSER_SMOKE_SUITE === 'response-links') {
+    app.on('window-all-closed', () => {})
+    await exerciseResponseLinks(`http://127.0.0.1:${address.port}`, openedURLs)
+    console.log(JSON.stringify({ ok: true, checks: ['reply link preferences in desktop and web after reload'] }))
+    app.quit()
+    return
+  }
   configureBrowserSessions(
     join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'chrome.js'),
     join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'passkeyFallback.js'),

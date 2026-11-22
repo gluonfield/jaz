@@ -32,6 +32,8 @@ import { ConnectCard } from './ConnectCard'
 import { encodeMention } from './mentionCodec'
 import { MentionPill } from '@/components/session/mentions'
 import { botIdFromTarget } from '@/lib/bots'
+import { openExternal } from '@/lib/clientRuntime'
+import { responseLinksExternal } from '@/lib/responseLinks'
 
 const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
 export function usePreviewLink() {
@@ -209,7 +211,7 @@ function mentionSigil(label: string): '$' | '@' | null {
   return label.startsWith('$') || label.startsWith('@') ? (label[0] as '$' | '@') : null
 }
 
-type AnchorComponent = ComponentType<ComponentProps<'a'> & ExtraProps>
+type AnchorComponent = ComponentType<ComponentProps<'a'> & ExtraProps & { reply?: boolean }>
 
 // Wide tables can't shrink below their column min-widths; left bare they force
 // the prose column wider than the viewport. A scroll wrapper (min-content 0)
@@ -290,7 +292,9 @@ const MessageMarkdownLink: AnchorComponent = ({ children, href, ...props }) => {
   return <PlainMarkdownLink {...props} href={href}>{children}</PlainMarkdownLink>
 }
 
-const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...props }) => {
+const ReplyMarkdownLink: AnchorComponent = (props) => <MessageMarkdownLink {...props} reply />
+
+const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, reply, ...props }) => {
   const openPreview = usePreviewLink()
   const files = useFileLinks()
   const openFile = files?.onOpen
@@ -339,9 +343,11 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
           target="_blank"
           rel="noreferrer"
           onClick={(event) => {
-            if (openPreview && isPlainClick(event)) {
+            if (!isPlainClick(event)) return
+            const open = reply && responseLinksExternal() ? openExternal : openPreview
+            if (open) {
               event.preventDefault()
-              openPreview(target.url)
+              open(target.url)
             }
           }}
         >
@@ -378,11 +384,13 @@ export const RenderedMarkdown = memo(function RenderedMarkdown({
 export const UserMessageMarkdown = memo(function UserMessageMarkdown({
   text,
   mentions,
+  reply = false,
 }: {
   text: string
   mentions?: ReadonlyMap<string, string>
+  reply?: boolean
 }) {
-  return <BaseMarkdown text={text} mentions={mentions} className="chat-prose" Link={MessageMarkdownLink} remarkPlugins={USER_REMARK_PLUGINS} documentCards />
+  return <BaseMarkdown text={text} mentions={mentions} className="chat-prose" Link={reply ? ReplyMarkdownLink : MessageMarkdownLink} remarkPlugins={USER_REMARK_PLUGINS} documentCards />
 })
 
 // Shared renderer for assistant prose: GitHub-flavored Markdown + LaTeX via KaTeX.
@@ -391,7 +399,7 @@ export const UserMessageMarkdown = memo(function UserMessageMarkdown({
 export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
   const skills = useQuery(skillsQuery())
   const prepared = useMemo(() => linkifyKnownSkills(text, skills.data ?? []), [text, skills.data])
-  return <BaseMarkdown text={prepared} className="chat-prose" Link={MessageMarkdownLink} remarkPlugins={CHAT_REMARK_PLUGINS} documentCards />
+  return <BaseMarkdown text={prepared} className="chat-prose" Link={ReplyMarkdownLink} remarkPlugins={CHAT_REMARK_PLUGINS} documentCards />
 })
 
 const TEXT_REMARK_PLUGINS = [remarkGfm]

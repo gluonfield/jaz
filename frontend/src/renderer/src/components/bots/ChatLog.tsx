@@ -156,7 +156,7 @@ const ChatBubble = memo(function ChatBubble({ text, at, mentions, mine = false }
           mine ? 'bg-bubble-sent' : 'bg-surface'
         }`}
       >
-        <UserMessageMarkdown text={text} mentions={mentions} />
+        <UserMessageMarkdown text={text} mentions={mentions} reply={!mine} />
       </div>
       <div className="shrink-0 whitespace-nowrap @max-xl:hidden">
         <MessageActions text={text} createdAt={at} />
