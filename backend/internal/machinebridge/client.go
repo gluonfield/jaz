@@ -29,33 +29,36 @@ const (
 )
 
 type ClientConfig struct {
-	CloudURL       string
-	Token          string
-	DeviceID       string
-	DisplayName    string
-	Platform       string
-	AppVersion     string
-	Capabilities   Capabilities
-	FolderGrants   []FolderGrant
-	HTTPClient     *http.Client
-	Dialer         *websocket.Dialer
-	ExecLauncher   ExecLauncher
-	MaxConcurrency int
-	PingInterval   time.Duration
-	PongWait       time.Duration
-	WriteTimeout   time.Duration
-	MinBackoff     time.Duration
-	MaxBackoff     time.Duration
-	OnConnect      func(Capabilities)
-	OnDisconnect   func(error)
+	CloudURL               string
+	Token                  string
+	DeviceID               string
+	DisplayName            string
+	Platform               string
+	AppVersion             string
+	Capabilities           Capabilities
+	FolderGrants           []FolderGrant
+	HTTPClient             *http.Client
+	Dialer                 *websocket.Dialer
+	ExecLauncher           ExecLauncher
+	ExecLauncherFactory    func(*PolicyGuard) (ExecLauncher, error)
+	AllowLoopbackTransfers bool
+	MaxConcurrency         int
+	PingInterval           time.Duration
+	PongWait               time.Duration
+	WriteTimeout           time.Duration
+	MinBackoff             time.Duration
+	MaxBackoff             time.Duration
+	OnConnect              func(Capabilities)
+	OnDisconnect           func(error)
 }
 
 type Client struct {
-	cfg        ClientConfig
-	connectURL string
-	guard      *PolicyGuard
-	handler    *Handler
-	dialer     *websocket.Dialer
+	cfg          ClientConfig
+	connectURL   string
+	guard        *PolicyGuard
+	execLauncher ExecLauncher
+	handler      *Handler
+	dialer       *websocket.Dialer
 
 	mu         sync.RWMutex
 	negotiated Capabilities
@@ -85,9 +88,21 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	if !ValidPlatform(cfg.Platform) {
 		return nil, fmt.Errorf("%w: unsupported platform %q", ErrInvalidRequest, cfg.Platform)
 	}
-	guard, err := NewPolicyGuard(cfg.FolderGrants)
+	var guardOpts []PolicyOption
+	if cfg.AllowLoopbackTransfers {
+		guardOpts = append(guardOpts, WithAllowLoopbackTransfers())
+	}
+	guard, err := NewPolicyGuard(cfg.FolderGrants, guardOpts...)
 	if err != nil {
 		return nil, err
+	}
+	execLauncher := cfg.ExecLauncher
+	if execLauncher == nil && cfg.ExecLauncherFactory != nil {
+		execLauncher, err = cfg.ExecLauncherFactory(guard)
+		if err != nil {
+			_ = guard.Close()
+			return nil, err
+		}
 	}
 	if cfg.MaxConcurrency <= 0 {
 		cfg.MaxConcurrency = defaultMaxConcurrency
@@ -116,11 +131,12 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 		dialer = &copied
 	}
 	return &Client{
-		cfg:        cfg,
-		connectURL: connectURL,
-		guard:      guard,
-		handler:    NewHandler(guard, cfg.HTTPClient, cfg.ExecLauncher),
-		dialer:     dialer,
+		cfg:          cfg,
+		connectURL:   connectURL,
+		guard:        guard,
+		execLauncher: execLauncher,
+		handler:      NewHandler(guard, cfg.HTTPClient, execLauncher),
+		dialer:       dialer,
 	}, nil
 }
 
@@ -133,9 +149,16 @@ func BuildConnectURL(cloudURL string) (string, error) {
 	switch parsed.Scheme {
 	case "https":
 		parsed.Scheme = "wss"
+	case "wss":
 	case "http":
+		if !isLoopbackHost(parsed.Hostname()) {
+			return "", fmt.Errorf("%w: non-loopback cloud URL must use https or wss", ErrInvalidRequest)
+		}
 		parsed.Scheme = "ws"
-	case "wss", "ws":
+	case "ws":
+		if !isLoopbackHost(parsed.Hostname()) {
+			return "", fmt.Errorf("%w: non-loopback cloud URL must use https or wss", ErrInvalidRequest)
+		}
 	default:
 		return "", fmt.Errorf("%w: unsupported cloud URL scheme %q", ErrInvalidRequest, parsed.Scheme)
 	}
@@ -155,10 +178,20 @@ func (c *Client) NegotiatedCapabilities() Capabilities {
 }
 
 func (c *Client) Close() error {
-	if closer, ok := c.cfg.ExecLauncher.(io.Closer); ok {
-		return closer.Close()
+	var errs []error
+	if closer, ok := c.execLauncher.(io.Closer); ok {
+		errs = append(errs, closer.Close())
 	}
-	return nil
+	if c.guard != nil {
+		errs = append(errs, c.guard.Close())
+	}
+	return errors.Join(errs...)
+}
+
+func (c *Client) stopExecSessions() {
+	if stopper, ok := c.execLauncher.(interface{ StopAll() }); ok {
+		stopper.StopAll()
+	}
 }
 
 func (c *Client) Run(ctx context.Context) error {
@@ -313,6 +346,7 @@ readLoop:
 	cancelSession()
 	close(pingDone)
 	wg.Wait()
+	c.stopExecSessions()
 	return true, readErr
 }
 

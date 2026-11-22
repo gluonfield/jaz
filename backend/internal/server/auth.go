@@ -1,13 +1,14 @@
 package server
 
 import (
-	"crypto/rand"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/m365copilot"
@@ -16,9 +17,9 @@ import (
 )
 
 const (
-	clientPlatformHeader = "X-Jaz-Client-Platform"
-	resourceTicketTTL    = time.Hour
-	maxResourceTickets   = 1024
+	clientPlatformHeader  = "X-Jaz-Client-Platform"
+	resourceTicketTTL     = time.Hour
+	resourceTicketPurpose = "jaz-resource-ticket-v1:"
 )
 
 type ResourceTicket struct {
@@ -26,61 +27,48 @@ type ResourceTicket struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-type resourceTicketStore struct {
-	mu      sync.Mutex
-	entries map[string]time.Time
+func issueResourceTicket(authKey string, now time.Time) ResourceTicket {
+	expires := now.UTC().Add(resourceTicketTTL).Truncate(time.Second)
+	payload := base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(expires.Unix(), 10)))
+	sig := signResourceTicket(authKey, payload)
+	return ResourceTicket{
+		Token:     "tk_" + payload + "." + sig,
+		ExpiresAt: expires,
+	}
 }
 
-func (s *resourceTicketStore) issue(now time.Time) (ResourceTicket, error) {
-	var raw [24]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return ResourceTicket{}, err
-	}
-	token := "tk_" + base64.RawURLEncoding.EncodeToString(raw[:])
-	expires := now.Add(resourceTicketTTL)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.entries == nil {
-		s.entries = make(map[string]time.Time)
-	}
-	for k, exp := range s.entries {
-		if !now.Before(exp) {
-			delete(s.entries, k)
-		}
-	}
-	if len(s.entries) >= maxResourceTickets {
-		var oldestKey string
-		var oldestExp time.Time
-		for k, exp := range s.entries {
-			if oldestKey == "" || exp.Before(oldestExp) {
-				oldestKey = k
-				oldestExp = exp
-			}
-		}
-		if oldestKey != "" {
-			delete(s.entries, oldestKey)
-		}
-	}
-	s.entries[token] = expires
-	return ResourceTicket{Token: token, ExpiresAt: expires}, nil
-}
-
-func (s *resourceTicketStore) valid(token string, now time.Time) bool {
-	token = strings.TrimSpace(token)
-	if token == "" {
+func validResourceTicket(authKey, token string, now time.Time) bool {
+	if authKey == "" {
 		return false
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	expires, ok := s.entries[token]
+	rest, ok := strings.CutPrefix(strings.TrimSpace(token), "tk_")
 	if !ok {
 		return false
 	}
-	if !now.Before(expires) {
-		delete(s.entries, token)
+	payload, sig, ok := strings.Cut(rest, ".")
+	if !ok || payload == "" || sig == "" {
 		return false
 	}
-	return true
+	expected := signResourceTicket(authKey, payload)
+	if subtle.ConstantTimeCompare([]byte(sig), []byte(expected)) != 1 {
+		return false
+	}
+	rawExp, err := base64.RawURLEncoding.DecodeString(payload)
+	if err != nil {
+		return false
+	}
+	expUnix, err := strconv.ParseInt(string(rawExp), 10, 64)
+	if err != nil {
+		return false
+	}
+	return now.UTC().Before(time.Unix(expUnix, 0).UTC())
+}
+
+func signResourceTicket(authKey, payload string) string {
+	mac := hmac.New(sha256.New, []byte(authKey))
+	_, _ = mac.Write([]byte(resourceTicketPurpose))
+	_, _ = mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func (s *Server) withAuth(next http.Handler) http.Handler {
@@ -94,7 +82,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 		}
 		if queryAuthAllowed(r) {
 			if ticket := r.URL.Query().Get("ticket"); ticket != "" {
-				if s.tickets.valid(ticket, time.Now().UTC()) {
+				if validResourceTicket(key, ticket, time.Now().UTC()) {
 					next.ServeHTTP(w, r)
 					return
 				}
@@ -141,12 +129,7 @@ func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	response := map[string]any{"ok": true}
 	if s.AuthKey != "" {
 		authKind = "bearer"
-		ticket, err := s.tickets.issue(time.Now().UTC())
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		response["resource_ticket"] = ticket
+		response["resource_ticket"] = issueResourceTicket(s.AuthKey, time.Now().UTC())
 	}
 	response["auth_kind"] = authKind
 	writeJSON(w, http.StatusOK, response)

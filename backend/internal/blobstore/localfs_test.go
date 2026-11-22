@@ -6,10 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -175,5 +177,79 @@ func TestLocalFSStoreValidationAndPresign(t *testing.T) {
 	cancel()
 	if _, err := store.Put(canceled, "ok/key", strings.NewReader("x"), PutOptions{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled Put err = %v, want context.Canceled", err)
+	}
+	if missing, err := store.List(ctx, "no-such-org/run-1/"); err != nil || len(missing) != 0 {
+		t.Fatalf("List missing subdir = (%+v, %v), want empty", missing, err)
+	}
+}
+
+type cancelAfterFirstRead struct {
+	cancel context.CancelFunc
+	reads  int
+}
+
+func (r *cancelAfterFirstRead) Read(p []byte) (int, error) {
+	r.reads++
+	if r.reads == 1 {
+		n := copy(p, "chunk-1")
+		r.cancel()
+		return n, nil
+	}
+	return copy(p, "chunk-2"), nil
+}
+
+func TestLocalFSStoreCancelsMidCopyAndSerializesConcurrentPuts(t *testing.T) {
+	store, err := NewLocalFSStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	midCtx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	if _, err := store.Put(midCtx, "cancel/file.bin", &cancelAfterFirstRead{cancel: cancel}, PutOptions{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("mid-copy cancel err = %v, want context.Canceled", err)
+	}
+	if _, _, err := store.Get(t.Context(), "cancel/file.bin"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("canceled Put left object on disk: %v", err)
+	}
+
+	const key = "shared/concurrent.txt"
+	var wg sync.WaitGroup
+	errs := make(chan error, 64)
+	for w := range 6 {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for i := range 15 {
+				payload := fmt.Sprintf("writer-%d-iter-%d-%s", id, i, strings.Repeat("x", (id+i)*13))
+				if _, err := store.Put(t.Context(), key, strings.NewReader(payload), PutOptions{ContentType: "text/plain"}); err != nil {
+					errs <- err
+					return
+				}
+				rc, meta, err := store.Get(t.Context(), key)
+				if errors.Is(err, ErrNotFound) {
+					continue
+				}
+				if err != nil {
+					errs <- err
+					return
+				}
+				data, readErr := io.ReadAll(rc)
+				_ = rc.Close()
+				if readErr != nil {
+					errs <- readErr
+					return
+				}
+				sum := sha256.Sum256(data)
+				if meta.SHA256 != hex.EncodeToString(sum[:]) || meta.Size != int64(len(data)) {
+					errs <- fmt.Errorf("torn object/meta: meta=%+v actualLen=%d", meta, len(data))
+					return
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
 	}
 }

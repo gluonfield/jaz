@@ -83,46 +83,68 @@ func TestInternalEndpointsRequireCredentialsBehindTunnel(t *testing.T) {
 	}
 }
 
-func TestResourceTicketsAreBoundedAndScoped(t *testing.T) {
+func TestResourceTicketsAreStatelessScopedAndInvalidateOnKeyRotation(t *testing.T) {
 	srv := &Server{AuthKey: "root"}
-	ticket, err := srv.tickets.issue(time.Now().UTC())
-	if err != nil {
-		t.Fatal(err)
+	handler := srv.Handler()
+	issueViaHTTP := func() ResourceTicket {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/v1/auth/check", nil)
+		req.Header.Set("Authorization", "Bearer "+srv.AuthKey)
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("auth check status=%d body=%s", res.Code, res.Body.String())
+		}
+		var body struct {
+			ResourceTicket ResourceTicket `json:"resource_ticket"`
+		}
+		if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		return body.ResourceTicket
 	}
+
+	first := issueViaHTTP()
+	authed := srv.withAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	for _, test := range []struct {
 		path   string
 		status int
 	}{
 		{"/v1/bots/events?key=root", http.StatusUnauthorized},
-		{"/v1/bots/events?ticket=" + ticket.Token, http.StatusNoContent},
+		{"/v1/bots/events?ticket=" + first.Token, http.StatusNoContent},
+		{"/v1/bots/events?ticket=" + first.Token + "tamper", http.StatusUnauthorized},
 		{"/v1/bots/events?ticket=invalid", http.StatusUnauthorized},
-		{"/v1/settings/agents?ticket=" + ticket.Token, http.StatusUnauthorized},
-		{"/v1/sessions/test/terminal?ticket=" + ticket.Token, http.StatusUnauthorized},
+		{"/v1/settings/agents?ticket=" + first.Token, http.StatusUnauthorized},
+		{"/v1/sessions/test/terminal?ticket=" + first.Token, http.StatusUnauthorized},
 	} {
 		res := httptest.NewRecorder()
-		srv.withAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		})).ServeHTTP(res, httptest.NewRequest(http.MethodGet, test.path, nil))
+		authed.ServeHTTP(res, httptest.NewRequest(http.MethodGet, test.path, nil))
 		if res.Code != test.status {
 			t.Fatalf("%s status=%d want=%d", test.path, res.Code, test.status)
 		}
 	}
-	if srv.tickets.valid(ticket.Token, ticket.ExpiresAt.Add(time.Second)) {
+	if validResourceTicket(srv.AuthKey, first.Token, first.ExpiresAt.Add(time.Second)) {
 		t.Fatal("expired resource ticket remained valid")
 	}
-	base := time.Now().UTC()
-	var recent ResourceTicket
-	for i := range maxResourceTickets + 2 {
-		issued, err := srv.tickets.issue(base.Add(time.Duration(i) * time.Millisecond))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if i == maxResourceTickets {
-			recent = issued
-		}
+
+	// 2,000 /v1/auth/check polls must never evict or invalidate an earlier active ticket.
+	for range 2000 {
+		_ = issueViaHTTP()
 	}
-	if !srv.tickets.valid(recent.Token, base.Add(time.Second)) {
-		t.Fatal("ticket cap eviction cleared newer active tickets")
+	res := httptest.NewRecorder()
+	authed.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/bots/events?ticket="+first.Token, nil))
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("earlier active ticket failed after 2000 polls: status=%d", res.Code)
+	}
+
+	// Rotating AuthKey invalidates all previously issued tickets immediately.
+	srv.AuthKey = "rotated-root"
+	res = httptest.NewRecorder()
+	authed.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/bots/events?ticket="+first.Token, nil))
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("rotated auth key accepted old ticket: status=%d", res.Code)
 	}
 }
 

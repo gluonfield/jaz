@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	botcore "github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -30,7 +31,8 @@ func TestBotFilesSaveOnlyOverTheVersionRead(t *testing.T) {
 		manager.Close()
 		_ = store.Close()
 	})
-	service := botcore.NewService(store, filepath.Join(root, "bots"), manager, nil, nil, loops.NewService(store, nil, logger), sessionevents.New(), logger)
+	inst := instructions.NewLocalFSStore(root, instructions.WithBotHomeResolver(botcore.HomeResolver(store)))
+	service := botcore.NewService(store, filepath.Join(root, "bots"), inst, manager, nil, nil, loops.NewService(store, nil, logger), sessionevents.New(), logger)
 	bot, err := service.Create(t.Context(), botcore.CreateBot{Name: "Research"})
 	if err != nil {
 		t.Fatal(err)

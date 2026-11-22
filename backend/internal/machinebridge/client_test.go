@@ -32,6 +32,8 @@ func TestBuildConnectURL(t *testing.T) {
 		{"https://cloud.jaz.dev/", "wss://cloud.jaz.dev/v1/machines/connect"},
 		{"https://cloud.jaz.dev/api/", "wss://cloud.jaz.dev/api/v1/machines/connect"},
 		{"http://127.0.0.1:8080", "ws://127.0.0.1:8080/v1/machines/connect"},
+		{"http://localhost:8080", "ws://localhost:8080/v1/machines/connect"},
+		{"ws://[::1]:8080", "ws://[::1]:8080/v1/machines/connect"},
 		{"wss://cloud.jaz.dev/v1/machines/connect", "wss://cloud.jaz.dev/v1/machines/connect"},
 	}
 	for _, tc := range cases {
@@ -43,7 +45,14 @@ func TestBuildConnectURL(t *testing.T) {
 			t.Errorf("BuildConnectURL(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
-	for _, bad := range []string{"", "ftp://example.com", "https://"} {
+	for _, bad := range []string{
+		"",
+		"ftp://example.com",
+		"https://",
+		"http://cloud.jaz.dev",
+		"ws://cloud.jaz.dev/v1/machines/connect",
+		"http://10.0.0.1:8080",
+	} {
 		if _, err := BuildConnectURL(bad); !errors.Is(err, ErrInvalidRequest) {
 			t.Errorf("BuildConnectURL(%q) err = %v, want ErrInvalidRequest", bad, err)
 		}
@@ -341,8 +350,9 @@ func TestClientEndToEndOverWSS(t *testing.T) {
 			{ID: "rw", Mode: AccessReadWrite, RootPath: rwDir},
 			{ID: "rwd", Mode: AccessReadWriteDelete, RootPath: rwdDir},
 		},
-		MinBackoff: 20 * time.Millisecond,
-		MaxBackoff: 100 * time.Millisecond,
+		AllowLoopbackTransfers: true,
+		MinBackoff:             20 * time.Millisecond,
+		MaxBackoff:             100 * time.Millisecond,
 		OnConnect: func(caps Capabilities) {
 			select {
 			case connected <- caps:
@@ -628,16 +638,17 @@ func TestClientEndToEndOverWSS(t *testing.T) {
 }
 
 type fakeExecLauncher struct {
-	mu      sync.Mutex
-	started []string
-	stopped []string
+	mu       sync.Mutex
+	started  []string
+	stopped  []string
+	stopAlls int
 }
 
-func (f *fakeExecLauncher) Start(_ context.Context, req ExecStartRequest, grantRoot string) (ExecStartResponse, error) {
+func (f *fakeExecLauncher) Start(_ context.Context, req ExecStartRequest) (ExecStartResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.started = append(f.started, req.RunID+":"+grantRoot)
-	return ExecStartResponse{SessionID: "exec-" + req.RunID, Endpoint: "ws://127.0.0.1:9999/acp"}, nil
+	f.started = append(f.started, req.RunID+":"+req.GrantID)
+	return ExecStartResponse{SessionID: "exec-" + req.RunID, Endpoint: "ws://127.0.0.1:9999/acp", AuthToken: "test-token"}, nil
 }
 
 func (f *fakeExecLauncher) Stop(_ context.Context, req ExecStopRequest) error {
@@ -647,8 +658,15 @@ func (f *fakeExecLauncher) Stop(_ context.Context, req ExecStopRequest) error {
 	return nil
 }
 
+func (f *fakeExecLauncher) StopAll() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stopAlls++
+}
+
 func TestClientExecLauncherEnabledOnlyWhenNegotiatedAndConfigured(t *testing.T) {
 	dir := t.TempDir()
+	roDir := t.TempDir()
 	launcher := &fakeExecLauncher{}
 	hub, conns := startMockHub(t, "tok", Capabilities{FileStaging: true, LocalExec: true})
 
@@ -657,7 +675,10 @@ func TestClientExecLauncherEnabledOnlyWhenNegotiatedAndConfigured(t *testing.T) 
 		Token:        "tok",
 		DeviceID:     "dev-exec",
 		Capabilities: Capabilities{FileStaging: true, LocalExec: true},
-		FolderGrants: []FolderGrant{{ID: "work", Mode: AccessReadWrite, RootPath: dir}},
+		FolderGrants: []FolderGrant{
+			{ID: "work", Mode: AccessReadWrite, RootPath: dir},
+			{ID: "readonly", Mode: AccessReadOnly, RootPath: roDir},
+		},
 		ExecLauncher: launcher,
 		MinBackoff:   20 * time.Millisecond,
 	})
@@ -667,9 +688,15 @@ func TestClientExecLauncherEnabledOnlyWhenNegotiatedAndConfigured(t *testing.T) 
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	go func() { _ = client.Run(ctx) }()
+	done := make(chan error, 1)
+	go func() { done <- client.Run(ctx) }()
 
 	conn := <-conns
+	// Read-only grant denied for ExecStart.
+	if roFrame, err := conn.Call(ctx, MethodExecStart, ExecStartRequest{GrantID: "readonly", RunID: "r-ro"}); err != nil || roFrame.Error == nil || roFrame.Error.Code != CodeAccessDenied {
+		t.Fatalf("ro ExecStart = (%+v, %v), want %s", roFrame, err, CodeAccessDenied)
+	}
+
 	startFrame, err := conn.Call(ctx, MethodExecStart, ExecStartRequest{GrantID: "work", RunID: "r1"})
 	if err != nil || startFrame.Error != nil {
 		t.Fatalf("ExecStart failed: err=%v rpcErr=%v", err, startFrame.Error)
@@ -678,14 +705,136 @@ func TestClientExecLauncherEnabledOnlyWhenNegotiatedAndConfigured(t *testing.T) 
 	if err := json.Unmarshal(startFrame.Result, &startResp); err != nil {
 		t.Fatal(err)
 	}
-	if startResp.SessionID != "exec-r1" {
+	if startResp.SessionID != "exec-r1" || startResp.AuthToken != "test-token" {
 		t.Fatalf("unexpected ExecStartResponse: %+v", startResp)
 	}
 	stopFrame, err := conn.Call(ctx, MethodExecStop, ExecStopRequest{SessionID: "exec-r1"})
 	if err != nil || stopFrame.Error != nil {
 		t.Fatalf("ExecStop failed: err=%v rpcErr=%v", err, stopFrame.Error)
 	}
+	// Closing connection triggers StopAll on disconnect.
+	_ = conn.Close()
+	<-conns
+	launcher.mu.Lock()
+	stopAlls := launcher.stopAlls
+	launcher.mu.Unlock()
+	if stopAlls < 1 {
+		t.Fatalf("expected StopAll on disconnect, got %d", stopAlls)
+	}
 	cancel()
+	<-done
+}
+
+func TestHandlerTransferRedirectsAndTwoPhaseCommitAtomicity(t *testing.T) {
+	dir := t.TempDir()
+	keepFile := filepath.Join(dir, "keep.txt")
+	if err := os.WriteFile(keepFile, []byte("original\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	targetFile := filepath.Join(dir, "real.txt")
+	if err := os.WriteFile(targetFile, []byte("keep-real\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("real.txt", filepath.Join(dir, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	var redirectHits atomic.Int64
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		redirectHits.Add(1)
+		_, _ = w.Write([]byte("redirected-secret"))
+	}))
+	defer redirectTarget.Close()
+
+	blobs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/redirect":
+			http.Redirect(w, r, redirectTarget.URL+"/secret", http.StatusFound)
+		case "/ok":
+			_, _ = w.Write([]byte("new-v2\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer blobs.Close()
+
+	// Default production guard blocks loopback transfers.
+	prodGuard, err := NewPolicyGuard([]FolderGrant{{ID: "rwd", Mode: AccessReadWriteDelete, RootPath: dir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = prodGuard.Close() })
+	prodHandler := NewHandler(prodGuard, nil, nil)
+	if _, err := prodHandler.StageFiles(t.Context(), Capabilities{FileStaging: true}, DeviceStageRequest{
+		GrantID: "rwd",
+		RunID:   "r-prod",
+		Files:   []StageFileTarget{{RelPath: "keep.txt", UploadURL: blobs.URL + "/ok"}},
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("prod StageFiles loopback err = %v, want ErrInvalidRequest", err)
+	}
+
+	guard, err := NewPolicyGuard([]FolderGrant{{ID: "rwd", Mode: AccessReadWriteDelete, RootPath: dir}}, WithAllowLoopbackTransfers())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = guard.Close() })
+	handler := NewHandler(guard, nil, nil)
+	caps := Capabilities{FileStaging: true}
+
+	// Redirect is not followed on download or upload.
+	if _, err := handler.CommitFiles(t.Context(), caps, DeviceCommitRequest{
+		GrantID: "rwd",
+		RunID:   "r-redir",
+		Files:   []CommitFileEntry{{RelPath: "keep.txt", DownloadURL: blobs.URL + "/redirect"}},
+	}); err == nil {
+		t.Fatal("expected redirect download to fail")
+	}
+	if _, err := handler.StageFiles(t.Context(), caps, DeviceStageRequest{
+		GrantID: "rwd",
+		RunID:   "r-redir-put",
+		Files:   []StageFileTarget{{RelPath: "keep.txt", UploadURL: blobs.URL + "/redirect"}},
+	}); err == nil {
+		t.Fatal("expected redirect upload to fail")
+	}
+	if redirectHits.Load() != 0 {
+		t.Fatalf("redirect target was contacted %d times, want 0", redirectHits.Load())
+	}
+
+	// Batch where second download fails must not mutate first file or leave temp files.
+	if _, err := handler.CommitFiles(t.Context(), caps, DeviceCommitRequest{
+		GrantID: "rwd",
+		RunID:   "r-partial",
+		Files: []CommitFileEntry{
+			{RelPath: "keep.txt", DownloadURL: blobs.URL + "/ok"},
+			{RelPath: "missing.txt", DownloadURL: blobs.URL + "/does-not-exist"},
+		},
+	}); err == nil {
+		t.Fatal("expected failed second download to abort commit")
+	}
+	if got, _ := os.ReadFile(keepFile); string(got) != "original\n" {
+		t.Fatalf("failed batch partially modified keep.txt: %q", string(got))
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".jaz-commit-") {
+			t.Fatalf("failed batch left temp file %q", entry.Name())
+		}
+	}
+
+	// Symlink delete attempt must be rejected without touching target or link.
+	if _, err := handler.CommitFiles(t.Context(), caps, DeviceCommitRequest{
+		GrantID: "rwd",
+		RunID:   "r-symlink-del",
+		Files:   []CommitFileEntry{{RelPath: "link.txt", Delete: true}},
+	}); !errors.Is(err, ErrSymlinkEscape) {
+		t.Fatalf("symlink delete err = %v, want ErrSymlinkEscape", err)
+	}
+	if got, err := os.ReadFile(targetFile); err != nil || string(got) != "keep-real\n" {
+		t.Fatalf("symlink delete touched target: (%q, %v)", string(got), err)
+	}
 }
 
 func TestClientReconnectsAfterServerDrop(t *testing.T) {

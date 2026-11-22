@@ -34,7 +34,7 @@ func TestABotIsShownTheTasksThatChangedSinceItsAgentLastSawThem(t *testing.T) {
 	// A turn that succeeds keeps what its agent was shown.
 	turn := func() string {
 		t.Helper()
-		note, recorded := TurnNote(store)(thread)
+		note, recorded := TurnNote(store, service.instructions)(thread)
 		thread.PromptDigest = recorded
 		return note
 	}
@@ -62,7 +62,7 @@ func TestABotIsShownTheTasksThatChangedSinceItsAgentLastSawThem(t *testing.T) {
 	if err := store.UpdateCommitment(quotes); err != nil {
 		t.Fatal(err)
 	}
-	note, started := TurnNote(store)(thread)
+	note, started := TurnNote(store, service.instructions)(thread)
 	thread.Turn = &storage.Turn{PromptDigest: started}
 	if steer := SteerNote(store)(thread); !strings.Contains(note, "send the cheaper one") || steer != "" {
 		t.Fatalf("the turn opened with %q and its steer with %q, want the moved task once", note, steer)

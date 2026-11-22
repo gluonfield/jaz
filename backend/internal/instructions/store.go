@@ -27,8 +27,9 @@ const (
 )
 
 var (
-	ErrConflict   = errors.New("the file changed since it was read")
-	ErrInvalidKey = errors.New("invalid instruction key")
+	ErrConflict         = errors.New("the file changed since it was read")
+	ErrInvalidKey       = errors.New("invalid instruction key")
+	ErrUnsupportedScope = errors.New("instruction scope is not supported by this store")
 )
 
 type Key struct {
@@ -40,8 +41,12 @@ type Key struct {
 
 func (k Key) Validate() error {
 	switch k.Scope {
-	case ScopeOrg, ScopeSpace:
+	case ScopeOrg:
 		if k.Kind != KindAgents {
+			return ErrInvalidKey
+		}
+	case ScopeSpace:
+		if k.ScopeID == "" || k.Kind != KindAgents {
 			return ErrInvalidKey
 		}
 	case ScopeUser:
@@ -49,7 +54,7 @@ func (k Key) Validate() error {
 			return ErrInvalidKey
 		}
 	case ScopeBot:
-		if k.Kind != KindBots && k.Kind != KindMemory {
+		if k.ScopeID == "" || (k.Kind != KindBots && k.Kind != KindMemory) {
 			return ErrInvalidKey
 		}
 	default:

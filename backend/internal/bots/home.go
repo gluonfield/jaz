@@ -10,6 +10,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 const (
@@ -33,9 +34,24 @@ type File struct {
 	UpdatedAt time.Time `json:"updated_at,omitzero"`
 }
 
-func (s *Service) SetInstructions(store instructions.Store) {
-	if store != nil {
-		s.instructions = store
+// HomeResolver returns a bot-home lookup backed by store for instructions.LocalFSStore.
+func HomeResolver(store PromptStore) func(string) (string, error) {
+	return func(botID string) (string, error) {
+		record, err := store.LoadBot(botID)
+		if err != nil {
+			return "", err
+		}
+		session, err := store.LoadSession(botID)
+		if err != nil {
+			return "", err
+		}
+		if session.Archived {
+			return "", storage.ErrBotNotFound
+		}
+		if record.Kind != KindBot || session.RuntimeRef == nil || session.RuntimeRef.Cwd == "" {
+			return "", fmt.Errorf("%s has no home", botID)
+		}
+		return session.RuntimeRef.Cwd, nil
 	}
 }
 
@@ -121,14 +137,7 @@ func (s *Service) NoteHomeChanges(threadID string) {
 }
 
 func (s *Service) home(botID string) (string, error) {
-	record, session, err := s.load(botID)
-	if err != nil {
-		return "", err
-	}
-	if record.Kind != KindBot || session.RuntimeRef == nil || session.RuntimeRef.Cwd == "" {
-		return "", fmt.Errorf("%s has no home", botID)
-	}
-	return session.RuntimeRef.Cwd, nil
+	return HomeResolver(s.store)(botID)
 }
 
 func instructionKindForFile(name string) (instructions.Kind, error) {

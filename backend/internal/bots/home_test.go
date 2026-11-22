@@ -75,7 +75,7 @@ func TestBotChatsReceiveIdentityAndRoutineWorkersReceiveMemoryAccess(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		modules, err := Prompt(store, thread)
+		modules, err := Prompt(store, service.instructions, thread)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -156,12 +156,12 @@ func TestBotWorkspaceEditsReachExistingWorkersAndValidateServerPaths(t *testing.
 		t.Fatalf("workspace edit: %+v, %v", updated.Workspaces, err)
 	}
 	worker.RuntimeRef.SessionID = "existing-native-session"
-	note, version := TurnNote(store)(worker)
+	note, version := TurnNote(store, service.instructions)(worker)
 	if !strings.Contains(note, next) || strings.Contains(note, first) {
 		t.Fatalf("worker did not receive new links: %q", note)
 	}
 	worker.PromptDigest = version
-	if note, _ := TurnNote(store)(worker); note != "" {
+	if note, _ := TurnNote(store, service.instructions)(worker); note != "" {
 		t.Fatalf("unchanged context repeated: %q", note)
 	}
 	invalid := []string{"relative-client-path"}
@@ -214,7 +214,7 @@ func TestABotIsToldToRereadItsFilesUntilATurnSucceedsAfterTheyChange(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		note, _ := TurnNote(store)(thread)
+		note, _ := TurnNote(store, service.instructions)(thread)
 		return note
 	}
 	turn := func(id, status string) {

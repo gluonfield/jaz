@@ -11,7 +11,6 @@ import (
 
 	"github.com/wins/jaz/backend/internal/desktopbridge"
 	"github.com/wins/jaz/backend/internal/httpapi"
-	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/voice/live"
 )
@@ -44,8 +43,8 @@ func NewRelayHandler(store relayStore, service *live.Service, relay *live.Deskto
 }
 
 func (h *RelayHandler) Desktop(w http.ResponseWriter, r *http.Request) {
-	if sessioncontext.ClientPlatform(r.Context()) != "desktop" {
-		httpapi.WriteError(w, http.StatusForbidden, errors.New("a Jaz Desktop client is required"))
+	if !httpapi.TrustedLocalRequest(r) {
+		httpapi.WriteError(w, http.StatusForbidden, errors.New("a local Jaz Desktop client is required"))
 		return
 	}
 	conn, err := httpapi.UpgradeWebSocket(w, r)

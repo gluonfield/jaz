@@ -3,6 +3,7 @@ package machinebridge
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,9 +11,10 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,7 +33,7 @@ const (
 var errSearchLimit = errors.New("search limit reached")
 
 type ExecLauncher interface {
-	Start(ctx context.Context, req ExecStartRequest, grantRoot string) (ExecStartResponse, error)
+	Start(ctx context.Context, req ExecStartRequest) (ExecStartResponse, error)
 	Stop(ctx context.Context, req ExecStopRequest) error
 }
 
@@ -42,14 +44,56 @@ type Handler struct {
 }
 
 func NewHandler(guard *PolicyGuard, httpClient *http.Client, execLauncher ExecLauncher) *Handler {
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
-	}
+	allowLoopback := guard != nil && guard.allowLoopbackTransfers
 	return &Handler{
 		guard:        guard,
-		httpClient:   httpClient,
+		httpClient:   newTransferHTTPClient(httpClient, allowLoopback),
 		execLauncher: execLauncher,
 	}
+}
+
+func newTransferHTTPClient(base *http.Client, allowLoopback bool) *http.Client {
+	client := &http.Client{Timeout: defaultHTTPTimeout}
+	if base != nil {
+		copied := *base
+		client = &copied
+	}
+	if client.Transport == nil {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if err != nil {
+				return nil, err
+			}
+			if len(ips) == 0 {
+				return nil, fmt.Errorf("%w: host %q resolved to no addresses", ErrInvalidRequest, host)
+			}
+			for _, ip := range ips {
+				if isDisallowedTransferIP(ip.IP, allowLoopback) {
+					return nil, fmt.Errorf("%w: resolved transfer address %s is not allowed", ErrInvalidRequest, ip.IP)
+				}
+			}
+			var lastErr error
+			for _, ip := range ips {
+				conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.IP.String(), port))
+				if err == nil {
+					return conn, nil
+				}
+				lastErr = err
+			}
+			return nil, lastErr
+		}
+		client.Transport = transport
+	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return client
 }
 
 func (h *Handler) Dispatch(ctx context.Context, caps Capabilities, method string, params json.RawMessage) (any, error) {
@@ -110,40 +154,36 @@ func (h *Handler) ListDir(ctx context.Context, req ListDirRequest) (ListDirRespo
 	if err != nil {
 		return ListDirResponse{}, err
 	}
-	info, err := os.Stat(resolved.RealPath)
+	info, err := resolved.Root.Stat(resolved.RelPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return ListDirResponse{}, fmt.Errorf("%w: %s", ErrNotFound, req.Path)
 		}
-		return ListDirResponse{}, err
+		return ListDirResponse{}, classifyRootError(err)
 	}
 	if !info.IsDir() {
 		return ListDirResponse{}, fmt.Errorf("%w: path is not a directory", ErrInvalidRequest)
 	}
-	dirEntries, err := os.ReadDir(resolved.RealPath)
+	dirEntries, err := fs.ReadDir(resolved.Root.FS(), resolved.RelPath)
 	if err != nil {
-		return ListDirResponse{}, err
+		return ListDirResponse{}, classifyRootError(err)
 	}
 	out := ListDirResponse{Entries: make([]DirEntry, 0, min(len(dirEntries), limit))}
 	for _, entry := range dirEntries {
 		if err := ctx.Err(); err != nil {
 			return ListDirResponse{}, err
 		}
+		if err := checkRelativeSegments(entry.Name()); err != nil {
+			continue
+		}
 		childRel := joinRel(resolved.RelPath, entry.Name())
 		var stat fs.FileInfo
 		if entry.Type()&os.ModeSymlink != 0 {
-			childResolved, err := h.guard.Resolve(req.GrantID, childRel, OpRead)
-			if err != nil {
-				continue
-			}
-			stat, err = os.Stat(childResolved.RealPath)
+			stat, err = resolved.Root.Stat(childRel)
 			if err != nil {
 				continue
 			}
 		} else {
-			if err := checkRelativeSegments(entry.Name()); err != nil {
-				continue
-			}
 			stat, err = entry.Info()
 			if err != nil {
 				continue
@@ -186,16 +226,12 @@ func (h *Handler) Search(ctx context.Context, req SearchRequest) (SearchResponse
 	if err != nil {
 		return SearchResponse{}, err
 	}
-	grantRoot, err := h.guard.Resolve(req.GrantID, ".", OpRead)
-	if err != nil {
-		return SearchResponse{}, err
-	}
-	startInfo, err := os.Stat(resolved.RealPath)
+	startInfo, err := resolved.Root.Stat(resolved.RelPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return SearchResponse{}, fmt.Errorf("%w: %s", ErrNotFound, req.Path)
 		}
-		return SearchResponse{}, err
+		return SearchResponse{}, classifyRootError(err)
 	}
 
 	lowerQuery := strings.ToLower(query)
@@ -209,7 +245,7 @@ func (h *Handler) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		return nil
 	}
 
-	searchFile := func(absPath, relPath string, size int64) error {
+	searchFile := func(relPath string, size int64) error {
 		if strings.Contains(strings.ToLower(relPath), lowerQuery) {
 			if err := addMatch(SearchMatch{RelPath: relPath}); err != nil {
 				return err
@@ -218,7 +254,12 @@ func (h *Handler) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		if size <= 0 || size > maxSearchFileBytes {
 			return nil
 		}
-		data, err := os.ReadFile(absPath)
+		f, err := resolved.Root.Open(relPath)
+		if err != nil {
+			return nil
+		}
+		data, err := io.ReadAll(io.LimitReader(f, maxSearchFileBytes+1))
+		_ = f.Close()
 		if err != nil {
 			return nil
 		}
@@ -247,14 +288,14 @@ func (h *Handler) Search(ctx context.Context, req SearchRequest) (SearchResponse
 
 	if !startInfo.IsDir() {
 		if startInfo.Mode().IsRegular() {
-			if err := searchFile(resolved.RealPath, resolved.RelPath, startInfo.Size()); err != nil && !errors.Is(err, errSearchLimit) {
+			if err := searchFile(resolved.RelPath, startInfo.Size()); err != nil && !errors.Is(err, errSearchLimit) {
 				return SearchResponse{}, err
 			}
 		}
 		return out, nil
 	}
 
-	walkErr := filepath.WalkDir(resolved.RealPath, func(path string, d fs.DirEntry, walkErr error) error {
+	walkErr := fs.WalkDir(resolved.Root.FS(), resolved.RelPath, func(relPath string, d fs.DirEntry, walkErr error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -265,23 +306,19 @@ func (h *Handler) Search(ctx context.Context, req SearchRequest) (SearchResponse
 			return nil
 		}
 		if d.IsDir() {
-			if path != resolved.RealPath && shouldSkipSearchDir(d.Name()) {
-				return filepath.SkipDir
+			if relPath != resolved.RelPath && shouldSkipSearchDir(d.Name()) {
+				return fs.SkipDir
 			}
 			return nil
 		}
 		if !d.Type().IsRegular() {
 			return nil
 		}
-		rel, ok := relWithin(grantRoot.RealPath, path)
-		if !ok {
-			return nil
-		}
 		info, err := d.Info()
 		if err != nil {
 			return nil
 		}
-		return searchFile(path, rel, info.Size())
+		return searchFile(relPath, info.Size())
 	})
 	if walkErr != nil && !errors.Is(walkErr, errSearchLimit) {
 		return SearchResponse{}, walkErr
@@ -312,12 +349,12 @@ func (h *Handler) StageFiles(ctx context.Context, caps Capabilities, req DeviceS
 }
 
 func (h *Handler) stageOne(ctx context.Context, maxBytes int64, resolved ResolvedPath, target StageFileTarget) (StagedFile, error) {
-	file, err := os.Open(resolved.RealPath)
+	file, err := resolved.Root.Open(resolved.RelPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return StagedFile{}, fmt.Errorf("%w: %s", ErrNotFound, resolved.RelPath)
 		}
-		return StagedFile{}, err
+		return StagedFile{}, classifyRootError(err)
 	}
 	defer file.Close()
 
@@ -355,7 +392,9 @@ func (h *Handler) stageOne(ctx context.Context, maxBytes int64, resolved Resolve
 		return StagedFile{}, fmt.Errorf("%w: %v", ErrInvalidRequest, err)
 	}
 	httpReq.ContentLength = size
-	applyTransferHeaders(httpReq, target.UploadHeaders)
+	if err := applyTransferHeaders(httpReq, target.UploadHeaders); err != nil {
+		return StagedFile{}, err
+	}
 	httpReq.Header.Set("Content-Type", contentType)
 
 	resp, err := h.httpClient.Do(httpReq)
@@ -380,6 +419,15 @@ func (h *Handler) stageOne(ctx context.Context, maxBytes int64, resolved Resolve
 	}, nil
 }
 
+type stagedCommitFile struct {
+	resolved  ResolvedPath
+	entry     CommitFileEntry
+	tmpRel    string
+	sha256Hex string
+	sizeBytes int64
+	committed bool
+}
+
 func (h *Handler) CommitFiles(ctx context.Context, caps Capabilities, req DeviceCommitRequest) (DeviceCommitResponse, error) {
 	if !caps.FileStaging {
 		return DeviceCommitResponse{}, fmt.Errorf("%w: file staging disabled", ErrUnsupportedCapability)
@@ -388,82 +436,161 @@ func (h *Handler) CommitFiles(ctx context.Context, caps Capabilities, req Device
 	if err != nil {
 		return DeviceCommitResponse{}, err
 	}
+	// Phase 1: check preconditions and target types before downloading anything.
 	for i, entry := range req.Files {
-		if err := CheckCommitPrecondition(resolvedPaths[i].RealPath, entry.ExpectedMtimeMs, entry.ExpectedSHA256); err != nil {
+		resolved := resolvedPaths[i]
+		if entry.Delete {
+			if err := verifyDeletableTarget(resolved.Root, resolved.RelPath); err != nil {
+				return DeviceCommitResponse{}, err
+			}
+			if err := checkRootPrecondition(resolved.Root, resolved.RelPath, entry.ExpectedMtimeMs, entry.ExpectedSHA256, true); err != nil {
+				return DeviceCommitResponse{}, err
+			}
+			continue
+		}
+		if err := checkRootPrecondition(resolved.Root, resolved.RelPath, entry.ExpectedMtimeMs, entry.ExpectedSHA256, false); err != nil {
 			return DeviceCommitResponse{}, err
 		}
 	}
-	committed := make([]CommittedFile, 0, len(req.Files))
+
+	// Phase 2: stage all downloads into temp files before mutating any target file.
+	staged := make([]stagedCommitFile, len(req.Files))
+	defer func() {
+		for _, item := range staged {
+			if item.tmpRel != "" && !item.committed {
+				_ = item.resolved.Root.Remove(item.tmpRel)
+			}
+		}
+	}()
 	for i, entry := range req.Files {
 		if err := ctx.Err(); err != nil {
 			return DeviceCommitResponse{}, err
 		}
-		item, err := h.commitOne(ctx, caps.MaxStageBytes, resolvedPaths[i], entry)
+		staged[i] = stagedCommitFile{resolved: resolvedPaths[i], entry: entry}
+		if entry.Delete {
+			continue
+		}
+		tmpRel, digest, written, err := h.downloadCommitTemp(ctx, caps.MaxStageBytes, resolvedPaths[i], entry)
 		if err != nil {
 			return DeviceCommitResponse{}, err
 		}
-		committed = append(committed, item)
+		staged[i].tmpRel = tmpRel
+		staged[i].sha256Hex = digest
+		staged[i].sizeBytes = written
+	}
+
+	// Phase 3: re-check all preconditions across the batch before applying mutations.
+	for _, item := range staged {
+		if item.entry.Delete {
+			if err := verifyDeletableTarget(item.resolved.Root, item.resolved.RelPath); err != nil {
+				return DeviceCommitResponse{}, err
+			}
+		}
+		if err := checkRootPrecondition(item.resolved.Root, item.resolved.RelPath, item.entry.ExpectedMtimeMs, item.entry.ExpectedSHA256, item.entry.Delete); err != nil {
+			return DeviceCommitResponse{}, err
+		}
+	}
+
+	// Phase 4: apply renames and deletes through os.Root.
+	committed := make([]CommittedFile, 0, len(staged))
+	for i := range staged {
+		item := &staged[i]
+		if item.entry.Delete {
+			if err := verifyDeletableTarget(item.resolved.Root, item.resolved.RelPath); err != nil {
+				return DeviceCommitResponse{}, err
+			}
+			if err := checkRootPrecondition(item.resolved.Root, item.resolved.RelPath, item.entry.ExpectedMtimeMs, item.entry.ExpectedSHA256, true); err != nil {
+				return DeviceCommitResponse{}, err
+			}
+			if err := item.resolved.Root.Remove(item.resolved.RelPath); err != nil {
+				return DeviceCommitResponse{}, classifyRootError(err)
+			}
+			committed = append(committed, CommittedFile{RelPath: item.resolved.RelPath, Deleted: true})
+			continue
+		}
+		if err := checkRootPrecondition(item.resolved.Root, item.resolved.RelPath, item.entry.ExpectedMtimeMs, item.entry.ExpectedSHA256, false); err != nil {
+			return DeviceCommitResponse{}, err
+		}
+		if err := item.resolved.Root.Rename(item.tmpRel, item.resolved.RelPath); err != nil {
+			return DeviceCommitResponse{}, classifyRootError(err)
+		}
+		item.committed = true
+		info, err := item.resolved.Root.Stat(item.resolved.RelPath)
+		if err != nil {
+			return DeviceCommitResponse{}, classifyRootError(err)
+		}
+		committed = append(committed, CommittedFile{
+			RelPath:   item.resolved.RelPath,
+			SHA256:    item.sha256Hex,
+			SizeBytes: item.sizeBytes,
+			MtimeMs:   info.ModTime().UnixMilli(),
+		})
 	}
 	return DeviceCommitResponse{Files: committed}, nil
 }
 
-func (h *Handler) commitOne(ctx context.Context, maxBytes int64, resolved ResolvedPath, entry CommitFileEntry) (CommittedFile, error) {
-	if entry.Delete {
-		info, err := os.Lstat(resolved.RealPath)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return CommittedFile{}, fmt.Errorf("%w: %s", ErrNotFound, resolved.RelPath)
-			}
-			return CommittedFile{}, err
+func verifyDeletableTarget(root *os.Root, rel string) error {
+	info, err := root.Lstat(rel)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("%w: %s", ErrNotFound, rel)
 		}
-		if info.IsDir() {
-			return CommittedFile{}, fmt.Errorf("%w: cannot delete directory %s", ErrInvalidRequest, resolved.RelPath)
-		}
-		if err := os.Remove(resolved.RealPath); err != nil {
-			return CommittedFile{}, err
-		}
-		return CommittedFile{RelPath: resolved.RelPath, Deleted: true}, nil
+		return classifyRootError(err)
 	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: cannot delete symlink %s", ErrSymlinkEscape, rel)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%w: cannot delete directory %s", ErrInvalidRequest, rel)
+	}
+	return nil
+}
 
+func (h *Handler) downloadCommitTemp(ctx context.Context, maxBytes int64, resolved ResolvedPath, entry CommitFileEntry) (string, string, int64, error) {
 	perm := fs.FileMode(0o644)
-	if existing, err := os.Stat(resolved.RealPath); err == nil {
+	if existing, err := resolved.Root.Lstat(resolved.RelPath); err == nil {
 		if existing.IsDir() {
-			return CommittedFile{}, fmt.Errorf("%w: cannot overwrite directory %s", ErrInvalidRequest, resolved.RelPath)
+			return "", "", 0, fmt.Errorf("%w: cannot overwrite directory %s", ErrInvalidRequest, resolved.RelPath)
 		}
-		perm = existing.Mode().Perm()
+		if existing.Mode()&os.ModeSymlink == 0 {
+			perm = existing.Mode().Perm()
+		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return CommittedFile{}, err
+		return "", "", 0, classifyRootError(err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(entry.DownloadURL), nil)
 	if err != nil {
-		return CommittedFile{}, fmt.Errorf("%w: %v", ErrInvalidRequest, err)
+		return "", "", 0, fmt.Errorf("%w: %v", ErrInvalidRequest, err)
 	}
-	applyTransferHeaders(httpReq, entry.DownloadHeaders)
+	if err := applyTransferHeaders(httpReq, entry.DownloadHeaders); err != nil {
+		return "", "", 0, err
+	}
 
 	resp, err := h.httpClient.Do(httpReq)
 	if err != nil {
-		return CommittedFile{}, fmt.Errorf("download %s: %w", resolved.RelPath, err)
+		return "", "", 0, fmt.Errorf("download %s: %w", resolved.RelPath, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return CommittedFile{}, fmt.Errorf("download %s: unexpected HTTP status %d", resolved.RelPath, resp.StatusCode)
+		return "", "", 0, fmt.Errorf("download %s: unexpected HTTP status %d", resolved.RelPath, resp.StatusCode)
 	}
 
-	parentDir := filepath.Dir(resolved.RealPath)
-	if err := os.MkdirAll(parentDir, 0o755); err != nil {
-		return CommittedFile{}, err
+	parentRel := path.Dir(resolved.RelPath)
+	if parentRel != "." && parentRel != "" {
+		if err := resolved.Root.MkdirAll(parentRel, 0o755); err != nil {
+			return "", "", 0, classifyRootError(err)
+		}
 	}
-	tmp, err := os.CreateTemp(parentDir, ".jaz-commit-*")
+	tmp, tmpRel, err := createTempInRoot(resolved.Root, parentRel, ".jaz-commit-")
 	if err != nil {
-		return CommittedFile{}, err
+		return "", "", 0, classifyRootError(err)
 	}
-	tmpPath := tmp.Name()
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(tmpPath)
+			_ = resolved.Root.Remove(tmpRel)
 		}
 	}()
 
@@ -475,42 +602,44 @@ func (h *Handler) commitOne(ctx context.Context, maxBytes int64, resolved Resolv
 	written, err := io.Copy(io.MultiWriter(tmp, hasher), reader)
 	if err != nil {
 		_ = tmp.Close()
-		return CommittedFile{}, err
+		return "", "", 0, err
 	}
 	if maxBytes > 0 && written > maxBytes {
 		_ = tmp.Close()
-		return CommittedFile{}, fmt.Errorf("%w: %s download exceeds max_stage_bytes %d", ErrInvalidRequest, resolved.RelPath, maxBytes)
+		return "", "", 0, fmt.Errorf("%w: %s download exceeds max_stage_bytes %d", ErrInvalidRequest, resolved.RelPath, maxBytes)
 	}
 	if err := tmp.Chmod(perm); err != nil {
 		_ = tmp.Close()
-		return CommittedFile{}, err
+		return "", "", 0, err
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
-		return CommittedFile{}, err
+		return "", "", 0, err
 	}
 	if err := tmp.Close(); err != nil {
-		return CommittedFile{}, err
-	}
-
-	if err := CheckCommitPrecondition(resolved.RealPath, entry.ExpectedMtimeMs, entry.ExpectedSHA256); err != nil {
-		return CommittedFile{}, err
-	}
-	if err := os.Rename(tmpPath, resolved.RealPath); err != nil {
-		return CommittedFile{}, err
+		return "", "", 0, err
 	}
 	cleanup = false
+	return tmpRel, hex.EncodeToString(hasher.Sum(nil)), written, nil
+}
 
-	info, err := os.Stat(resolved.RealPath)
-	if err != nil {
-		return CommittedFile{}, err
+func createTempInRoot(root *os.Root, parentRel, prefix string) (*os.File, string, error) {
+	var raw [8]byte
+	for range 16 {
+		if _, err := rand.Read(raw[:]); err != nil {
+			return nil, "", err
+		}
+		name := prefix + hex.EncodeToString(raw[:])
+		rel := joinRel(parentRel, name)
+		f, err := root.OpenFile(rel, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			return f, rel, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, "", err
+		}
 	}
-	return CommittedFile{
-		RelPath:   resolved.RelPath,
-		SHA256:    hex.EncodeToString(hasher.Sum(nil)),
-		SizeBytes: written,
-		MtimeMs:   info.ModTime().UnixMilli(),
-	}, nil
+	return nil, "", fmt.Errorf("create temp file in %q: exhausted retries", parentRel)
 }
 
 func (h *Handler) ExecStart(ctx context.Context, caps Capabilities, req ExecStartRequest) (ExecStartResponse, error) {
@@ -520,11 +649,10 @@ func (h *Handler) ExecStart(ctx context.Context, caps Capabilities, req ExecStar
 	if strings.TrimSpace(req.GrantID) == "" || strings.TrimSpace(req.RunID) == "" {
 		return ExecStartResponse{}, fmt.Errorf("%w: grant_id and run_id are required", ErrInvalidRequest)
 	}
-	resolved, err := h.guard.Resolve(req.GrantID, ".", OpRead)
-	if err != nil {
+	if _, err := h.guard.GrantRoot(req.GrantID, OpWrite); err != nil {
 		return ExecStartResponse{}, err
 	}
-	return h.execLauncher.Start(ctx, req, resolved.RealPath)
+	return h.execLauncher.Start(ctx, req)
 }
 
 func (h *Handler) ExecStop(ctx context.Context, caps Capabilities, req ExecStopRequest) (ExecStopResponse, error) {
@@ -598,18 +726,18 @@ func detectContentType(file *os.File, size int64) string {
 	return http.DetectContentType(buf[:n])
 }
 
-func applyTransferHeaders(req *http.Request, headers map[string]string) {
+func applyTransferHeaders(req *http.Request, headers map[string]string) error {
 	for k, v := range headers {
 		key := strings.TrimSpace(k)
 		if key == "" || strings.EqualFold(key, "Content-Length") {
 			continue
 		}
 		if strings.EqualFold(key, "Host") {
-			req.Host = v
-			continue
+			return fmt.Errorf("%w: Host header override is not allowed", ErrInvalidRequest)
 		}
 		req.Header.Set(key, v)
 	}
+	return nil
 }
 
 type byteCounter struct {

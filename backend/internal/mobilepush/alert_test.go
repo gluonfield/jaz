@@ -95,7 +95,7 @@ func (p *published) Publish(event sessionevents.Event) {
 func TestBotTellsTaskOutcomesAndNewRepliesButNotAcknowledgements(t *testing.T) {
 	service, store, _, bot := pushFixture(t, storage.SourceBot)
 	var sent published
-	botService := bots.NewService(store, t.TempDir(), nil, nil, nil, nil, &sent, log.New(io.Discard))
+	botService := bots.NewService(store, t.TempDir(), nil, nil, nil, nil, nil, &sent, log.New(io.Discard))
 	turn := func(user bool) time.Time {
 		t.Helper()
 		time.Sleep(time.Millisecond)
@@ -191,7 +191,7 @@ func TestGroupTellsAMembersReplyAsTheGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	var sent published
-	botService := bots.NewService(store, t.TempDir(), nil, nil, nil, nil, &sent, log.New(io.Discard))
+	botService := bots.NewService(store, t.TempDir(), nil, nil, nil, nil, nil, &sent, log.New(io.Discard))
 	// Another member's post started the turn; the person's post was then
 	// handed to it, and a later post landed before the turn ended.
 	if claimed, err := store.ClaimTurn(thread.ID, storage.Turn{}); err != nil || !claimed {

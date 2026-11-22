@@ -55,7 +55,7 @@ func (s shown) held(thread storage.Session) map[int64]string {
 // it: the bot's identity, and the identity files that changed since its last
 // successful turn started. Agents load those files as a session starts, not
 // every turn.
-func TurnNote(store NoteStore) func(storage.Session) (note, promptDigest string) {
+func TurnNote(store NoteStore, inst instructions.Store) func(storage.Session) (note, promptDigest string) {
 	return func(thread storage.Session) (string, string) {
 		if thread.SourceType == storage.SourceBotWorker && thread.RuntimeRef != nil {
 			modules, err := WorkerPrompt(store, thread)
@@ -74,7 +74,7 @@ func TurnNote(store NoteStore) func(storage.Session) (note, promptDigest string)
 			return "", ""
 		}
 		last := lastShown(thread.PromptDigest)
-		note, identity := identityNote(store, thread, last.Identity)
+		note, identity := identityNote(store, inst, thread, last.Identity)
 		note += changedFilesNote(thread)
 		note += workspaceFilesNote(store, thread)
 		now := shown{Identity: identity, Session: thread.RuntimeRef.SessionID, Context: thread.Usage.ContextTokens}
@@ -141,11 +141,11 @@ func SteerNote(store NoteStore) func(storage.Session) string {
 
 // identityNote refreshes instructions for agents that retain their start prompt.
 // Include role policy in the digest so edits reach existing conversations.
-func identityNote(store PromptStore, thread storage.Session, seen string) (note, version string) {
+func identityNote(store PromptStore, inst instructions.Store, thread storage.Session, seen string) (note, version string) {
 	if !acp.KeepsStartPrompt(thread.RuntimeRef.Agent) {
 		return "", ""
 	}
-	identity, err := Prompt(store, thread)
+	identity, err := Prompt(store, inst, thread)
 	if err != nil || identity == nil {
 		return "", seen
 	}

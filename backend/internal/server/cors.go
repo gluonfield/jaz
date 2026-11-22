@@ -40,7 +40,7 @@ func withCORS(next http.Handler, trusted ...string) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, X-Jaz-Client-Platform, X-Jaz-Pairing-Secret, If-Match")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, X-Jaz-Client-Platform, If-Match")
 			w.Header().Set("Access-Control-Expose-Headers", "ETag")
 			if r.Header.Get("Access-Control-Request-Private-Network") == "true" {
 				w.Header().Set("Access-Control-Allow-Private-Network", "true")

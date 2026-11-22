@@ -204,8 +204,12 @@ func NewMemory(cfg Config, layout runtimefiles.Layout) (*jazmem.Memory, error) {
 	return jazmem.Open(jazmem.Config{Root: memoryRoot, DBPath: dbPath, DisableProviderDreams: true})
 }
 
-func NewInstructionsStore(layout runtimefiles.Layout) instructions.Store {
-	return instructions.NewLocalFSStore(layout.Root, instructions.WithBotsRoot(layout.Bots))
+func NewInstructionsStore(layout runtimefiles.Layout, store *sqlitestore.Store) instructions.Store {
+	return instructions.NewLocalFSStore(
+		layout.Root,
+		instructions.WithBotsRoot(layout.Bots),
+		instructions.WithBotHomeResolver(bots.HomeResolver(store)),
+	)
 }
 
 func NewPromptBuilder(store *sqlitestore.Store, inst instructions.Store, workspace Workspace, memory *memoryservice.Service, connections *connections.Service, agents acp.AgentConfigSource, installed *plugins.Store) *coordinator.Builder {
@@ -335,7 +339,7 @@ func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, log
 	})
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service, installed *plugins.Store, msCopilot *m365copilot.AuthService) (acp.Config, error) {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, inst instructions.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service, installed *plugins.Store, msCopilot *m365copilot.AuthService) (acp.Config, error) {
 	if err := bots.MigrateHomes(store); err != nil {
 		return acp.Config{}, err
 	}
@@ -355,7 +359,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	if widgetService != nil {
 		promptBuilder.PromptExtras = append(promptBuilder.PromptExtras, widgetService.LoopPromptExtra)
 	}
-	cfg.ACP.TurnNote = bots.TurnNote(store)
+	cfg.ACP.TurnNote = bots.TurnNote(store, inst)
 	cfg.ACP.SteerNote = bots.SteerNote(store)
 	cfg.ACP.ResumePrompt = func(session storage.Session) (promptmodule.Modules, error) {
 		switch session.SourceType {
@@ -365,7 +369,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 			}
 			return promptBuilder.ForRun(session.SourceID, time.Now().UTC())
 		case storage.SourceBot, storage.SourceBotMember:
-			return bots.Prompt(store, session)
+			return bots.Prompt(store, inst, session)
 		case storage.SourceBotWorker:
 			return bots.WorkerPrompt(store, session)
 		default:

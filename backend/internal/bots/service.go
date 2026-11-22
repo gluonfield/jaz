@@ -39,21 +39,20 @@ type Service struct {
 	delivering map[string]*sync.Mutex
 }
 
-func NewService(store Store, homes string, threads Threads, queue TurnQueue, attachments Attachments, routines Routines, events Publisher, logger *log.Logger) *Service {
-	svc := &Service{
-		store:       store,
-		homes:       homes,
-		threads:     threads,
-		queue:       queue,
-		attachments: attachments,
-		routines:    routines,
-		events:      events,
-		log:         logger.WithPrefix("bots"),
-		followUps:   map[string]int{},
-		delivering:  map[string]*sync.Mutex{},
+func NewService(store Store, homes string, inst instructions.Store, threads Threads, queue TurnQueue, attachments Attachments, routines Routines, events Publisher, logger *log.Logger) *Service {
+	return &Service{
+		store:        store,
+		homes:        homes,
+		instructions: inst,
+		threads:      threads,
+		queue:        queue,
+		attachments:  attachments,
+		routines:     routines,
+		events:       events,
+		log:          logger.WithPrefix("bots"),
+		followUps:    map[string]int{},
+		delivering:   map[string]*sync.Mutex{},
 	}
-	svc.instructions = instructions.NewLocalFSStore("", instructions.WithBotHomeResolver(svc.home))
-	return svc
 }
 
 func (s *Service) List() ([]Bot, error) {

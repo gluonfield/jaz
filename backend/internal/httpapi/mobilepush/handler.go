@@ -3,14 +3,13 @@ package mobilepush
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/mobilepush"
 )
-
-const defaultPushClientID = "default"
 
 type Handler struct {
 	Service *mobilepush.Service
@@ -25,7 +24,11 @@ func (h Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	writeResult(w, h.Service.Register(pushClientID(r, input.InstallationID), input))
+	id, ok := requireInstallationID(w, input.InstallationID)
+	if !ok {
+		return
+	}
+	writeResult(w, h.Service.Register(id, input))
 }
 
 func (h Handler) RegisterActivity(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +39,11 @@ func (h Handler) RegisterActivity(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	writeResult(w, h.Service.RegisterActivity(pushClientID(r, input.InstallationID), mobilepush.Activity{
+	id, ok := requireInstallationID(w, input.InstallationID)
+	if !ok {
+		return
+	}
+	writeResult(w, h.Service.RegisterActivity(id, mobilepush.Activity{
 		Registration: input.Registration,
 		SessionID:    input.SessionID,
 		ID:           r.PathValue("activity"),
@@ -44,19 +51,20 @@ func (h Handler) RegisterActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) Unregister(w http.ResponseWriter, r *http.Request) {
-	writeResult(w, h.Service.Unregister(pushClientID(r, r.URL.Query().Get("installation_id")), r.PathValue("activity")))
+	id, ok := requireInstallationID(w, r.URL.Query().Get("installation_id"))
+	if !ok {
+		return
+	}
+	writeResult(w, h.Service.Unregister(id, r.PathValue("activity")))
 }
 
-func pushClientID(r *http.Request, installationID string) string {
-	for _, candidate := range []string{
-		r.Header.Get("X-Jaz-Device-ID"),
-		installationID,
-	} {
-		if id := strings.TrimSpace(candidate); id != "" && len(id) <= 128 {
-			return id
-		}
+func requireInstallationID(w http.ResponseWriter, raw string) (string, bool) {
+	id := strings.TrimSpace(raw)
+	if id == "" || len(id) > 128 {
+		httpapi.WriteError(w, http.StatusBadRequest, fmt.Errorf("%w: installation_id is required", mobilepush.ErrInvalidRegistration))
+		return "", false
 	}
-	return defaultPushClientID
+	return id, true
 }
 
 func decode(w http.ResponseWriter, r *http.Request, target any) bool {

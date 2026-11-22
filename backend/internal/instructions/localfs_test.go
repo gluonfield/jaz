@@ -95,9 +95,24 @@ func TestLocalFSStoreCustomBotHomeResolverAndValidation(t *testing.T) {
 		t.Fatalf("custom home BOTS.md = %q, %v", data, err)
 	}
 
-	invalidKeys := []Key{
+	unsupportedKeys := []Key{
 		{Scope: ScopeOrg, ScopeID: "org-1", Kind: KindAgents},
 		{Scope: ScopeSpace, ScopeID: "space-1", Kind: KindAgents},
+	}
+	for _, key := range unsupportedKeys {
+		if err := key.Validate(); err != nil {
+			t.Errorf("Validate(%+v) err = %v, want nil", key, err)
+		}
+		if _, err := store.Get(ctx, key); !errors.Is(err, ErrUnsupportedScope) {
+			t.Errorf("Get(%+v) err = %v, want ErrUnsupportedScope", key, err)
+		}
+		if _, err := store.Save(ctx, key, "x", ""); !errors.Is(err, ErrUnsupportedScope) {
+			t.Errorf("Save(%+v) err = %v, want ErrUnsupportedScope", key, err)
+		}
+	}
+
+	invalidKeys := []Key{
+		{Scope: ScopeSpace, ScopeID: "", Kind: KindAgents},
 		{Scope: ScopeUser, Kind: KindMemory},
 		{Scope: ScopeBot, ScopeID: "", Kind: KindBots},
 		{Scope: ScopeBot, ScopeID: "custom", Kind: KindSoul},

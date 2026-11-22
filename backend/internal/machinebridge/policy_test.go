@@ -22,6 +22,7 @@ func TestPolicyGuardAccessModes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = guard.Close() })
 
 	if _, err := guard.Resolve("ro", "notes.md", OpRead); err != nil {
 		t.Fatalf("ro read failed: %v", err)
@@ -31,6 +32,12 @@ func TestPolicyGuardAccessModes(t *testing.T) {
 	}
 	if _, err := guard.Resolve("ro", "notes.md", OpDelete); !errors.Is(err, ErrAccessDenied) {
 		t.Fatalf("ro delete = %v, want ErrAccessDenied", err)
+	}
+	if _, err := guard.GrantRoot("ro", OpWrite); !errors.Is(err, ErrAccessDenied) {
+		t.Fatalf("ro GrantRoot(OpWrite) = %v, want ErrAccessDenied", err)
+	}
+	if _, err := guard.GrantRoot("rw", OpWrite); err != nil {
+		t.Fatalf("rw GrantRoot(OpWrite) failed: %v", err)
 	}
 	if _, err := guard.Resolve("rw", "notes.md", OpWrite); err != nil {
 		t.Fatalf("rw write failed: %v", err)
@@ -71,6 +78,7 @@ func TestPolicyGuardRejectsTraversalAndWindowsAbuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = guard.Close() })
 
 	attacks := []string{
 		"../secret.txt",
@@ -125,30 +133,24 @@ func TestPolicyGuardRejectsSymlinkEscapesAndAllowsInternalSymlinks(t *testing.T)
 		t.Fatal(err)
 	}
 
-	// Direct symlink to outside file.
 	if err := os.Symlink(outsideFile, filepath.Join(grantDir, "file-escape.txt")); err != nil {
 		t.Fatal(err)
 	}
-	// Directory symlink to outside dir.
 	if err := os.Symlink(outsideDir, filepath.Join(grantDir, "dir-escape")); err != nil {
 		t.Fatal(err)
 	}
-	// Dangling symlink pointing to non-existent file outside grant (write escape vector).
 	if err := os.Symlink(filepath.Join(outsideDir, "new-evil.txt"), filepath.Join(grantDir, "dangling-escape.txt")); err != nil {
 		t.Fatal(err)
 	}
-	// Two-hop symlink chain escaping outside grant.
 	if err := os.Symlink("dir-escape", filepath.Join(grantDir, "hop1")); err != nil {
 		t.Fatal(err)
 	}
-	// Symlink loop inside grant.
 	if err := os.Symlink("loop-b", filepath.Join(grantDir, "loop-a")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("loop-a", filepath.Join(grantDir, "loop-b")); err != nil {
 		t.Fatal(err)
 	}
-	// Safe internal symlink staying within grant.
 	if err := os.Symlink(filepath.Join("sub", "ok.txt"), filepath.Join(grantDir, "safe-link.txt")); err != nil {
 		t.Fatal(err)
 	}
@@ -159,6 +161,7 @@ func TestPolicyGuardRejectsSymlinkEscapesAndAllowsInternalSymlinks(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = guard.Close() })
 
 	escapes := []struct {
 		path string
@@ -171,6 +174,8 @@ func TestPolicyGuardRejectsSymlinkEscapesAndAllowsInternalSymlinks(t *testing.T)
 		{"hop1/secret.txt", OpRead},
 		{"hop1/new.txt", OpWrite},
 		{"loop-a", OpRead},
+		{"safe-link.txt", OpDelete},
+		{"dir-escape/secret.txt", OpDelete},
 	}
 	for _, tc := range escapes {
 		if got, err := guard.Resolve("work", tc.path, tc.op); !errors.Is(err, ErrSymlinkEscape) {
@@ -191,27 +196,7 @@ func TestPolicyGuardRejectsSymlinkEscapesAndAllowsInternalSymlinks(t *testing.T)
 	}
 }
 
-func TestWithinPathWindowsSemantics(t *testing.T) {
-	cases := []struct {
-		root   string
-		target string
-		want   bool
-	}{
-		{`C:\Users\Alice\Work`, `C:\Users\Alice\Work`, true},
-		{`C:\Users\Alice\Work`, `c:\users\alice\work\sub\file.txt`, true},
-		{`C:\Users\Alice\Work\`, `C:\Users\Alice\Work\a.txt`, true},
-		{`C:\Users\Alice\Work`, `C:\Users\Alice\Work2\file.txt`, false},
-		{`C:\Users\Alice\Work`, `D:\Users\Alice\Work\file.txt`, false},
-		{`C:\Users\Alice\Work`, `C:\Users\Alice\secret.txt`, false},
-	}
-	for _, tc := range cases {
-		if got := withinPath(tc.root, tc.target, true, '\\'); got != tc.want {
-			t.Errorf("withinPath(%q, %q) = %v, want %v", tc.root, tc.target, got, tc.want)
-		}
-	}
-}
-
-func TestValidateStageCommitRequestsAndPreconditions(t *testing.T) {
+func TestValidateStageCommitRequestsSSRFAndPreconditions(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "calc.xlsx")
 	body := []byte("sheet-v1")
@@ -226,7 +211,8 @@ func TestValidateStageCommitRequestsAndPreconditions(t *testing.T) {
 	sum := sha256.Sum256(body)
 	digest := hex.EncodeToString(sum[:])
 
-	guard, err := NewPolicyGuard([]FolderGrant{
+	// Default production PolicyGuard rejects loopback, private, link-local, metadata IPs, and Host overrides.
+	prodGuard, err := NewPolicyGuard([]FolderGrant{
 		{ID: "ro", RootPath: dir, Mode: AccessReadOnly},
 		{ID: "rw", RootPath: dir, Mode: AccessReadWrite},
 		{ID: "rwd", RootPath: dir, Mode: AccessReadWriteDelete},
@@ -234,44 +220,95 @@ func TestValidateStageCommitRequestsAndPreconditions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = prodGuard.Close() })
 
-	if _, err := guard.ValidateStageRequest(DeviceStageRequest{
+	if _, err := prodGuard.ValidateStageRequest(DeviceStageRequest{
 		GrantID: "ro",
 		RunID:   "run-1",
 		Files:   []StageFileTarget{{RelPath: "calc.xlsx", UploadURL: "https://storage.googleapis.com/bucket/key"}},
 	}); err != nil {
-		t.Fatalf("valid stage request failed: %v", err)
+		t.Fatalf("valid https stage request failed: %v", err)
 	}
-	if _, err := guard.ValidateStageRequest(DeviceStageRequest{
+
+	blockedURLs := []string{
+		"http://insecure.example/key",
+		"http://127.0.0.1:8080/key",
+		"https://127.0.0.1/key",
+		"https://localhost/key",
+		"https://sub.localhost/key",
+		"https://[::1]/key",
+		"https://169.254.169.254/latest/meta-data/",
+		"https://10.0.0.1/internal",
+		"https://192.168.1.5/internal",
+		"https://100.64.0.1/cgnat",
+		"https://[fc00::1]/ula",
+		"https://[fe80::1]/link-local",
+		"https://[::ffff:169.254.169.254]/mapped",
+		"https://user:pass@storage.googleapis.com/bucket/key",
+	}
+	for _, bad := range blockedURLs {
+		if _, err := prodGuard.ValidateStageRequest(DeviceStageRequest{
+			GrantID: "ro",
+			RunID:   "run-1",
+			Files:   []StageFileTarget{{RelPath: "calc.xlsx", UploadURL: bad}},
+		}); !errors.Is(err, ErrInvalidRequest) {
+			t.Errorf("prod ValidateStageRequest(%q) err = %v, want ErrInvalidRequest", bad, err)
+		}
+	}
+
+	if _, err := prodGuard.ValidateStageRequest(DeviceStageRequest{
 		GrantID: "ro",
 		RunID:   "run-1",
-		Files:   []StageFileTarget{{RelPath: "calc.xlsx", UploadURL: "http://insecure.example/key"}},
+		Files: []StageFileTarget{{
+			RelPath:       "calc.xlsx",
+			UploadURL:     "https://storage.googleapis.com/bucket/key",
+			UploadHeaders: map[string]string{"Host": "evil.internal"},
+		}},
 	}); !errors.Is(err, ErrInvalidRequest) {
-		t.Fatalf("http upload URL err = %v, want ErrInvalidRequest", err)
+		t.Fatalf("Host header override err = %v, want ErrInvalidRequest", err)
 	}
-	if _, err := guard.ValidateStageRequest(DeviceStageRequest{
+
+	// Explicit test-only WithAllowLoopbackTransfers permits loopback HTTP while still blocking private/metadata IPs.
+	testGuard, err := NewPolicyGuard([]FolderGrant{
+		{ID: "ro", RootPath: dir, Mode: AccessReadOnly},
+		{ID: "rw", RootPath: dir, Mode: AccessReadWrite},
+		{ID: "rwd", RootPath: dir, Mode: AccessReadWriteDelete},
+	}, WithAllowLoopbackTransfers())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = testGuard.Close() })
+
+	if _, err := testGuard.ValidateStageRequest(DeviceStageRequest{
 		GrantID: "ro",
 		RunID:   "run-1",
 		Files:   []StageFileTarget{{RelPath: "calc.xlsx", UploadURL: "http://127.0.0.1:8080/key"}},
 	}); err != nil {
-		t.Fatalf("loopback http upload URL failed: %v", err)
+		t.Fatalf("loopback opt-in upload URL failed: %v", err)
+	}
+	if _, err := testGuard.ValidateStageRequest(DeviceStageRequest{
+		GrantID: "ro",
+		RunID:   "run-1",
+		Files:   []StageFileTarget{{RelPath: "calc.xlsx", UploadURL: "https://169.254.169.254/latest/meta-data/"}},
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("loopback opt-in still allowed metadata IP: %v", err)
 	}
 
-	if _, err := guard.ValidateCommitRequest(DeviceCommitRequest{
+	if _, err := prodGuard.ValidateCommitRequest(DeviceCommitRequest{
 		GrantID: "rw",
 		RunID:   "run-1",
 		Files:   []CommitFileEntry{{RelPath: "calc.xlsx", DownloadURL: "https://storage.googleapis.com/bucket/out"}},
 	}); err != nil {
 		t.Fatalf("valid rw commit failed: %v", err)
 	}
-	if _, err := guard.ValidateCommitRequest(DeviceCommitRequest{
+	if _, err := prodGuard.ValidateCommitRequest(DeviceCommitRequest{
 		GrantID: "rw",
 		RunID:   "run-1",
 		Files:   []CommitFileEntry{{RelPath: "calc.xlsx", Delete: true}},
 	}); !errors.Is(err, ErrAccessDenied) {
 		t.Fatalf("rw delete commit err = %v, want ErrAccessDenied", err)
 	}
-	if _, err := guard.ValidateCommitRequest(DeviceCommitRequest{
+	if _, err := prodGuard.ValidateCommitRequest(DeviceCommitRequest{
 		GrantID: "rwd",
 		RunID:   "run-1",
 		Files:   []CommitFileEntry{{RelPath: "calc.xlsx", Delete: true}},

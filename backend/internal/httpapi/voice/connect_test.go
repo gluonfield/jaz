@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/bots"
+	inststore "github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/voice/live"
@@ -77,7 +78,8 @@ func TestConnectUsesCurrentBotIdentity(t *testing.T) {
 						if err := store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: bots.KindBot, Prompt: "Private agent instructions."}); err != nil {
 							t.Fatal(err)
 						}
-						prompt, err := bots.Prompt(store, session)
+						inst := inststore.NewLocalFSStore("", inststore.WithBotHomeResolver(bots.HomeResolver(store)))
+						prompt, err := bots.Prompt(store, inst, session)
 						if err != nil {
 							t.Fatal(err)
 						}

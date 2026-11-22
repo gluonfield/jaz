@@ -8,21 +8,32 @@ import (
 	"io"
 	"io/fs"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"syscall"
 )
 
-const maxSymlinkDepth = 40
+var cgnatPrefix = netip.MustParsePrefix("100.64.0.0/10")
+
+type PolicyOption func(*PolicyGuard)
+
+// WithAllowLoopbackTransfers permits HTTP/HTTPS transfers to loopback addresses.
+// Intended for local tests only; production defaults to rejecting loopback and private IPs.
+func WithAllowLoopbackTransfers() PolicyOption {
+	return func(g *PolicyGuard) {
+		g.allowLoopbackTransfers = true
+	}
+}
 
 type grantEntry struct {
 	grant    FolderGrant
 	rawRoot  string
 	realRoot string
+	root     *os.Root
 }
 
 type ResolvedPath struct {
@@ -30,42 +41,61 @@ type ResolvedPath struct {
 	RelPath  string
 	AbsPath  string
 	RealPath string
+	Root     *os.Root
 }
 
 // PolicyGuard enforces folder-grant access modes (ro/rw/rwd), lexical path
-// confinement across macOS and Windows rules, and realpath symlink escape checks.
+// validation, and kernel-enforced os.Root confinement against symlink escapes.
 type PolicyGuard struct {
-	grants map[string]grantEntry
+	grants                 map[string]grantEntry
+	allowLoopbackTransfers bool
 }
 
-func NewPolicyGuard(grants []FolderGrant) (*PolicyGuard, error) {
+func NewPolicyGuard(grants []FolderGrant, opts ...PolicyOption) (*PolicyGuard, error) {
 	entries := make(map[string]grantEntry, len(grants))
+	cleanup := func() {
+		for _, entry := range entries {
+			_ = entry.root.Close()
+		}
+	}
 	for _, grant := range grants {
 		id := strings.TrimSpace(grant.ID)
 		if id == "" {
+			cleanup()
 			return nil, fmt.Errorf("%w: grant id is required", ErrInvalidRequest)
 		}
 		if _, exists := entries[id]; exists {
+			cleanup()
 			return nil, fmt.Errorf("%w: duplicate grant id %q", ErrInvalidRequest, id)
 		}
 		if !grant.Mode.Valid() {
+			cleanup()
 			return nil, fmt.Errorf("%w: invalid access mode %q", ErrInvalidRequest, grant.Mode)
 		}
 		root := strings.TrimSpace(grant.RootPath)
 		if root == "" || strings.ContainsRune(root, '\x00') || !filepath.IsAbs(root) {
+			cleanup()
 			return nil, fmt.Errorf("%w: grant root must be an absolute path", ErrInvalidRequest)
 		}
 		rawRoot := filepath.Clean(root)
 		realRoot, err := filepath.EvalSymlinks(rawRoot)
 		if err != nil {
+			cleanup()
 			return nil, fmt.Errorf("resolve grant %q root: %w", id, err)
 		}
 		info, err := os.Stat(realRoot)
 		if err != nil {
+			cleanup()
 			return nil, fmt.Errorf("stat grant %q root: %w", id, err)
 		}
 		if !info.IsDir() {
+			cleanup()
 			return nil, fmt.Errorf("%w: grant %q root is not a directory", ErrInvalidRequest, id)
+		}
+		rootHandle, err := os.OpenRoot(realRoot)
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("open grant %q root: %w", id, err)
 		}
 		grant.ID = id
 		grant.RootPath = realRoot
@@ -73,9 +103,26 @@ func NewPolicyGuard(grants []FolderGrant) (*PolicyGuard, error) {
 			grant:    grant,
 			rawRoot:  rawRoot,
 			realRoot: realRoot,
+			root:     rootHandle,
 		}
 	}
-	return &PolicyGuard{grants: entries}, nil
+	guard := &PolicyGuard{grants: entries}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(guard)
+		}
+	}
+	return guard, nil
+}
+
+func (g *PolicyGuard) Close() error {
+	var errs []error
+	for _, entry := range g.grants {
+		if entry.root != nil {
+			errs = append(errs, entry.root.Close())
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (g *PolicyGuard) Grants() []FolderGrant {
@@ -87,6 +134,17 @@ func (g *PolicyGuard) Grants() []FolderGrant {
 		return strings.Compare(a.ID, b.ID)
 	})
 	return out
+}
+
+func (g *PolicyGuard) GrantRoot(grantID string, op Operation) (string, error) {
+	entry, ok := g.grants[grantID]
+	if !ok {
+		return "", fmt.Errorf("%w: unknown grant %q", ErrAccessDenied, grantID)
+	}
+	if !entry.grant.Mode.Allows(op) {
+		return "", fmt.Errorf("%w: grant %q (%s) does not permit %s", ErrAccessDenied, grantID, entry.grant.Mode, op)
+	}
+	return entry.realRoot, nil
 }
 
 // ParseGrantSpec parses "<id>=<mode>:<path>" into a FolderGrant.
@@ -135,7 +193,7 @@ func (g *PolicyGuard) Resolve(grantID, target string, op Operation) (ResolvedPat
 	if rel == "." && op != OpRead {
 		return ResolvedPath{}, fmt.Errorf("%w: cannot %s grant root directory", ErrAccessDenied, op)
 	}
-	realPath, err := resolveConfinedRealPath(entry.realRoot, rel)
+	realPath, err := verifyRootConfinement(entry.root, entry.realRoot, rel, op)
 	if err != nil {
 		return ResolvedPath{}, err
 	}
@@ -144,6 +202,7 @@ func (g *PolicyGuard) Resolve(grantID, target string, op Operation) (ResolvedPat
 		RelPath:  rel,
 		AbsPath:  abs,
 		RealPath: realPath,
+		Root:     entry.root,
 	}, nil
 }
 
@@ -153,7 +212,10 @@ func (g *PolicyGuard) ValidateStageRequest(req DeviceStageRequest) ([]ResolvedPa
 	}
 	resolved := make([]ResolvedPath, 0, len(req.Files))
 	for _, file := range req.Files {
-		if err := validateTransferURL(file.UploadURL); err != nil {
+		if err := validateTransferURL(file.UploadURL, g.allowLoopbackTransfers); err != nil {
+			return nil, err
+		}
+		if err := validateTransferHeaders(file.UploadHeaders); err != nil {
 			return nil, err
 		}
 		path, err := g.Resolve(req.GrantID, file.RelPath, OpRead)
@@ -174,8 +236,13 @@ func (g *PolicyGuard) ValidateCommitRequest(req DeviceCommitRequest) ([]Resolved
 		op := OpWrite
 		if file.Delete {
 			op = OpDelete
-		} else if err := validateTransferURL(file.DownloadURL); err != nil {
-			return nil, err
+		} else {
+			if err := validateTransferURL(file.DownloadURL, g.allowLoopbackTransfers); err != nil {
+				return nil, err
+			}
+			if err := validateTransferHeaders(file.DownloadHeaders); err != nil {
+				return nil, err
+			}
 		}
 		path, err := g.Resolve(req.GrantID, file.RelPath, op)
 		if err != nil {
@@ -204,7 +271,56 @@ func CheckCommitPrecondition(path string, expectedMtimeMs *int64, expectedSHA256
 		return fmt.Errorf("%w: mtime changed (%d != %d)", ErrConflict, info.ModTime().UnixMilli(), *expectedMtimeMs)
 	}
 	if expectedSHA256 != "" {
-		got, err := fileSHA256(path)
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		got, err := readerSHA256(f)
+		if err != nil {
+			return err
+		}
+		if got != expectedSHA256 {
+			return fmt.Errorf("%w: sha256 mismatch", ErrConflict)
+		}
+	}
+	return nil
+}
+
+func checkRootPrecondition(root *os.Root, rel string, expectedMtimeMs *int64, expectedSHA256 string, noFollow bool) error {
+	expectedSHA256 = strings.ToLower(strings.TrimSpace(expectedSHA256))
+	if expectedMtimeMs == nil && expectedSHA256 == "" {
+		return nil
+	}
+	var info fs.FileInfo
+	var err error
+	if noFollow {
+		info, err = root.Lstat(rel)
+	} else {
+		info, err = root.Stat(rel)
+	}
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("%w: file missing on device", ErrConflict)
+		}
+		return classifyRootError(err)
+	}
+	if noFollow && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: cannot follow symlink for delete precondition", ErrSymlinkEscape)
+	}
+	if expectedMtimeMs != nil && info.ModTime().UnixMilli() != *expectedMtimeMs {
+		return fmt.Errorf("%w: mtime changed (%d != %d)", ErrConflict, info.ModTime().UnixMilli(), *expectedMtimeMs)
+	}
+	if expectedSHA256 != "" {
+		f, err := root.Open(rel)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("%w: file missing on device", ErrConflict)
+			}
+			return classifyRootError(err)
+		}
+		defer f.Close()
+		got, err := readerSHA256(f)
 		if err != nil {
 			return err
 		}
@@ -255,11 +371,50 @@ func lexicalConfine(entry grantEntry, raw string) (rel string, abs string, err e
 	if err := checkRelativeSegments(cleanRel); err != nil {
 		return "", "", err
 	}
-	joined := filepath.Join(entry.realRoot, filepath.FromSlash(cleanRel))
-	if !withinOSPath(entry.realRoot, joined) {
-		return "", "", fmt.Errorf("%w: %s", ErrPathOutsideGrant, raw)
+	return cleanRel, filepath.Join(entry.realRoot, filepath.FromSlash(cleanRel)), nil
+}
+
+func verifyRootConfinement(root *os.Root, realRoot, cleanRel string, op Operation) (string, error) {
+	if cleanRel == "." || cleanRel == "" {
+		return realRoot, nil
 	}
-	return cleanRel, joined, nil
+	candidate := filepath.Join(realRoot, filepath.FromSlash(cleanRel))
+	if op == OpDelete {
+		info, err := root.Lstat(cleanRel)
+		if err == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				return "", fmt.Errorf("%w: symlink delete rejected", ErrSymlinkEscape)
+			}
+			return candidate, nil
+		}
+		if errors.Is(err, fs.ErrNotExist) {
+			return candidate, nil
+		}
+		return "", classifyRootError(err)
+	}
+	if _, err := root.Stat(cleanRel); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return candidate, nil
+		}
+		return "", classifyRootError(err)
+	}
+	if resolved, err := filepath.EvalSymlinks(candidate); err == nil {
+		return resolved, nil
+	}
+	return candidate, nil
+}
+
+func classifyRootError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, syscall.ELOOP) ||
+		strings.Contains(err.Error(), "escapes from parent") ||
+		strings.Contains(err.Error(), "too many levels of symbolic links") ||
+		strings.Contains(err.Error(), "too many links") {
+		return fmt.Errorf("%w: %v", ErrSymlinkEscape, err)
+	}
+	return err
 }
 
 func validateRelativeInput(raw string) error {
@@ -292,189 +447,91 @@ func checkRelativeSegments(cleanRel string) error {
 	return nil
 }
 
-// resolveConfinedRealPath walks every path component from realRoot, resolving
-// both existing and dangling symlinks so neither reads nor new-file writes can
-// escape realRoot through a symlink or symlink chain.
-func resolveConfinedRealPath(realRoot, cleanRel string) (string, error) {
-	if cleanRel == "." || cleanRel == "" {
-		return realRoot, nil
-	}
-	parts := strings.Split(cleanRel, "/")
-	return walkConfined(realRoot, realRoot, parts, 0)
-}
-
-func walkConfined(realRoot, current string, parts []string, depth int) (string, error) {
-	for i, part := range parts {
-		if part == "" || part == "." {
-			continue
-		}
-		if part == ".." {
-			return "", fmt.Errorf("%w: traversal segment", ErrSymlinkEscape)
-		}
-		next := filepath.Join(current, part)
-		info, err := os.Lstat(next)
-		if errors.Is(err, fs.ErrNotExist) {
-			remaining := append([]string{part}, parts[i+1:]...)
-			candidate := filepath.Join(append([]string{current}, remaining...)...)
-			if !withinOSPath(realRoot, candidate) {
-				return "", fmt.Errorf("%w: %s", ErrSymlinkEscape, candidate)
-			}
-			return candidate, nil
-		}
-		if err != nil {
-			return "", err
-		}
-		if info.Mode()&os.ModeSymlink == 0 {
-			if !withinOSPath(realRoot, next) {
-				return "", fmt.Errorf("%w: %s", ErrSymlinkEscape, next)
-			}
-			current = next
-			continue
-		}
-		if depth >= maxSymlinkDepth {
-			return "", fmt.Errorf("%w: too many symlink levels", ErrSymlinkEscape)
-		}
-		linkTarget, err := os.Readlink(next)
-		if err != nil {
-			return "", err
-		}
-		resolvedTarget := linkTarget
-		if !filepath.IsAbs(resolvedTarget) {
-			resolvedTarget = filepath.Join(current, resolvedTarget)
-		}
-		resolvedTarget = filepath.Clean(resolvedTarget)
-		resolvedTarget, err = resolveDeepestAncestor(resolvedTarget)
-		if err != nil {
-			return "", err
-		}
-		if !withinOSPath(realRoot, resolvedTarget) {
-			return "", fmt.Errorf("%w: symlink points outside grant", ErrSymlinkEscape)
-		}
-		relAfterLink, ok := relWithin(realRoot, resolvedTarget)
-		if !ok {
-			return "", fmt.Errorf("%w: symlink points outside grant", ErrSymlinkEscape)
-		}
-		var nextParts []string
-		if relAfterLink != "." && relAfterLink != "" {
-			nextParts = append(nextParts, strings.Split(relAfterLink, "/")...)
-		}
-		nextParts = append(nextParts, parts[i+1:]...)
-		return walkConfined(realRoot, realRoot, nextParts, depth+1)
-	}
-	if !withinOSPath(realRoot, current) {
-		return "", fmt.Errorf("%w: %s", ErrSymlinkEscape, current)
-	}
-	return current, nil
-}
-
-// resolveDeepestAncestor canonicalizes the deepest existing prefix of target so
-// symlink chains inside macOS /var -> /private/var or nested symlinks compare
-// cleanly against realRoot even when the final target does not exist yet.
-func resolveDeepestAncestor(target string) (string, error) {
-	var tail []string
-	probe := target
-	for {
-		resolved, err := filepath.EvalSymlinks(probe)
-		if err == nil {
-			for i := len(tail) - 1; i >= 0; i-- {
-				resolved = filepath.Join(resolved, tail[i])
-			}
-			return resolved, nil
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			if errors.Is(err, syscall.ELOOP) || strings.Contains(err.Error(), "too many links") {
-				return "", fmt.Errorf("%w: %v", ErrSymlinkEscape, err)
-			}
-			return "", err
-		}
-		parent := filepath.Dir(probe)
-		if parent == probe {
-			return target, nil
-		}
-		tail = append(tail, filepath.Base(probe))
-		probe = parent
-	}
-}
-
-func validateTransferURL(raw string) error {
+func validateTransferURL(raw string, allowLoopback bool) error {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Host == "" {
+	if err != nil || parsed.Host == "" || parsed.User != nil {
 		return fmt.Errorf("%w: valid transfer URL is required", ErrInvalidRequest)
 	}
-	if parsed.Scheme == "https" {
+	host := parsed.Hostname()
+	if host == "" {
+		return fmt.Errorf("%w: transfer URL host is required", ErrInvalidRequest)
+	}
+	switch parsed.Scheme {
+	case "https":
+	case "http":
+		if !allowLoopback || !isLoopbackHost(host) {
+			return fmt.Errorf("%w: transfer URL must use https", ErrInvalidRequest)
+		}
+	default:
+		return fmt.Errorf("%w: transfer URL must use https", ErrInvalidRequest)
+	}
+	lowerHost := strings.ToLower(host)
+	if lowerHost == "localhost" || strings.HasSuffix(lowerHost, ".localhost") {
+		if !allowLoopback {
+			return fmt.Errorf("%w: loopback transfer URL is not allowed", ErrInvalidRequest)
+		}
 		return nil
 	}
-	if parsed.Scheme == "http" && isLoopbackHost(parsed.Hostname()) {
-		return nil
+	if ip := net.ParseIP(host); ip != nil && isDisallowedTransferIP(ip, allowLoopback) {
+		return fmt.Errorf("%w: private or loopback transfer address %q is not allowed", ErrInvalidRequest, host)
 	}
-	return fmt.Errorf("%w: transfer URL must use https", ErrInvalidRequest)
+	return nil
+}
+
+func validateTransferHeaders(headers map[string]string) error {
+	for k := range headers {
+		if strings.EqualFold(strings.TrimSpace(k), "Host") {
+			return fmt.Errorf("%w: Host header override is not allowed", ErrInvalidRequest)
+		}
+	}
+	return nil
+}
+
+func isDisallowedTransferIP(ip net.IP, allowLoopback bool) bool {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return true
+	}
+	addr = addr.Unmap()
+	if addr.IsLoopback() {
+		return !allowLoopback
+	}
+	return addr.IsPrivate() ||
+		addr.IsLinkLocalUnicast() ||
+		addr.IsLinkLocalMulticast() ||
+		addr.IsUnspecified() ||
+		addr.IsMulticast() ||
+		addr.IsInterfaceLocalMulticast() ||
+		cgnatPrefix.Contains(addr)
 }
 
 func isLoopbackHost(host string) bool {
-	if strings.EqualFold(host, "localhost") {
+	lower := strings.ToLower(host)
+	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") {
 		return true
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
 }
 
-func fileSHA256(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
+func readerSHA256(r io.Reader) (string, error) {
 	hasher := sha256.New()
-	if _, err := io.Copy(hasher, file); err != nil {
+	if _, err := io.Copy(hasher, r); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 func relWithin(root, target string) (string, bool) {
-	if !withinOSPath(root, target) {
-		return "", false
-	}
 	rel, err := filepath.Rel(root, target)
 	if err != nil {
 		return "", false
 	}
-	return filepath.ToSlash(rel), true
-}
-
-func withinOSPath(root, target string) bool {
-	return withinPath(root, target, runtime.GOOS == "windows", filepath.Separator)
-}
-
-// withinPath checks lexical containment with explicit case-sensitivity and
-// separator rules so Windows drive/case behavior is unit-tested on every OS.
-func withinPath(root, target string, caseInsensitive bool, sep byte) bool {
-	sepStr := string(sep)
-	norm := func(s string) string {
-		if sep == '\\' {
-			s = strings.ReplaceAll(s, "/", `\`)
-		}
-		s = strings.TrimRight(s, sepStr)
-		if s == "" && strings.HasPrefix(root, sepStr) {
-			return sepStr
-		}
-		if caseInsensitive {
-			return strings.ToLower(s)
-		}
-		return s
+	rel = filepath.ToSlash(rel)
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", false
 	}
-	r := norm(root)
-	t := norm(target)
-	if r == "" || t == "" {
-		return false
-	}
-	if r == sepStr {
-		return strings.HasPrefix(t, sepStr)
-	}
-	if t == r {
-		return true
-	}
-	return strings.HasPrefix(t, r+sepStr)
+	return rel, true
 }
 
 func hasWindowsDevicePrefix(s string) bool {

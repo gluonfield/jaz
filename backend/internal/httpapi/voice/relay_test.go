@@ -225,30 +225,47 @@ func TestClaudeRelayUsesAuthenticatedDesktopAndIsolatesOwnedCalls(t *testing.T) 
 	}
 }
 
-func TestClaudeRelayRejectsUnauthenticatedAndMobileHosts(t *testing.T) {
+func TestClaudeRelayRejectsUnauthenticatedAndUntrustedHosts(t *testing.T) {
 	f := newRelayFixture(t)
 	for _, test := range []struct {
-		path, token, platform string
-		status                int
+		name       string
+		path       string
+		token      string
+		platform   string
+		host       string
+		remoteAddr string
+		forwarded  string
+		status     int
 	}{
-		{"/v1/voice/desktop", "", "desktop", http.StatusUnauthorized},
-		{"/v1/voice/desktop", f.token, "mobile", http.StatusForbidden},
-		{"/v1/sessions/" + f.session + "/voice/claude", "", "mobile", http.StatusUnauthorized},
-		{"/v1/sessions/missing/voice/claude", f.token, "mobile", http.StatusNotFound},
-		{"/v1/sessions/" + f.session + "/voice/claude", f.token, "mobile", http.StatusServiceUnavailable},
+		{"unauthenticated desktop", "/v1/voice/desktop", "", "desktop", "127.0.0.1:5299", "127.0.0.1:4321", "", http.StatusUnauthorized},
+		{"remote omitted platform", "/v1/voice/desktop", f.token, "", "127.0.0.1:5299", "203.0.113.10:4321", "", http.StatusForbidden},
+		{"remote spoofed desktop header", "/v1/voice/desktop", f.token, "desktop", "127.0.0.1:5299", "203.0.113.10:4321", "", http.StatusForbidden},
+		{"remote mobile header", "/v1/voice/desktop", f.token, "mobile", "127.0.0.1:5299", "203.0.113.10:4321", "", http.StatusForbidden},
+		{"loopback forwarded spoofed desktop", "/v1/voice/desktop", f.token, "desktop", "127.0.0.1:5299", "127.0.0.1:4321", "203.0.113.10", http.StatusForbidden},
+		{"loopback non-local host spoofed desktop", "/v1/voice/desktop", f.token, "desktop", "jaz.example.com", "127.0.0.1:4321", "", http.StatusForbidden},
+		{"unauthenticated mobile call", "/v1/sessions/" + f.session + "/voice/claude", "", "mobile", "jaz.example.com", "203.0.113.10:4321", "", http.StatusUnauthorized},
+		{"missing session mobile call", "/v1/sessions/missing/voice/claude", f.token, "mobile", "jaz.example.com", "203.0.113.10:4321", "", http.StatusNotFound},
+		{"no desktop connected", "/v1/sessions/" + f.session + "/voice/claude", f.token, "mobile", "jaz.example.com", "203.0.113.10:4321", "", http.StatusServiceUnavailable},
 	} {
-		request := httptest.NewRequest(http.MethodGet, test.path, nil)
-		if test.token != "" {
-			request.Header.Set("Authorization", "Bearer "+test.token)
-		}
-		if test.platform != "" {
-			request.Header.Set("X-Jaz-Client-Platform", test.platform)
-		}
-		result := httptest.NewRecorder()
-		f.server.Config.Handler.ServeHTTP(result, request)
-		if result.Code != test.status {
-			t.Fatalf("%s status=%d, want %d", test.path, result.Code, test.status)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			request.Host = test.host
+			request.RemoteAddr = test.remoteAddr
+			if test.token != "" {
+				request.Header.Set("Authorization", "Bearer "+test.token)
+			}
+			if test.platform != "" {
+				request.Header.Set("X-Jaz-Client-Platform", test.platform)
+			}
+			if test.forwarded != "" {
+				request.Header.Set("X-Forwarded-For", test.forwarded)
+			}
+			result := httptest.NewRecorder()
+			f.server.Config.Handler.ServeHTTP(result, request)
+			if result.Code != test.status {
+				t.Fatalf("%s status=%d, want %d", test.path, result.Code, test.status)
+			}
+		})
 	}
 }
 

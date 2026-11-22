@@ -51,15 +51,10 @@ func runConnectCloud(args []string, out io.Writer) error {
 		connectCloudUsage(out)
 		return nil
 	}
-	var execLauncher machinebridge.ExecLauncher
+	var execFactory func(*machinebridge.PolicyGuard) (machinebridge.ExecLauncher, error)
 	if cfg.AllowExec {
-		guard, err := machinebridge.NewPolicyGuard(cfg.Grants)
-		if err != nil {
-			return err
-		}
-		execLauncher, err = machinebridge.NewCodexExecLauncher(machinebridge.CodexExecConfig{Guard: guard})
-		if err != nil {
-			return err
+		execFactory = func(guard *machinebridge.PolicyGuard) (machinebridge.ExecLauncher, error) {
+			return machinebridge.NewCodexExecLauncher(machinebridge.CodexExecConfig{Guard: guard})
 		}
 	}
 	client, err := machinebridge.NewClient(machinebridge.ClientConfig{
@@ -72,8 +67,8 @@ func runConnectCloud(args []string, out io.Writer) error {
 			FileStaging: true,
 			LocalExec:   cfg.AllowExec,
 		},
-		FolderGrants: cfg.Grants,
-		ExecLauncher: execLauncher,
+		FolderGrants:        cfg.Grants,
+		ExecLauncherFactory: execFactory,
 		OnConnect: func(caps machinebridge.Capabilities) {
 			log.Info("connected to jaz cloud", "device_id", cfg.DeviceID, "file_staging", caps.FileStaging, "local_exec", caps.LocalExec, "max_stage_bytes", caps.MaxStageBytes)
 		},

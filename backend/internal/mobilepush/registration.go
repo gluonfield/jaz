@@ -83,10 +83,11 @@ func validate(input Registration) error {
 }
 
 func (s *Service) Register(deviceID string, input Registration) error {
+	deviceID = strings.TrimSpace(deviceID)
 	input.Token = strings.ToLower(strings.TrimSpace(input.Token))
 	input.Environment = strings.TrimSpace(input.Environment)
 	input.InstallationID = strings.TrimSpace(input.InstallationID)
-	if input.InstallationID == "" {
+	if deviceID == "" || len(deviceID) > 128 || input.InstallationID == "" {
 		return fmt.Errorf("%w: installation identity is required", ErrInvalidRegistration)
 	}
 	if err := validate(input); err != nil {
@@ -98,8 +99,13 @@ func (s *Service) Register(deviceID string, input Registration) error {
 }
 
 func (s *Service) RegisterActivity(deviceID string, input Activity) error {
+	deviceID = strings.TrimSpace(deviceID)
 	input.Token = strings.ToLower(strings.TrimSpace(input.Token))
 	input.Environment = strings.TrimSpace(input.Environment)
+	input.InstallationID = strings.TrimSpace(input.InstallationID)
+	if deviceID == "" || len(deviceID) > 128 {
+		return fmt.Errorf("%w: installation identity is required", ErrInvalidRegistration)
+	}
 	if err := validate(input.Registration); err != nil {
 		return err
 	}
@@ -140,6 +146,10 @@ func (s *Service) RegisterActivity(deviceID string, input Activity) error {
 }
 
 func (s *Service) Unregister(deviceID, activityID string) error {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" || len(deviceID) > 128 {
+		return fmt.Errorf("%w: installation identity is required", ErrInvalidRegistration)
+	}
 	if activityID == "" {
 		return s.update(deviceID, func(device *deviceRegistration) {
 			device.Registration = Registration{}

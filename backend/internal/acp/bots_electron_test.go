@@ -19,6 +19,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
 	botapi "github.com/wins/jaz/backend/internal/httpapi/bots"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -49,7 +50,8 @@ func TestBotListElectron(t *testing.T) {
 	logger := log.New(io.Discard)
 	serverCore := &server.Server{Store: store, ACP: manager, Events: bus}
 	manager.TurnFinished = serverCore.HandleACPTurnFinished
-	service := bots.NewService(store, filepath.Join(root, "bots"), manager, serverCore, serverCore, loops.NewService(store, nil, logger), bus, logger)
+	inst := instructions.NewLocalFSStore(root, instructions.WithBotHomeResolver(bots.HomeResolver(store)))
+	service := bots.NewService(store, filepath.Join(root, "bots"), inst, manager, serverCore, serverCore, loops.NewService(store, nil, logger), bus, logger)
 	bot, err := service.Create(t.Context(), bots.CreateBot{Name: "Live Bot"})
 	if err != nil {
 		t.Fatal(err)

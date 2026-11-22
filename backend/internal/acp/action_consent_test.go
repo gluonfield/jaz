@@ -29,7 +29,8 @@ func TestCodexBotPoliciesReachLaunchAndRetainedRefresh(t *testing.T) {
 			t.Cleanup(func() { _ = store.Close() })
 			requestLog := filepath.Join(root, "requests.jsonl")
 			capture := filepath.Join(root, "launch-prompt")
-			wiring, err := app.NewACPConfig(app.Config{}, store, "", coordinator.NewBuilder(root, "", "", nil), nil, nil, nil, nil, nil, nil, nil, plugins.New(runtimefiles.New(root)), nil)
+			inst := app.NewInstructionsStore(runtimefiles.New(root), store)
+			wiring, err := app.NewACPConfig(app.Config{}, store, inst, "", coordinator.NewBuilder(root, "", "", nil), nil, nil, nil, nil, nil, nil, nil, plugins.New(runtimefiles.New(root)), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

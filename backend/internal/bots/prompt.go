@@ -14,7 +14,7 @@ import (
 )
 
 // Prompt assembles a bot's identity, saved prompt and scoped home instructions.
-func Prompt(store PromptStore, session storage.Session) (promptmodule.Modules, error) {
+func Prompt(store PromptStore, inst instructions.Store, session storage.Session) (promptmodule.Modules, error) {
 	var identity string
 	if session.SourceType == storage.SourceBotMember {
 		membership, err := store.LoadMembershipByThread(session.ID)
@@ -39,11 +39,11 @@ func Prompt(store PromptStore, session storage.Session) (promptmodule.Modules, e
 	if identity == "" {
 		identity = identityPrompt(session.Title, record.Main)
 	}
-	instructions, err := homeInstructions(session)
+	botRules, err := homeInstructions(inst, session)
 	if err != nil {
 		return nil, err
 	}
-	return promptmodule.New(identity, record.Prompt, instructions, workspaceInstructions(record.Workspaces)), nil
+	return promptmodule.New(identity, record.Prompt, botRules, workspaceInstructions(record.Workspaces)), nil
 }
 
 // WorkerPrompt attaches its owner's durable bot knowledge and linked projects
@@ -79,14 +79,11 @@ func workspaceInstructions(workspaces []string) string {
 	return b.String()
 }
 
-func homeInstructions(bot storage.Session) (string, error) {
+func homeInstructions(inst instructions.Store, bot storage.Session) (string, error) {
 	if bot.RuntimeRef == nil || bot.RuntimeRef.Cwd == "" {
 		return "", nil
 	}
-	store := instructions.NewLocalFSStore("", instructions.WithBotHomeResolver(func(string) (string, error) {
-		return bot.RuntimeRef.Cwd, nil
-	}))
-	doc, err := store.Get(context.Background(), instructions.Key{
+	doc, err := inst.Get(context.Background(), instructions.Key{
 		Scope:   instructions.ScopeBot,
 		ScopeID: bot.ID,
 		Kind:    instructions.KindBots,

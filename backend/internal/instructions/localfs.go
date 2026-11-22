@@ -97,6 +97,8 @@ func (s *LocalFSStore) resolvePath(key Key) (string, bool, error) {
 		return "", false, err
 	}
 	switch key.Scope {
+	case ScopeOrg, ScopeSpace:
+		return "", false, ErrUnsupportedScope
 	case ScopeUser:
 		if s.root == "" {
 			return "", false, nil
@@ -107,9 +109,6 @@ func (s *LocalFSStore) resolvePath(key Key) (string, bool, error) {
 		}
 		return filepath.Join(s.root, name), true, nil
 	case ScopeBot:
-		if key.ScopeID == "" {
-			return "", false, ErrInvalidKey
-		}
 		name, err := botFileName(key.Kind)
 		if err != nil {
 			return "", false, err
@@ -205,6 +204,10 @@ func replaceFile(path, content string) error {
 		return err
 	}
 	if err := temp.Chmod(0o644); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Sync(); err != nil {
 		_ = temp.Close()
 		return err
 	}

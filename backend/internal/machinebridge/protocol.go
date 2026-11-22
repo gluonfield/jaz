@@ -266,6 +266,7 @@ type ExecStartRequest struct {
 type ExecStartResponse struct {
 	SessionID string `json:"session_id"`
 	Endpoint  string `json:"endpoint"`
+	AuthToken string `json:"auth_token,omitempty"`
 }
 
 type ExecStopRequest struct {

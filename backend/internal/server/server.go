@@ -134,7 +134,6 @@ type Server struct {
 
 	Terminal     *terminal.Manager
 	terminalOnce sync.Once
-	tickets      resourceTicketStore
 
 	acpAuthLoginJobs   sync.Map
 	antigravityLoginMu sync.Mutex

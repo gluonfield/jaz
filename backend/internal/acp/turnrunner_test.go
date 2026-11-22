@@ -58,21 +58,18 @@ func TestManagerImplementsTurnRunnerLifecycle(t *testing.T) {
 		t.Fatalf("concurrent StartTurn err = %v, want ErrTurnInProgress", err)
 	}
 
-	// Fake agent does not support live steering, so SteerOrQueue without Interrupt queues durably.
-	queued, err := runner.SteerOrQueue(t.Context(), turnrunner.TurnRequest{
+	// Fake agent does not support live steering, so SteerOrQueue without Interrupt
+	// returns ErrSteeringUnsupported for the owning orchestrator to queue cleanly.
+	if _, err := runner.SteerOrQueue(t.Context(), turnrunner.TurnRequest{
 		ThreadID: spawned.SessionID,
 		Message:  "queued follow-up",
 		FromUser: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if queued.Disposition != turnrunner.DispositionQueued {
-		t.Fatalf("SteerOrQueue disposition = %q, want %q", queued.Disposition, turnrunner.DispositionQueued)
+	}); !errors.Is(err, turnrunner.ErrSteeringUnsupported) {
+		t.Fatalf("SteerOrQueue err = %v, want ErrSteeringUnsupported", err)
 	}
 	stored, err := store.LoadSession(spawned.SessionID)
-	if err != nil || len(stored.QueuedMessages) != 1 || stored.QueuedMessages[0].Text != "queued follow-up" {
-		t.Fatalf("queued messages = %+v, %v", stored.QueuedMessages, err)
+	if err != nil || len(stored.QueuedMessages) != 0 {
+		t.Fatalf("queued messages = %+v, %v; expected turnrunner not to mutate queue directly", stored.QueuedMessages, err)
 	}
 
 	// SteerOrQueue with Interrupt cancels the running turn and starts the replacement.
