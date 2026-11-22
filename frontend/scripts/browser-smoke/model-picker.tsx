@@ -135,10 +135,8 @@ export async function exerciseModelPicker(): Promise<void> {
     await click(button(name))
     await until(config)
     await measuring
-    const first = heights[0]
-    const last = heights.at(-1)!
-    if (Math.abs(last - first) > 10 && !heights.some((height) => height > Math.min(first, last) + 2 && height < Math.max(first, last) - 2)) {
-      throw new Error('Model list height jumped instead of animating')
+    if (heights.some((height) => Math.abs(height - heights[0]) > 1)) {
+      throw new Error('Switching agent changed the picker height')
     }
     if (document.activeElement?.getAttribute('aria-selected') !== 'true' || document.activeElement.getAttribute('aria-label') !== name) {
       throw new Error('Switching agent moved focus off its tab')
