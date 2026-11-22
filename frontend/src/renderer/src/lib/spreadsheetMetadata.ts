@@ -76,10 +76,10 @@ export function spreadsheetMetadata(workbook: WorkBook): Map<WorkSheet, Spreadsh
   })
   const result = new Map<WorkSheet, SpreadsheetMetadata>()
   const legacy = legacySpreadsheet(book)
-  for (const name of book.SheetNames) {
+  for (const [index, name] of book.SheetNames.entries()) {
     const sheet = book.Sheets[name]
     const path = paths.get(name) ?? ''
-    const metadata: SpreadsheetMetadata = { formats: new Map(), defaultStyle: styles[0] ?? {}, frozen: { r: 0, c: 0 }, gridlines: true, images: sheetImages(xml, (path) => book.files?.[path]?.content, path), defaultRowHeight: 20, defaultColumnCharacters: 9.140625, ...legacy[book.SheetNames.indexOf(name)] }
+    const metadata: SpreadsheetMetadata = { formats: new Map(), defaultStyle: styles[0] ?? {}, frozen: { r: 0, c: 0 }, gridlines: true, images: sheetImages(xml, (path) => book.files?.[path]?.content, path), defaultRowHeight: 20, defaultColumnCharacters: 9.140625, ...legacy[index] }
     visit(xml(path), (tag, attrs) => {
       if (tag === 'sheetView' && attrs.showGridLines === '0') metadata.gridlines = false
       if (tag === 'pane' && (attrs.state === 'frozen' || attrs.state === 'frozenSplit')) {
@@ -96,7 +96,7 @@ export function spreadsheetMetadata(workbook: WorkBook): Map<WorkSheet, Spreadsh
         if (cell && style) metadata.formats.set(cell, style)
       }
     })
-    if (!path && !metadata.formats.size) {
+    if (!path && !legacy[index]?.formats) {
       for (const row of sheet['!data'] ?? []) {
         for (const cell of row ?? []) {
           const fill = cell?.s as { patternType?: string; fgColor?: Color } | undefined

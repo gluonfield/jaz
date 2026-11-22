@@ -1,5 +1,5 @@
-import { CFB, type WorkBook } from 'xlsx'
-import { BORDER_STYLES, borderLine, type SpreadsheetCorner, type SpreadsheetImageAnchor, type SpreadsheetMetadata, type SpreadsheetStyle } from '@/lib/spreadsheetFormat'
+import { CFB, type WorkBook, type WorkSheet } from 'xlsx'
+import { borderLine, type SpreadsheetCorner, type SpreadsheetImageAnchor, type SpreadsheetMetadata, type SpreadsheetStyle } from '@/lib/spreadsheetFormat'
 
 const FORMULA = 0x0006
 const END = 0x000a
@@ -32,6 +32,10 @@ const ART_ANCHOR = 0xf010
 const ART_JPEG = 0xf01d
 const ART_PNG = 0xf01e
 const BLIP_PROPERTY = 0x0104
+const BLIP_ENTRY_NAME_LENGTH = 33
+const BLIP_ENTRY_SIZE = 36
+const BLIP_HEADER_SIZE = 8
+const BLIP_DATA_SEARCH = 64
 const SIGNATURES: Record<number, { type: string; bytes: number[] }> = {
   [ART_JPEG]: { type: 'image/jpeg', bytes: [0xff, 0xd8, 0xff] },
   [ART_PNG]: { type: 'image/png', bytes: [0x89, 0x50, 0x4e, 0x47] },
@@ -44,6 +48,7 @@ const DEFAULT_PALETTE = [
   '00CCFF', 'CCFFFF', 'CCFFCC', 'FFFF99', '99CCFF', 'FF99CC', 'CC99FF', 'FFCC99', '3366FF', '33CCCC', '99CC00', 'FFCC00', 'FF9900', 'FF6600', '666699', '969696',
   '003366', '339966', '003300', '333300', '993300', '993366', '333399', '333333',
 ]
+const BORDER_STYLES = ['none', 'thin', 'medium', 'dashed', 'dotted', 'thick', 'double', 'hair', 'mediumDashed', 'dashDot', 'mediumDashDot', 'dashDotDot', 'mediumDashDotDot', 'slantDashDot']
 const HORIZONTAL: SpreadsheetStyle['horizontal'][] = [undefined, 'left', 'center', 'right', undefined, 'justify', 'center']
 const VERTICAL: SpreadsheetStyle['vertical'][] = ['top', 'center', 'bottom']
 
@@ -62,12 +67,12 @@ function blips(group: DataView): (Blip | undefined)[] {
   const result: (Blip | undefined)[] = []
   for (const { type, offset, length } of artRecords(group)) {
     if (type !== ART_BLIP_ENTRY) continue
-    const blip = offset + 36 + group.getUint8(offset + 33)
-    const signature = blip + 8 <= offset + length ? SIGNATURES[group.getUint16(blip + 2, true)] : undefined
+    const blip = offset + BLIP_ENTRY_SIZE + group.getUint8(offset + BLIP_ENTRY_NAME_LENGTH)
+    const signature = blip + BLIP_HEADER_SIZE <= offset + length ? SIGNATURES[group.getUint16(blip + 2, true)] : undefined
     const bytes = new Uint8Array(group.buffer, group.byteOffset + blip, Math.max(0, offset + length - blip))
-    let start = 8
-    while (signature && start < 64 && !signature.bytes.every((byte, at) => bytes[start + at] === byte)) start += 1
-    result.push(signature && start < 64 ? { type: signature.type, data: bytes.slice(start) } : undefined)
+    let start = BLIP_HEADER_SIZE
+    while (signature && start < BLIP_DATA_SEARCH && !signature.bytes.every((byte, at) => bytes[start + at] === byte)) start += 1
+    result.push(signature && start < BLIP_DATA_SEARCH ? { type: signature.type, data: bytes.slice(start) } : undefined)
   }
   return result
 }
@@ -95,47 +100,38 @@ function images(drawing: DataView, blips: (Blip | undefined)[]): SpreadsheetImag
   return result
 }
 
-export function legacySpreadsheet(book: WorkBook): Partial<SpreadsheetMetadata>[] {
-  const container = (book as WorkBook & { cfb?: unknown }).cfb
-  if (!container) return []
-  const entry = (CFB.find(container, '/Workbook') ?? CFB.find(container, '/Book')) as { content?: ArrayLike<number> } | undefined
-  if (!entry?.content) return []
-  const bytes = Uint8Array.from(entry.content)
-  const data = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  function* records(start: number) {
-    for (let offset = start; offset + 4 <= data.byteLength;) {
-      const id = data.getUint16(offset, true)
-      const length = data.getUint16(offset + 2, true)
-      offset += 4
-      if (offset + length > data.byteLength || id === END) return
-      yield { id, offset, length }
-      offset += length
-    }
+function* records(data: DataView, start: number) {
+  for (let offset = start; offset + 4 <= data.byteLength;) {
+    const id = data.getUint16(offset, true)
+    const length = data.getUint16(offset + 2, true)
+    offset += 4
+    if (offset + length > data.byteLength || id === END) return
+    yield { id, offset, length }
+    offset += length
   }
-  const joined = (start: number, wanted: number) => {
-    const parts: Uint8Array[] = []
-    let continuing = false
-    for (const { id, offset, length } of records(start)) {
-      continuing = id === wanted || (continuing && id === CONTINUE)
-      if (continuing) parts.push(bytes.subarray(offset, offset + length))
-    }
-    const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0))
-    parts.reduce((at, part) => (result.set(part, at), at + part.length), 0)
-    return new DataView(result.buffer)
+}
+
+function joined(data: DataView, start: number, wanted: number): DataView {
+  const parts: Uint8Array[] = []
+  let continuing = false
+  for (const { id, offset, length } of records(data, start)) {
+    continuing = id === wanted || (continuing && id === CONTINUE)
+    if (continuing) parts.push(new Uint8Array(data.buffer, data.byteOffset + offset, length))
   }
-  const modern = data.byteLength >= 6 && data.getUint16(0, true) === BOF && data.getUint16(4, true) === BIFF8
-  const sheets: number[] = []
+  const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0))
+  parts.reduce((at, part) => (result.set(part, at), at + part.length), 0)
+  return new DataView(result.buffer)
+}
+
+function styles(data: DataView): SpreadsheetStyle[] {
   const fonts: number[] = []
   const formats: number[] = []
   const palette = [...DEFAULT_PALETTE]
-  for (const { id, offset, length } of records(0)) {
-    if (id === BOUND_SHEET && length >= 4) sheets.push(data.getUint32(offset, true))
-    if (!modern) continue
-    if (id === PALETTE) {
-      for (let index = 0; index < data.getUint16(offset, true) && index < 56; index += 1) palette[8 + index] = [0, 1, 2].map((channel) => data.getUint8(offset + 2 + index * 4 + channel).toString(16).padStart(2, '0')).join('')
-    }
+  for (const { id, offset, length } of records(data, 0)) {
     if (id === FONT && length >= 16) fonts.push(offset)
     if (id === XF && length >= 20) formats.push(offset)
+    if (id !== PALETTE) continue
+    for (let index = 0; index < data.getUint16(offset, true) && index < 56; index += 1) palette[8 + index] = [0, 1, 2].map((channel) => data.getUint8(offset + 2 + index * 4 + channel).toString(16).padStart(2, '0')).join('')
   }
   const color = (index: number) => palette[index] && `#${palette[index]}`
   const font = (offset?: number): SpreadsheetStyle => {
@@ -146,10 +142,10 @@ export function legacySpreadsheet(book: WorkBook): Partial<SpreadsheetMetadata>[
       italic: Boolean(data.getUint16(offset + 2, true) & 0x0002),
       color: color(data.getUint16(offset + 4, true)),
       bold: data.getUint16(offset + 6, true) >= 600,
-      fontFamily: new TextDecoder(wide ? 'utf-16le' : 'latin1').decode(bytes.subarray(offset + 16, offset + 16 + data.getUint8(offset + 14) * (wide ? 2 : 1))),
+      fontFamily: new TextDecoder(wide ? 'utf-16le' : 'latin1').decode(new Uint8Array(data.buffer, data.byteOffset + offset + 16, data.getUint8(offset + 14) * (wide ? 2 : 1))),
     }
   }
-  const styles = formats.map((offset): SpreadsheetStyle => {
+  return formats.map((offset) => {
     const fontIndex = data.getUint16(offset, true)
     const alignment = data.getUint8(offset + 6)
     const lines = data.getUint32(offset + 10, true)
@@ -164,29 +160,56 @@ export function legacySpreadsheet(book: WorkBook): Partial<SpreadsheetMetadata>[
       border: { left: side(lines & 0xf, lines >>> 16 & 0x7f), right: side(lines >>> 4 & 0xf, lines >>> 23 & 0x7f), top: side(lines >>> 8 & 0xf, fills & 0x7f), bottom: side(lines >>> 12 & 0xf, fills >>> 7 & 0x7f) },
     }
   })
-  const pictures = modern ? blips(joined(0, DRAWING_GROUP)) : []
-  return sheets.map((start, index) => {
-    const cells = book.Sheets[book.SheetNames[index]]?.['!data']
-    const sheet: Partial<SpreadsheetMetadata> = modern ? { formats: new Map(), defaultStyle: styles[15] ?? styles[0] ?? {}, images: images(joined(start, DRAWING), pictures) } : {}
-    const format = (r: number, c: number, at: number) => {
-      const cell = cells?.[r]?.[c]
-      const style = styles[data.getUint16(at, true)]
-      if (cell && style) sheet.formats?.set(cell, style)
+}
+
+function formats(data: DataView, start: number, styles: SpreadsheetStyle[], cells: WorkSheet['!data']): SpreadsheetMetadata['formats'] {
+  const result: SpreadsheetMetadata['formats'] = new Map()
+  const format = (r: number, c: number, at: number) => {
+    const cell = cells?.[r]?.[c]
+    const style = styles[data.getUint16(at, true)]
+    if (cell && style) result.set(cell, style)
+  }
+  for (const { id, offset, length } of records(data, start)) {
+    if (length < 6) continue
+    const r = data.getUint16(offset, true)
+    const c = data.getUint16(offset + 2, true)
+    if (CELLS.has(id)) format(r, c, offset + 4)
+    const width = id === MULTIPLE_BLANK ? 2 : id === MULTIPLE_RK ? 6 : 0
+    for (let at = offset + 4; width && at + width <= offset + length - 2; at += width) format(r, c + (at - offset - 4) / width, at)
+  }
+  return result
+}
+
+function view(data: DataView, start: number): Pick<SpreadsheetMetadata, 'frozen' | 'gridlines'> {
+  const result = { frozen: { r: 0, c: 0 }, gridlines: true }
+  let frozen = false
+  for (const { id, offset, length } of records(data, start)) {
+    if (id === WINDOW && length >= 2) {
+      frozen = Boolean(data.getUint16(offset, true) & 0x0008)
+      result.gridlines = Boolean(data.getUint16(offset, true) & 0x0002)
     }
-    let frozen = false
-    for (const { id, offset, length } of records(start)) {
-      if (id === WINDOW && length >= 2) {
-        frozen = Boolean(data.getUint16(offset, true) & 0x0008)
-        sheet.gridlines = Boolean(data.getUint16(offset, true) & 0x0002)
-      }
-      if (id === PANE && length >= 4 && frozen) sheet.frozen = { c: data.getUint16(offset, true), r: data.getUint16(offset + 2, true) }
-      if (length < 6) continue
-      const r = data.getUint16(offset, true)
-      const c = data.getUint16(offset + 2, true)
-      if (CELLS.has(id)) format(r, c, offset + 4)
-      const width = id === MULTIPLE_BLANK ? 2 : id === MULTIPLE_RK ? 6 : 0
-      for (let at = offset + 4; width && at + width <= offset + length - 2; at += width) format(r, c + (at - offset - 4) / width, at)
-    }
-    return sheet
-  })
+    if (id === PANE && length >= 4 && frozen) result.frozen = { c: data.getUint16(offset, true), r: data.getUint16(offset + 2, true) }
+  }
+  return result
+}
+
+export function legacySpreadsheet(book: WorkBook): Partial<SpreadsheetMetadata>[] {
+  const container = (book as WorkBook & { cfb?: unknown }).cfb
+  if (!container) return []
+  const entry = (CFB.find(container, '/Workbook') ?? CFB.find(container, '/Book')) as { content?: ArrayLike<number> } | undefined
+  if (!entry?.content) return []
+  const data = new DataView(Uint8Array.from(entry.content).buffer)
+  const sheets: number[] = []
+  for (const { id, offset, length } of records(data, 0)) {
+    if (id === BOUND_SHEET && length >= 4) sheets.push(data.getUint32(offset, true))
+  }
+  if (data.byteLength < 6 || data.getUint16(0, true) !== BOF || data.getUint16(4, true) !== BIFF8) return sheets.map((start) => view(data, start))
+  const cellStyles = styles(data)
+  const pictures = blips(joined(data, 0, DRAWING_GROUP))
+  return sheets.map((start, index) => ({
+    ...view(data, start),
+    formats: formats(data, start, cellStyles, book.Sheets[book.SheetNames[index]]?.['!data']),
+    defaultStyle: cellStyles[15] ?? cellStyles[0] ?? {},
+    images: images(joined(data, start, DRAWING), pictures),
+  }))
 }

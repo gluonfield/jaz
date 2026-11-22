@@ -37,8 +37,6 @@ export interface SpreadsheetMetadata {
   defaultColumnCharacters: number
 }
 
-export const BORDER_STYLES = ['none', 'thin', 'medium', 'dashed', 'dotted', 'thick', 'double', 'hair', 'mediumDashed', 'dashDot', 'mediumDashDot', 'dashDotDot', 'mediumDashDotDot', 'slantDashDot']
-
 const BORDER_LINES: Record<string, string> = {
   medium: '2px solid',
   thick: '3px solid',
