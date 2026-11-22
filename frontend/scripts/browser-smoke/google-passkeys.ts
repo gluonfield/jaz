@@ -146,8 +146,8 @@ export async function exerciseGooglePasskeys(browser: SideBrowser): Promise<void
       throw new Error('Silent, non-publicKey, and explicit security-key requests must not show the passkey notice')
     }
 
-    // 3. Interactive get() and create() reject immediately (never hang) and surface the notice with actions.
-    const interactive = await evaluate<{ getErr: string; getMs: number; createErr: string; createMs: number }>(`(async () => {
+    // 3. Interactive get() (including mixed client-device + security-key hints) and create() reject immediately and surface the notice.
+    const interactive = await evaluate<{ getErr: string; getMs: number; mixedErr: string; createErr: string; createMs: number }>(`(async () => {
       const ch = new Uint8Array(32)
       const measure = async (fn) => {
         const t0 = performance.now()
@@ -167,6 +167,14 @@ export async function exerciseGooglePasskeys(browser: SideBrowser): Promise<void
           timeout: 60000,
         },
       }))
+      const mixed = await measure(() => navigator.credentials.get({
+        publicKey: {
+          challenge: ch,
+          rpId: location.hostname,
+          hints: ['client-device', 'security-key'],
+          timeout: 60000,
+        },
+      }))
       const c = await measure(() => navigator.credentials.create({
         publicKey: {
           challenge: ch,
@@ -177,9 +185,9 @@ export async function exerciseGooglePasskeys(browser: SideBrowser): Promise<void
           timeout: 60000,
         },
       }))
-      return { getErr: g.err, getMs: g.ms, createErr: c.err, createMs: c.ms }
+      return { getErr: g.err, getMs: g.ms, mixedErr: mixed.err, createErr: c.err, createMs: c.ms }
     })()`)
-    if (interactive.getErr !== 'NotAllowedError' || interactive.createErr !== 'NotAllowedError' || interactive.getMs > 500 || interactive.createMs > 500) {
+    if (interactive.getErr !== 'NotAllowedError' || interactive.mixedErr !== 'NotAllowedError' || interactive.createErr !== 'NotAllowedError' || interactive.getMs > 500 || interactive.createMs > 500) {
       throw new Error(`Interactive passkey requests did not fail fast cleanly: ${JSON.stringify(interactive)}`)
     }
     await waitFor(() => Boolean(notice()), 'Interactive passkey request did not show the passkey notice')

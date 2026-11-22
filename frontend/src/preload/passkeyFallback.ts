@@ -17,13 +17,14 @@ if (window.isSecureContext) {
   contextBridge.executeInMainWorld({
     func: (notifySignal: string) => {
       const ROAMING = new Set(['usb', 'nfc', 'ble', 'smart-card'])
+      const NativeAbortSignal = AbortSignal
       const NativeEvent = Event
       const NativeDOMException = DOMException
       const NativePromise = Promise
       const dispatch = EventTarget.prototype.dispatchEvent.bind(window)
       const isRoamingOnly = (kind: 'get' | 'create', publicKey: Record<string, unknown>): boolean => {
         const hints = publicKey.hints
-        if (Array.isArray(hints) && hints.includes('security-key')) {
+        if (Array.isArray(hints) && hints.length > 0 && hints.every((hint) => hint === 'security-key')) {
           return true
         }
         if (kind === 'create') {
@@ -66,14 +67,14 @@ if (window.isSecureContext) {
             if (!(this instanceof NativeCredentialsContainer) || !options || typeof options !== 'object' || !options.publicKey || typeof options.publicKey !== 'object') {
               return native.call(this, options)
             }
-            const abort = options.signal as AbortSignal | undefined
-            if (abort?.aborted) {
+            const abort = options.signal
+            if (abort instanceof NativeAbortSignal && abort.aborted) {
               return NativePromise.reject(abort.reason ?? new NativeDOMException('The operation was aborted.', 'AbortError'))
             }
             if (options.mediation === 'conditional') {
               return NativePromise.reject(new NativeDOMException('Conditional mediation is not supported.', 'NotSupportedError'))
             }
-            if (options.mediation === 'immediate') {
+            if (options.mediation === 'immediate' || options.uiMode === 'immediate') {
               return NativePromise.reject(new NativeDOMException('No passkey is available in this browser.', 'NotAllowedError'))
             }
             if (isRoamingOnly(kind, options.publicKey as Record<string, unknown>)) {

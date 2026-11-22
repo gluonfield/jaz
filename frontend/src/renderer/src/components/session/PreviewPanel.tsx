@@ -297,6 +297,7 @@ export function PreviewPanel({
   }, [reloads])
 
   const canAnnotate = canUseWebview && !!onAddBrowserAnnotation
+  const webContentsId = webviewReady && webview ? webview.getWebContentsId() : null
 
   return (
     <SidePanelShell className={visible ? 'pointer-events-auto' : 'pointer-events-none'} onKeyDownCapture={find.handleKeyDownCapture}>
@@ -356,7 +357,7 @@ export function PreviewPanel({
           {annotating ? <SquareStop size={14} /> : <MessageCirclePlus size={15} />}
         </IconButton>
         <BrowserMenu
-          webContentsId={webviewReady && webview ? webview.getWebContentsId() : null}
+          webContentsId={webContentsId}
           visible={visible}
           onOpenImport={() => setImportOpen(true)}
         />
@@ -371,8 +372,7 @@ export function PreviewPanel({
       </form>
       {window.jaz?.browserPasskeyFallback ? (
         <BrowserPasskeyNotice
-          webview={webview}
-          webviewReady={webviewReady}
+          webContentsId={webContentsId}
           url={resolvedSourceUrl}
           title={target.title}
           onOpenImport={() => setImportOpen(true)}

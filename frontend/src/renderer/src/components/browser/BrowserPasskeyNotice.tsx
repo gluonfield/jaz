@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { openExternal } from '@/lib/clientRuntime'
 import { googlePasskeyDestination } from '@shared/preview'
-import type { PreviewNavigationEvent, PreviewWebviewElement } from '@/components/session/previewWebview'
 
 function pageKey(url: string): string {
   const page = URL.parse(url)
@@ -12,44 +11,27 @@ function pageKey(url: string): string {
 }
 
 export function BrowserPasskeyNotice({
-  webview,
-  webviewReady,
+  webContentsId,
   url,
   title,
   onOpenImport,
 }: {
-  webview: PreviewWebviewElement | null
-  webviewReady: boolean
+  webContentsId: number | null
   url: string
   title?: string
   onOpenImport: () => void
 }) {
+  const currentKey = url ? pageKey(url) : ''
   const [notice, setNotice] = useState<{ key: string; dismissed: boolean } | null>(null)
   const pendingIds = useRef(new Set<number>())
 
   const handleFallback = useEffectEvent((id: number) => {
-    if (webviewReady && webview) {
-      try {
-        if (webview.getWebContentsId() === id) {
-          setNotice({ key: pageKey(webview.getURL() || url), dismissed: false })
-        }
-      } catch {
-        pendingIds.current.add(id)
-      }
+    if (webContentsId === null) {
+      pendingIds.current.add(id)
       return
     }
-    pendingIds.current.add(id)
-  })
-
-  const flushPending = useEffectEvent((readyView: PreviewWebviewElement) => {
-    try {
-      const matched = pendingIds.current.has(readyView.getWebContentsId())
-      pendingIds.current.clear()
-      if (matched) {
-        setNotice({ key: pageKey(readyView.getURL() || url), dismissed: false })
-      }
-    } catch {
-      // Webview detached before reading its id.
+    if (webContentsId === id && currentKey) {
+      setNotice({ key: currentKey, dismissed: false })
     }
   })
 
@@ -62,30 +44,23 @@ export function BrowserPasskeyNotice({
   }, [])
 
   useEffect(() => {
-    if (!webview || !webviewReady) {
+    if (webContentsId === null) {
       return
     }
-    flushPending(webview)
-  }, [webview, webviewReady])
+    const matched = pendingIds.current.has(webContentsId)
+    pendingIds.current.clear()
+    if (matched && currentKey) {
+      setNotice({ key: currentKey, dismissed: false })
+    }
+  }, [webContentsId, currentKey])
 
   useEffect(() => {
-    if (!webview) {
-      return
-    }
-    const clearOnNavigation = (event: PreviewNavigationEvent) => {
-      if (event.isMainFrame && !event.isInPlace) {
-        pendingIds.current.clear()
-        setNotice(null)
-      }
-    }
-    webview.addEventListener('did-start-navigation', clearOnNavigation as EventListener)
-    return () => webview.removeEventListener('did-start-navigation', clearOnNavigation as EventListener)
-  }, [webview])
+    setNotice((prev) => (prev?.key === currentKey ? prev : null))
+  }, [currentKey])
 
   if (!url) {
     return null
   }
-  const currentKey = pageKey(url)
   const googleDestination = googlePasskeyDestination(url, title)
   const active = notice?.key === currentKey ? !notice.dismissed : Boolean(googleDestination)
   if (!active) {
