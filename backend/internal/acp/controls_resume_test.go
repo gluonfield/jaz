@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
@@ -77,9 +78,13 @@ func TestRestartPreservesEffortOwnership(t *testing.T) {
 }
 
 func TestRestartKeepsTheLevelAnAntigravityModelWasPickedWith(t *testing.T) {
-	for _, pick := range []struct{ name, model, effort string }{
-		{"model and level", "neon", "xhigh"},
-		{"catalogue id naming both", "neon-xhigh", ""},
+	for _, pick := range []struct {
+		name         string
+		defaultModel string
+		request      acp.SpawnRequest
+	}{
+		{name: "model and level from the picker", request: acp.SpawnRequest{Model: "neon", ReasoningEffort: "xhigh"}},
+		{name: "saved catalogue id naming both", defaultModel: "neon-xhigh"},
 	} {
 		t.Run(pick.name, func(t *testing.T) {
 			store, err := jsonstore.New(t.TempDir())
@@ -92,9 +97,12 @@ func TestRestartKeepsTheLevelAnAntigravityModelWasPickedWith(t *testing.T) {
 				"JAZ_FAKE_ACP_MODEL_LEVELS":     "1",
 				"JAZ_FAKE_ACP_EXPECT_CONFIG_ID": "thought_level",
 			}
-			manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), acp.AgentAntigravity, env, pick.model, pick.effort)
+			manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), acp.AgentAntigravity, env, pick.defaultModel, "", func(cfg *acp.Config) {
+				cfg.ModelCatalog = modelcatalog.NewService(nil)
+			})
 			t.Cleanup(manager.Close)
-			spawned, err := manager.Spawn(t.Context(), acp.SpawnRequest{ACPAgent: acp.AgentAntigravity, Slug: "antigravity-level"})
+			pick.request.ACPAgent, pick.request.Slug = acp.AgentAntigravity, "antigravity-level"
+			spawned, err := manager.Spawn(t.Context(), pick.request)
 			if err != nil {
 				t.Fatal(err)
 			}

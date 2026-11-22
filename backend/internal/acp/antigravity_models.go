@@ -47,9 +47,20 @@ func antigravityModels(ctx context.Context, env map[string]string) (AgentModelCa
 	if err != nil {
 		return AgentModelCatalog{}, fmt.Errorf("list Antigravity models: %w", err)
 	}
+	return antigravityCatalog(string(out)), nil
+}
+
+// antigravityThoughtLevels are the levels agy accepts, lowest first.
+var antigravityThoughtLevels = []string{"low", "medium", "high", "xhigh", "max"}
+
+// antigravityCatalog reads agy's "id<TAB>label" listing. agy lists a model once
+// for each thought level it offers, and its session options take the model and
+// the level separately, so those entries become one model with its levels as
+// efforts and their ids as aliases.
+func antigravityCatalog(listing string) AgentModelCatalog {
 	catalog := AgentModelCatalog{Models: []AgentModel{}}
-	levelled := map[string]int{}
-	for _, line := range strings.Split(string(out), "\n") {
+	listed := map[string]int{}
+	for _, line := range strings.Split(listing, "\n") {
 		id, label, _ := strings.Cut(strings.TrimSpace(line), "\t")
 		id, label = strings.TrimSpace(id), strings.TrimSpace(label)
 		if id == "" {
@@ -58,51 +69,45 @@ func antigravityModels(ctx context.Context, env map[string]string) (AgentModelCa
 		if label == "" {
 			label = id
 		}
-		model, name, level, ok := cutAntigravityThoughtLevel(id, label)
-		if !ok {
-			catalog.Models = append(catalog.Models, AgentModel{
-				Value: id, Label: label,
-				Reasoning: ReasoningCapabilities{Status: modelcatalog.ReasoningUnavailable, Scope: ReasoningScopeAgent},
-			})
-			continue
-		}
-		i, seen := levelled[model]
+		model, name, level := cutAntigravityThoughtLevel(id, label)
+		i, seen := listed[model]
 		if !seen {
 			i = len(catalog.Models)
-			levelled[model] = i
+			listed[model] = i
 			catalog.Models = append(catalog.Models, AgentModel{
 				Value: model, Label: name,
-				Reasoning: ReasoningCapabilities{Status: modelcatalog.ReasoningReady, Scope: ReasoningScopeAgent},
+				Reasoning: ReasoningCapabilities{Status: modelcatalog.ReasoningUnavailable, Scope: ReasoningScopeAgent},
 			})
 		}
-		entry := &catalog.Models[i]
-		entry.Aliases = append(entry.Aliases, id)
-		entry.Reasoning.Efforts = append(entry.Reasoning.Efforts, level)
+		if level == "" {
+			continue
+		}
+		reasoning := &catalog.Models[i].Reasoning
+		reasoning.Status = modelcatalog.ReasoningReady
+		reasoning.Efforts = append(reasoning.Efforts, level)
+		catalog.Models[i].Aliases = append(catalog.Models[i].Aliases, id)
 	}
-	for _, model := range catalog.Models {
-		slices.SortFunc(model.Reasoning.Efforts, func(a, b string) int {
+	for i := range catalog.Models {
+		slices.SortFunc(catalog.Models[i].Reasoning.Efforts, func(a, b string) int {
 			return slices.Index(antigravityThoughtLevels, a) - slices.Index(antigravityThoughtLevels, b)
 		})
 	}
-	return catalog, nil
+	return catalog
 }
 
-// antigravityThoughtLevels are the levels agy accepts, lowest first.
-var antigravityThoughtLevels = []string{"low", "medium", "high", "xhigh", "max"}
-
-// cutAntigravityThoughtLevel splits an entry agy lists once per thought level,
-// such as "gemini-4-neon-xhigh" labelled "Gemini 4 Neon (XHigh)", into the
-// model and level its session options take. The id and the label must name the
-// same level.
-func cutAntigravityThoughtLevel(id, label string) (model, name, level string, ok bool) {
+// cutAntigravityThoughtLevel splits an entry such as "gemini-4-neon-xhigh",
+// labelled "Gemini 4 Neon (XHigh)", into its model, the model's name and the
+// level. An entry whose id and label do not name the same level is a model
+// without one.
+func cutAntigravityThoughtLevel(id, label string) (model, name, level string) {
 	open := strings.LastIndex(label, " (")
 	if open < 0 || !strings.HasSuffix(label, ")") {
-		return "", "", "", false
+		return id, label, ""
 	}
 	level = strings.ToLower(label[open+2 : len(label)-1])
-	model, ok = strings.CutSuffix(id, "-"+level)
+	model, ok := strings.CutSuffix(id, "-"+level)
 	if !ok || model == "" || !slices.Contains(antigravityThoughtLevels, level) {
-		return "", "", "", false
+		return id, label, ""
 	}
-	return model, label[:open], level, true
+	return model, label[:open], level
 }
