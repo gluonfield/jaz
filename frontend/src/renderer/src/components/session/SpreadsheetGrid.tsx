@@ -19,8 +19,6 @@ const Cell = memo(function Cell({ sheet, r, c, active, id }: { id: string; sheet
   const range = mergedRange(sheet, { r, c })
   const style = spreadsheetStyle(sheet, range.s)
   const cell = spreadsheetCell(sheet, range.s)
-  const fill = style.fill && !/^#ffffff$/i.test(style.fill) ? style.fill : undefined
-  const color = fill ? style.color ?? '#000000' : style.color && !/^#(?:ffffff|000000)$/i.test(style.color) ? style.color : undefined
   const address = utils.encode_cell(range.s)
   const text = spreadsheetText(sheet, range.s)
   const textBounds = text ? cellTextBounds(sheet, range) : undefined
@@ -35,8 +33,9 @@ const Cell = memo(function Cell({ sheet, r, c, active, id }: { id: string; sheet
     aria-rowspan={range.e.r - range.s.r + 1}
     aria-colspan={range.e.c - range.s.c + 1}
     className="spreadsheet-cell"
-    style={{ ...rectangle(sheet, range), backgroundColor: fill, color, fontWeight: style.bold ? 600 : 400, fontStyle: style.italic ? 'italic' : undefined, fontSize: style.fontSize, fontFamily: style.fontFamily ? `${JSON.stringify(style.fontFamily)}, var(--font-sans)` : undefined, textAlign: style.horizontal ?? (cell?.t === 'n' ? 'right' : 'left') }}
+    style={{ ...rectangle(sheet, range), backgroundColor: style.fill, color: style.color, fontWeight: style.bold ? 600 : 400, fontStyle: style.italic ? 'italic' : undefined, fontSize: style.fontSize, fontFamily: style.fontFamily ? `${JSON.stringify(style.fontFamily)}, var(--font-sans)` : undefined, textAlign: style.horizontal ?? (cell?.t === 'n' ? 'right' : 'left') }}
   >
+    {style.border && <div className="spreadsheet-cell-border" style={{ left: range.s.c ? -1 : 0, top: range.s.r ? -1 : 0, borderTop: style.border.top, borderRight: style.border.right, borderBottom: style.border.bottom, borderLeft: style.border.left }} />}
     {textBounds && <div className="spreadsheet-cell-text" style={{ ...textBounds, justifyContent: style.vertical === 'top' ? 'flex-start' : style.vertical === 'center' ? 'center' : 'flex-end' }}>
       <span style={{ width: sheet.columns[range.e.c + 1] - sheet.columns[range.s.c], marginLeft: -textBounds.left, whiteSpace: style.wrap ? 'pre-wrap' : 'pre', overflowWrap: style.wrap ? 'anywhere' : undefined }}>{style.wrap ? text : text.replace(/[\r\n]+/g, ' ')}</span>
     </div>}
@@ -191,7 +190,7 @@ export default function SpreadsheetGrid({ sheet: source, initialSelection }: { s
     <div className="spreadsheet-formula-bar">
       <output className="spreadsheet-address" aria-label="Selected range">{address}</output>
       <span className="spreadsheet-fx" title={active?.f ? `Cached result: ${active.w ?? active.v ?? 'unavailable'}` : 'Cell value'} aria-hidden>fx</span>
-      <textarea aria-label={active?.f ? 'Formula' : 'Cell value'} readOnly value={fullValue} rows={2} spellCheck={false} />
+      <div role="textbox" aria-readonly="true" aria-multiline="true" aria-label={active?.f ? 'Formula' : 'Cell value'} className="spreadsheet-value scrollbar-quiet">{fullValue}</div>
     </div>
     <div
       ref={scroll}

@@ -18,6 +18,13 @@ function offsets(length: number, size: (index: number) => number): number[] {
   return result
 }
 
+function digitWidth(style: SpreadsheetStyle): number {
+  if (typeof document === 'undefined') return 7
+  const context = document.createElement('canvas').getContext('2d')!
+  context.font = `${style.fontSize ?? 44 / 3}px ${style.fontFamily ? `${JSON.stringify(style.fontFamily)}, ` : ''}${getComputedStyle(document.body).fontFamily}`
+  return Math.round(Math.max(...[...'0123456789'].map((digit) => context.measureText(digit).width)))
+}
+
 export function readSpreadsheet(data: ArrayBuffer): SpreadsheetSheet[] {
   const book = read(data, { type: 'array', dense: true, raw: true, cellStyles: true, cellNF: true, cellHTML: false, bookFiles: true, sheetStubs: true })
   const metadata = spreadsheetMetadata(book)
@@ -25,11 +32,14 @@ export function readSpreadsheet(data: ArrayBuffer): SpreadsheetSheet[] {
     const source = book.Sheets[name]
     const range = utils.decode_range(source['!ref'] ?? 'A1')
     const meta = metadata.get(source)!
+    const digit = digitWidth(meta.defaultStyle)
+    const pixels = (width: number) => Math.floor((256 * width + Math.floor(128 / digit)) / 256 * digit)
     const merges = source['!merges'] ?? []
     const rowCount = merges.reduce((count, merge) => Math.max(count, merge.e.r + 1), range.e.r + 1)
     const columnCount = merges.reduce((count, merge) => Math.max(count, merge.e.c + 1), range.e.c + 1)
     return {
       name, source, ...meta, merges, used: range,
+      defaultColumnWidth: pixels(meta.defaultColumnWidth),
       frozen: { r: Math.min(rowCount, meta.frozen.r), c: Math.min(columnCount, meta.frozen.c) },
       rows: offsets(rowCount, (index) => {
         const row = source['!rows']?.[index]
@@ -37,7 +47,7 @@ export function readSpreadsheet(data: ArrayBuffer): SpreadsheetSheet[] {
       }),
       columns: offsets(columnCount, (index) => {
         const col = source['!cols']?.[index]
-        return col?.hidden ? 0 : col?.width !== undefined ? Math.floor((256 * col.width + 18) / 256 * 7) : col?.wpx ?? meta.defaultColumnWidth
+        return col?.hidden ? 0 : col?.width !== undefined ? pixels(col.width) : col?.wpx ?? pixels(meta.defaultColumnWidth)
       }),
     }
   })

@@ -12,7 +12,10 @@ export interface SpreadsheetStyle {
   horizontal?: 'left' | 'center' | 'right' | 'justify'
   vertical?: 'top' | 'center' | 'bottom'
   wrap?: boolean
+  border?: SpreadsheetBorder
 }
+
+type SpreadsheetBorder = Partial<Record<'top' | 'right' | 'bottom' | 'left', string>>
 
 interface Color {
   rgb?: string
@@ -21,6 +24,7 @@ interface Color {
 interface RawStyle {
   fontId?: number
   fillId?: number
+  borderId?: number
   alignment?: { horizontal?: string; vertical?: string; wrapText?: boolean }
 }
 
@@ -58,6 +62,19 @@ export function spreadsheetMetadata(workbook: WorkBook): Map<WorkSheet, Spreadsh
     const content = book.files?.[path]?.content
     return content ? new TextDecoder().decode(content) : ''
   }
+  const borders: SpreadsheetBorder[] = []
+  let side: keyof SpreadsheetBorder | undefined
+  visit(xml('xl/styles.xml'), (name, attrs) => {
+    const border = borders.at(-1)
+    if (name === 'border') borders.push({})
+    else if (name === 'color') {
+      if (border && side) border[side] = border[side]!.replace('#000', color(attrs) ?? '#000')
+      side = undefined
+    } else if (border && (name === 'top' || name === 'right' || name === 'bottom' || name === 'left')) {
+      side = attrs.style ? name : undefined
+      if (side) border[side] = `${/^medium/.test(attrs.style) ? 2 : /^(?:thick|double)$/.test(attrs.style) ? 3 : 1}px ${/dash/i.test(attrs.style) ? 'dashed' : /^(?:dotted|hair)$/.test(attrs.style) ? 'dotted' : attrs.style === 'double' ? 'double' : 'solid'} #000`
+    }
+  })
   const styles = (book.Styles?.CellXf ?? []).map((style): SpreadsheetStyle => {
     const font = book.Styles?.Fonts?.[style.fontId ?? 0]
     const fill = book.Styles?.Fills?.[style.fillId ?? 0]
@@ -72,6 +89,7 @@ export function spreadsheetMetadata(workbook: WorkBook): Map<WorkSheet, Spreadsh
       horizontal: ['left', 'center', 'right', 'justify'].includes(alignment?.horizontal ?? '') ? alignment?.horizontal as SpreadsheetStyle['horizontal'] : undefined,
       vertical: alignment?.vertical === 'center' || alignment?.vertical === 'top' ? alignment.vertical : 'bottom',
       wrap: Boolean(alignment?.wrapText),
+      border: borders[style.borderId ?? 0],
     }
   })
   const relationships = new Map<string, string>()
@@ -93,14 +111,14 @@ export function spreadsheetMetadata(workbook: WorkBook): Map<WorkSheet, Spreadsh
   const legacyPanes = legacySpreadsheetPanes(book)
   for (const name of book.SheetNames) {
     const sheet = book.Sheets[name]
-    const metadata: SpreadsheetMetadata = { formats: new Map(), defaultStyle: styles[0] ?? {}, frozen: legacyPanes[book.SheetNames.indexOf(name)] ?? { r: 0, c: 0 }, defaultRowHeight: 20, defaultColumnWidth: 64 }
+    const metadata: SpreadsheetMetadata = { formats: new Map(), defaultStyle: styles[0] ?? {}, frozen: legacyPanes[book.SheetNames.indexOf(name)] ?? { r: 0, c: 0 }, defaultRowHeight: 20, defaultColumnWidth: 9.140625 }
     visit(xml(paths.get(name) ?? ''), (tag, attrs) => {
       if (tag === 'pane' && (attrs.state === 'frozen' || attrs.state === 'frozenSplit')) {
         metadata.frozen = { r: Math.max(0, Math.floor(Number(attrs.ySplit) || 0)), c: Math.max(0, Math.floor(Number(attrs.xSplit) || 0)) }
       }
       if (tag === 'sheetFormatPr') {
         if (Number(attrs.defaultRowHeight) > 0) metadata.defaultRowHeight = Number(attrs.defaultRowHeight) * 4 / 3
-        if (Number(attrs.defaultColWidth) > 0) metadata.defaultColumnWidth = Number(attrs.defaultColWidth) * 7
+        if (Number(attrs.defaultColWidth) > 0) metadata.defaultColumnWidth = Number(attrs.defaultColWidth)
       }
       if (tag === 'c' && attrs.r && attrs.s) {
         const point = utils.decode_cell(attrs.r)

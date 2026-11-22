@@ -28,7 +28,8 @@ function styledWorkbook() {
       }
     } else {
       xml = xml.replace('<fonts count="1">', '<fonts count="2"><font><b/><sz val="12"/><color rgb="FF17365D"/></font>')
-      xml = xml.replace('<cellXfs count="3">', '<cellXfs count="5">').replace('</cellXfs>', '<xf fontId="0" fillId="0" numFmtId="0"><alignment horizontal="center" vertical="center"/></xf><xf fontId="1" fillId="0" numFmtId="0"><alignment wrapText="1" vertical="top"/></xf></cellXfs>')
+      xml = xml.replace('</borders>', '<border><left style="thin"><color indexed="64"/></left><right/><top style="medium"><color rgb="FFFF0000"/></top><bottom style="dashed"/><diagonal/></border></borders>')
+      xml = xml.replace('<cellXfs count="3">', '<cellXfs count="5">').replace('</cellXfs>', '<xf fontId="0" fillId="0" borderId="1" numFmtId="0"><alignment horizontal="center" vertical="center"/></xf><xf fontId="1" fillId="0" numFmtId="0"><alignment wrapText="1" vertical="top"/></xf></cellXfs>')
     }
     CFB.utils.cfb_add(zip, `Root Entry/${name}`, new TextEncoder().encode(xml))
   }
@@ -60,7 +61,7 @@ test.each(['xlsx', 'xls'])('%s preserves all sheets, cached formula values, date
   expect(selectionTSV(loaded[0], initialSpreadsheetSelection(loaded[0], 'B3'))).toBe('Merged\t\t')
 })
 
-test('XLSX recovers frozen panes, font, alignment and explicit wrap without altering SheetJS metadata', () => {
+test('XLSX recovers frozen panes, font, alignment, borders and explicit wrap without altering SheetJS metadata', () => {
   const data = styledWorkbook()
   const raw = read(data, { type: 'array', dense: true, cellStyles: true, bookFiles: true })
   const before = structuredClone(raw.Styles)
@@ -72,7 +73,7 @@ test('XLSX recovers frozen panes, font, alignment and explicit wrap without alte
   expect(sheet.frozen).toEqual({ r: 1, c: 1 })
   expect(sheet.rows[3] - sheet.rows[2]).toBeCloseTo(80)
   expect(visibleIndices(sheet.rows, 0, Infinity)).toEqual([0, 1, 2, 3])
-  expect(spreadsheetStyle(sheet, { r: 0, c: 0 })).toMatchObject({ bold: true, color: '#17365D', horizontal: 'center', vertical: 'center', wrap: false })
+  expect(spreadsheetStyle(sheet, { r: 0, c: 0 })).toMatchObject({ bold: true, color: '#17365D', horizontal: 'center', vertical: 'center', wrap: false, border: { left: '1px solid #000', top: '2px solid #FF0000', bottom: '1px dashed #000' } })
   expect(spreadsheetStyle(sheet, { r: 2, c: 0 })).toMatchObject({ wrap: true, vertical: 'top' })
 })
 
