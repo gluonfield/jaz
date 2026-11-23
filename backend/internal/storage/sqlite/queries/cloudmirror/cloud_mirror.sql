@@ -1,3 +1,22 @@
+-- name: ListCloudAccounts :many
+SELECT
+  id,
+  base_url,
+  token_encrypted,
+  oidc_login_url,
+  user_id,
+  org_id,
+  org_name,
+  email,
+  display_name,
+  role,
+  capabilities_json,
+  connected_at_ms,
+  last_sync_at_ms,
+  last_error
+FROM cloud_accounts
+ORDER BY connected_at_ms ASC, id ASC;
+
 -- name: GetCloudAccount :one
 SELECT
   id,
@@ -14,11 +33,11 @@ SELECT
   connected_at_ms,
   last_sync_at_ms,
   last_error
-FROM cloud_account
-WHERE id = 1;
+FROM cloud_accounts
+WHERE id = sqlc.arg(id);
 
 -- name: UpsertCloudAccount :exec
-INSERT INTO cloud_account (
+INSERT INTO cloud_accounts (
   id,
   base_url,
   token_encrypted,
@@ -34,7 +53,7 @@ INSERT INTO cloud_account (
   last_sync_at_ms,
   last_error
 ) VALUES (
-  1,
+  sqlc.arg(id),
   sqlc.arg(base_url),
   sqlc.arg(token_encrypted),
   sqlc.arg(oidc_login_url),
@@ -65,27 +84,29 @@ ON CONFLICT(id) DO UPDATE SET
   last_error = excluded.last_error;
 
 -- name: UpdateCloudAccountSyncState :exec
-UPDATE cloud_account
+UPDATE cloud_accounts
 SET last_sync_at_ms = sqlc.arg(last_sync_at_ms),
     last_error = sqlc.arg(last_error)
-WHERE id = 1;
+WHERE id = sqlc.arg(id);
 
 -- name: UpdateCloudAccountToken :exec
-UPDATE cloud_account
+UPDATE cloud_accounts
 SET token_encrypted = sqlc.arg(token_encrypted)
-WHERE id = 1;
+WHERE id = sqlc.arg(id);
 
 -- name: DeleteCloudAccount :exec
-DELETE FROM cloud_account;
+DELETE FROM cloud_accounts WHERE id = sqlc.arg(id);
 
 -- name: ListCloudSpaces :many
-SELECT id, org_id, name, created_by, created_at_ms, updated_at_ms
+SELECT account_id, id, org_id, name, created_by, created_at_ms, updated_at_ms
 FROM cloud_spaces
+WHERE account_id = sqlc.arg(account_id)
 ORDER BY name ASC, id ASC;
 
 -- name: UpsertCloudSpace :exec
-INSERT INTO cloud_spaces (id, org_id, name, created_by, created_at_ms, updated_at_ms)
+INSERT INTO cloud_spaces (account_id, id, org_id, name, created_by, created_at_ms, updated_at_ms)
 VALUES (
+  sqlc.arg(account_id),
   sqlc.arg(id),
   sqlc.arg(org_id),
   sqlc.arg(name),
@@ -93,17 +114,18 @@ VALUES (
   sqlc.arg(created_at_ms),
   sqlc.arg(updated_at_ms)
 )
-ON CONFLICT(id) DO UPDATE SET
+ON CONFLICT(account_id, id) DO UPDATE SET
   org_id = excluded.org_id,
   name = excluded.name,
   created_by = excluded.created_by,
   updated_at_ms = excluded.updated_at_ms;
 
--- name: DeleteAllCloudSpaces :exec
-DELETE FROM cloud_spaces;
+-- name: DeleteCloudSpacesByAccount :exec
+DELETE FROM cloud_spaces WHERE account_id = sqlc.arg(account_id);
 
 -- name: ListCloudThreads :many
 SELECT
+  account_id,
   id,
   org_id,
   owner_user_id,
@@ -128,14 +150,16 @@ SELECT
   created_at_ms,
   updated_at_ms
 FROM cloud_threads
-WHERE archived = sqlc.arg(archived)
+WHERE account_id = sqlc.arg(account_id)
+  AND archived = sqlc.arg(archived)
 ORDER BY updated_at_ms DESC, id ASC;
 
 -- name: ListAllCloudThreadIDs :many
-SELECT id FROM cloud_threads;
+SELECT id FROM cloud_threads WHERE account_id = sqlc.arg(account_id);
 
 -- name: GetCloudThread :one
 SELECT
+  account_id,
   id,
   org_id,
   owner_user_id,
@@ -160,10 +184,12 @@ SELECT
   created_at_ms,
   updated_at_ms
 FROM cloud_threads
-WHERE id = sqlc.arg(id);
+WHERE account_id = sqlc.arg(account_id)
+  AND id = sqlc.arg(id);
 
 -- name: UpsertCloudThread :exec
 INSERT INTO cloud_threads (
+  account_id,
   id,
   org_id,
   owner_user_id,
@@ -188,6 +214,7 @@ INSERT INTO cloud_threads (
   created_at_ms,
   updated_at_ms
 ) VALUES (
+  sqlc.arg(account_id),
   sqlc.arg(id),
   sqlc.arg(org_id),
   sqlc.arg(owner_user_id),
@@ -212,7 +239,7 @@ INSERT INTO cloud_threads (
   sqlc.arg(created_at_ms),
   sqlc.arg(updated_at_ms)
 )
-ON CONFLICT(id) DO UPDATE SET
+ON CONFLICT(account_id, id) DO UPDATE SET
   org_id = excluded.org_id,
   owner_user_id = excluded.owner_user_id,
   space_id = excluded.space_id,
@@ -242,26 +269,32 @@ SET
   archived = sqlc.arg(archived),
   personal_sources_enabled = sqlc.arg(personal_sources_enabled),
   unread = sqlc.arg(unread)
-WHERE id = sqlc.arg(id);
+WHERE account_id = sqlc.arg(account_id)
+  AND id = sqlc.arg(id);
 
 -- name: UpdateCloudThreadStatus :exec
 UPDATE cloud_threads
 SET status = sqlc.arg(status), updated_at_ms = sqlc.arg(updated_at_ms)
-WHERE id = sqlc.arg(id);
+WHERE account_id = sqlc.arg(account_id)
+  AND id = sqlc.arg(id);
 
 -- name: UpdateCloudThreadLastSeq :exec
 UPDATE cloud_threads
 SET last_seq = MAX(last_seq, sqlc.arg(last_seq))
-WHERE id = sqlc.arg(id);
+WHERE account_id = sqlc.arg(account_id)
+  AND id = sqlc.arg(id);
 
 -- name: DeleteCloudThread :exec
-DELETE FROM cloud_threads WHERE id = sqlc.arg(id);
+DELETE FROM cloud_threads
+WHERE account_id = sqlc.arg(account_id)
+  AND id = sqlc.arg(id);
 
--- name: DeleteAllCloudThreads :exec
-DELETE FROM cloud_threads;
+-- name: DeleteCloudThreadsByAccount :exec
+DELETE FROM cloud_threads WHERE account_id = sqlc.arg(account_id);
 
 -- name: UpsertCloudThreadEvent :exec
 INSERT INTO cloud_thread_events (
+  account_id,
   thread_id,
   seq,
   org_id,
@@ -271,6 +304,7 @@ INSERT INTO cloud_thread_events (
   payload_json,
   created_at_ms
 ) VALUES (
+  sqlc.arg(account_id),
   sqlc.arg(thread_id),
   sqlc.arg(seq),
   sqlc.arg(org_id),
@@ -280,7 +314,7 @@ INSERT INTO cloud_thread_events (
   sqlc.arg(payload_json),
   sqlc.arg(created_at_ms)
 )
-ON CONFLICT(thread_id, seq) DO UPDATE SET
+ON CONFLICT(account_id, thread_id, seq) DO UPDATE SET
   turn_epoch = excluded.turn_epoch,
   actor_user_id = excluded.actor_user_id,
   type = excluded.type,
@@ -289,6 +323,7 @@ ON CONFLICT(thread_id, seq) DO UPDATE SET
 
 -- name: ListCloudThreadEventsAfter :many
 SELECT
+  account_id,
   thread_id,
   seq,
   org_id,
@@ -298,22 +333,26 @@ SELECT
   payload_json,
   created_at_ms
 FROM cloud_thread_events
-WHERE thread_id = sqlc.arg(thread_id) AND seq > sqlc.arg(after_seq)
+WHERE account_id = sqlc.arg(account_id)
+  AND thread_id = sqlc.arg(thread_id)
+  AND seq > sqlc.arg(after_seq)
 ORDER BY seq ASC;
 
--- name: DeleteAllCloudThreadEvents :exec
-DELETE FROM cloud_thread_events;
+-- name: DeleteCloudThreadEventsByAccount :exec
+DELETE FROM cloud_thread_events WHERE account_id = sqlc.arg(account_id);
 
 -- name: GetCloudInstruction :one
-SELECT org_id, scope, scope_id, kind, body_md, version, updated_by, updated_at_ms
+SELECT account_id, org_id, scope, scope_id, kind, body_md, version, updated_by, updated_at_ms
 FROM cloud_instructions
-WHERE org_id = sqlc.arg(org_id)
+WHERE account_id = sqlc.arg(account_id)
+  AND org_id = sqlc.arg(org_id)
   AND scope = sqlc.arg(scope)
   AND scope_id = sqlc.arg(scope_id)
   AND kind = sqlc.arg(kind);
 
 -- name: UpsertCloudInstruction :exec
 INSERT INTO cloud_instructions (
+  account_id,
   org_id,
   scope,
   scope_id,
@@ -323,6 +362,7 @@ INSERT INTO cloud_instructions (
   updated_by,
   updated_at_ms
 ) VALUES (
+  sqlc.arg(account_id),
   sqlc.arg(org_id),
   sqlc.arg(scope),
   sqlc.arg(scope_id),
@@ -332,17 +372,18 @@ INSERT INTO cloud_instructions (
   sqlc.arg(updated_by),
   sqlc.arg(updated_at_ms)
 )
-ON CONFLICT(org_id, scope, scope_id, kind) DO UPDATE SET
+ON CONFLICT(account_id, org_id, scope, scope_id, kind) DO UPDATE SET
   body_md = excluded.body_md,
   version = excluded.version,
   updated_by = excluded.updated_by,
   updated_at_ms = excluded.updated_at_ms;
 
--- name: DeleteAllCloudInstructions :exec
-DELETE FROM cloud_instructions;
+-- name: DeleteCloudInstructionsByAccount :exec
+DELETE FROM cloud_instructions WHERE account_id = sqlc.arg(account_id);
 
 -- name: UpsertCloudUsageEvent :exec
 INSERT INTO cloud_usage_events (
+  account_id,
   id,
   org_id,
   user_id,
@@ -355,6 +396,7 @@ INSERT INTO cloud_usage_events (
   cost_usd,
   created_at_ms
 ) VALUES (
+  sqlc.arg(account_id),
   sqlc.arg(id),
   sqlc.arg(org_id),
   sqlc.arg(user_id),
@@ -367,10 +409,12 @@ INSERT INTO cloud_usage_events (
   sqlc.arg(cost_usd),
   sqlc.arg(created_at_ms)
 )
-ON CONFLICT(id) DO NOTHING;
+ON CONFLICT(account_id, id) DO NOTHING;
 
 -- name: MaxCloudUsageEventID :one
-SELECT COALESCE(MAX(id), 0) AS max_id FROM cloud_usage_events;
+SELECT COALESCE(MAX(id), 0) AS max_id
+FROM cloud_usage_events
+WHERE account_id = sqlc.arg(account_id);
 
--- name: DeleteAllCloudUsageEvents :exec
-DELETE FROM cloud_usage_events;
+-- name: DeleteCloudUsageEventsByAccount :exec
+DELETE FROM cloud_usage_events WHERE account_id = sqlc.arg(account_id);

@@ -39,11 +39,13 @@ type SectionNavigationOptions = { replace?: boolean }
 export function SettingsOverlay({
   open,
   section,
+  openAddCloudWorkspace = false,
   onSectionChange,
   onClose,
 }: {
   open: boolean
   section?: SettingsSection
+  openAddCloudWorkspace?: boolean
   onSectionChange: (section: SettingsSection, options?: SectionNavigationOptions) => void
   onClose: () => void
 }) {
@@ -149,11 +151,11 @@ export function SettingsOverlay({
                   transition={{ duration: 0.14, ease: 'easeOut' }}
                 >
                   {current.fullHeight ? (
-                    <SectionContent section={current.id} onNavigate={onSectionChange} />
+                    <SectionContent section={current.id} openAddCloudWorkspace={openAddCloudWorkspace} onNavigate={onSectionChange} />
                   ) : (
                     <div className="h-full overflow-y-auto">
                       <div className={`mx-auto px-10 pb-8 max-sm:px-4 ${current.wide ? 'max-w-[920px]' : 'max-w-[760px]'}`}>
-                        <SectionContent section={current.id} onNavigate={onSectionChange} />
+                        <SectionContent section={current.id} openAddCloudWorkspace={openAddCloudWorkspace} onNavigate={onSectionChange} />
                       </div>
                     </div>
                   )}
@@ -169,9 +171,11 @@ export function SettingsOverlay({
 
 function SectionContent({
   section,
+  openAddCloudWorkspace,
   onNavigate,
 }: {
   section: SettingsSection
+  openAddCloudWorkspace?: boolean
   onNavigate: (section: SettingsSection, options?: SectionNavigationOptions) => void
 }) {
   switch (section) {
@@ -204,7 +208,7 @@ function SectionContent({
     case 'machines':
       return <ConnectedMachinesSettings />
     case 'cloud':
-      return <CloudSettings onNavigate={onNavigate} />
+      return <CloudSettings autoOpenAddForm={openAddCloudWorkspace} onNavigate={onNavigate} />
     case 'browser':
       return <BrowserSettings />
     case 'usage':

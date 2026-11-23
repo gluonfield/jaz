@@ -101,6 +101,10 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		writeError(w, http.StatusBadRequest, fmt.Errorf("unsupported artifact surface %q; use chat or canvas", surface))
 		return
 	}
+	workspaceID := storage.LocalWorkspaceID
+	if s.Cloud != nil {
+		workspaceID = s.Cloud.ActiveWorkspaceID()
+	}
 	ctx, cancel := serverACPBootstrapContext()
 	defer cancel()
 	session, err := s.ACP.CreateSession(ctx, acp.SpawnRequest{
@@ -109,6 +113,7 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		Title:           req.Title,
 		Directory:       directory,
 		Worktree:        req.Worktree,
+		WorkspaceID:     workspaceID,
 		ArtifactSurface: surface,
 		ModelProvider:   strings.TrimSpace(req.ModelProvider),
 		Model:           strings.TrimSpace(req.Model),

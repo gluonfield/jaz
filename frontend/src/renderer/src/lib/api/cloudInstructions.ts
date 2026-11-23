@@ -5,7 +5,7 @@ import { get as cloudGet, put as cloudPut } from './client'
 import type { CloudUser } from './serverTypes'
 
 export type InstructionScope = 'org' | 'space' | 'user' | 'bot'
-export type InstructionKind = 'agents' | 'soul' | 'bots' | 'memory' | 'short_term' | 'long_term'
+export type InstructionKind = 'agents' | 'bots' | 'memory' | 'short_term' | 'long_term'
 
 export interface CloudInstructionKey {
   org_id?: string
@@ -26,13 +26,12 @@ export interface CloudInstructionDocument {
 export const INSTRUCTION_SCOPE_KINDS: Record<InstructionScope, InstructionKind[]> = {
   org: ['agents'],
   space: ['agents'],
-  user: ['agents', 'soul', 'short_term', 'long_term'],
+  user: ['agents', 'short_term', 'long_term'],
   bot: ['bots', 'memory'],
 }
 
 export const INSTRUCTION_KIND_FILENAME: Record<InstructionKind, string> = {
   agents: 'AGENTS.md',
-  soul: 'SOUL.md',
   bots: 'BOTS.md',
   memory: 'MEMORY.md',
   short_term: 'SHORT_TERM',

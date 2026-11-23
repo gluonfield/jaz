@@ -23,8 +23,6 @@ func instructionKindForAgentFile(name string) (instructions.Kind, bool) {
 	switch name {
 	case "AGENTS.md":
 		return instructions.KindAgents, true
-	case "SOUL.md":
-		return instructions.KindSoul, true
 	case "BOTS.md":
 		return instructions.KindBots, true
 	default:

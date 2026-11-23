@@ -21,7 +21,6 @@ type Kind string
 
 const (
 	KindAgents    Kind = "agents"
-	KindSoul      Kind = "soul"
 	KindBots      Kind = "bots"
 	KindMemory    Kind = "memory"
 	KindLongTerm  Kind = "long_term"
@@ -52,7 +51,7 @@ func (k Key) Validate() error {
 			return ErrInvalidKey
 		}
 	case ScopeUser:
-		if k.Kind != KindAgents && k.Kind != KindSoul && k.Kind != KindBots && k.Kind != KindLongTerm && k.Kind != KindShortTerm {
+		if k.Kind != KindAgents && k.Kind != KindBots && k.Kind != KindLongTerm && k.Kind != KindShortTerm {
 			return ErrInvalidKey
 		}
 	case ScopeBot:

@@ -1,6 +1,7 @@
 -- name: InsertUsageEvent :exec
 INSERT INTO usage_events (
   thread_id,
+  workspace_id,
   runtime,
   agent,
   model_provider,
@@ -18,6 +19,7 @@ INSERT INTO usage_events (
   created_at_ms
 ) VALUES (
   sqlc.arg(thread_id),
+  sqlc.arg(workspace_id),
   sqlc.arg(runtime),
   sqlc.arg(agent),
   sqlc.arg(model_provider),
@@ -68,7 +70,9 @@ FROM (
     u.source_type,
     u.created_at_ms
   FROM usage_events u
-  WHERE u.created_at_ms >= sqlc.arg(since) AND u.created_at_ms < sqlc.arg(until)
+  WHERE u.created_at_ms >= sqlc.arg(since)
+    AND u.created_at_ms < sqlc.arg(until)
+    AND (sqlc.arg(workspace_id) = '' OR u.workspace_id = sqlc.arg(workspace_id))
   UNION ALL
   SELECT
     c.thread_id,
@@ -86,6 +90,10 @@ FROM (
     '' AS source_type,
     c.created_at_ms
   FROM cloud_usage_events c
-  WHERE c.created_at_ms >= sqlc.arg(since) AND c.created_at_ms < sqlc.arg(until)
+  WHERE c.created_at_ms >= sqlc.arg(since)
+    AND c.created_at_ms < sqlc.arg(until)
+    AND sqlc.arg(workspace_id) != ''
+    AND sqlc.arg(workspace_id) != 'local'
+    AND c.account_id = sqlc.arg(workspace_id)
 )
 ORDER BY created_at_ms;

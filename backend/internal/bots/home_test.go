@@ -125,7 +125,7 @@ func TestBotWorkersReceiveTheOwnersMemoryAndLinkedWorkspacePaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	prompt := strings.Join(modules.Strings(), "\n")
-	for _, expected := range []string{"MEMORY.md", homeOf(t, store, bot.ID), project, "AGENTS.md/SOUL.md", "not copied"} {
+	for _, expected := range []string{"MEMORY.md", homeOf(t, store, bot.ID), project, "AGENTS.md", "not copied"} {
 		if !strings.Contains(prompt, expected) {
 			t.Errorf("worker context omitted %q: %s", expected, prompt)
 		}

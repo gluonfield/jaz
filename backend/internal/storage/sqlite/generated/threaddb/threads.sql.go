@@ -104,7 +104,7 @@ func (q *Queries) CompleteSession(ctx context.Context, arg CompleteSessionParams
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools FROM threads
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools, workspace_id FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
 `
@@ -160,6 +160,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.TurnsEnded,
 		&i.BackgroundWork,
 		&i.DeferredMcpTools,
+		&i.WorkspaceID,
 	)
 	return i, err
 }
@@ -256,7 +257,7 @@ func (q *Queries) IsMainBot(ctx context.Context, threadID string) (bool, error) 
 }
 
 const listChildSessions = `-- name: ListChildSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools, workspace_id
 FROM threads
 WHERE parent_id = ?1
   AND archived = ?2
@@ -360,6 +361,7 @@ func (q *Queries) ListChildSessions(ctx context.Context, arg ListChildSessionsPa
 			&i.TurnsEnded,
 			&i.BackgroundWork,
 			&i.DeferredMcpTools,
+			&i.WorkspaceID,
 		); err != nil {
 			return nil, err
 		}
@@ -502,32 +504,34 @@ func (q *Queries) ListSessionSubtree(ctx context.Context, id string) ([]string, 
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools, workspace_id
 FROM threads
 WHERE archived = ?1
-  AND (?2 OR parent_id IS NULL OR parent_id = '')
-  AND (NOT ?3 OR parent_id IS NULL OR parent_id = '')
-  AND (NOT ?4 OR COALESCE(parent_id, '') = ?5)
-  AND (?5 = '' OR COALESCE(parent_id, '') = ?5)
-  AND (?6 = '' OR runtime = ?6)
-  AND (?7 = '' OR COALESCE(source_type, '') = ?7)
-  AND (?8 = '' OR COALESCE(source_id, '') = ?8)
+  AND (?2 = '' OR workspace_id = ?2)
+  AND (?3 OR parent_id IS NULL OR parent_id = '')
+  AND (NOT ?4 OR parent_id IS NULL OR parent_id = '')
+  AND (NOT ?5 OR COALESCE(parent_id, '') = ?6)
+  AND (?6 = '' OR COALESCE(parent_id, '') = ?6)
+  AND (?7 = '' OR runtime = ?7)
+  AND (?8 = '' OR COALESCE(source_type, '') = ?8)
+  AND (?9 = '' OR COALESCE(source_id, '') = ?9)
   AND (
-    ?7 <> ''
-    OR ?8 <> ''
-    OR ?9
+    ?8 <> ''
+    OR ?9 <> ''
+    OR ?10
     OR COALESCE(source_type, '') = ''
   )
-  AND (?10 = 0 OR updated_at_ms > ?10)
-  AND (CAST(?11 AS TEXT) = '' OR instr(lower(COALESCE(title, '') || char(10) || slug), lower(?11)) > 0)
-  AND last_attention_at_ms <= ?12
-  AND (last_attention_at_ms < ?12 OR id > CAST(?13 AS TEXT))
+  AND (?11 = 0 OR updated_at_ms > ?11)
+  AND (CAST(?12 AS TEXT) = '' OR instr(lower(COALESCE(title, '') || char(10) || slug), lower(?12)) > 0)
+  AND last_attention_at_ms <= ?13
+  AND (last_attention_at_ms < ?13 OR id > CAST(?14 AS TEXT))
 ORDER BY last_attention_at_ms DESC, id
-LIMIT CASE WHEN ?14 > 0 THEN ?14 ELSE -1 END
+LIMIT CASE WHEN ?15 > 0 THEN ?15 ELSE -1 END
 `
 
 type ListSessionsParams struct {
 	FilterArchived         int64          `json:"filter_archived"`
+	FilterWorkspaceID      interface{}    `json:"filter_workspace_id"`
 	FilterIncludeChildren  interface{}    `json:"filter_include_children"`
 	FilterRootOnly         interface{}    `json:"filter_root_only"`
 	FilterParentOnly       interface{}    `json:"filter_parent_only"`
@@ -546,6 +550,7 @@ type ListSessionsParams struct {
 func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]Thread, error) {
 	rows, err := q.db.QueryContext(ctx, listSessions,
 		arg.FilterArchived,
+		arg.FilterWorkspaceID,
 		arg.FilterIncludeChildren,
 		arg.FilterRootOnly,
 		arg.FilterParentOnly,
@@ -615,6 +620,7 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]T
 			&i.TurnsEnded,
 			&i.BackgroundWork,
 			&i.DeferredMcpTools,
+			&i.WorkspaceID,
 		); err != nil {
 			return nil, err
 		}
@@ -1111,7 +1117,8 @@ INSERT INTO threads (
   pending_steer_message,
   unread,
   goal,
-  turn
+  turn,
+  workspace_id
 ) VALUES (
   ?1,
   ?2,
@@ -1151,7 +1158,8 @@ INSERT INTO threads (
   ?36,
   ?37,
   ?38,
-  ?39
+  ?39,
+  ?40
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -1190,6 +1198,7 @@ ON CONFLICT(id) DO UPDATE SET
   pinned = excluded.pinned,
   pending_steer_message = excluded.pending_steer_message,
   unread = excluded.unread,
+  workspace_id = excluded.workspace_id,
   turn = CASE WHEN excluded.status IN ('running', 'interrupted') THEN threads.turn ELSE '' END
 `
 
@@ -1233,6 +1242,7 @@ type UpsertSessionParams struct {
 	Unread                int64          `json:"unread"`
 	Goal                  string         `json:"goal"`
 	Turn                  string         `json:"turn"`
+	WorkspaceID           string         `json:"workspace_id"`
 }
 
 func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) error {
@@ -1276,6 +1286,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.Unread,
 		arg.Goal,
 		arg.Turn,
+		arg.WorkspaceID,
 	)
 	return err
 }

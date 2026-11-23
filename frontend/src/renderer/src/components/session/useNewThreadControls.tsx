@@ -6,8 +6,7 @@ import { agentLabel } from '@/lib/agentLabel'
 import { cloudModelProfilesQuery, cloudProfileToAgentOption } from '@/lib/api/cloudThreads'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
-import { useHasCloud } from '@/lib/cloudSession'
-import { useIsCloud } from '@/lib/connection'
+import { useHasCloud, useIsCloudOnly } from '@/lib/cloudSession'
 import { composerConfig } from '@/lib/jazDefaults'
 import { useModelReasoningState } from '@/lib/modelReasoning'
 import {
@@ -24,10 +23,10 @@ import {
 } from '@/lib/newSessionConfig'
 
 export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
-  const isPrimaryCloud = useIsCloud()
   const hasCloud = useHasCloud()
-  const usingCloudProfiles = targetLocation ? targetLocation === 'cloud' : isPrimaryCloud
-  const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles && !isPrimaryCloud })
+  const cloudOnly = useIsCloudOnly()
+  const usingCloudProfiles = cloudOnly || (targetLocation ? targetLocation === 'cloud' : false)
+  const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles && !cloudOnly })
   const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: usingCloudProfiles && hasCloud })
   const agentSettings = usingCloudProfiles ? undefined : settingsQuery.data
   const cloudProfiles = usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : []

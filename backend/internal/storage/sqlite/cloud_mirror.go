@@ -12,23 +12,51 @@ import (
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/cloudmirror"
 )
 
-const cloudAccountSecretID = "cloud:account:token"
+const (
+	cloudAccountSecretID        = "cloud:account:token"
+	cloudSettingsNamespace      = "cloud"
+	activeWorkspaceIDSettingKey = "active_workspace_id"
+)
 
 var _ storage.CloudMirrorStore = (*Store)(nil)
 
-func (s *Store) LoadCloudAccount(ctx context.Context) (storage.CloudAccount, bool, error) {
-	row, err := cloudmirror.New(s.db).GetCloudAccount(ctx)
+func (s *Store) ListCloudAccounts(ctx context.Context) ([]storage.CloudAccount, error) {
+	rows, err := cloudmirror.New(s.db).ListCloudAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]storage.CloudAccount, 0, len(rows))
+	for _, row := range rows {
+		acc, err := s.cloudAccountFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, acc)
+	}
+	return out, nil
+}
+
+func (s *Store) LoadCloudAccount(ctx context.Context, id string) (storage.CloudAccount, bool, error) {
+	row, err := cloudmirror.New(s.db).GetCloudAccount(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.CloudAccount{}, false, nil
 	}
 	if err != nil {
 		return storage.CloudAccount{}, false, err
 	}
+	acc, err := s.cloudAccountFromRow(row)
+	if err != nil {
+		return storage.CloudAccount{}, false, err
+	}
+	return acc, true, nil
+}
+
+func (s *Store) cloudAccountFromRow(row cloudmirror.CloudAccount) (storage.CloudAccount, error) {
 	var token string
 	if row.TokenEncrypted != "" {
 		raw, err := s.decryptSecret(cloudAccountSecretID, row.TokenEncrypted)
 		if err != nil {
-			return storage.CloudAccount{}, false, err
+			return storage.CloudAccount{}, err
 		}
 		token = string(raw)
 	}
@@ -37,6 +65,7 @@ func (s *Store) LoadCloudAccount(ctx context.Context) (storage.CloudAccount, boo
 		caps = json.RawMessage(`{}`)
 	}
 	return storage.CloudAccount{
+		ID:               row.ID,
 		BaseURL:          row.BaseUrl,
 		Token:            token,
 		OIDCLoginURL:     row.OidcLoginUrl,
@@ -50,7 +79,7 @@ func (s *Store) LoadCloudAccount(ctx context.Context) (storage.CloudAccount, boo
 		ConnectedAt:      msToTime(row.ConnectedAtMs),
 		LastSyncAt:       msToTime(row.LastSyncAtMs),
 		LastError:        row.LastError,
-	}, true, nil
+	}, nil
 }
 
 func (s *Store) SaveCloudAccount(ctx context.Context, account storage.CloudAccount) error {
@@ -69,6 +98,7 @@ func (s *Store) SaveCloudAccount(ctx context.Context, account storage.CloudAccou
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return cloudmirror.New(s.db).UpsertCloudAccount(ctx, cloudmirror.UpsertCloudAccountParams{
+		ID:               account.ID,
 		BaseUrl:          account.BaseURL,
 		TokenEncrypted:   encrypted,
 		OidcLoginUrl:     account.OIDCLoginURL,
@@ -85,16 +115,17 @@ func (s *Store) SaveCloudAccount(ctx context.Context, account storage.CloudAccou
 	})
 }
 
-func (s *Store) UpdateCloudSyncState(ctx context.Context, lastSyncAt time.Time, lastError string) error {
+func (s *Store) UpdateCloudSyncState(ctx context.Context, accountID string, lastSyncAt time.Time, lastError string) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return cloudmirror.New(s.db).UpdateCloudAccountSyncState(ctx, cloudmirror.UpdateCloudAccountSyncStateParams{
+		ID:           accountID,
 		LastSyncAtMs: timeToMs(lastSyncAt),
 		LastError:    lastError,
 	})
 }
 
-func (s *Store) ClearCloudMirror(ctx context.Context) error {
+func (s *Store) DeleteCloudAccount(ctx context.Context, accountID string) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -103,22 +134,54 @@ func (s *Store) ClearCloudMirror(ctx context.Context) error {
 	}
 	defer tx.Rollback()
 	q := cloudmirror.New(s.db).WithTx(tx)
-	for _, fn := range []func(context.Context) error{
-		q.DeleteAllCloudThreadEvents,
-		q.DeleteAllCloudThreads,
-		q.DeleteAllCloudSpaces,
-		q.DeleteAllCloudInstructions,
-		q.DeleteAllCloudUsageEvents,
+	for _, fn := range []func(context.Context, string) error{
+		q.DeleteCloudThreadEventsByAccount,
+		q.DeleteCloudThreadsByAccount,
+		q.DeleteCloudSpacesByAccount,
+		q.DeleteCloudInstructionsByAccount,
+		q.DeleteCloudUsageEventsByAccount,
 		q.DeleteCloudAccount,
 	} {
-		if err := fn(ctx); err != nil {
+		if err := fn(ctx, accountID); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
-func (s *Store) ReplaceCloudSpaces(ctx context.Context, spaces []storage.CloudSpace) error {
+func (s *Store) LoadActiveWorkspaceID(_ context.Context) (string, error) {
+	setting, err := s.LoadSetting(cloudSettingsNamespace, activeWorkspaceIDSettingKey)
+	if errors.Is(err, storage.ErrSettingNotFound) {
+		return storage.LocalWorkspaceID, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var id string
+	if err := json.Unmarshal(setting.Value, &id); err != nil {
+		return storage.LocalWorkspaceID, nil
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return storage.LocalWorkspaceID, nil
+	}
+	return id, nil
+}
+
+func (s *Store) SaveActiveWorkspaceID(_ context.Context, workspaceID string) error {
+	id := strings.TrimSpace(workspaceID)
+	if id == "" {
+		id = storage.LocalWorkspaceID
+	}
+	encoded, err := json.Marshal(id)
+	if err != nil {
+		return err
+	}
+	_, err = s.SaveSetting(cloudSettingsNamespace, activeWorkspaceIDSettingKey, encoded)
+	return err
+}
+
+func (s *Store) ReplaceCloudSpaces(ctx context.Context, accountID string, spaces []storage.CloudSpace) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -127,11 +190,12 @@ func (s *Store) ReplaceCloudSpaces(ctx context.Context, spaces []storage.CloudSp
 	}
 	defer tx.Rollback()
 	q := cloudmirror.New(s.db).WithTx(tx)
-	if err := q.DeleteAllCloudSpaces(ctx); err != nil {
+	if err := q.DeleteCloudSpacesByAccount(ctx, accountID); err != nil {
 		return err
 	}
 	for _, sp := range spaces {
 		if err := q.UpsertCloudSpace(ctx, cloudmirror.UpsertCloudSpaceParams{
+			AccountID:   accountID,
 			ID:          sp.ID,
 			OrgID:       sp.OrgID,
 			Name:        sp.Name,
@@ -145,10 +209,11 @@ func (s *Store) ReplaceCloudSpaces(ctx context.Context, spaces []storage.CloudSp
 	return tx.Commit()
 }
 
-func (s *Store) UpsertCloudSpace(ctx context.Context, sp storage.CloudSpace) error {
+func (s *Store) UpsertCloudSpace(ctx context.Context, accountID string, sp storage.CloudSpace) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return cloudmirror.New(s.db).UpsertCloudSpace(ctx, cloudmirror.UpsertCloudSpaceParams{
+		AccountID:   accountID,
 		ID:          sp.ID,
 		OrgID:       sp.OrgID,
 		Name:        sp.Name,
@@ -158,14 +223,15 @@ func (s *Store) UpsertCloudSpace(ctx context.Context, sp storage.CloudSpace) err
 	})
 }
 
-func (s *Store) ListCloudSpaces(ctx context.Context) ([]storage.CloudSpace, error) {
-	rows, err := cloudmirror.New(s.db).ListCloudSpaces(ctx)
+func (s *Store) ListCloudSpaces(ctx context.Context, accountID string) ([]storage.CloudSpace, error) {
+	rows, err := cloudmirror.New(s.db).ListCloudSpaces(ctx, accountID)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]storage.CloudSpace, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, storage.CloudSpace{
+			AccountID: row.AccountID,
 			ID:        row.ID,
 			OrgID:     row.OrgID,
 			Name:      row.Name,
@@ -177,7 +243,7 @@ func (s *Store) ListCloudSpaces(ctx context.Context) ([]storage.CloudSpace, erro
 	return out, nil
 }
 
-func (s *Store) SyncCloudThreads(ctx context.Context, threads []storage.CloudThread) error {
+func (s *Store) SyncCloudThreads(ctx context.Context, accountID string, threads []storage.CloudThread) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -186,20 +252,23 @@ func (s *Store) SyncCloudThreads(ctx context.Context, threads []storage.CloudThr
 	}
 	defer tx.Rollback()
 	q := cloudmirror.New(s.db).WithTx(tx)
-	existingIDs, err := q.ListAllCloudThreadIDs(ctx)
+	existingIDs, err := q.ListAllCloudThreadIDs(ctx, accountID)
 	if err != nil {
 		return err
 	}
 	keep := make(map[string]struct{}, len(threads))
 	for _, th := range threads {
 		keep[th.ID] = struct{}{}
-		if err := q.UpsertCloudThread(ctx, cloudThreadUpsertParams(th)); err != nil {
+		if err := q.UpsertCloudThread(ctx, cloudThreadUpsertParams(accountID, th)); err != nil {
 			return err
 		}
 	}
 	for _, id := range existingIDs {
 		if _, ok := keep[id]; !ok {
-			if err := q.DeleteCloudThread(ctx, id); err != nil {
+			if err := q.DeleteCloudThread(ctx, cloudmirror.DeleteCloudThreadParams{
+				AccountID: accountID,
+				ID:        id,
+			}); err != nil {
 				return err
 			}
 		}
@@ -207,14 +276,17 @@ func (s *Store) SyncCloudThreads(ctx context.Context, threads []storage.CloudThr
 	return tx.Commit()
 }
 
-func (s *Store) UpsertCloudThread(ctx context.Context, th storage.CloudThread) error {
+func (s *Store) UpsertCloudThread(ctx context.Context, accountID string, th storage.CloudThread) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	return cloudmirror.New(s.db).UpsertCloudThread(ctx, cloudThreadUpsertParams(th))
+	return cloudmirror.New(s.db).UpsertCloudThread(ctx, cloudThreadUpsertParams(accountID, th))
 }
 
-func (s *Store) GetCloudThread(ctx context.Context, id string) (storage.CloudThread, bool, error) {
-	row, err := cloudmirror.New(s.db).GetCloudThread(ctx, id)
+func (s *Store) GetCloudThread(ctx context.Context, accountID, id string) (storage.CloudThread, bool, error) {
+	row, err := cloudmirror.New(s.db).GetCloudThread(ctx, cloudmirror.GetCloudThreadParams{
+		AccountID: accountID,
+		ID:        id,
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.CloudThread{}, false, nil
 	}
@@ -224,8 +296,11 @@ func (s *Store) GetCloudThread(ctx context.Context, id string) (storage.CloudThr
 	return cloudThreadFromRow(row), true, nil
 }
 
-func (s *Store) ListCloudThreads(ctx context.Context, archived bool) ([]storage.CloudThread, error) {
-	rows, err := cloudmirror.New(s.db).ListCloudThreads(ctx, boolToInt64(archived))
+func (s *Store) ListCloudThreads(ctx context.Context, accountID string, archived bool) ([]storage.CloudThread, error) {
+	rows, err := cloudmirror.New(s.db).ListCloudThreads(ctx, cloudmirror.ListCloudThreadsParams{
+		AccountID: accountID,
+		Archived:  boolToInt64(archived),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +311,7 @@ func (s *Store) ListCloudThreads(ctx context.Context, archived bool) ([]storage.
 	return out, nil
 }
 
-func (s *Store) UpdateCloudThreadUserState(ctx context.Context, id string, patch storage.CloudThreadUserStatePatch) (storage.CloudThread, error) {
+func (s *Store) UpdateCloudThreadUserState(ctx context.Context, accountID, id string, patch storage.CloudThreadUserStatePatch) (storage.CloudThread, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -245,7 +320,10 @@ func (s *Store) UpdateCloudThreadUserState(ctx context.Context, id string, patch
 	}
 	defer tx.Rollback()
 	q := cloudmirror.New(s.db).WithTx(tx)
-	row, err := q.GetCloudThread(ctx, id)
+	row, err := q.GetCloudThread(ctx, cloudmirror.GetCloudThreadParams{
+		AccountID: accountID,
+		ID:        id,
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.CloudThread{}, storage.ErrSessionNotFound
 	}
@@ -266,6 +344,7 @@ func (s *Store) UpdateCloudThreadUserState(ctx context.Context, id string, patch
 		th.Unread = *patch.Unread
 	}
 	if err := q.UpdateCloudThreadUserState(ctx, cloudmirror.UpdateCloudThreadUserStateParams{
+		AccountID:              accountID,
 		ID:                     id,
 		Pinned:                 boolToInt64(th.Pinned),
 		Archived:               boolToInt64(th.Archived),
@@ -277,17 +356,18 @@ func (s *Store) UpdateCloudThreadUserState(ctx context.Context, id string, patch
 	return th, tx.Commit()
 }
 
-func (s *Store) UpdateCloudThreadStatus(ctx context.Context, id, status string, updatedAt time.Time) error {
+func (s *Store) UpdateCloudThreadStatus(ctx context.Context, accountID, id, status string, updatedAt time.Time) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return cloudmirror.New(s.db).UpdateCloudThreadStatus(ctx, cloudmirror.UpdateCloudThreadStatusParams{
+		AccountID:   accountID,
 		ID:          id,
 		Status:      status,
 		UpdatedAtMs: timeToMs(updatedAt),
 	})
 }
 
-func (s *Store) AppendCloudThreadEvents(ctx context.Context, threadID string, events []storage.CloudThreadEvent) error {
+func (s *Store) AppendCloudThreadEvents(ctx context.Context, accountID, threadID string, events []storage.CloudThreadEvent) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -306,6 +386,7 @@ func (s *Store) AppendCloudThreadEvents(ctx context.Context, threadID string, ev
 			payload = "{}"
 		}
 		if err := q.UpsertCloudThreadEvent(ctx, cloudmirror.UpsertCloudThreadEventParams{
+			AccountID:   accountID,
 			ThreadID:    threadID,
 			Seq:         ev.Seq,
 			OrgID:       ev.OrgID,
@@ -323,8 +404,9 @@ func (s *Store) AppendCloudThreadEvents(ctx context.Context, threadID string, ev
 	}
 	if maxSeq > 0 {
 		if err := q.UpdateCloudThreadLastSeq(ctx, cloudmirror.UpdateCloudThreadLastSeqParams{
-			ID:      threadID,
-			LastSeq: maxSeq,
+			AccountID: accountID,
+			ID:        threadID,
+			LastSeq:   maxSeq,
 		}); err != nil {
 			return err
 		}
@@ -332,10 +414,11 @@ func (s *Store) AppendCloudThreadEvents(ctx context.Context, threadID string, ev
 	return tx.Commit()
 }
 
-func (s *Store) ListCloudThreadEvents(ctx context.Context, threadID string, afterSeq int64) ([]storage.CloudThreadEvent, error) {
+func (s *Store) ListCloudThreadEvents(ctx context.Context, accountID, threadID string, afterSeq int64) ([]storage.CloudThreadEvent, error) {
 	rows, err := cloudmirror.New(s.db).ListCloudThreadEventsAfter(ctx, cloudmirror.ListCloudThreadEventsAfterParams{
-		ThreadID: threadID,
-		AfterSeq: afterSeq,
+		AccountID: accountID,
+		ThreadID:  threadID,
+		AfterSeq:  afterSeq,
 	})
 	if err != nil {
 		return nil, err
@@ -356,10 +439,11 @@ func (s *Store) ListCloudThreadEvents(ctx context.Context, threadID string, afte
 	return out, nil
 }
 
-func (s *Store) UpsertCloudInstruction(ctx context.Context, doc storage.CloudInstruction) error {
+func (s *Store) UpsertCloudInstruction(ctx context.Context, accountID string, doc storage.CloudInstruction) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return cloudmirror.New(s.db).UpsertCloudInstruction(ctx, cloudmirror.UpsertCloudInstructionParams{
+		AccountID:   accountID,
 		OrgID:       doc.OrgID,
 		Scope:       doc.Scope,
 		ScopeID:     doc.ScopeID,
@@ -371,12 +455,13 @@ func (s *Store) UpsertCloudInstruction(ctx context.Context, doc storage.CloudIns
 	})
 }
 
-func (s *Store) GetCloudInstruction(ctx context.Context, orgID, scope, scopeID, kind string) (storage.CloudInstruction, bool, error) {
+func (s *Store) GetCloudInstruction(ctx context.Context, accountID, orgID, scope, scopeID, kind string) (storage.CloudInstruction, bool, error) {
 	row, err := cloudmirror.New(s.db).GetCloudInstruction(ctx, cloudmirror.GetCloudInstructionParams{
-		OrgID:   orgID,
-		Scope:   scope,
-		ScopeID: scopeID,
-		Kind:    kind,
+		AccountID: accountID,
+		OrgID:     orgID,
+		Scope:     scope,
+		ScopeID:   scopeID,
+		Kind:      kind,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.CloudInstruction{}, false, nil
@@ -396,7 +481,7 @@ func (s *Store) GetCloudInstruction(ctx context.Context, orgID, scope, scopeID, 
 	}, true, nil
 }
 
-func (s *Store) UpsertCloudUsageEvents(ctx context.Context, events []storage.CloudUsageEvent) error {
+func (s *Store) UpsertCloudUsageEvents(ctx context.Context, accountID string, events []storage.CloudUsageEvent) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -410,6 +495,7 @@ func (s *Store) UpsertCloudUsageEvents(ctx context.Context, events []storage.Clo
 	q := cloudmirror.New(s.db).WithTx(tx)
 	for _, ev := range events {
 		if err := q.UpsertCloudUsageEvent(ctx, cloudmirror.UpsertCloudUsageEventParams{
+			AccountID:         accountID,
 			ID:                ev.ID,
 			OrgID:             ev.OrgID,
 			UserID:            ev.UserID,
@@ -428,8 +514,8 @@ func (s *Store) UpsertCloudUsageEvents(ctx context.Context, events []storage.Clo
 	return tx.Commit()
 }
 
-func (s *Store) MaxCloudUsageEventID(ctx context.Context) (int64, error) {
-	raw, err := cloudmirror.New(s.db).MaxCloudUsageEventID(ctx)
+func (s *Store) MaxCloudUsageEventID(ctx context.Context, accountID string) (int64, error) {
+	raw, err := cloudmirror.New(s.db).MaxCloudUsageEventID(ctx, accountID)
 	if err != nil {
 		return 0, err
 	}
@@ -445,7 +531,7 @@ func (s *Store) MaxCloudUsageEventID(ctx context.Context) (int64, error) {
 	}
 }
 
-func cloudThreadUpsertParams(th storage.CloudThread) cloudmirror.UpsertCloudThreadParams {
+func cloudThreadUpsertParams(accountID string, th storage.CloudThread) cloudmirror.UpsertCloudThreadParams {
 	ref := strings.TrimSpace(string(th.RuntimeRefJSON))
 	if ref == "" {
 		ref = "{}"
@@ -467,6 +553,7 @@ func cloudThreadUpsertParams(th storage.CloudThread) cloudmirror.UpsertCloudThre
 		status = "idle"
 	}
 	return cloudmirror.UpsertCloudThreadParams{
+		AccountID:              accountID,
 		ID:                     th.ID,
 		OrgID:                  th.OrgID,
 		OwnerUserID:            th.OwnerUserID,
@@ -495,6 +582,7 @@ func cloudThreadUpsertParams(th storage.CloudThread) cloudmirror.UpsertCloudThre
 
 func cloudThreadFromRow(row cloudmirror.CloudThread) storage.CloudThread {
 	return storage.CloudThread{
+		AccountID:              row.AccountID,
 		ID:                     row.ID,
 		OrgID:                  row.OrgID,
 		OwnerUserID:            row.OwnerUserID,

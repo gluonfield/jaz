@@ -80,8 +80,9 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   const current = describeBackend(currentUrl)
   const [url, setUrl] = useState('')
   const canStartLocal = clientRuntime.capabilities.localBackend
-  const managedCloud = backends.find((backend) => backend.managed || backend.mode === 'cloud')
-  const cloudOnly = !canStartLocal && Boolean(clientRuntime.cloudUrl || managedCloud)
+  const cloudOnly = !canStartLocal
+  const visibleBackends = cloudOnly ? backends.filter((backend) => !describeBackend(backend.url).local) : backends
+  const managedCloud = visibleBackends.find((backend) => backend.managed || backend.mode === 'cloud')
 
   useEffect(() => {
     if (!manual && currentAuth === 'oidc' && currentUrl && status === 'disconnected') {
@@ -153,7 +154,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
 
   const reconnectHint = canStartLocal
     ? 'Start one here or connect to a cloud server.'
-    : 'Sign in with SSO or connect to your workspace server.'
+    : 'Sign in with SSO to connect to your Jaz Cloud workspace.'
 
   const ssoPromptNeeded = cloudOnly && currentAuth === 'oidc' && error === 'Sign in with SSO to connect to this server'
   const visibleError = ssoPromptNeeded ? null : error
@@ -314,7 +315,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                           onClick={onStartLocal}
                         />
                       ) : null}
-                      {backends.map((backend) => {
+                      {visibleBackends.map((backend) => {
                         const isCloud = backend.mode === 'cloud' || backend.auth === 'oidc'
                         const connected = isCurrent(backend.url)
                         return (
@@ -337,7 +338,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                           disabled={busy !== null}
                           onClick={() => setMode('remote')}
                         />
-                      ) : (
+                      ) : activeSso || visibleBackends.length > 0 ? (
                         <button
                           type="button"
                           disabled={busy !== null}
@@ -346,6 +347,14 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                         >
                           Use another server address
                         </button>
+                      ) : (
+                        <ChoiceButton
+                          primary
+                          kind="cloud"
+                          label="Connect to Jaz Cloud"
+                          disabled={busy !== null}
+                          onClick={() => setMode('remote')}
+                        />
                       )}
                     </motion.div>
                   ) : (
@@ -356,6 +365,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                     >
                       <RemoteServerForm
                         value={url}
+                        cloudOnly={cloudOnly}
                         onChange={setUrl}
                         onSubmit={() => connectTo(url)}
                         onBack={() => {

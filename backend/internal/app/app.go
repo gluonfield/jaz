@@ -63,6 +63,7 @@ type Config struct {
 	Workspace        string
 	ModelProviders   map[string]provider.ModelProviderConfig
 	Skills           SkillsConfig
+	Cloud            CloudConfig
 	Voice            VoiceConfig
 	ACP              acp.Config
 	MicrosoftCopilot m365copilot.OAuthConfig
@@ -77,6 +78,10 @@ type Config struct {
 
 type SkillsConfig struct {
 	DisableSync bool
+}
+
+type CloudConfig struct {
+	DisableMachineBridge bool
 }
 
 type VoiceConfig struct {
@@ -208,11 +213,12 @@ func NewMemory(cfg Config, layout runtimefiles.Layout) (*jazmem.Memory, error) {
 }
 
 func NewInstructionsStore(layout runtimefiles.Layout, store *sqlitestore.Store, cloud *cloudsync.Service) instructions.Store {
-	local := instructions.NewLocalFSStore(
+	fsStore := instructions.NewLocalFSStore(
 		layout.Root,
 		instructions.WithBotsRoot(layout.Bots),
 		instructions.WithBotHomeResolver(bots.HomeResolver(store)),
 	)
+	local := instructions.NewDBStore(store, layout.Root, fsStore)
 	return cloudsync.NewInstructionsStore(cloud, local)
 }
 
@@ -226,21 +232,44 @@ func NewPromptBuilder(store *sqlitestore.Store, inst instructions.Store, cloud *
 		WithPluginFilter(func(id string) bool { return installed.IsEnabled(context.Background(), id) })
 }
 
-func StartCloudSync(lc fx.Lifecycle, cloud *cloudsync.Service, mcpManager *mcpruntime.Manager) {
-	cloud.SetOnAccountChanged(func(ctx context.Context) {
-		mcpManager.Refresh(ctx)
+type cloudSyncDeps struct {
+	fx.In
+
+	Lifecycle fx.Lifecycle
+	Config    Config
+	Store     *sqlitestore.Store
+	Workspace Workspace
+	Cloud     *cloudsync.Service
+	MCP       *mcpruntime.Manager
+	Logger    *log.Logger
+}
+
+func StartCloudSync(deps cloudSyncDeps) {
+	deps.Cloud.AddOnAccountChanged(func(ctx context.Context) {
+		deps.MCP.Refresh(ctx)
 	})
+	var bridge *MachineBridgeSupervisor
+	if !deps.Config.Cloud.DisableMachineBridge {
+		bridge = NewMachineBridgeSupervisor(deps.Cloud, deps.Store, string(deps.Workspace), deps.Logger)
+		deps.Cloud.AddOnAccountChanged(bridge.Reconcile)
+	}
 	var cancel context.CancelFunc
-	lc.Append(fx.Hook{
+	deps.Lifecycle.Append(fx.Hook{
 		OnStart: func(context.Context) error {
 			ctx, stop := context.WithCancel(context.Background())
 			cancel = stop
-			go cloud.Run(ctx)
+			go deps.Cloud.Run(ctx)
+			if bridge != nil {
+				bridge.Start(ctx)
+			}
 			return nil
 		},
-		OnStop: func(context.Context) error {
+		OnStop: func(stopCtx context.Context) error {
 			if cancel != nil {
 				cancel()
+			}
+			if bridge != nil {
+				bridge.Stop(stopCtx)
 			}
 			return nil
 		},

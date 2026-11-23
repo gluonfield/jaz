@@ -110,7 +110,7 @@ func workspaceFilesNote(store PromptStore, thread storage.Session) string {
 	}
 	var b strings.Builder
 	for _, workspace := range record.Workspaces {
-		for _, name := range []string{"AGENTS.md", "SOUL.md", "MEMORY.md"} {
+		for _, name := range []string{"AGENTS.md", "MEMORY.md"} {
 			path := filepath.Join(workspace, name)
 			if info, err := os.Stat(path); err == nil && info.ModTime().After(since) {
 				fmt.Fprintf(&b, "Project context file %q changed; read it before working on that project.\n", path)

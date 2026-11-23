@@ -11,8 +11,9 @@ import (
 var ErrUnsupported = errors.New("usage statistics are not supported")
 
 type Service struct {
-	store storage.UsageEventStore
-	now   func() time.Time
+	store     storage.UsageEventStore
+	workspace func() string
+	now       func() time.Time
 }
 
 type DailyBucket struct {
@@ -71,6 +72,20 @@ func NewService(store storage.UsageEventStore) Service {
 	return Service{store: store, now: time.Now}
 }
 
+func (s Service) WithWorkspace(fn func() string) Service {
+	s.workspace = fn
+	return s
+}
+
+func (s Service) usageEvents(start, end time.Time) ([]storage.UsageEvent, error) {
+	if s.workspace != nil {
+		if wsStore, ok := s.store.(storage.WorkspaceUsageEventStore); ok {
+			return wsStore.UsageEventsForWorkspace(s.workspace(), start, end)
+		}
+	}
+	return s.store.UsageEvents(start, end)
+}
+
 func (s Service) Daily(query DailyQuery) ([]DailyBucket, error) {
 	window, err := query.window(s.currentTime())
 	if err != nil {
@@ -91,7 +106,7 @@ func (s Service) Daily(query DailyQuery) ([]DailyBucket, error) {
 		accs[i] = newDayAccumulator()
 	}
 	start, end := window.bounds()
-	events, err := s.store.UsageEvents(start, end)
+	events, err := s.usageEvents(start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +148,7 @@ func (s Service) Models(query DailyQuery) ([]ModelUsage, error) {
 		return nil, ErrUnsupported
 	}
 	start, end := window.bounds()
-	events, err := s.store.UsageEvents(start, end)
+	events, err := s.usageEvents(start, end)
 	if err != nil {
 		return nil, err
 	}

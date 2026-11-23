@@ -9,6 +9,7 @@ import {
   visibleSettingsSections,
 } from '@/components/settings/sections'
 import { searchConnections, searchThreads } from '@/lib/api/search'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
 import type { PaletteCommand, PaletteSection, PaletteThread } from './commandPaletteTypes'
 
@@ -52,7 +53,7 @@ export function useCommandPaletteItems({
       {
         id: 'connect-machine',
         kind: 'command',
-        title: 'Connect to a machine',
+        title: clientRuntime.capabilities.localBackend ? 'Connect to a machine' : 'Connect to Jaz Cloud',
         icon: Server,
         run: () => {
           onOpenChange(false)

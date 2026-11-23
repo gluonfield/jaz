@@ -15,7 +15,6 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	root := t.TempDir()
 	memoryRoot := t.TempDir()
 	write(t, root, "AGENTS.md", "always cite sources")
-	write(t, root, "SOUL.md", "be direct")
 	write(t, root, "INTERNAL.md", "collapse stale layers")
 	write(t, memoryRoot, "LONG_TERM.md", "- Goal: $5m through agent products.")
 	write(t, memoryRoot, "SHORT_TERM.md", "- Focus: jaz memory system.")
@@ -37,7 +36,6 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"You are Jaz",
 		"## Jaz platform",
 		"## AGENTS.md\n\nalways cite sources",
-		"## SOUL.md\n\nbe direct",
 		"## Jaz threads",
 		"one of: `codex`, `claude`",
 		"Omit model overrides unless the user asks for a specific model",
@@ -65,7 +63,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"Weekday: ":             1,
 		"Now: ":                 1,
 		"## AGENTS.md":          1,
-		"## SOUL.md":            1,
+		"## SOUL.md":            0,
 		"INTERNAL.md":           0,
 		"collapse stale layers": 0,
 		"Capture as you go":     1,

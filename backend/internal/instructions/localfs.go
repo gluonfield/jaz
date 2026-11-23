@@ -147,8 +147,6 @@ func userFileName(kind Kind) (string, error) {
 	switch kind {
 	case KindAgents:
 		return "AGENTS.md", nil
-	case KindSoul:
-		return "SOUL.md", nil
 	case KindBots:
 		return "BOTS.md", nil
 	default:

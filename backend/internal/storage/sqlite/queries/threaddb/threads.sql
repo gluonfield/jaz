@@ -2,6 +2,7 @@
 SELECT *
 FROM threads
 WHERE archived = sqlc.arg(filter_archived)
+  AND (sqlc.arg(filter_workspace_id) = '' OR workspace_id = sqlc.arg(filter_workspace_id))
   AND (sqlc.arg(filter_include_children) OR parent_id IS NULL OR parent_id = '')
   AND (NOT sqlc.arg(filter_root_only) OR parent_id IS NULL OR parent_id = '')
   AND (NOT sqlc.arg(filter_parent_only) OR COALESCE(parent_id, '') = sqlc.arg(filter_parent_id))
@@ -152,7 +153,8 @@ INSERT INTO threads (
   pending_steer_message,
   unread,
   goal,
-  turn
+  turn,
+  workspace_id
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(slug),
@@ -192,7 +194,8 @@ INSERT INTO threads (
   sqlc.arg(pending_steer_message),
   sqlc.arg(unread),
   sqlc.arg(goal),
-  sqlc.arg(turn)
+  sqlc.arg(turn),
+  sqlc.arg(workspace_id)
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -231,6 +234,7 @@ ON CONFLICT(id) DO UPDATE SET
   pinned = excluded.pinned,
   pending_steer_message = excluded.pending_steer_message,
   unread = excluded.unread,
+  workspace_id = excluded.workspace_id,
   turn = CASE WHEN excluded.status IN ('running', 'interrupted') THEN threads.turn ELSE '' END;
 
 -- name: ListSessionSubtree :many

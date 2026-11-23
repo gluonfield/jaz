@@ -50,7 +50,7 @@ const onboardingPreview = devPreview('onboarding') !== null
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const isCloud = useIsCloud()
   const [preview, setPreview] = useState(onboardingPreview)
-  const skipOnboarding = clientRuntime.windowKind === 'board' || isCloud
+  const skipOnboarding = clientRuntime.windowKind === 'board' || isCloud || !clientRuntime.capabilities.localBackend
   const state = useQuery({ ...onboardingStateQuery, enabled: !preview && !skipOnboarding })
   const loadFull = !skipOnboarding && (preview || state.data?.completed === false || state.isError)
   const onboarding = useQuery({ ...onboardingQuery, enabled: loadFull })

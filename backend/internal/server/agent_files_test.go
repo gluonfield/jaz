@@ -31,11 +31,17 @@ func TestAgentFilesIgnoreHeartbeat(t *testing.T) {
 	if err := json.Unmarshal(listRes.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Files) != 3 || listed.Files[0].Name != "AGENTS.md" || listed.Files[1].Name != "SOUL.md" || listed.Files[2].Name != "BOTS.md" {
-		t.Fatalf("files = %#v, want only prompt files", listed.Files)
+	if len(listed.Files) != 2 || listed.Files[0].Name != "AGENTS.md" || listed.Files[1].Name != "BOTS.md" {
+		t.Fatalf("files = %#v, want only AGENTS.md and BOTS.md", listed.Files)
 	}
 	if listed.Files[0].Version == "" {
 		t.Fatalf("expected AGENTS.md version digest, got %#v", listed.Files[0])
+	}
+
+	soulRes := httptest.NewRecorder()
+	handler.ServeHTTP(soulRes, httptest.NewRequest(http.MethodPut, "/v1/agent/files/SOUL.md", strings.NewReader(`{"content":"new"}`)))
+	if soulRes.Code != http.StatusBadRequest {
+		t.Fatalf("SOUL.md write status = %d, want 400; body = %s", soulRes.Code, soulRes.Body.String())
 	}
 
 	writeRes := httptest.NewRecorder()

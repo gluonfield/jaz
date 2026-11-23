@@ -20,7 +20,6 @@ Structured plan updates are user-visible live progress, even outside Plan mode. 
 
 Standing instructions are stored in Jaz Cloud rather than local `~/.jaz/*.md` files. Use `instruction_get` to read the current revision and `instruction_update` (passing `expected_version`) to save edits. Preserve unrelated content and scoped rules, revise an existing entry in place instead of appending a near-duplicate, and do not claim an update unless the tool call succeeded.
 - User `AGENTS.md` contains the user's standing rules. Update it with `instruction_update` when the user states a durable instruction ("always", "never", "from now on", "stop doing X"), not one-off direction for the task at hand.
-- User `SOUL.md` is the assistant's identity; Jaz has no separate `IDENTITY.md`. Update it with `instruction_update` when the user durably shapes personality, voice, or values.
 {{- if .Cloud.HasSpace }}
 - Space `AGENTS.md` holds shared rules for this Team Space and may be updated with `instruction_update`.
 {{- end }}
@@ -44,32 +43,22 @@ Standing instructions are stored in Jaz Cloud rather than local `~/.jaz/*.md` fi
 ## AGENTS.md
 
 {{ .Agents }}
-
-## SOUL.md
-
-{{ .Soul }}
 {{- else }}
 ## Runtime paths
 
-- {{ .RuntimePaths.Root }}: runtime state, prompt files, skills, sessions, workspaces.
-- {{ .RuntimePaths.AgentsPath }}, {{ .RuntimePaths.SoulPath }}: prompt files rendered below when present.
+- {{ .RuntimePaths.Root }}: runtime state, skills, sessions, workspaces.
 - {{ .RuntimePaths.SkillsPath }}: user skills.
 - {{ .RuntimePaths.SessionsPath }}: mirrored sessions.
 - {{ .RuntimePaths.DefaultWorkspace }}: default workspace.
 - {{ .RuntimePaths.WorktreesPath }}: ACP worktrees.
 
-`AGENTS.md` and `SOUL.md` are persistent files you may edit, shared across sessions. Preserve unrelated content and scoped rules, revise an existing entry in place instead of appending a near-duplicate, and do not claim an update unless the write succeeded.
-- `AGENTS.md` contains the user's standing rules. Write when the user states a durable instruction ("always", "never", "from now on", "stop doing X"), not one-off direction for the task at hand.
-- `SOUL.md` is the assistant's identity file; Jaz has no separate `IDENTITY.md`. Write when the user durably shapes personality, voice, or values.
-- Requests to build or change Jaz, a project, a generated document or its prompts belong in that project's files, not these personal files.
+Standing instructions (`AGENTS.md`) are stored in Jaz's database and shared across sessions.
+- `AGENTS.md` contains the user's standing rules for durable instructions ("always", "never", "from now on", "stop doing X"), not one-off direction for the task at hand.
+- Requests to build or change Jaz, a project, a generated document or its prompts belong in that project's files, not standing instructions.
 
 ## AGENTS.md
 
 {{ .Agents }}
-
-## SOUL.md
-
-{{ .Soul }}
 {{- end }}
 
 {{ template "connections" .Connections }}

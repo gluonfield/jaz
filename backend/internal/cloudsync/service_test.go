@@ -3,9 +3,12 @@ package cloudsync_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -24,10 +27,10 @@ func TestCloudSyncConnectMirrorStreamAndInstructions(t *testing.T) {
 	var (
 		mu        sync.Mutex
 		loggedOut bool
+		soulRead  bool
 		instBody  = map[string]string{
 			"org/org_1/agents":      "Org standing rule: prefer Go.",
 			"user/usr_1/agents":     "User rule: be concise.",
-			"user/usr_1/soul":       "Helpful and direct.",
 			"user/usr_1/long_term":  "Long term context from DB.",
 			"user/usr_1/short_term": "Short term sprint from DB.",
 			"space/sp_1/agents":     "Space rule: review PRs.",
@@ -106,6 +109,9 @@ func TestCloudSyncConnectMirrorStreamAndInstructions(t *testing.T) {
 			key := strings.TrimPrefix(r.URL.Path, "/v1/instructions/")
 			parts := strings.Split(key, "/")
 			mu.Lock()
+			if len(parts) == 3 && parts[2] == "soul" {
+				soulRead = true
+			}
 			body := instBody[key]
 			mu.Unlock()
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -143,6 +149,11 @@ func TestCloudSyncConnectMirrorStreamAndInstructions(t *testing.T) {
 	defer store.Close()
 
 	svc := cloudsync.New(store, nil)
+	initial := svc.Status(ctx)
+	if initial.ActiveWorkspaceID != cloudsync.LocalWorkspaceID || initial.Connected || initial.Workspaces == nil || len(initial.Workspaces) != 0 {
+		t.Fatalf("unexpected initial status: %+v", initial)
+	}
+
 	st, err := svc.Connect(ctx, cloudsync.ConnectRequest{
 		URL:          srv.URL,
 		Code:         "oidc-code-1",
@@ -151,18 +162,24 @@ func TestCloudSyncConnectMirrorStreamAndInstructions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	if !st.Connected || st.User == nil || st.User.OrgName != "CAS" {
+	if !st.Connected || st.ActiveWorkspaceID == cloudsync.LocalWorkspaceID || st.User == nil || st.User.OrgName != "CAS" || len(st.Workspaces) != 1 {
 		t.Fatalf("unexpected connect status: %+v", st)
 	}
+	mu.Lock()
+	if soulRead {
+		mu.Unlock()
+		t.Fatalf("syncInstructions must not fetch deleted soul kind")
+	}
+	mu.Unlock()
 
-	// Verify mirrored sessions & unified usage in SQLite.
+	// Verify mirrored sessions & workspace-scoped usage in SQLite.
 	sessions, err := svc.ListSessions(ctx, false)
-	if err != nil || len(sessions) != 1 || sessions[0].ID != "ct_1" || sessions[0].Backend != "cloud" {
+	if err != nil || len(sessions) != 1 || sessions[0].ID != "ct_1" || sessions[0].Backend != "cloud" || sessions[0].WorkspaceID != st.ActiveWorkspaceID {
 		t.Fatalf("ListSessions: %+v err=%v", sessions, err)
 	}
 	usageEvents, err := store.UsageEvents(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	if err != nil || len(usageEvents) != 1 || usageEvents[0].Model != "google/gemini-4-neon" {
-		t.Fatalf("unified UsageEvents: %+v err=%v", usageEvents, err)
+		t.Fatalf("workspace UsageEvents: %+v err=%v", usageEvents, err)
 	}
 
 	// Verify transcript projection pulls events and stores them in SQLite.
@@ -174,8 +191,8 @@ func TestCloudSyncConnectMirrorStreamAndInstructions(t *testing.T) {
 		t.Fatalf("unexpected projected messages: %+v", transcript.Messages)
 	}
 
-	// Verify DB-stored instructions & horizons inject into local coordinator prompts when signed into Cloud!
-	instStore := cloudsync.NewInstructionsStore(svc, instructions.NewLocalFSStore(root))
+	// Verify DB-stored instructions inject into local coordinator prompts when signed into Cloud (no SOUL!).
+	instStore := cloudsync.NewInstructionsStore(svc, instructions.NewDBStore(store, root, instructions.NewLocalFSStore(root)))
 	builder := coordinator.NewBuilder(root, root, root, func() bool { return true }).
 		WithInstructions(instStore).
 		WithCloudScopeProvider(svc.CloudScope)
@@ -186,7 +203,6 @@ func TestCloudSyncConnectMirrorStreamAndInstructions(t *testing.T) {
 	for _, want := range []string{
 		"Org standing rule: prefer Go.",
 		"User rule: be concise.",
-		"Helpful and direct.",
 		"Long term context from DB.",
 		"Short term sprint from DB.",
 		"Standing instructions are stored in Jaz Cloud",
@@ -194,6 +210,9 @@ func TestCloudSyncConnectMirrorStreamAndInstructions(t *testing.T) {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("expected prompt to contain %q; prompt:\n%s", want, prompt)
 		}
+	}
+	if strings.Contains(prompt, "SOUL") {
+		t.Fatalf("prompt must not mention deleted SOUL:\n%s", prompt)
 	}
 
 	// Verify Cloud MCP server config is exposed while connected.
@@ -223,11 +242,11 @@ func TestCloudSyncConnectMirrorStreamAndInstructions(t *testing.T) {
 	_ = sessionevents.Event{}
 
 	// Verify Disconnect clears mirror and falls back to local prompt mode.
-	if err := svc.Disconnect(ctx); err != nil {
+	if err := svc.Disconnect(ctx, ""); err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
-	if svc.Status(ctx).Connected {
-		t.Fatalf("expected disconnected after Disconnect")
+	if after := svc.Status(ctx); after.Connected || after.ActiveWorkspaceID != cloudsync.LocalWorkspaceID || len(after.Workspaces) != 0 {
+		t.Fatalf("expected disconnected local status after Disconnect, got %+v", after)
 	}
 	if _, ok := svc.MCPServer(ctx); ok {
 		t.Fatalf("expected MCPServer absent after Disconnect")
@@ -238,11 +257,161 @@ func TestCloudSyncConnectMirrorStreamAndInstructions(t *testing.T) {
 	_ = loggedOut
 }
 
+func TestCloudSyncMultiWorkspaceSwitchAndIsolation(t *testing.T) {
+	ctx := context.Background()
+	newMock := func(orgID, orgName, userID, threadID, threadTitle, orgRule, model string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/.well-known/jaz-server":
+				_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "mode": "cloud", "auth": "oidc"})
+			case r.URL.Path == "/v1/auth/me":
+				_ = json.NewEncoder(w).Encode(map[string]any{"user_id": userID, "org_id": orgID, "org_name": orgName, "email": userID + "@example.com", "display_name": orgName + " User", "role": "admin"})
+			case r.URL.Path == "/v1/spaces":
+				_ = json.NewEncoder(w).Encode(map[string]any{"spaces": []map[string]any{{"id": "sp_" + orgID, "org_id": orgID, "name": orgName + " Space"}}})
+			case r.URL.Path == "/v1/threads":
+				_ = json.NewEncoder(w).Encode(map[string]any{"threads": []map[string]any{{
+					"id": threadID, "org_id": orgID, "owner_user_id": userID, "run_id": threadID,
+					"visibility": "private", "title": threadTitle, "status": "idle",
+					"model_profile_id": "vertex", "model": model,
+					"updated_at": time.Now().UTC().Format(time.RFC3339),
+				}}})
+			case strings.HasPrefix(r.URL.Path, "/v1/instructions/"):
+				parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v1/instructions/"), "/")
+				body := ""
+				if parts[0] == "org" && parts[2] == "agents" {
+					body = orgRule
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"org_id": orgID, "scope": parts[0], "scope_id": parts[1], "kind": parts[2], "body_md": body, "version": instructions.Digest([]byte(body))})
+			case r.URL.Path == "/v1/usage/events":
+				_ = json.NewEncoder(w).Encode(map[string]any{"events": []map[string]any{{
+					"id": 1, "org_id": orgID, "user_id": userID, "thread_id": threadID,
+					"model_profile_id": "vertex", "model": model,
+					"input_tokens": 100, "output_tokens": 25, "created_at": time.Now().UTC().Format(time.RFC3339),
+				}}})
+			case r.URL.Path == "/v1/auth/logout":
+				_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			default:
+				_ = json.NewEncoder(w).Encode(map[string]any{})
+			}
+		}))
+	}
+
+	srvA := newMock("org-a", "Acme", "u-a", "th-a", "Acme Thread", "Acme Rule Only", "model-a")
+	defer srvA.Close()
+	srvB := newMock("org-b", "Beta", "u-b", "th-b", "Beta Thread", "Beta Rule Only", "model-b")
+	defer srvB.Close()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("Legacy Local AGENTS Rule"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	svc := cloudsync.New(store, nil)
+	instStore := cloudsync.NewInstructionsStore(svc, instructions.NewDBStore(store, root, instructions.NewLocalFSStore(root)))
+
+	// Connect Cloud A.
+	stA, err := svc.Connect(ctx, cloudsync.ConnectRequest{URL: srvA.URL, Token: "tok-a"})
+	if err != nil {
+		t.Fatalf("Connect A: %v", err)
+	}
+	idA := stA.ActiveWorkspaceID
+	if !stA.Connected || len(stA.Workspaces) != 1 || stA.Workspaces[0].ID != idA {
+		t.Fatalf("unexpected status A: %+v", stA)
+	}
+
+	// Switch to local: Connected=false, Workspaces still lists Cloud A, instructions fall back to DB-only local AGENTS (one-time import from AGENTS.md).
+	stLocal, err := svc.SwitchWorkspace(ctx, cloudsync.LocalWorkspaceID)
+	if err != nil {
+		t.Fatalf("SwitchWorkspace local: %v", err)
+	}
+	if stLocal.ActiveWorkspaceID != cloudsync.LocalWorkspaceID || stLocal.Connected || stLocal.Status != "disconnected" || len(stLocal.Workspaces) != 1 {
+		t.Fatalf("unexpected local status: %+v", stLocal)
+	}
+	if sessions, err := svc.ListSessions(ctx, false); err != nil || len(sessions) != 0 {
+		t.Fatalf("local workspace must not return Cloud threads: %+v err=%v", sessions, err)
+	}
+	if _, err := svc.SyncNow(ctx); !errors.Is(err, cloudsync.ErrNotConnected) {
+		t.Fatalf("SyncNow in local workspace = %v, want ErrNotConnected", err)
+	}
+	localDoc, err := instStore.Get(ctx, instructions.Key{Scope: instructions.ScopeUser, Kind: instructions.KindAgents})
+	if err != nil || localDoc.Content != "Legacy Local AGENTS Rule" {
+		t.Fatalf("expected one-time DB import of local AGENTS, got %+v err=%v", localDoc, err)
+	}
+
+	// Connect Cloud B: both A and B appear in Workspaces, active is B.
+	stB, err := svc.Connect(ctx, cloudsync.ConnectRequest{URL: srvB.URL, Token: "tok-b"})
+	if err != nil {
+		t.Fatalf("Connect B: %v", err)
+	}
+	idB := stB.ActiveWorkspaceID
+	if !stB.Connected || idB == idA || len(stB.Workspaces) != 2 {
+		t.Fatalf("unexpected status B: %+v", stB)
+	}
+	sessionsB, err := svc.ListSessions(ctx, false)
+	if err != nil || len(sessionsB) != 1 || sessionsB[0].ID != "th-b" {
+		t.Fatalf("Cloud B sessions = %+v err=%v", sessionsB, err)
+	}
+	docB, err := instStore.Get(ctx, instructions.Key{Scope: instructions.ScopeOrg, Kind: instructions.KindAgents})
+	if err != nil || docB.Content != "Beta Rule Only" {
+		t.Fatalf("Cloud B org AGENTS = %+v err=%v", docB, err)
+	}
+	mcpB, ok := svc.MCPServer(ctx)
+	if !ok || mcpB.URL != srvB.URL+"/v1/mcp" {
+		t.Fatalf("Cloud B MCPServer = %+v ok=%v", mcpB, ok)
+	}
+
+	// Switch unknown workspace returns ErrNotFound.
+	if _, err := svc.SwitchWorkspace(ctx, "does-not-exist"); !errors.Is(err, cloudsync.ErrNotFound) {
+		t.Fatalf("SwitchWorkspace unknown = %v, want ErrNotFound", err)
+	}
+
+	// Switch back to Cloud A (cloudA -> local -> cloudB -> cloudA).
+	stBackA, err := svc.SwitchWorkspace(ctx, idA)
+	if err != nil {
+		t.Fatalf("SwitchWorkspace back to A: %v", err)
+	}
+	if !stBackA.Connected || stBackA.ActiveWorkspaceID != idA || len(stBackA.Workspaces) != 2 {
+		t.Fatalf("unexpected status back to A: %+v", stBackA)
+	}
+	sessionsA, err := svc.ListSessions(ctx, false)
+	if err != nil || len(sessionsA) != 1 || sessionsA[0].ID != "th-a" {
+		t.Fatalf("Cloud A sessions = %+v err=%v", sessionsA, err)
+	}
+	docA, err := instStore.Get(ctx, instructions.Key{Scope: instructions.ScopeOrg, Kind: instructions.KindAgents})
+	if err != nil || docA.Content != "Acme Rule Only" {
+		t.Fatalf("Cloud A org AGENTS = %+v err=%v", docA, err)
+	}
+	mcpA, ok := svc.MCPServer(ctx)
+	if !ok || mcpA.URL != srvA.URL+"/v1/mcp" {
+		t.Fatalf("Cloud A MCPServer = %+v ok=%v", mcpA, ok)
+	}
+
+	// Disconnect Cloud A deletes ONLY Cloud A, switches active to local, and preserves Cloud B intact!
+	if err := svc.Disconnect(ctx, idA); err != nil {
+		t.Fatalf("Disconnect A: %v", err)
+	}
+	stAfterDisc := svc.Status(ctx)
+	if stAfterDisc.ActiveWorkspaceID != cloudsync.LocalWorkspaceID || stAfterDisc.Connected || len(stAfterDisc.Workspaces) != 1 || stAfterDisc.Workspaces[0].ID != idB {
+		t.Fatalf("unexpected status after disconnecting A: %+v", stAfterDisc)
+	}
+	if _, err := svc.SwitchWorkspace(ctx, idB); err != nil {
+		t.Fatalf("SwitchWorkspace to preserved B: %v", err)
+	}
+	preservedB, err := svc.ListSessions(ctx, false)
+	if err != nil || len(preservedB) != 1 || preservedB[0].ID != "th-b" {
+		t.Fatalf("Cloud B sessions must survive Cloud A disconnect: %+v err=%v", preservedB, err)
+	}
+}
+
 func TestCloudSyncDisconnectCancelsInFlightSyncWithoutResurrection(t *testing.T) {
 	ctx := context.Background()
 	started := make(chan struct{})
 	release := make(chan struct{})
-	var firstMe sync.Once
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -251,9 +420,6 @@ func TestCloudSyncDisconnectCancelsInFlightSyncWithoutResurrection(t *testing.T)
 		case "/v1/auth/me":
 			_ = json.NewEncoder(w).Encode(map[string]any{"user_id": "u1", "org_id": "o1", "org_name": "CAS", "email": "u@cas.dev", "display_name": "Dev", "role": "admin"})
 		case "/v1/spaces":
-			firstMe.Do(func() {
-				// Let initial Connect sync finish cleanly; block only on second sync below.
-			})
 			select {
 			case <-release:
 			case <-r.Context().Done():
@@ -285,14 +451,16 @@ func TestCloudSyncDisconnectCancelsInFlightSyncWithoutResurrection(t *testing.T)
 	}
 	defer store.Close()
 
-	svc := cloudsync.New(store, nil)
-	// Save an already-connected account directly so Connect does not block on release.
+	accID := "o1:u1@" + srv.URL
 	if err := store.SaveCloudAccount(ctx, storage.CloudAccount{
-		BaseURL: srv.URL, Token: "tok", UserID: "u1", OrgID: "o1",
+		ID: accID, BaseURL: srv.URL, Token: "tok", UserID: "u1", OrgID: "o1",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	svc = cloudsync.New(store, nil)
+	if err := store.SaveActiveWorkspaceID(ctx, accID); err != nil {
+		t.Fatal(err)
+	}
+	svc := cloudsync.New(store, nil)
 
 	syncDone := make(chan struct{})
 	go func() {
@@ -301,7 +469,7 @@ func TestCloudSyncDisconnectCancelsInFlightSyncWithoutResurrection(t *testing.T)
 	}()
 
 	<-started
-	if err := svc.Disconnect(ctx); err != nil {
+	if err := svc.Disconnect(ctx, ""); err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
 	close(release)
@@ -310,7 +478,7 @@ func TestCloudSyncDisconnectCancelsInFlightSyncWithoutResurrection(t *testing.T)
 	if svc.Status(ctx).Connected {
 		t.Fatalf("in-flight SyncNow resurrected disconnected cloud account in memory")
 	}
-	if _, ok, err := store.LoadCloudAccount(ctx); err != nil || ok {
+	if _, ok, err := store.LoadCloudAccount(ctx, accID); err != nil || ok {
 		t.Fatalf("in-flight SyncNow resurrected disconnected cloud account in SQLite: ok=%v err=%v", ok, err)
 	}
 }

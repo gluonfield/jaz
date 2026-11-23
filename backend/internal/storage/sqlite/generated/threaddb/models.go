@@ -56,4 +56,5 @@ type Thread struct {
 	TurnsEnded               int64          `json:"turns_ended"`
 	BackgroundWork           int64          `json:"background_work"`
 	DeferredMcpTools         int64          `json:"deferred_mcp_tools"`
+	WorkspaceID              string         `json:"workspace_id"`
 }

@@ -23,6 +23,12 @@ func (s pausedGoalUsageStore) UsageEvents(since, until time.Time) ([]storage.Usa
 	return s.Store.UsageEvents(since, until)
 }
 
+func (s pausedGoalUsageStore) UsageEventsForWorkspace(workspaceID string, since, until time.Time) ([]storage.UsageEvent, error) {
+	close(s.loaded)
+	<-s.proceed
+	return s.Store.UsageEventsForWorkspace(workspaceID, since, until)
+}
+
 func TestClearWinsOverInFlightGoalWrites(t *testing.T) {
 	for _, operation := range []string{"create", "update", "usage"} {
 		t.Run(operation, func(t *testing.T) {

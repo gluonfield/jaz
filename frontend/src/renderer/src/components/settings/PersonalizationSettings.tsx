@@ -26,7 +26,13 @@ const DESCRIPTION =
 export function PersonalizationSettings() {
   const cloud = useCloudSession()
   if (cloud.active) {
-    return <CloudAgentsEditor userId={cloud.user?.id || 'me'} readOnly={!canEditCloudInstruction(cloud.user, 'user')} />
+    return (
+      <CloudAgentsEditor
+        key={cloud.activeWorkspaceId || cloud.url}
+        userId={cloud.user?.id || 'me'}
+        readOnly={!canEditCloudInstruction(cloud.user, 'user')}
+      />
+    )
   }
   return <LocalAgentsEditor />
 }

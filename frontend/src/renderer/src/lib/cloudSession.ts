@@ -1,5 +1,10 @@
 import type { CloudUser, ServerCapabilities } from '@/lib/api/serverTypes'
-import { useCloudAccount, type CloudAccountStatus } from '@/lib/cloudAccount'
+import { clientRuntime } from '@/lib/clientRuntime'
+import {
+  useCloudAccount,
+  type CloudAccountStatus,
+  type CloudWorkspaceSummary,
+} from '@/lib/cloudAccount'
 import { useConnection } from '@/lib/connection'
 
 export const DEFAULT_CLOUD_URL = 'https://jaz-cloud-staging.camadvanced.com'
@@ -8,6 +13,8 @@ export interface ActiveCloudSession {
   active: boolean
   source: 'primary' | 'attached' | null
   status: CloudAccountStatus
+  activeWorkspaceId: string
+  workspaces: CloudWorkspaceSummary[]
   url: string
   user: CloudUser | null
   error: string | null
@@ -17,35 +24,55 @@ export interface ActiveCloudSession {
 }
 
 // Unified view of whichever Jaz Cloud session is active — either the primary
-// backend (Cloud-only / Web) or the local Go backend's connected Cloud mirror.
+// backend (Cloud-only / Web) or the local Go backend's active Cloud workspace.
 export function useCloudSession(): ActiveCloudSession {
   const primary = useConnection()
   const attached = useCloudAccount()
 
-  if (primary.mode === 'cloud') {
-    const status: CloudAccountStatus =
-      primary.status === 'connected'
+  if (primary.mode === 'cloud' || !clientRuntime.capabilities.localBackend) {
+    const isPrimaryCloud = primary.mode === 'cloud'
+    const status: CloudAccountStatus = !isPrimaryCloud
+      ? 'disconnected'
+      : primary.status === 'connected'
         ? 'connected'
         : primary.status === 'checking' || primary.status === 'reconnecting'
           ? 'checking'
           : 'disconnected'
+    const primaryWorkspace: CloudWorkspaceSummary | null =
+      isPrimaryCloud && primary.status === 'connected' && primary.url
+        ? {
+            id: primary.user?.org_id || primary.url,
+            url: primary.url,
+            org_id: primary.user?.org_id,
+            org_name: primary.user?.org_name,
+            email: primary.user?.email,
+            display_name: primary.user?.display_name,
+            role: primary.user?.role,
+            oidc_login_url: primary.oidcLoginUrl || undefined,
+            capabilities: primary.capabilities,
+          }
+        : null
     return {
-      active: primary.status === 'connected',
+      active: isPrimaryCloud && primary.status === 'connected',
       source: 'primary',
       status,
-      url: primary.url,
-      user: primary.user,
-      error: primary.error,
-      oidcLoginUrl: primary.oidcLoginUrl,
-      capabilities: primary.capabilities,
+      activeWorkspaceId: primaryWorkspace?.id ?? '',
+      workspaces: primaryWorkspace ? [primaryWorkspace] : [],
+      url: isPrimaryCloud ? primary.url : clientRuntime.cloudUrl,
+      user: isPrimaryCloud ? primary.user : null,
+      error: isPrimaryCloud ? primary.error : null,
+      oidcLoginUrl: isPrimaryCloud ? primary.oidcLoginUrl : '',
+      capabilities: isPrimaryCloud ? primary.capabilities : {},
       lastSyncAt: '',
     }
   }
 
   return {
     active: attached.status === 'connected',
-    source: attached.status === 'connected' || attached.url ? 'attached' : null,
+    source: attached.status === 'connected' || attached.workspaces.length > 0 || attached.url ? 'attached' : null,
     status: attached.status,
+    activeWorkspaceId: attached.activeWorkspaceId,
+    workspaces: attached.workspaces,
     url: attached.url,
     user: attached.user,
     error: attached.error,
@@ -57,4 +84,8 @@ export function useCloudSession(): ActiveCloudSession {
 
 export function useHasCloud(): boolean {
   return useCloudSession().active
+}
+
+export function useIsCloudOnly(): boolean {
+  return useConnection().mode === 'cloud' || !clientRuntime.capabilities.localBackend
 }

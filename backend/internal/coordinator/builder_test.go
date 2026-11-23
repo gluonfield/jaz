@@ -24,12 +24,12 @@ func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "## SOUL.md\n\n(empty)") {
-		t.Fatalf("empty root should render SOUL.md as (empty):\n%s", prompt)
+	if !strings.Contains(prompt, "## AGENTS.md\n\n(empty)") {
+		t.Fatalf("empty root should render AGENTS.md as (empty):\n%s", prompt)
 	}
 
 	// Files created after the builder exists must appear on the next call.
-	write(t, root, "SOUL.md", "be kind")
+	write(t, root, "AGENTS.md", "be kind")
 	skillDir := filepath.Join(root, "skills", "deploy")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(prompt, "be kind") {
-		t.Fatalf("SOUL.md edit not picked up:\n%s", prompt)
+		t.Fatalf("AGENTS.md edit not picked up:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, "<name>deploy</name>") {
 		t.Fatalf("new skill not picked up:\n%s", prompt)
@@ -63,13 +63,13 @@ func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 	}
 
 	// And edits to existing files replace the old content.
-	write(t, root, "SOUL.md", "be bold")
+	write(t, root, "AGENTS.md", "be bold")
 	prompt, err = builder.SystemPrompt()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(prompt, "be bold") || strings.Contains(prompt, "be kind") {
-		t.Fatalf("SOUL.md rewrite not picked up:\n%s", prompt)
+		t.Fatalf("AGENTS.md rewrite not picked up:\n%s", prompt)
 	}
 }
 
@@ -92,7 +92,6 @@ func TestBuilderACPPrompt(t *testing.T) {
 	root := t.TempDir()
 	memoryRoot := t.TempDir()
 	write(t, root, "AGENTS.md", "save durable facts with jazmem")
-	write(t, root, "SOUL.md", "be kind")
 	write(t, memoryRoot, "LONG_TERM.md", "- Goal: $5m.")
 	skillDir := filepath.Join(root, "skills", "deploy")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
@@ -122,8 +121,6 @@ func TestBuilderACPPrompt(t *testing.T) {
 		filepath.Join(root, "workspaces", "default", ".worktrees"),
 		"## AGENTS.md",
 		"save durable facts with jazmem",
-		"## SOUL.md",
-		"be kind",
 		"separate Jaz agent session using one of: `codex`",
 		"## memory/LONG_TERM.md",
 		"- Goal: $5m.",
@@ -162,8 +159,8 @@ func TestBuilderACPPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(empty, "## AGENTS.md\n\n(empty)") || !strings.Contains(empty, "## SOUL.md\n\n(empty)") {
-		t.Fatalf("empty root must still render the platform with (empty) files:\n%s", empty)
+	if !strings.Contains(empty, "## AGENTS.md\n\n(empty)") || strings.Contains(empty, "## SOUL.md") {
+		t.Fatalf("empty root must still render the platform with (empty) AGENTS.md and no SOUL.md:\n%s", empty)
 	}
 }
 
@@ -336,7 +333,6 @@ func TestBuilderWithInstructionsAndCloudPromptMode(t *testing.T) {
 			{OrgID: "org-1", Scope: instructions.ScopeOrg, ScopeID: "org-1", Kind: instructions.KindAgents}:     {Content: "Org rule: never leak customer data."},
 			{OrgID: "org-1", Scope: instructions.ScopeSpace, ScopeID: "space-9", Kind: instructions.KindAgents}: {Content: "Space rule: cite tender clauses."},
 			{OrgID: "org-1", Scope: instructions.ScopeUser, ScopeID: "user-42", Kind: instructions.KindAgents}:  {Content: "User rule: keep replies concise."},
-			{OrgID: "org-1", Scope: instructions.ScopeUser, ScopeID: "user-42", Kind: instructions.KindSoul}:    {Content: "Be direct and warm."},
 			{OrgID: "org-1", Scope: instructions.ScopeBot, ScopeID: "bot-7", Kind: instructions.KindBots}:       {Content: "Coordinate specialist workers."},
 		},
 	}
@@ -357,10 +353,9 @@ func TestBuilderWithInstructionsAndCloudPromptMode(t *testing.T) {
 		"## Org AGENTS.md\n\nOrg rule: never leak customer data.",
 		"## Space AGENTS.md\n\nSpace rule: cite tender clauses.",
 		"## AGENTS.md\n\nUser rule: keep replies concise.",
-		"## SOUL.md\n\nBe direct and warm.",
 		"Current working directory: /workspace",
 	)
-	for _, reject := range []string{"## Runtime paths", "~/.jaz/workspaces/default"} {
+	for _, reject := range []string{"## Runtime paths", "~/.jaz/workspaces/default", "## SOUL.md"} {
 		if strings.Contains(prompt, reject) {
 			t.Fatalf("cloud prompt must not contain %q:\n%s", reject, prompt)
 		}

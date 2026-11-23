@@ -116,6 +116,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "POST /v1/sessions/{session}/voice/transcript")
 	requireRoute(t, routes, "GET /v1/cloud/status")
 	requireRoute(t, routes, "POST /v1/cloud/connect")
+	requireRoute(t, routes, "POST /v1/cloud/switch")
 	requireRoute(t, routes, "POST /v1/cloud/disconnect")
 	requireRoute(t, routes, "POST /v1/cloud/sync")
 	requireRoute(t, routes, "GET /v1/spaces")

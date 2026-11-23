@@ -13,8 +13,7 @@ import {
   sidebarSessionsQuery,
 } from '@/lib/api/sessions'
 import { useShowModelIcons } from '@/lib/appearance'
-import { useHasCloud } from '@/lib/cloudSession'
-import { useIsCloud } from '@/lib/connection'
+import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
@@ -325,11 +324,12 @@ function RecentSessionList({
 
 export function SidebarSessions({ open }: { open: boolean }) {
   const queryClient = useQueryClient()
-  const isPrimaryCloud = useIsCloud()
-  const hasCloud = useHasCloud()
+  const cloud = useCloudSession()
+  const hasCloud = cloud.active
+  const cloudOnly = useIsCloudOnly()
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null)
   const sessions = useQuery(sidebarSessionsQuery)
-  const projects = useQuery({ ...projectsQuery, enabled: !isPrimaryCloud })
+  const projects = useQuery({ ...projectsQuery, enabled: !cloudOnly })
   const [organization, setOrganization] = useSidebarOrganization()
   const [visibleRecentCount, setVisibleRecentCount] = useState(SESSION_PAGE_SIZE)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
@@ -338,8 +338,8 @@ export function SidebarSessions({ open }: { open: boolean }) {
   const [dragOrder, setDragOrder] = useState<SessionBlockKey[] | null>(null)
   useEffect(() => storeCollapsedProjects(collapsedProjects), [collapsedProjects])
   useEffect(() => {
-    if (!hasCloud) setSelectedSpaceId(null)
-  }, [hasCloud])
+    setSelectedSpaceId(null)
+  }, [cloud.activeWorkspaceId, hasCloud])
 
   const filteredSessions = useMemo(() => {
     const all = sessions.data ?? []
@@ -414,7 +414,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
     reorder.mutate(next.map((project) => project.path))
   }
 
-  if (sessions.isPending || (!isPrimaryCloud && organization === 'project' && projects.isPending)) {
+  if (sessions.isPending || (!cloudOnly && organization === 'project' && projects.isPending)) {
     return <SkeletonRows count={4} />
   }
   if (sessions.isError && !sessions.data) {

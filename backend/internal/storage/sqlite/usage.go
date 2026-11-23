@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
@@ -11,14 +12,29 @@ import (
 	usagequeries "github.com/wins/jaz/backend/internal/storage/sqlite/generated/usage"
 )
 
+var _ storage.WorkspaceUsageEventStore = (*Store)(nil)
+
 func (s *Store) UsageEvents(since, until time.Time) ([]storage.UsageEvent, error) {
+	workspaceID, err := s.LoadActiveWorkspaceID(context.Background())
+	if err != nil {
+		workspaceID = storage.LocalWorkspaceID
+	}
+	return s.UsageEventsForWorkspace(workspaceID, since, until)
+}
+
+func (s *Store) UsageEventsForWorkspace(workspaceID string, since, until time.Time) ([]storage.UsageEvent, error) {
+	ws := strings.TrimSpace(workspaceID)
+	if ws == "" {
+		ws = storage.LocalWorkspaceID
+	}
 	end := int64(math.MaxInt64)
 	if !until.IsZero() {
 		end = ceilUnixMilli(until)
 	}
 	rows, err := usagequeries.New(s.db).ListUsageEvents(context.Background(), usagequeries.ListUsageEventsParams{
-		Since: ceilUnixMilli(since),
-		Until: end,
+		Since:       ceilUnixMilli(since),
+		Until:       end,
+		WorkspaceID: ws,
 	})
 	if err != nil {
 		return nil, err
@@ -64,6 +80,7 @@ func insertUsageEvent(ctx context.Context, q usagequeries.Querier, thread thread
 	}
 	return q.InsertUsageEvent(ctx, usagequeries.InsertUsageEventParams{
 		ThreadID:              thread.ID,
+		WorkspaceID:           firstNonEmpty(thread.WorkspaceID, storage.LocalWorkspaceID),
 		Runtime:               thread.Runtime,
 		Agent:                 nullString(thread.AcpAgent),
 		ModelProvider:         nullString(thread.ModelProvider),

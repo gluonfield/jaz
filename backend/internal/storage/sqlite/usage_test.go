@@ -24,6 +24,7 @@ func TestUsageEventsWindow(t *testing.T) {
 	for _, date := range []time.Time{start.Add(-time.Millisecond), start, start.Add(time.Millisecond), start.Add(2 * time.Millisecond), start.AddDate(1, 0, 0)} {
 		if err := q.InsertUsageEvent(context.Background(), usagequeries.InsertUsageEventParams{
 			ThreadID:    session.ID,
+			WorkspaceID: storage.LocalWorkspaceID,
 			Runtime:     storage.RuntimeACP,
 			Source:      storage.UsageEventSourceTurn,
 			InputTokens: 1,

@@ -81,9 +81,9 @@ type UpdateBot struct {
 	Plugins        *[]string `json:"plugins,omitempty"`
 	InheritPlugins bool      `json:"inherit_plugins,omitempty"`
 	Name           *string   `json:"name,omitempty"`
-	Prompt     *string   `json:"prompt,omitempty"`
-	Avatar     *Avatar   `json:"avatar,omitempty"`
-	Members    *[]string `json:"members,omitempty"`
+	Prompt         *string   `json:"prompt,omitempty"`
+	Avatar         *Avatar   `json:"avatar,omitempty"`
+	Members        *[]string `json:"members,omitempty"`
 	// Agent moves the bot to another agent, which starts a fresh native session.
 	Agent *string `json:"agent,omitempty"`
 	// Model picks the model the bot's agent runs with, together with

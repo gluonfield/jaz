@@ -20,8 +20,7 @@ import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
 import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
-import { useCloudSession } from '@/lib/cloudSession'
-import { useIsCloud } from '@/lib/connection'
+import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useTaskWorkspace } from '@/lib/hooks/useTaskWorkspace'
 import { modelSuggestionLabel } from '@/lib/models'
@@ -69,8 +68,8 @@ export const Route = createFileRoute('/new')({
 // first message is on its way.
 function NewSessionPage() {
   const voice = useGlobalVoice()
-  const isPrimaryCloud = useIsCloud()
   const cloud = useCloudSession()
+  const cloudOnly = useIsCloudOnly()
   const navigate = useNavigate()
   const search = Route.useSearch()
   const queryClient = useQueryClient()
@@ -78,14 +77,14 @@ function NewSessionPage() {
   const [creating, setCreating] = useState(false)
   const [spendCapError, setSpendCapError] = useState<string | null>(null)
   const [location, setLocation] = useState<ExecutionLocation>(() => {
-    if (isPrimaryCloud) return 'cloud'
+    if (cloudOnly) return 'cloud'
     if (search.space) return 'cloud'
     if (search.project !== undefined) return 'local'
     return storedLocation()
   })
   const [spaceId, setSpaceId] = useState(() => search.space ?? '')
 
-  const effectiveLocation: ExecutionLocation = isPrimaryCloud
+  const effectiveLocation: ExecutionLocation = cloudOnly
     ? 'cloud'
     : location === 'cloud' && cloud.active
       ? 'cloud'
@@ -97,7 +96,7 @@ function NewSessionPage() {
     localStorage.setItem(NEW_SESSION_LOCATION_KEY, next)
   }
 
-  const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !isPrimaryCloud && !targetIsCloud }).data
+  const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !cloudOnly && !targetIsCloud }).data
   const spaces = useQuery({ ...spacesQuery, enabled: targetIsCloud && cloud.active })
   const controls = useNewThreadControls(effectiveLocation)
   const incomingPrompt = useLocation({ select: (loc) => loc.state.newThreadPrompt })
@@ -108,7 +107,7 @@ function NewSessionPage() {
   )
   // Canvas threads show a board instead of a transcript; fixed at creation.
   const [canvas, setCanvas] = useState(false)
-  const projects = useQuery({ ...projectsQuery, enabled: !isPrimaryCloud && !targetIsCloud })
+  const projects = useQuery({ ...projectsQuery, enabled: !cloudOnly && !targetIsCloud })
   const project = projects.data?.find((item) => item.path === directory)
   const workspace = useTaskWorkspace(targetIsCloud ? '' : directory)
   const { source: directoryInfo, ready: workspaceReady, worktree } = workspace
@@ -117,8 +116,8 @@ function NewSessionPage() {
   useEffect(() => {
     if (search.project === undefined) return
     setDirectory(search.project)
-    if (!isPrimaryCloud) selectLocation('local')
-  }, [isPrimaryCloud, search.project])
+    if (!cloudOnly) selectLocation('local')
+  }, [cloudOnly, search.project])
 
   useEffect(() => {
     if (search.space === undefined) return
@@ -141,8 +140,10 @@ function NewSessionPage() {
   useEffect(() => {
     if (!cloud.active) {
       setSpaceId('')
+      return
     }
-  }, [cloud.active])
+    setSpaceId(search.space ?? '')
+  }, [cloud.active, cloud.activeWorkspaceId, search.space])
 
   const openCloudSettings = () => {
     setLocation('cloud')
@@ -271,7 +272,7 @@ function NewSessionPage() {
     <>
       <ExecutionLocationPicker
         location={effectiveLocation}
-        lockedCloud={isPrimaryCloud}
+        lockedCloud={cloudOnly}
         placement={controlPlacement}
         disabled={creating}
         onChange={selectLocation}

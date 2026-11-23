@@ -8,12 +8,14 @@ import { Input } from '@/components/ui/Input'
 // only the field, the copy, and the connect/back controls.
 export function RemoteServerForm({
   value,
+  cloudOnly = false,
   onChange,
   onSubmit,
   onBack,
   busy,
 }: {
   value: string
+  cloudOnly?: boolean
   onChange: (value: string) => void
   onSubmit: () => void
   onBack: () => void
@@ -28,8 +30,14 @@ export function RemoteServerForm({
       className="flex w-full flex-col gap-2.5"
     >
       <div className="px-0.5">
-        <p className="text-[13px] font-medium text-ink">Connect to a server</p>
-        <p className="mt-0.5 text-[12px] text-ink-3">Paste a connection link or your server’s HTTPS address.</p>
+        <p className="text-[13px] font-medium text-ink">
+          {cloudOnly ? 'Connect to Jaz Cloud' : 'Connect to a server'}
+        </p>
+        <p className="mt-0.5 text-[12px] text-ink-3">
+          {cloudOnly
+            ? 'Enter your Jaz Cloud server’s HTTPS address.'
+            : 'Paste a connection link or your server’s HTTPS address.'}
+        </p>
       </div>
       <Input
         autoFocus

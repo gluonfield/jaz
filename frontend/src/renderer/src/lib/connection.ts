@@ -559,6 +559,9 @@ export async function completeOidcCallback(
 export async function connectRemote(input: string): Promise<string | null> {
   const parsed = parseBackendConnectUrl(input)
   const url = normalizeBaseUrl(parsed.url)
+  if (!clientRuntime.capabilities.localBackend && isLocalBackendUrl(url)) {
+    return 'Local backend is disabled for this build'
+  }
   if (!secureBackendConnection(url)) {
     return 'Remote connections require HTTPS'
   }

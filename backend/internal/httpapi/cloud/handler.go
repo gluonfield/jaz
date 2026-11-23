@@ -40,8 +40,38 @@ func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, status)
 }
 
+func (h *Handler) Switch(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WorkspaceID string `json:"workspace_id"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCloudJSONBodyBytes)).Decode(&body); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	workspaceID := strings.TrimSpace(body.WorkspaceID)
+	if workspaceID == "" {
+		httpapi.WriteError(w, http.StatusBadRequest, errors.New("workspace_id is required"))
+		return
+	}
+	status, err := h.service.SwitchWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		writeCloudError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, status)
+}
+
 func (h *Handler) Disconnect(w http.ResponseWriter, r *http.Request) {
-	if err := h.service.Disconnect(r.Context()); err != nil {
+	var body struct {
+		WorkspaceID string `json:"workspace_id"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCloudJSONBodyBytes)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			httpapi.WriteError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
+	if err := h.service.Disconnect(r.Context(), body.WorkspaceID); err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -280,6 +310,8 @@ func writeCloudError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, cloudsync.ErrInvalidURL):
 		httpapi.WriteError(w, http.StatusBadRequest, err)
+	case errors.Is(err, cloudsync.ErrNotFound):
+		httpapi.WriteError(w, http.StatusNotFound, err)
 	case errors.Is(err, cloudsync.ErrNotConnected):
 		httpapi.WriteError(w, http.StatusUnauthorized, err)
 	default:

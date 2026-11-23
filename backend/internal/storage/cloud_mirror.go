@@ -8,6 +8,7 @@ import (
 )
 
 type CloudAccount struct {
+	ID               string
 	BaseURL          string
 	Token            string
 	OIDCLoginURL     string
@@ -24,6 +25,7 @@ type CloudAccount struct {
 }
 
 type CloudSpace struct {
+	AccountID string    `json:"-"`
 	ID        string    `json:"id"`
 	OrgID     string    `json:"org_id,omitempty"`
 	Name      string    `json:"name"`
@@ -33,6 +35,7 @@ type CloudSpace struct {
 }
 
 type CloudThread struct {
+	AccountID              string          `json:"-"`
 	ID                     string          `json:"id"`
 	OrgID                  string          `json:"org_id,omitempty"`
 	OwnerUserID            string          `json:"owner_user_id,omitempty"`
@@ -90,6 +93,7 @@ func (t CloudThread) ToSession() Session {
 		Title:                  t.Title,
 		SourceType:             t.SourceType,
 		SourceID:               t.SourceID,
+		WorkspaceID:            t.AccountID,
 		Status:                 mapCloudStatus(t.Status),
 		Runtime:                RuntimeACP,
 		RuntimeRef:             &RuntimeRef{Type: RuntimeACP, Agent: agentName, Cwd: cwd},
@@ -167,28 +171,32 @@ type CloudThreadUserStatePatch struct {
 }
 
 type CloudMirrorStore interface {
-	LoadCloudAccount(context.Context) (CloudAccount, bool, error)
+	ListCloudAccounts(context.Context) ([]CloudAccount, error)
+	LoadCloudAccount(ctx context.Context, id string) (CloudAccount, bool, error)
 	SaveCloudAccount(context.Context, CloudAccount) error
-	UpdateCloudSyncState(context.Context, time.Time, string) error
-	ClearCloudMirror(context.Context) error
+	UpdateCloudSyncState(ctx context.Context, accountID string, lastSyncAt time.Time, lastError string) error
+	DeleteCloudAccount(ctx context.Context, accountID string) error
 
-	ReplaceCloudSpaces(context.Context, []CloudSpace) error
-	UpsertCloudSpace(context.Context, CloudSpace) error
-	ListCloudSpaces(context.Context) ([]CloudSpace, error)
+	LoadActiveWorkspaceID(context.Context) (string, error)
+	SaveActiveWorkspaceID(context.Context, string) error
 
-	SyncCloudThreads(context.Context, []CloudThread) error
-	UpsertCloudThread(context.Context, CloudThread) error
-	GetCloudThread(context.Context, string) (CloudThread, bool, error)
-	ListCloudThreads(context.Context, bool) ([]CloudThread, error)
-	UpdateCloudThreadUserState(context.Context, string, CloudThreadUserStatePatch) (CloudThread, error)
-	UpdateCloudThreadStatus(context.Context, string, string, time.Time) error
+	ReplaceCloudSpaces(ctx context.Context, accountID string, spaces []CloudSpace) error
+	UpsertCloudSpace(ctx context.Context, accountID string, space CloudSpace) error
+	ListCloudSpaces(ctx context.Context, accountID string) ([]CloudSpace, error)
 
-	AppendCloudThreadEvents(context.Context, string, []CloudThreadEvent) error
-	ListCloudThreadEvents(context.Context, string, int64) ([]CloudThreadEvent, error)
+	SyncCloudThreads(ctx context.Context, accountID string, threads []CloudThread) error
+	UpsertCloudThread(ctx context.Context, accountID string, thread CloudThread) error
+	GetCloudThread(ctx context.Context, accountID, id string) (CloudThread, bool, error)
+	ListCloudThreads(ctx context.Context, accountID string, archived bool) ([]CloudThread, error)
+	UpdateCloudThreadUserState(ctx context.Context, accountID, id string, patch CloudThreadUserStatePatch) (CloudThread, error)
+	UpdateCloudThreadStatus(ctx context.Context, accountID, id, status string, updatedAt time.Time) error
 
-	UpsertCloudInstruction(context.Context, CloudInstruction) error
-	GetCloudInstruction(context.Context, string, string, string, string) (CloudInstruction, bool, error)
+	AppendCloudThreadEvents(ctx context.Context, accountID, threadID string, events []CloudThreadEvent) error
+	ListCloudThreadEvents(ctx context.Context, accountID, threadID string, afterSeq int64) ([]CloudThreadEvent, error)
 
-	UpsertCloudUsageEvents(context.Context, []CloudUsageEvent) error
-	MaxCloudUsageEventID(context.Context) (int64, error)
+	UpsertCloudInstruction(ctx context.Context, accountID string, doc CloudInstruction) error
+	GetCloudInstruction(ctx context.Context, accountID, orgID, scope, scopeID, kind string) (CloudInstruction, bool, error)
+
+	UpsertCloudUsageEvents(ctx context.Context, accountID string, events []CloudUsageEvent) error
+	MaxCloudUsageEventID(ctx context.Context, accountID string) (int64, error)
 }

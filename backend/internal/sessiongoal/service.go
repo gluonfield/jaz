@@ -214,9 +214,9 @@ func (s *Service) refresh(session storage.Session, state *goal.State, now time.T
 	}
 	completed := normalized.Status == goal.StatusComplete && !normalized.CompletedAt.IsZero()
 	if completed && !scope.countsCompletedThroughCurrentTurn() {
-		normalized.TokensUsed = s.tokensBetween(session.ID, normalized.CreatedAt, normalized.CompletedAt)
+		normalized.TokensUsed = s.tokensBetween(session, normalized.CreatedAt, normalized.CompletedAt)
 	} else {
-		normalized.TokensUsed = s.tokensBetween(session.ID, normalized.CreatedAt, time.Time{})
+		normalized.TokensUsed = s.tokensBetween(session, normalized.CreatedAt, time.Time{})
 	}
 	if completed {
 		normalized.TimeUsedSeconds = nonNegativeSeconds(normalized.CompletedAt.Sub(normalized.CreatedAt))
@@ -257,14 +257,22 @@ func (s *Service) publish(session storage.Session, state *goal.State) (*goal.Sta
 	return state, nil
 }
 
-func (s *Service) tokensBetween(sessionID string, start, end time.Time) int64 {
-	events, err := s.Store.UsageEvents(start.Truncate(time.Millisecond), time.Time{})
+func (s *Service) tokensBetween(session storage.Session, start, end time.Time) int64 {
+	var (
+		events []storage.UsageEvent
+		err    error
+	)
+	if wsStore, ok := s.Store.(storage.WorkspaceUsageEventStore); ok {
+		events, err = wsStore.UsageEventsForWorkspace(session.WorkspaceID, start.Truncate(time.Millisecond), time.Time{})
+	} else {
+		events, err = s.Store.UsageEvents(start.Truncate(time.Millisecond), time.Time{})
+	}
 	if err != nil {
 		return 0
 	}
 	var total int64
 	for _, event := range events {
-		if event.SessionID != sessionID {
+		if event.SessionID != session.ID {
 			continue
 		}
 		if !end.IsZero() && event.CreatedAt.After(end) {

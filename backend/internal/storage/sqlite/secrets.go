@@ -5,9 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"database/sql"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,9 +36,8 @@ func (s *Store) protectSecrets() error {
 		return err
 	}
 	cloudq := cloudmirror.New(s.db).WithTx(tx)
-	cloudAccount, err := cloudq.GetCloudAccount(ctx)
-	hasCloudAccount := err == nil
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	cloudAccounts, err := cloudq.ListCloudAccounts(ctx)
+	if err != nil {
 		return err
 	}
 	keyPath := strings.TrimSpace(os.Getenv("JAZ_SECRET_KEY_FILE"))
@@ -60,8 +57,10 @@ func (s *Store) protectSecrets() error {
 				return fmt.Errorf("MCP secrets require their original key file: %s", keyPath)
 			}
 		}
-		if hasCloudAccount && strings.HasPrefix(cloudAccount.TokenEncrypted, secretPrefix) {
-			return fmt.Errorf("Cloud session secrets require their original key file: %s", keyPath)
+		for _, row := range cloudAccounts {
+			if strings.HasPrefix(row.TokenEncrypted, secretPrefix) {
+				return fmt.Errorf("Cloud session secrets require their original key file: %s", keyPath)
+			}
 		}
 		key = make([]byte, 32)
 		if _, err := rand.Read(key); err != nil {
@@ -140,13 +139,19 @@ func (s *Store) protectSecrets() error {
 		}
 		changed = true
 	}
-	if hasCloudAccount && cloudAccount.TokenEncrypted != "" {
-		sealed, err := s.protectSecret(cloudAccountSecretID, cloudAccount.TokenEncrypted)
+	for _, row := range cloudAccounts {
+		if row.TokenEncrypted == "" {
+			continue
+		}
+		sealed, err := s.protectSecret(cloudAccountSecretID, row.TokenEncrypted)
 		if err != nil {
 			return err
 		}
-		if sealed != cloudAccount.TokenEncrypted {
-			if err := cloudq.UpdateCloudAccountToken(ctx, sealed); err != nil {
+		if sealed != row.TokenEncrypted {
+			if err := cloudq.UpdateCloudAccountToken(ctx, cloudmirror.UpdateCloudAccountTokenParams{
+				ID:             row.ID,
+				TokenEncrypted: sealed,
+			}); err != nil {
 				return err
 			}
 			changed = true

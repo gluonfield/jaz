@@ -1,6 +1,7 @@
 import { Check, ChevronDown, Cloud, Laptop, LoaderCircle } from 'lucide-react'
 import { useState } from 'react'
 import { Popover } from '@/components/ui/Popover'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { useCloudSession } from '@/lib/cloudSession'
 import { describeBackend } from '@/lib/connectionDisplay'
 
@@ -24,15 +25,8 @@ export function ExecutionLocationPicker({
   const cloud = useCloudSession()
   const [open, setOpen] = useState(false)
 
-  const cloudSubtitle = cloud.active
-    ? cloud.user?.org_name || describeBackend(cloud.url).title
-    : cloud.status === 'checking'
-      ? 'Connecting…'
-      : 'Sign in…'
-
-  const triggerLabel = location === 'local' ? 'Local' : 'Cloud'
-
-  if (lockedCloud) {
+  const cloudOnly = lockedCloud || !clientRuntime.capabilities.localBackend
+  if (cloudOnly) {
     return (
       <span
         className="inline-flex h-7 items-center gap-1.5 rounded-full bg-surface px-2.5 text-[12px] font-medium text-ink"
@@ -43,6 +37,28 @@ export function ExecutionLocationPicker({
       </span>
     )
   }
+
+  // Switched into the Local workspace while Cloud workspace(s) are connected:
+  // keep Local workspace strictly Local ACP so Cloud threads never leak into Local.
+  if (!cloud.active && cloud.workspaces.length > 0) {
+    return (
+      <span
+        className="inline-flex h-7 items-center gap-1.5 rounded-full bg-surface px-2.5 text-[12px] font-medium text-ink-2"
+        title="Local workspace — runs on this computer"
+      >
+        <Laptop size={13} className="shrink-0" />
+        <span>Local</span>
+      </span>
+    )
+  }
+
+  const cloudSubtitle = cloud.active
+    ? cloud.user?.org_name || describeBackend(cloud.url).title
+    : cloud.status === 'checking'
+      ? 'Connecting…'
+      : 'Sign in…'
+
+  const triggerLabel = location === 'local' ? 'Local' : 'Cloud'
 
   return (
     <Popover

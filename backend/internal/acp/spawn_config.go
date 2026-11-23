@@ -208,6 +208,12 @@ func agentProviderDefaultModel(agent, id string, providers map[string]provider.M
 }
 
 func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort string) (storage.Session, error) {
+	workspaceID := strings.TrimSpace(req.WorkspaceID)
+	if workspaceID == "" && req.ParentID != "" {
+		if parent, err := m.store.LoadSession(req.ParentID); err == nil {
+			workspaceID = parent.WorkspaceID
+		}
+	}
 	return m.store.CreateSession(storage.CreateSession{
 		Slug:            req.Slug,
 		Title:           req.Title,
@@ -218,6 +224,7 @@ func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort 
 		ReasoningEffort: effort,
 		SourceType:      req.SourceType,
 		SourceID:        req.SourceID,
+		WorkspaceID:     workspaceID,
 		Commitment:      req.Commitment,
 		RuntimeRef: &storage.RuntimeRef{
 			Type:            storage.RuntimeACP,

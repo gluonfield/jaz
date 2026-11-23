@@ -10,9 +10,12 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
+const LocalWorkspaceID = storage.LocalWorkspaceID
+
 var (
 	ErrNotConnected = errors.New("not signed in to Jaz Cloud")
 	ErrInvalidURL   = errors.New("Jaz Cloud connections require HTTPS")
+	ErrNotFound     = errors.New("workspace not found")
 )
 
 type CloudUser struct {
@@ -25,16 +28,33 @@ type CloudUser struct {
 	Role        string `json:"role"`
 }
 
-type Status struct {
-	Connected    bool            `json:"connected"`
-	Status       string          `json:"status"` // disconnected | connected | error
-	URL          string          `json:"url,omitempty"`
-	User         *CloudUser      `json:"user,omitempty"`
+type WorkspaceSummary struct {
+	ID           string          `json:"id"`
+	URL          string          `json:"url"`
+	OrgID        string          `json:"org_id,omitempty"`
+	OrgName      string          `json:"org_name,omitempty"`
+	Email        string          `json:"email,omitempty"`
+	DisplayName  string          `json:"display_name,omitempty"`
+	Role         string          `json:"role,omitempty"`
 	OIDCLoginURL string          `json:"oidc_login_url,omitempty"`
 	Capabilities json.RawMessage `json:"capabilities,omitempty"`
 	ConnectedAt  time.Time       `json:"connected_at,omitzero"`
 	LastSyncAt   time.Time       `json:"last_sync_at,omitzero"`
 	LastError    string          `json:"last_error,omitempty"`
+}
+
+type Status struct {
+	ActiveWorkspaceID string             `json:"active_workspace_id"`
+	Connected         bool               `json:"connected"`
+	Status            string             `json:"status"` // "connected" when active workspace is Cloud, else "disconnected"
+	URL               string             `json:"url,omitempty"`
+	User              *CloudUser         `json:"user,omitempty"`
+	OIDCLoginURL      string             `json:"oidc_login_url,omitempty"`
+	Capabilities      json.RawMessage    `json:"capabilities,omitempty"`
+	ConnectedAt       time.Time          `json:"connected_at,omitzero"`
+	LastSyncAt        time.Time          `json:"last_sync_at,omitzero"`
+	LastError         string             `json:"last_error,omitempty"`
+	Workspaces        []WorkspaceSummary `json:"workspaces"`
 }
 
 type ConnectRequest struct {

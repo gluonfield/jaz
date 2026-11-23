@@ -115,7 +115,8 @@ func TestLocalFSStoreCustomBotHomeResolverAndValidation(t *testing.T) {
 		{Scope: ScopeSpace, ScopeID: "", Kind: KindAgents},
 		{Scope: ScopeUser, Kind: KindMemory},
 		{Scope: ScopeBot, ScopeID: "", Kind: KindBots},
-		{Scope: ScopeBot, ScopeID: "custom", Kind: KindSoul},
+		{Scope: ScopeBot, ScopeID: "custom", Kind: KindAgents},
+		{Scope: ScopeUser, Kind: Kind("soul")},
 		{Scope: Scope("unknown"), Kind: KindAgents},
 	}
 	for _, key := range invalidKeys {
@@ -137,7 +138,7 @@ func TestLocalFSStoreCustomBotHomeResolverAndValidation(t *testing.T) {
 
 func TestLocalFSStoreConcurrentOptimisticSave(t *testing.T) {
 	store := NewLocalFSStore(t.TempDir())
-	key := Key{Scope: ScopeUser, Kind: KindSoul}
+	key := Key{Scope: ScopeUser, Kind: KindAgents}
 	ctx := t.Context()
 
 	initial, err := store.Save(ctx, key, "v0", "")

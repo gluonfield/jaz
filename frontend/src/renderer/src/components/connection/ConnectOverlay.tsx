@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { LaunchScreen } from '@/components/launch/LaunchScreen'
+import { clientRuntime } from '@/lib/clientRuntime'
 
 // Presents the first-run connect screen on demand, over the live app, so
 // switching backends after onboarding reuses the exact flow the user
@@ -38,7 +39,7 @@ export function ConnectOverlay({ open, onClose }: { open: boolean; onClose: () =
           transition={{ duration: 0.16, ease: 'easeOut' }}
           role="dialog"
           aria-modal="true"
-          aria-label="Connect to a machine"
+          aria-label={clientRuntime.capabilities.localBackend ? 'Connect to a machine' : 'Connect to Jaz Cloud'}
         >
           <LaunchScreen manual onClose={onClose} />
         </motion.div>

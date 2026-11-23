@@ -33,6 +33,7 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		ReasoningEffort: input.ReasoningEffort,
 		SourceType:      input.SourceType,
 		SourceID:        input.SourceID,
+		WorkspaceID:     firstNonEmpty(input.WorkspaceID, storage.LocalWorkspaceID),
 		CreatedAt:       now,
 		UpdatedAt:       now,
 		LastAttentionAt: now,
@@ -375,6 +376,7 @@ func sessionListParams(filter storage.SessionFilter) threaddb.ListSessionsParams
 	}
 	params := threaddb.ListSessionsParams{
 		FilterQuery:            filter.Query,
+		FilterWorkspaceID:      filter.WorkspaceID,
 		FilterAfterAttentionMs: math.MaxInt64,
 		FilterArchived:         boolInt(filter.Archived),
 		FilterIncludeChildren:  boolInt(filter.IncludeChildren),
@@ -512,6 +514,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		PendingSteerMessage:   pendingSteerMessage,
 		Goal:                  goalState,
 		Turn:                  sessionTurnJSON(session.Turn),
+		WorkspaceID:           firstNonEmpty(session.WorkspaceID, storage.LocalWorkspaceID),
 	})
 }
 
@@ -561,6 +564,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		PendingSteer:           pendingSteerMessage,
 		SourceType:             row.SourceType.String,
 		SourceID:               row.SourceID.String,
+		WorkspaceID:            firstNonEmpty(row.WorkspaceID, storage.LocalWorkspaceID),
 		Archived:               row.Archived != 0,
 		Pinned:                 row.Pinned != 0,
 		CreatedAt:              msToTime(row.CreatedAtMs),

@@ -22,7 +22,7 @@ import (
 )
 
 // PromptFiles are editable personal files. BOTS.md is loaded only by bot chats.
-var PromptFiles = []string{"AGENTS.md", "SOUL.md", "BOTS.md"}
+var PromptFiles = []string{"AGENTS.md", "BOTS.md"}
 
 type CloudScope struct {
 	OrgID   string
@@ -98,7 +98,6 @@ func defaultWorkspace(root string) string {
 
 type loadedInstructions struct {
 	agents string
-	soul   string
 	bots   string
 	cloud  *jazplatform.CloudInstructions
 }
@@ -115,10 +114,6 @@ func loadPromptInstructions(ctx context.Context, root string, inst instructions.
 		if err != nil {
 			return loadedInstructions{}, err
 		}
-		soul, err := readInstruction(ctx, inst, instructions.Key{Scope: instructions.ScopeUser, Kind: instructions.KindSoul})
-		if err != nil {
-			return loadedInstructions{}, err
-		}
 		var botText string
 		if isBot {
 			botText, err = readInstruction(ctx, inst, instructions.Key{Scope: instructions.ScopeUser, Kind: instructions.KindBots})
@@ -126,7 +121,7 @@ func loadPromptInstructions(ctx context.Context, root string, inst instructions.
 				return loadedInstructions{}, err
 			}
 		}
-		return loadedInstructions{agents: agents, soul: soul, bots: botText}, nil
+		return loadedInstructions{agents: agents, bots: botText}, nil
 	}
 	var orgAgents, spaceAgents string
 	var err error
@@ -161,15 +156,6 @@ func loadPromptInstructions(ctx context.Context, root string, inst instructions.
 	if err != nil {
 		return loadedInstructions{}, err
 	}
-	soul, err := readInstruction(ctx, inst, instructions.Key{
-		OrgID:   cloud.OrgID,
-		Scope:   instructions.ScopeUser,
-		ScopeID: cloud.UserID,
-		Kind:    instructions.KindSoul,
-	})
-	if err != nil {
-		return loadedInstructions{}, err
-	}
 	var botText string
 	if isBot {
 		botKey := instructions.Key{OrgID: cloud.OrgID, Scope: instructions.ScopeUser, ScopeID: cloud.UserID, Kind: instructions.KindBots}
@@ -183,7 +169,6 @@ func loadPromptInstructions(ctx context.Context, root string, inst instructions.
 	}
 	return loadedInstructions{
 		agents: agents,
-		soul:   soul,
 		bots:   botText,
 		cloud: &jazplatform.CloudInstructions{
 			HasOrg:      cloud.OrgID != "",
@@ -231,7 +216,6 @@ func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skill
 		Human:           now.Format("Monday, January 2, 2006 at 15:04:05 MST"),
 		Cwd:             strings.TrimSpace(cwd),
 		Device:          sessioncontext.ClientPlatform(ctx),
-		Soul:            orEmpty(loaded.soul),
 		BrowserEnabled:  browserEnabled,
 		ArtifactSurface: string(surface),
 		CanvasDir:       canvasDir,
@@ -264,8 +248,6 @@ func runtimePaths(root, workspace string) jazplatform.RuntimePaths {
 	}
 	return jazplatform.RuntimePaths{
 		Root:             root,
-		AgentsPath:       filepath.Join(root, "AGENTS.md"),
-		SoulPath:         filepath.Join(root, "SOUL.md"),
 		SkillsPath:       filepath.Join(root, "skills"),
 		SessionsPath:     filepath.Join(root, "sessions"),
 		DefaultWorkspace: defaultWorkspacePath,

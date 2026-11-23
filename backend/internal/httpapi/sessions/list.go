@@ -20,6 +20,7 @@ type sessionListStore interface {
 }
 
 type CloudSessionLister interface {
+	ActiveWorkspaceID() string
 	ListSessions(context.Context, bool) ([]storage.Session, error)
 }
 
@@ -44,7 +45,23 @@ func (h *ListHandler) WithCloud(cloud CloudSessionLister) *ListHandler {
 
 func (h *ListHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
+	workspaceID := storage.LocalWorkspaceID
+	if h.cloud != nil {
+		workspaceID = h.cloud.ActiveWorkspaceID()
+	}
 	if query.Get("last") == "true" {
+		if h.cloud != nil {
+			sessions, err := h.store.ListSessions(storage.SessionFilter{WorkspaceID: workspaceID, RootOnly: true, Limit: 1})
+			if err != nil || len(sessions) == 0 {
+				if err == nil {
+					err = fmt.Errorf("no root sessions found")
+				}
+				httpapi.WriteError(w, http.StatusNotFound, err)
+				return
+			}
+			httpapi.WriteJSON(w, http.StatusOK, sessionview.Public(sessions[0]))
+			return
+		}
 		session, err := h.store.LastRootSession()
 		if err != nil {
 			httpapi.WriteError(w, http.StatusNotFound, err)
@@ -64,6 +81,7 @@ func (h *ListHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	filter := storage.SessionFilter{
 		Query:           strings.TrimSpace(query.Get("q")),
+		WorkspaceID:     workspaceID,
 		ParentID:        query.Get("parent_id"),
 		ParentOnly:      query.Has("parent_id"),
 		RootOnly:        query.Get("root") == "true",
@@ -101,7 +119,7 @@ func (h *ListHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if h.cloud != nil && !filter.ParentOnly {
+	if h.cloud != nil && !filter.ParentOnly && workspaceID != storage.LocalWorkspaceID {
 		if cloudSessions, cloudErr := h.cloud.ListSessions(r.Context(), filter.Archived); cloudErr == nil && len(cloudSessions) > 0 {
 			sessions = mergeSessionLists(sessions, filterCloudSessions(cloudSessions, filter))
 		}

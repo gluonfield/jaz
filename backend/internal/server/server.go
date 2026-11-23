@@ -91,6 +91,7 @@ type ManagedToolStatusReader interface {
 }
 
 type CloudBridge interface {
+	ActiveWorkspaceID() string
 	GetSession(context.Context, string) (storage.Session, bool, error)
 	CreateThread(context.Context, cloudsync.CreateThreadRequest) (storage.Session, error)
 	StreamEvents(context.Context, string, int64, func(sessionevents.Event)) error

@@ -152,3 +152,55 @@ func TestConnectionMCPServerReaderSkipsDisabledPlugin(t *testing.T) {
 		t.Fatalf("disabled plugin emitted servers = %#v", servers)
 	}
 }
+
+func TestConnectionMCPServerReaderIsolatesCloudWorkspaceFromLocalMCP(t *testing.T) {
+	store := fakeConnectionTokenStore{
+		servers: []mcpconfig.Server{
+			{ID: "local-mcp", Name: "local-mcp", URL: "https://local.example/mcp", Enabled: true},
+		},
+		connections: map[string][]integrations.Connection{
+			"slack": {{ID: "slack:personal", Provider: "slack", Alias: "personal"}},
+		},
+		tokens: map[string]integrationoauth.Token{"slack:personal": {AccessToken: "xoxp-personal"}},
+	}
+	cloudActive := true
+	reader := connectionMCPServerReader{
+		store:   store,
+		catalog: connections.NewCatalog(nil),
+		cloudMCP: func(context.Context) (mcpconfig.Server, bool) {
+			if !cloudActive {
+				return mcpconfig.Server{}, false
+			}
+			return mcpconfig.Server{
+				ID:      "jaz_cloud",
+				Name:    "jaz_cloud",
+				URL:     "https://cloud.example/v1/mcp",
+				Enabled: true,
+			}, true
+		},
+	}
+
+	// Active Cloud workspace exposes ONLY Cloud MCP (suppresses local custom MCP + personal Slack).
+	cloudServers, err := reader.ListMCPServers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cloudServers) != 1 || cloudServers[0].ID != "jaz_cloud" {
+		t.Fatalf("cloud workspace MCP servers = %#v, want only jaz_cloud", cloudServers)
+	}
+
+	// Local workspace exposes local MCP + personal Slack, and NO Cloud MCP.
+	cloudActive = false
+	localServers, err := reader.ListMCPServers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(localServers) != 2 {
+		t.Fatalf("local workspace MCP servers = %#v, want local-mcp + slack:personal", localServers)
+	}
+	for _, s := range localServers {
+		if s.ID == "jaz_cloud" {
+			t.Fatalf("local workspace must not attach jaz_cloud: %#v", localServers)
+		}
+	}
+}

@@ -45,7 +45,7 @@ func (s *InstructionsStore) Get(ctx context.Context, key instructions.Key) (inst
 	if key.Scope == instructions.ScopeUser && key.Kind == instructions.KindBots {
 		return s.fallback.Get(ctx, key)
 	}
-	rec, found, err := s.cloud.store.GetCloudInstruction(ctx, orgID, string(key.Scope), scopeID, string(key.Kind))
+	rec, found, err := s.cloud.store.GetCloudInstruction(ctx, acc.ID, orgID, string(key.Scope), scopeID, string(key.Kind))
 	if err != nil {
 		return instructions.Document{}, err
 	}
@@ -85,7 +85,7 @@ func (s *InstructionsStore) Save(ctx context.Context, key instructions.Key, cont
 	if err != nil {
 		var uerr *UpstreamError
 		if errors.As(err, &uerr) && uerr.StatusCode == http.StatusConflict {
-			cur, _, _ := s.cloud.store.GetCloudInstruction(ctx, orgID, string(key.Scope), scopeID, string(key.Kind))
+			cur, _, _ := s.cloud.store.GetCloudInstruction(ctx, acc.ID, orgID, string(key.Scope), scopeID, string(key.Kind))
 			return instructions.Document{
 				Key:       key,
 				Content:   cur.BodyMD,

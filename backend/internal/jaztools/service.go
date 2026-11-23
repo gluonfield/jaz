@@ -85,6 +85,7 @@ type Service struct {
 
 	mu          sync.Mutex
 	thread      serverSlot
+	cloudThread serverSlot
 	widget      serverSlot
 	bot         serverSlot
 	search      serverSlot
@@ -99,6 +100,7 @@ type toolSurface int
 
 const (
 	threadSurface toolSurface = iota
+	cloudThreadSurface
 	widgetSurface
 	botSurface
 	searchWorkerSurface
@@ -235,6 +237,7 @@ func (s *Service) server(surface toolSurface) *mcp.Server {
 func (s *Service) slots() []surfaceSlot {
 	return []surfaceSlot{
 		{surface: threadSurface, slot: &s.thread},
+		{surface: cloudThreadSurface, slot: &s.cloudThread},
 		{surface: widgetSurface, slot: &s.widget},
 		{surface: botSurface, slot: &s.bot},
 		{surface: searchWorkerSurface, slot: &s.search},
@@ -246,6 +249,8 @@ func (s *Service) slots() []surfaceSlot {
 
 func (s *Service) slot(surface toolSurface) *serverSlot {
 	switch surface {
+	case cloudThreadSurface:
+		return &s.cloudThread
 	case searchWorkerSurface:
 		return &s.search
 	case sourceWorkerSurface:
@@ -273,21 +278,25 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		return server
 	}
 	s.titleTools.AddTo(server)
-	s.loopTools.AddTo(server)
-	if s.botTools != nil {
-		s.botTools.AddTo(server)
-		if surface == botSurface {
-			s.botTools.AddBotTo(server)
+	if surface != cloudThreadSurface {
+		s.loopTools.AddTo(server)
+		if s.botTools != nil {
+			s.botTools.AddTo(server)
+			if surface == botSurface {
+				s.botTools.AddBotTo(server)
+			}
 		}
 	}
-	if (surface == threadSurface || surface == botSurface || surface == canvasSurface) && s.goalTools != nil {
+	if (surface == threadSurface || surface == cloudThreadSurface || surface == botSurface || surface == canvasSurface) && s.goalTools != nil {
 		s.goalTools.AddTo(server)
 	}
-	s.calendarTools.AddTo(server)
-	s.gmailTools.AddTo(server)
-	s.whatsAppTools.AddTo(server)
-	s.telegramTools.AddTo(server)
-	plugins.AddSearchTools(server, s.pluginStore, s.connections)
+	if surface != cloudThreadSurface {
+		s.calendarTools.AddTo(server)
+		s.gmailTools.AddTo(server)
+		s.whatsAppTools.AddTo(server)
+		s.telegramTools.AddTo(server)
+		plugins.AddSearchTools(server, s.pluginStore, s.connections)
+	}
 	switch surface {
 	case widgetSurface:
 		s.visualizeTools.AddReadMeTo(server)
@@ -295,6 +304,10 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 	case canvasSurface:
 		// A canvas thread's visuals belong on its board, not in the narrow chat
 		// beside it.
+		s.visualizeTools.AddCanvasTo(server)
+	case cloudThreadSurface:
+		s.visualizeTools.AddReadMeTo(server)
+		s.visualizeTools.AddShowWidgetTo(server)
 		s.visualizeTools.AddCanvasTo(server)
 	default:
 		s.visualizeTools.AddReadMeTo(server)
@@ -357,6 +370,9 @@ func (s *Service) surface(r *http.Request) toolSurface {
 		if session.SourceType == storage.SourceLoopRun && session.ParentID != "" && !s.widgetSession(r) {
 			return botSurface
 		}
+		if session.WorkspaceID != "" && session.WorkspaceID != storage.LocalWorkspaceID {
+			return cloudThreadSurface
+		}
 	}
 	if s.widgetSession(r) {
 		return widgetSurface
@@ -414,6 +430,7 @@ func (s *Service) syncBrowserTools() {
 
 func (s *Service) syncThreadTools() {
 	s.syncThreadToolsFor(&s.thread, threadSurface)
+	s.syncThreadToolsFor(&s.cloudThread, cloudThreadSurface)
 	s.syncThreadToolsFor(&s.widget, widgetSurface)
 	s.syncThreadToolsFor(&s.canvas, canvasSurface)
 }

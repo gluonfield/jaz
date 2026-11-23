@@ -368,7 +368,7 @@ test('Spaces, Thread User State, Instructions body_md + 409 conflict, RBAC, and 
     ticket: { token: 'rt_me_1', expires_at: '2099-01-01T00:00:00Z' },
   })
 
-  expect(api.INSTRUCTION_SCOPE_KINDS.user).toEqual(['agents', 'soul', 'short_term', 'long_term'])
+  expect(api.INSTRUCTION_SCOPE_KINDS.user).toEqual(['agents', 'short_term', 'long_term'])
   expect(api.canEditCloudInstruction({ id: 'u', org_id: 'o', email: 'v@x', display_name: 'V', role: 'viewer' }, 'user')).toBe(false)
   expect(api.canEditCloudInstruction({ id: 'u', org_id: 'o', email: 'm@x', display_name: 'M', role: 'member' }, 'org')).toBe(false)
   expect(api.canEditCloudInstruction({ id: 'u', org_id: 'o', email: 'm@x', display_name: 'M', role: 'member' }, 'bot')).toBe(false)

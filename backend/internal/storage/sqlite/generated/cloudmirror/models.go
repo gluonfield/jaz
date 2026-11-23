@@ -5,7 +5,7 @@
 package cloudmirror
 
 type CloudAccount struct {
-	ID               int64  `json:"id"`
+	ID               string `json:"id"`
 	BaseUrl          string `json:"base_url"`
 	TokenEncrypted   string `json:"token_encrypted"`
 	OidcLoginUrl     string `json:"oidc_login_url"`
@@ -22,6 +22,7 @@ type CloudAccount struct {
 }
 
 type CloudInstruction struct {
+	AccountID   string `json:"account_id"`
 	OrgID       string `json:"org_id"`
 	Scope       string `json:"scope"`
 	ScopeID     string `json:"scope_id"`
@@ -33,6 +34,7 @@ type CloudInstruction struct {
 }
 
 type CloudSpace struct {
+	AccountID   string `json:"account_id"`
 	ID          string `json:"id"`
 	OrgID       string `json:"org_id"`
 	Name        string `json:"name"`
@@ -42,6 +44,7 @@ type CloudSpace struct {
 }
 
 type CloudThread struct {
+	AccountID              string `json:"account_id"`
 	ID                     string `json:"id"`
 	OrgID                  string `json:"org_id"`
 	OwnerUserID            string `json:"owner_user_id"`
@@ -68,6 +71,7 @@ type CloudThread struct {
 }
 
 type CloudThreadEvent struct {
+	AccountID   string `json:"account_id"`
 	ThreadID    string `json:"thread_id"`
 	Seq         int64  `json:"seq"`
 	OrgID       string `json:"org_id"`

@@ -24,6 +24,7 @@ import { NavRail, railTab } from '@/components/sidebar/NavRail'
 import { BotsPanel } from '@/components/bots/BotsPanel'
 import { ChatPanel } from '@/components/sidebar/ChatPanel'
 import { Sidebar } from '@/components/sidebar/Sidebar'
+import { SidebarWorkspaceSwitcher } from '@/components/sidebar/SidebarWorkspaceSwitcher'
 import { TitlebarNavigation } from '@/components/sidebar/TitlebarNavigation'
 import { ToastProvider } from '@/components/ui/toast'
 import { clientRuntime, isMacDesktop } from '@/lib/clientRuntime'
@@ -124,6 +125,7 @@ function RootLayout() {
   const [resizing, setResizing] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
+  const [openAddCloudWorkspace, setOpenAddCloudWorkspace] = useState(false)
   const [panelRow, setPanelRow] = useState<HTMLDivElement | null>(null)
   const [panelSlot, setPanelSlot] = useState<HTMLDivElement | null>(null)
   const sidePanelSlot = useMemo(() => ({ slot: panelSlot, row: panelRow }), [panelSlot, panelRow])
@@ -145,8 +147,13 @@ function RootLayout() {
       }),
     [navigate],
   )
+  const openAddCloud = useCallback(() => {
+    setOpenAddCloudWorkspace(true)
+    openSettings('cloud')
+  }, [openSettings])
   const goToSettingsSection = useCallback(
     (section: SettingsSection, options?: SettingsSectionNavigation) => {
+      if (section !== 'cloud') setOpenAddCloudWorkspace(false)
       if (section === settingsSection) return
       void navigate({
         to: '.',
@@ -156,10 +163,10 @@ function RootLayout() {
     },
     [navigate, settingsSection],
   )
-  const closeSettings = useCallback(
-    () => void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined }) }),
-    [navigate],
-  )
+  const closeSettings = useCallback(() => {
+    setOpenAddCloudWorkspace(false)
+    void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined }) })
+  }, [navigate])
 
   // Phone: the sidebar is a full-screen drawer (CSS `max-sm:w-full`) that slides
   // over the thread rather than a resizable column, and auto-dismisses on
@@ -351,10 +358,15 @@ function RootLayout() {
                           onSectionChange={goToSettingsSection}
                           onClose={closeSettings}
                         />
-                      ) : tab === '/bots' ? (
-                        <BotsPanel mobile={isMobile} />
                       ) : (
-                        <ChatPanel open={panelOpen && tab === 'chat'} mobile={isMobile} onOpenCommandPalette={() => setCommandOpen(true)} />
+                        <>
+                          <SidebarWorkspaceSwitcher onAddWorkspace={openAddCloud} />
+                          {tab === '/bots' ? (
+                            <BotsPanel mobile={isMobile} />
+                          ) : (
+                            <ChatPanel open={panelOpen && tab === 'chat'} mobile={isMobile} onOpenCommandPalette={() => setCommandOpen(true)} />
+                          )}
+                        </>
                       )}
                     </Sidebar>
                   </motion.div>
@@ -388,6 +400,7 @@ function RootLayout() {
                 <SettingsOverlay
                   open={settingsOpen}
                   section={settingsSection}
+                  openAddCloudWorkspace={openAddCloudWorkspace}
                   onSectionChange={goToSettingsSection}
                   onClose={closeSettings}
                 />

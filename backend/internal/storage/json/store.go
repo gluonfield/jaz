@@ -81,6 +81,10 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 	if runtime == "" {
 		runtime = storage.RuntimeACP
 	}
+	workspaceID := input.WorkspaceID
+	if workspaceID == "" {
+		workspaceID = storage.LocalWorkspaceID
+	}
 	session := storage.Session{
 		ID:              s.NewSessionID(),
 		Slug:            input.Slug,
@@ -94,6 +98,7 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		ReasoningEffort: input.ReasoningEffort,
 		SourceType:      input.SourceType,
 		SourceID:        input.SourceID,
+		WorkspaceID:     workspaceID,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 		LastAttentionAt: now,

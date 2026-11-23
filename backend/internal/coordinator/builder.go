@@ -131,16 +131,19 @@ func (b *Builder) ACPPromptForContext(ctx context.Context, cwd, surface string) 
 	}
 	now := time.Now()
 	memoryRoot := b.memoryRootForPrompt()
-	connections, err := b.agentConnections(ctx, memoryRoot)
-	if err != nil {
-		return "", err
+	var agentConns []connections.AgentConnection
+	if cloud == nil {
+		agentConns, err = b.agentConnections(ctx, memoryRoot)
+		if err != nil {
+			return "", err
+		}
 	}
 	agents := b.agentNames()
 	runtimeWorkspace := ""
 	if cloud == nil {
 		runtimeWorkspace = b.runtimeWorkspace()
 	}
-	return platformPrompt(ctx, b.root, cwd, runtimeWorkspace, memoryRoot, catalog.PromptForContext(ctx), connections, agents, b.browserToolsEnabled(), visualize.NormalizeSurface(surface), now, b.instructions, cloud)
+	return platformPrompt(ctx, b.root, cwd, runtimeWorkspace, memoryRoot, catalog.PromptForContext(ctx), agentConns, agents, b.browserToolsEnabled(), visualize.NormalizeSurface(surface), now, b.instructions, cloud)
 }
 
 func (b *Builder) build(ctx context.Context, workspace string, surface visualize.Surface) (system, skillsPrompt string, err error) {
@@ -155,12 +158,15 @@ func (b *Builder) build(ctx context.Context, workspace string, surface visualize
 	skillsPrompt = catalog.Prompt()
 	now := time.Now()
 	memoryRoot := b.memoryRootForPrompt()
-	connections, err := b.agentConnections(ctx, memoryRoot)
-	if err != nil {
-		return "", "", err
+	var agentConns []connections.AgentConnection
+	if cloud == nil {
+		agentConns, err = b.agentConnections(ctx, memoryRoot)
+		if err != nil {
+			return "", "", err
+		}
 	}
 	agents := b.agentNames()
-	system, err = prompt(ctx, b.root, workspace, memoryRoot, skillsPrompt, connections, agents, b.browserToolsEnabled(), surface, now, b.instructions, cloud)
+	system, err = prompt(ctx, b.root, workspace, memoryRoot, skillsPrompt, agentConns, agents, b.browserToolsEnabled(), surface, now, b.instructions, cloud)
 	return system, skillsPrompt, err
 }
 

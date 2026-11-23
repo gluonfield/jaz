@@ -163,6 +163,7 @@ type SpawnRequest struct {
 	// SourceType/SourceID tag sessions created by backend automation such as loops.
 	SourceType      string
 	SourceID        string
+	WorkspaceID     string
 	ArtifactSurface string
 	MCPServerPolicy string
 	// SystemPromptExtensions are runtime-only prompt modules appended at

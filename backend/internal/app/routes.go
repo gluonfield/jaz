@@ -72,9 +72,11 @@ type routeDeps struct {
 
 func NewRoutes(deps routeDeps) server.Routes {
 	listHandler := sessionsapi.NewListHandler(deps.Store)
+	usageService := deps.Usage
 	if deps.Cloud != nil {
 		listHandler.WithCloud(deps.Cloud)
 		deps.SessionMessages.WithCloud(deps.Cloud)
+		usageService = usageService.WithWorkspace(deps.Cloud.ActiveWorkspaceID)
 	}
 	routes := server.Routes{
 		{Pattern: "GET /v1/acp/agents/{agent}/models", Handler: modelcapabilitiesapi.NewAgentModelsHandler(deps.ACP)},
@@ -104,7 +106,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		{Pattern: "POST /v1/sessions/{session}/voice/transcript", Handler: http.HandlerFunc(deps.Voice.Transcript)},
 		{Pattern: "POST /v1/sessions/{session}/voice/diagnostics", Handler: http.HandlerFunc(deps.Voice.Diagnostics)},
 	}
-	routes = append(routes, usageRoutes(deps.Usage)...)
+	routes = append(routes, usageRoutes(usageService)...)
 	push := mobilepushapi.Handler{Service: deps.Push}
 	routes = append(routes,
 		server.Route{Pattern: "GET /v1/mobile/push", Handler: http.HandlerFunc(push.Status)},
@@ -138,6 +140,7 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service) server.Ro
 	return append(routes,
 		server.Route{Pattern: "GET /v1/cloud/status", Handler: httpHandlerFunc(h.Status)},
 		server.Route{Pattern: "POST /v1/cloud/connect", Handler: httpHandlerFunc(h.Connect)},
+		server.Route{Pattern: "POST /v1/cloud/switch", Handler: httpHandlerFunc(h.Switch)},
 		server.Route{Pattern: "POST /v1/cloud/disconnect", Handler: httpHandlerFunc(h.Disconnect)},
 		server.Route{Pattern: "POST /v1/cloud/sync", Handler: httpHandlerFunc(h.Sync)},
 		server.Route{Pattern: "GET /v1/models", Handler: httpHandlerFunc(h.ListModels)},

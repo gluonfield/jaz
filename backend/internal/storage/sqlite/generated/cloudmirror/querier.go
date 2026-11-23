@@ -9,23 +9,24 @@ import (
 )
 
 type Querier interface {
-	DeleteAllCloudInstructions(ctx context.Context) error
-	DeleteAllCloudSpaces(ctx context.Context) error
-	DeleteAllCloudThreadEvents(ctx context.Context) error
-	DeleteAllCloudThreads(ctx context.Context) error
-	DeleteAllCloudUsageEvents(ctx context.Context) error
-	DeleteCloudAccount(ctx context.Context) error
-	DeleteCloudThread(ctx context.Context, id string) error
-	GetCloudAccount(ctx context.Context) (CloudAccount, error)
+	DeleteCloudAccount(ctx context.Context, id string) error
+	DeleteCloudInstructionsByAccount(ctx context.Context, accountID string) error
+	DeleteCloudSpacesByAccount(ctx context.Context, accountID string) error
+	DeleteCloudThread(ctx context.Context, arg DeleteCloudThreadParams) error
+	DeleteCloudThreadEventsByAccount(ctx context.Context, accountID string) error
+	DeleteCloudThreadsByAccount(ctx context.Context, accountID string) error
+	DeleteCloudUsageEventsByAccount(ctx context.Context, accountID string) error
+	GetCloudAccount(ctx context.Context, id string) (CloudAccount, error)
 	GetCloudInstruction(ctx context.Context, arg GetCloudInstructionParams) (CloudInstruction, error)
-	GetCloudThread(ctx context.Context, id string) (CloudThread, error)
-	ListAllCloudThreadIDs(ctx context.Context) ([]string, error)
-	ListCloudSpaces(ctx context.Context) ([]CloudSpace, error)
+	GetCloudThread(ctx context.Context, arg GetCloudThreadParams) (CloudThread, error)
+	ListAllCloudThreadIDs(ctx context.Context, accountID string) ([]string, error)
+	ListCloudAccounts(ctx context.Context) ([]CloudAccount, error)
+	ListCloudSpaces(ctx context.Context, accountID string) ([]CloudSpace, error)
 	ListCloudThreadEventsAfter(ctx context.Context, arg ListCloudThreadEventsAfterParams) ([]CloudThreadEvent, error)
-	ListCloudThreads(ctx context.Context, archived int64) ([]CloudThread, error)
-	MaxCloudUsageEventID(ctx context.Context) (interface{}, error)
+	ListCloudThreads(ctx context.Context, arg ListCloudThreadsParams) ([]CloudThread, error)
+	MaxCloudUsageEventID(ctx context.Context, accountID string) (interface{}, error)
 	UpdateCloudAccountSyncState(ctx context.Context, arg UpdateCloudAccountSyncStateParams) error
-	UpdateCloudAccountToken(ctx context.Context, tokenEncrypted string) error
+	UpdateCloudAccountToken(ctx context.Context, arg UpdateCloudAccountTokenParams) error
 	UpdateCloudThreadLastSeq(ctx context.Context, arg UpdateCloudThreadLastSeqParams) error
 	UpdateCloudThreadStatus(ctx context.Context, arg UpdateCloudThreadStatusParams) error
 	UpdateCloudThreadUserState(ctx context.Context, arg UpdateCloudThreadUserStateParams) error

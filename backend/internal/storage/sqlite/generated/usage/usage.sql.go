@@ -12,6 +12,7 @@ import (
 const insertUsageEvent = `-- name: InsertUsageEvent :exec
 INSERT INTO usage_events (
   thread_id,
+  workspace_id,
   runtime,
   agent,
   model_provider,
@@ -43,12 +44,14 @@ INSERT INTO usage_events (
   ?13,
   ?14,
   ?15,
-  ?16
+  ?16,
+  ?17
 )
 `
 
 type InsertUsageEventParams struct {
 	ThreadID              string `json:"thread_id"`
+	WorkspaceID           string `json:"workspace_id"`
 	Runtime               string `json:"runtime"`
 	Agent                 string `json:"agent"`
 	ModelProvider         string `json:"model_provider"`
@@ -69,6 +72,7 @@ type InsertUsageEventParams struct {
 func (q *Queries) InsertUsageEvent(ctx context.Context, arg InsertUsageEventParams) error {
 	_, err := q.db.ExecContext(ctx, insertUsageEvent,
 		arg.ThreadID,
+		arg.WorkspaceID,
 		arg.Runtime,
 		arg.Agent,
 		arg.ModelProvider,
@@ -121,7 +125,9 @@ FROM (
     u.source_type,
     u.created_at_ms
   FROM usage_events u
-  WHERE u.created_at_ms >= ?1 AND u.created_at_ms < ?2
+  WHERE u.created_at_ms >= ?1
+    AND u.created_at_ms < ?2
+    AND (?3 = '' OR u.workspace_id = ?3)
   UNION ALL
   SELECT
     c.thread_id,
@@ -139,14 +145,19 @@ FROM (
     '' AS source_type,
     c.created_at_ms
   FROM cloud_usage_events c
-  WHERE c.created_at_ms >= ?1 AND c.created_at_ms < ?2
+  WHERE c.created_at_ms >= ?1
+    AND c.created_at_ms < ?2
+    AND ?3 != ''
+    AND ?3 != 'local'
+    AND c.account_id = ?3
 )
 ORDER BY created_at_ms
 `
 
 type ListUsageEventsParams struct {
-	Since int64 `json:"since"`
-	Until int64 `json:"until"`
+	Since       int64       `json:"since"`
+	Until       int64       `json:"until"`
+	WorkspaceID interface{} `json:"workspace_id"`
 }
 
 type ListUsageEventsRow struct {
@@ -167,7 +178,7 @@ type ListUsageEventsRow struct {
 }
 
 func (q *Queries) ListUsageEvents(ctx context.Context, arg ListUsageEventsParams) ([]ListUsageEventsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listUsageEvents, arg.Since, arg.Until)
+	rows, err := q.db.QueryContext(ctx, listUsageEvents, arg.Since, arg.Until, arg.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}

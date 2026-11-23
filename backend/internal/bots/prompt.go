@@ -72,7 +72,7 @@ func workspaceInstructions(workspaces []string) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("## Linked project workspaces\n\nThese project folders are connected as tools for your work. Their files remain in their source folders; read each relevant AGENTS.md/SOUL.md before making changes. Select a listed folder as the working directory for a child thread. Your persistent bot memory remains in the bot home and is not copied into project files.\n")
+	b.WriteString("## Linked project workspaces\n\nThese project folders are connected as tools for your work. Their files remain in their source folders; read each relevant AGENTS.md before making changes. Select a listed folder as the working directory for a child thread. Your persistent bot memory remains in the bot home and is not copied into project files.\n")
 	for _, workspace := range workspaces {
 		fmt.Fprintf(&b, "- %s\n", workspace)
 	}

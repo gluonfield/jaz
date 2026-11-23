@@ -9,66 +9,73 @@ import (
 	"context"
 )
 
-const deleteAllCloudInstructions = `-- name: DeleteAllCloudInstructions :exec
-DELETE FROM cloud_instructions
-`
-
-func (q *Queries) DeleteAllCloudInstructions(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteAllCloudInstructions)
-	return err
-}
-
-const deleteAllCloudSpaces = `-- name: DeleteAllCloudSpaces :exec
-DELETE FROM cloud_spaces
-`
-
-func (q *Queries) DeleteAllCloudSpaces(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteAllCloudSpaces)
-	return err
-}
-
-const deleteAllCloudThreadEvents = `-- name: DeleteAllCloudThreadEvents :exec
-DELETE FROM cloud_thread_events
-`
-
-func (q *Queries) DeleteAllCloudThreadEvents(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteAllCloudThreadEvents)
-	return err
-}
-
-const deleteAllCloudThreads = `-- name: DeleteAllCloudThreads :exec
-DELETE FROM cloud_threads
-`
-
-func (q *Queries) DeleteAllCloudThreads(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteAllCloudThreads)
-	return err
-}
-
-const deleteAllCloudUsageEvents = `-- name: DeleteAllCloudUsageEvents :exec
-DELETE FROM cloud_usage_events
-`
-
-func (q *Queries) DeleteAllCloudUsageEvents(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteAllCloudUsageEvents)
-	return err
-}
-
 const deleteCloudAccount = `-- name: DeleteCloudAccount :exec
-DELETE FROM cloud_account
+DELETE FROM cloud_accounts WHERE id = ?1
 `
 
-func (q *Queries) DeleteCloudAccount(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteCloudAccount)
+func (q *Queries) DeleteCloudAccount(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteCloudAccount, id)
+	return err
+}
+
+const deleteCloudInstructionsByAccount = `-- name: DeleteCloudInstructionsByAccount :exec
+DELETE FROM cloud_instructions WHERE account_id = ?1
+`
+
+func (q *Queries) DeleteCloudInstructionsByAccount(ctx context.Context, accountID string) error {
+	_, err := q.db.ExecContext(ctx, deleteCloudInstructionsByAccount, accountID)
+	return err
+}
+
+const deleteCloudSpacesByAccount = `-- name: DeleteCloudSpacesByAccount :exec
+DELETE FROM cloud_spaces WHERE account_id = ?1
+`
+
+func (q *Queries) DeleteCloudSpacesByAccount(ctx context.Context, accountID string) error {
+	_, err := q.db.ExecContext(ctx, deleteCloudSpacesByAccount, accountID)
 	return err
 }
 
 const deleteCloudThread = `-- name: DeleteCloudThread :exec
-DELETE FROM cloud_threads WHERE id = ?1
+DELETE FROM cloud_threads
+WHERE account_id = ?1
+  AND id = ?2
 `
 
-func (q *Queries) DeleteCloudThread(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, deleteCloudThread, id)
+type DeleteCloudThreadParams struct {
+	AccountID string `json:"account_id"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) DeleteCloudThread(ctx context.Context, arg DeleteCloudThreadParams) error {
+	_, err := q.db.ExecContext(ctx, deleteCloudThread, arg.AccountID, arg.ID)
+	return err
+}
+
+const deleteCloudThreadEventsByAccount = `-- name: DeleteCloudThreadEventsByAccount :exec
+DELETE FROM cloud_thread_events WHERE account_id = ?1
+`
+
+func (q *Queries) DeleteCloudThreadEventsByAccount(ctx context.Context, accountID string) error {
+	_, err := q.db.ExecContext(ctx, deleteCloudThreadEventsByAccount, accountID)
+	return err
+}
+
+const deleteCloudThreadsByAccount = `-- name: DeleteCloudThreadsByAccount :exec
+DELETE FROM cloud_threads WHERE account_id = ?1
+`
+
+func (q *Queries) DeleteCloudThreadsByAccount(ctx context.Context, accountID string) error {
+	_, err := q.db.ExecContext(ctx, deleteCloudThreadsByAccount, accountID)
+	return err
+}
+
+const deleteCloudUsageEventsByAccount = `-- name: DeleteCloudUsageEventsByAccount :exec
+DELETE FROM cloud_usage_events WHERE account_id = ?1
+`
+
+func (q *Queries) DeleteCloudUsageEventsByAccount(ctx context.Context, accountID string) error {
+	_, err := q.db.ExecContext(ctx, deleteCloudUsageEventsByAccount, accountID)
 	return err
 }
 
@@ -88,12 +95,12 @@ SELECT
   connected_at_ms,
   last_sync_at_ms,
   last_error
-FROM cloud_account
-WHERE id = 1
+FROM cloud_accounts
+WHERE id = ?1
 `
 
-func (q *Queries) GetCloudAccount(ctx context.Context) (CloudAccount, error) {
-	row := q.db.QueryRowContext(ctx, getCloudAccount)
+func (q *Queries) GetCloudAccount(ctx context.Context, id string) (CloudAccount, error) {
+	row := q.db.QueryRowContext(ctx, getCloudAccount, id)
 	var i CloudAccount
 	err := row.Scan(
 		&i.ID,
@@ -115,23 +122,26 @@ func (q *Queries) GetCloudAccount(ctx context.Context) (CloudAccount, error) {
 }
 
 const getCloudInstruction = `-- name: GetCloudInstruction :one
-SELECT org_id, scope, scope_id, kind, body_md, version, updated_by, updated_at_ms
+SELECT account_id, org_id, scope, scope_id, kind, body_md, version, updated_by, updated_at_ms
 FROM cloud_instructions
-WHERE org_id = ?1
-  AND scope = ?2
-  AND scope_id = ?3
-  AND kind = ?4
+WHERE account_id = ?1
+  AND org_id = ?2
+  AND scope = ?3
+  AND scope_id = ?4
+  AND kind = ?5
 `
 
 type GetCloudInstructionParams struct {
-	OrgID   string `json:"org_id"`
-	Scope   string `json:"scope"`
-	ScopeID string `json:"scope_id"`
-	Kind    string `json:"kind"`
+	AccountID string `json:"account_id"`
+	OrgID     string `json:"org_id"`
+	Scope     string `json:"scope"`
+	ScopeID   string `json:"scope_id"`
+	Kind      string `json:"kind"`
 }
 
 func (q *Queries) GetCloudInstruction(ctx context.Context, arg GetCloudInstructionParams) (CloudInstruction, error) {
 	row := q.db.QueryRowContext(ctx, getCloudInstruction,
+		arg.AccountID,
 		arg.OrgID,
 		arg.Scope,
 		arg.ScopeID,
@@ -139,6 +149,7 @@ func (q *Queries) GetCloudInstruction(ctx context.Context, arg GetCloudInstructi
 	)
 	var i CloudInstruction
 	err := row.Scan(
+		&i.AccountID,
 		&i.OrgID,
 		&i.Scope,
 		&i.ScopeID,
@@ -153,6 +164,7 @@ func (q *Queries) GetCloudInstruction(ctx context.Context, arg GetCloudInstructi
 
 const getCloudThread = `-- name: GetCloudThread :one
 SELECT
+  account_id,
   id,
   org_id,
   owner_user_id,
@@ -177,13 +189,20 @@ SELECT
   created_at_ms,
   updated_at_ms
 FROM cloud_threads
-WHERE id = ?1
+WHERE account_id = ?1
+  AND id = ?2
 `
 
-func (q *Queries) GetCloudThread(ctx context.Context, id string) (CloudThread, error) {
-	row := q.db.QueryRowContext(ctx, getCloudThread, id)
+type GetCloudThreadParams struct {
+	AccountID string `json:"account_id"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) GetCloudThread(ctx context.Context, arg GetCloudThreadParams) (CloudThread, error) {
+	row := q.db.QueryRowContext(ctx, getCloudThread, arg.AccountID, arg.ID)
 	var i CloudThread
 	err := row.Scan(
+		&i.AccountID,
 		&i.ID,
 		&i.OrgID,
 		&i.OwnerUserID,
@@ -212,11 +231,11 @@ func (q *Queries) GetCloudThread(ctx context.Context, id string) (CloudThread, e
 }
 
 const listAllCloudThreadIDs = `-- name: ListAllCloudThreadIDs :many
-SELECT id FROM cloud_threads
+SELECT id FROM cloud_threads WHERE account_id = ?1
 `
 
-func (q *Queries) ListAllCloudThreadIDs(ctx context.Context) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listAllCloudThreadIDs)
+func (q *Queries) ListAllCloudThreadIDs(ctx context.Context, accountID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listAllCloudThreadIDs, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -238,14 +257,73 @@ func (q *Queries) ListAllCloudThreadIDs(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const listCloudAccounts = `-- name: ListCloudAccounts :many
+SELECT
+  id,
+  base_url,
+  token_encrypted,
+  oidc_login_url,
+  user_id,
+  org_id,
+  org_name,
+  email,
+  display_name,
+  role,
+  capabilities_json,
+  connected_at_ms,
+  last_sync_at_ms,
+  last_error
+FROM cloud_accounts
+ORDER BY connected_at_ms ASC, id ASC
+`
+
+func (q *Queries) ListCloudAccounts(ctx context.Context) ([]CloudAccount, error) {
+	rows, err := q.db.QueryContext(ctx, listCloudAccounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CloudAccount{}
+	for rows.Next() {
+		var i CloudAccount
+		if err := rows.Scan(
+			&i.ID,
+			&i.BaseUrl,
+			&i.TokenEncrypted,
+			&i.OidcLoginUrl,
+			&i.UserID,
+			&i.OrgID,
+			&i.OrgName,
+			&i.Email,
+			&i.DisplayName,
+			&i.Role,
+			&i.CapabilitiesJson,
+			&i.ConnectedAtMs,
+			&i.LastSyncAtMs,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCloudSpaces = `-- name: ListCloudSpaces :many
-SELECT id, org_id, name, created_by, created_at_ms, updated_at_ms
+SELECT account_id, id, org_id, name, created_by, created_at_ms, updated_at_ms
 FROM cloud_spaces
+WHERE account_id = ?1
 ORDER BY name ASC, id ASC
 `
 
-func (q *Queries) ListCloudSpaces(ctx context.Context) ([]CloudSpace, error) {
-	rows, err := q.db.QueryContext(ctx, listCloudSpaces)
+func (q *Queries) ListCloudSpaces(ctx context.Context, accountID string) ([]CloudSpace, error) {
+	rows, err := q.db.QueryContext(ctx, listCloudSpaces, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -254,6 +332,7 @@ func (q *Queries) ListCloudSpaces(ctx context.Context) ([]CloudSpace, error) {
 	for rows.Next() {
 		var i CloudSpace
 		if err := rows.Scan(
+			&i.AccountID,
 			&i.ID,
 			&i.OrgID,
 			&i.Name,
@@ -276,6 +355,7 @@ func (q *Queries) ListCloudSpaces(ctx context.Context) ([]CloudSpace, error) {
 
 const listCloudThreadEventsAfter = `-- name: ListCloudThreadEventsAfter :many
 SELECT
+  account_id,
   thread_id,
   seq,
   org_id,
@@ -285,17 +365,20 @@ SELECT
   payload_json,
   created_at_ms
 FROM cloud_thread_events
-WHERE thread_id = ?1 AND seq > ?2
+WHERE account_id = ?1
+  AND thread_id = ?2
+  AND seq > ?3
 ORDER BY seq ASC
 `
 
 type ListCloudThreadEventsAfterParams struct {
-	ThreadID string `json:"thread_id"`
-	AfterSeq int64  `json:"after_seq"`
+	AccountID string `json:"account_id"`
+	ThreadID  string `json:"thread_id"`
+	AfterSeq  int64  `json:"after_seq"`
 }
 
 func (q *Queries) ListCloudThreadEventsAfter(ctx context.Context, arg ListCloudThreadEventsAfterParams) ([]CloudThreadEvent, error) {
-	rows, err := q.db.QueryContext(ctx, listCloudThreadEventsAfter, arg.ThreadID, arg.AfterSeq)
+	rows, err := q.db.QueryContext(ctx, listCloudThreadEventsAfter, arg.AccountID, arg.ThreadID, arg.AfterSeq)
 	if err != nil {
 		return nil, err
 	}
@@ -304,6 +387,7 @@ func (q *Queries) ListCloudThreadEventsAfter(ctx context.Context, arg ListCloudT
 	for rows.Next() {
 		var i CloudThreadEvent
 		if err := rows.Scan(
+			&i.AccountID,
 			&i.ThreadID,
 			&i.Seq,
 			&i.OrgID,
@@ -328,6 +412,7 @@ func (q *Queries) ListCloudThreadEventsAfter(ctx context.Context, arg ListCloudT
 
 const listCloudThreads = `-- name: ListCloudThreads :many
 SELECT
+  account_id,
   id,
   org_id,
   owner_user_id,
@@ -352,12 +437,18 @@ SELECT
   created_at_ms,
   updated_at_ms
 FROM cloud_threads
-WHERE archived = ?1
+WHERE account_id = ?1
+  AND archived = ?2
 ORDER BY updated_at_ms DESC, id ASC
 `
 
-func (q *Queries) ListCloudThreads(ctx context.Context, archived int64) ([]CloudThread, error) {
-	rows, err := q.db.QueryContext(ctx, listCloudThreads, archived)
+type ListCloudThreadsParams struct {
+	AccountID string `json:"account_id"`
+	Archived  int64  `json:"archived"`
+}
+
+func (q *Queries) ListCloudThreads(ctx context.Context, arg ListCloudThreadsParams) ([]CloudThread, error) {
+	rows, err := q.db.QueryContext(ctx, listCloudThreads, arg.AccountID, arg.Archived)
 	if err != nil {
 		return nil, err
 	}
@@ -366,6 +457,7 @@ func (q *Queries) ListCloudThreads(ctx context.Context, archived int64) ([]Cloud
 	for rows.Next() {
 		var i CloudThread
 		if err := rows.Scan(
+			&i.AccountID,
 			&i.ID,
 			&i.OrgID,
 			&i.OwnerUserID,
@@ -404,74 +496,91 @@ func (q *Queries) ListCloudThreads(ctx context.Context, archived int64) ([]Cloud
 }
 
 const maxCloudUsageEventID = `-- name: MaxCloudUsageEventID :one
-SELECT COALESCE(MAX(id), 0) AS max_id FROM cloud_usage_events
+SELECT COALESCE(MAX(id), 0) AS max_id
+FROM cloud_usage_events
+WHERE account_id = ?1
 `
 
-func (q *Queries) MaxCloudUsageEventID(ctx context.Context) (interface{}, error) {
-	row := q.db.QueryRowContext(ctx, maxCloudUsageEventID)
+func (q *Queries) MaxCloudUsageEventID(ctx context.Context, accountID string) (interface{}, error) {
+	row := q.db.QueryRowContext(ctx, maxCloudUsageEventID, accountID)
 	var max_id interface{}
 	err := row.Scan(&max_id)
 	return max_id, err
 }
 
 const updateCloudAccountSyncState = `-- name: UpdateCloudAccountSyncState :exec
-UPDATE cloud_account
+UPDATE cloud_accounts
 SET last_sync_at_ms = ?1,
     last_error = ?2
-WHERE id = 1
+WHERE id = ?3
 `
 
 type UpdateCloudAccountSyncStateParams struct {
 	LastSyncAtMs int64  `json:"last_sync_at_ms"`
 	LastError    string `json:"last_error"`
+	ID           string `json:"id"`
 }
 
 func (q *Queries) UpdateCloudAccountSyncState(ctx context.Context, arg UpdateCloudAccountSyncStateParams) error {
-	_, err := q.db.ExecContext(ctx, updateCloudAccountSyncState, arg.LastSyncAtMs, arg.LastError)
+	_, err := q.db.ExecContext(ctx, updateCloudAccountSyncState, arg.LastSyncAtMs, arg.LastError, arg.ID)
 	return err
 }
 
 const updateCloudAccountToken = `-- name: UpdateCloudAccountToken :exec
-UPDATE cloud_account
+UPDATE cloud_accounts
 SET token_encrypted = ?1
-WHERE id = 1
+WHERE id = ?2
 `
 
-func (q *Queries) UpdateCloudAccountToken(ctx context.Context, tokenEncrypted string) error {
-	_, err := q.db.ExecContext(ctx, updateCloudAccountToken, tokenEncrypted)
+type UpdateCloudAccountTokenParams struct {
+	TokenEncrypted string `json:"token_encrypted"`
+	ID             string `json:"id"`
+}
+
+func (q *Queries) UpdateCloudAccountToken(ctx context.Context, arg UpdateCloudAccountTokenParams) error {
+	_, err := q.db.ExecContext(ctx, updateCloudAccountToken, arg.TokenEncrypted, arg.ID)
 	return err
 }
 
 const updateCloudThreadLastSeq = `-- name: UpdateCloudThreadLastSeq :exec
 UPDATE cloud_threads
 SET last_seq = MAX(last_seq, ?1)
-WHERE id = ?2
+WHERE account_id = ?2
+  AND id = ?3
 `
 
 type UpdateCloudThreadLastSeqParams struct {
-	LastSeq interface{} `json:"last_seq"`
-	ID      string      `json:"id"`
+	LastSeq   interface{} `json:"last_seq"`
+	AccountID string      `json:"account_id"`
+	ID        string      `json:"id"`
 }
 
 func (q *Queries) UpdateCloudThreadLastSeq(ctx context.Context, arg UpdateCloudThreadLastSeqParams) error {
-	_, err := q.db.ExecContext(ctx, updateCloudThreadLastSeq, arg.LastSeq, arg.ID)
+	_, err := q.db.ExecContext(ctx, updateCloudThreadLastSeq, arg.LastSeq, arg.AccountID, arg.ID)
 	return err
 }
 
 const updateCloudThreadStatus = `-- name: UpdateCloudThreadStatus :exec
 UPDATE cloud_threads
 SET status = ?1, updated_at_ms = ?2
-WHERE id = ?3
+WHERE account_id = ?3
+  AND id = ?4
 `
 
 type UpdateCloudThreadStatusParams struct {
 	Status      string `json:"status"`
 	UpdatedAtMs int64  `json:"updated_at_ms"`
+	AccountID   string `json:"account_id"`
 	ID          string `json:"id"`
 }
 
 func (q *Queries) UpdateCloudThreadStatus(ctx context.Context, arg UpdateCloudThreadStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateCloudThreadStatus, arg.Status, arg.UpdatedAtMs, arg.ID)
+	_, err := q.db.ExecContext(ctx, updateCloudThreadStatus,
+		arg.Status,
+		arg.UpdatedAtMs,
+		arg.AccountID,
+		arg.ID,
+	)
 	return err
 }
 
@@ -482,7 +591,8 @@ SET
   archived = ?2,
   personal_sources_enabled = ?3,
   unread = ?4
-WHERE id = ?5
+WHERE account_id = ?5
+  AND id = ?6
 `
 
 type UpdateCloudThreadUserStateParams struct {
@@ -490,6 +600,7 @@ type UpdateCloudThreadUserStateParams struct {
 	Archived               int64  `json:"archived"`
 	PersonalSourcesEnabled int64  `json:"personal_sources_enabled"`
 	Unread                 int64  `json:"unread"`
+	AccountID              string `json:"account_id"`
 	ID                     string `json:"id"`
 }
 
@@ -499,13 +610,14 @@ func (q *Queries) UpdateCloudThreadUserState(ctx context.Context, arg UpdateClou
 		arg.Archived,
 		arg.PersonalSourcesEnabled,
 		arg.Unread,
+		arg.AccountID,
 		arg.ID,
 	)
 	return err
 }
 
 const upsertCloudAccount = `-- name: UpsertCloudAccount :exec
-INSERT INTO cloud_account (
+INSERT INTO cloud_accounts (
   id,
   base_url,
   token_encrypted,
@@ -521,7 +633,6 @@ INSERT INTO cloud_account (
   last_sync_at_ms,
   last_error
 ) VALUES (
-  1,
   ?1,
   ?2,
   ?3,
@@ -534,7 +645,8 @@ INSERT INTO cloud_account (
   ?10,
   ?11,
   ?12,
-  ?13
+  ?13,
+  ?14
 )
 ON CONFLICT(id) DO UPDATE SET
   base_url = excluded.base_url,
@@ -553,6 +665,7 @@ ON CONFLICT(id) DO UPDATE SET
 `
 
 type UpsertCloudAccountParams struct {
+	ID               string `json:"id"`
 	BaseUrl          string `json:"base_url"`
 	TokenEncrypted   string `json:"token_encrypted"`
 	OidcLoginUrl     string `json:"oidc_login_url"`
@@ -570,6 +683,7 @@ type UpsertCloudAccountParams struct {
 
 func (q *Queries) UpsertCloudAccount(ctx context.Context, arg UpsertCloudAccountParams) error {
 	_, err := q.db.ExecContext(ctx, upsertCloudAccount,
+		arg.ID,
 		arg.BaseUrl,
 		arg.TokenEncrypted,
 		arg.OidcLoginUrl,
@@ -589,6 +703,7 @@ func (q *Queries) UpsertCloudAccount(ctx context.Context, arg UpsertCloudAccount
 
 const upsertCloudInstruction = `-- name: UpsertCloudInstruction :exec
 INSERT INTO cloud_instructions (
+  account_id,
   org_id,
   scope,
   scope_id,
@@ -605,9 +720,10 @@ INSERT INTO cloud_instructions (
   ?5,
   ?6,
   ?7,
-  ?8
+  ?8,
+  ?9
 )
-ON CONFLICT(org_id, scope, scope_id, kind) DO UPDATE SET
+ON CONFLICT(account_id, org_id, scope, scope_id, kind) DO UPDATE SET
   body_md = excluded.body_md,
   version = excluded.version,
   updated_by = excluded.updated_by,
@@ -615,6 +731,7 @@ ON CONFLICT(org_id, scope, scope_id, kind) DO UPDATE SET
 `
 
 type UpsertCloudInstructionParams struct {
+	AccountID   string `json:"account_id"`
 	OrgID       string `json:"org_id"`
 	Scope       string `json:"scope"`
 	ScopeID     string `json:"scope_id"`
@@ -627,6 +744,7 @@ type UpsertCloudInstructionParams struct {
 
 func (q *Queries) UpsertCloudInstruction(ctx context.Context, arg UpsertCloudInstructionParams) error {
 	_, err := q.db.ExecContext(ctx, upsertCloudInstruction,
+		arg.AccountID,
 		arg.OrgID,
 		arg.Scope,
 		arg.ScopeID,
@@ -640,16 +758,17 @@ func (q *Queries) UpsertCloudInstruction(ctx context.Context, arg UpsertCloudIns
 }
 
 const upsertCloudSpace = `-- name: UpsertCloudSpace :exec
-INSERT INTO cloud_spaces (id, org_id, name, created_by, created_at_ms, updated_at_ms)
+INSERT INTO cloud_spaces (account_id, id, org_id, name, created_by, created_at_ms, updated_at_ms)
 VALUES (
   ?1,
   ?2,
   ?3,
   ?4,
   ?5,
-  ?6
+  ?6,
+  ?7
 )
-ON CONFLICT(id) DO UPDATE SET
+ON CONFLICT(account_id, id) DO UPDATE SET
   org_id = excluded.org_id,
   name = excluded.name,
   created_by = excluded.created_by,
@@ -657,6 +776,7 @@ ON CONFLICT(id) DO UPDATE SET
 `
 
 type UpsertCloudSpaceParams struct {
+	AccountID   string `json:"account_id"`
 	ID          string `json:"id"`
 	OrgID       string `json:"org_id"`
 	Name        string `json:"name"`
@@ -667,6 +787,7 @@ type UpsertCloudSpaceParams struct {
 
 func (q *Queries) UpsertCloudSpace(ctx context.Context, arg UpsertCloudSpaceParams) error {
 	_, err := q.db.ExecContext(ctx, upsertCloudSpace,
+		arg.AccountID,
 		arg.ID,
 		arg.OrgID,
 		arg.Name,
@@ -679,6 +800,7 @@ func (q *Queries) UpsertCloudSpace(ctx context.Context, arg UpsertCloudSpacePara
 
 const upsertCloudThread = `-- name: UpsertCloudThread :exec
 INSERT INTO cloud_threads (
+  account_id,
   id,
   org_id,
   owner_user_id,
@@ -725,9 +847,10 @@ INSERT INTO cloud_threads (
   ?20,
   ?21,
   ?22,
-  ?23
+  ?23,
+  ?24
 )
-ON CONFLICT(id) DO UPDATE SET
+ON CONFLICT(account_id, id) DO UPDATE SET
   org_id = excluded.org_id,
   owner_user_id = excluded.owner_user_id,
   space_id = excluded.space_id,
@@ -752,6 +875,7 @@ ON CONFLICT(id) DO UPDATE SET
 `
 
 type UpsertCloudThreadParams struct {
+	AccountID              string `json:"account_id"`
 	ID                     string `json:"id"`
 	OrgID                  string `json:"org_id"`
 	OwnerUserID            string `json:"owner_user_id"`
@@ -779,6 +903,7 @@ type UpsertCloudThreadParams struct {
 
 func (q *Queries) UpsertCloudThread(ctx context.Context, arg UpsertCloudThreadParams) error {
 	_, err := q.db.ExecContext(ctx, upsertCloudThread,
+		arg.AccountID,
 		arg.ID,
 		arg.OrgID,
 		arg.OwnerUserID,
@@ -808,6 +933,7 @@ func (q *Queries) UpsertCloudThread(ctx context.Context, arg UpsertCloudThreadPa
 
 const upsertCloudThreadEvent = `-- name: UpsertCloudThreadEvent :exec
 INSERT INTO cloud_thread_events (
+  account_id,
   thread_id,
   seq,
   org_id,
@@ -824,9 +950,10 @@ INSERT INTO cloud_thread_events (
   ?5,
   ?6,
   ?7,
-  ?8
+  ?8,
+  ?9
 )
-ON CONFLICT(thread_id, seq) DO UPDATE SET
+ON CONFLICT(account_id, thread_id, seq) DO UPDATE SET
   turn_epoch = excluded.turn_epoch,
   actor_user_id = excluded.actor_user_id,
   type = excluded.type,
@@ -835,6 +962,7 @@ ON CONFLICT(thread_id, seq) DO UPDATE SET
 `
 
 type UpsertCloudThreadEventParams struct {
+	AccountID   string `json:"account_id"`
 	ThreadID    string `json:"thread_id"`
 	Seq         int64  `json:"seq"`
 	OrgID       string `json:"org_id"`
@@ -847,6 +975,7 @@ type UpsertCloudThreadEventParams struct {
 
 func (q *Queries) UpsertCloudThreadEvent(ctx context.Context, arg UpsertCloudThreadEventParams) error {
 	_, err := q.db.ExecContext(ctx, upsertCloudThreadEvent,
+		arg.AccountID,
 		arg.ThreadID,
 		arg.Seq,
 		arg.OrgID,
@@ -861,6 +990,7 @@ func (q *Queries) UpsertCloudThreadEvent(ctx context.Context, arg UpsertCloudThr
 
 const upsertCloudUsageEvent = `-- name: UpsertCloudUsageEvent :exec
 INSERT INTO cloud_usage_events (
+  account_id,
   id,
   org_id,
   user_id,
@@ -883,12 +1013,14 @@ INSERT INTO cloud_usage_events (
   ?8,
   ?9,
   ?10,
-  ?11
+  ?11,
+  ?12
 )
-ON CONFLICT(id) DO NOTHING
+ON CONFLICT(account_id, id) DO NOTHING
 `
 
 type UpsertCloudUsageEventParams struct {
+	AccountID         string  `json:"account_id"`
 	ID                int64   `json:"id"`
 	OrgID             string  `json:"org_id"`
 	UserID            string  `json:"user_id"`
@@ -904,6 +1036,7 @@ type UpsertCloudUsageEventParams struct {
 
 func (q *Queries) UpsertCloudUsageEvent(ctx context.Context, arg UpsertCloudUsageEventParams) error {
 	_, err := q.db.ExecContext(ctx, upsertCloudUsageEvent,
+		arg.AccountID,
 		arg.ID,
 		arg.OrgID,
 		arg.UserID,

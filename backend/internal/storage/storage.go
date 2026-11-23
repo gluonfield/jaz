@@ -21,7 +21,8 @@ var ErrThreadRunning = errors.New("a turn holds the thread")
 var ErrQueueChanged = errors.New("queued selection changed")
 
 const (
-	RuntimeACP = "acp"
+	RuntimeACP       = "acp"
+	LocalWorkspaceID = "local"
 )
 
 const (
@@ -159,6 +160,7 @@ type Session struct {
 	PendingSteer           *QueuedMessage  `json:"pending_steer_message,omitempty"`
 	SourceType             string          `json:"source_type,omitempty"`
 	SourceID               string          `json:"source_id,omitempty"`
+	WorkspaceID            string          `json:"workspace_id,omitempty"`
 	SpaceID                string          `json:"space_id,omitempty"`
 	Visibility             string          `json:"visibility,omitempty"`
 	RunID                  string          `json:"run_id,omitempty"`
@@ -439,6 +441,7 @@ type CreateSession struct {
 	ReasoningEffort string
 	SourceType      string
 	SourceID        string
+	WorkspaceID     string
 	// Commitment is the open commitment of the bot SourceID that the thread
 	// serves.
 	Commitment int64
@@ -446,6 +449,7 @@ type CreateSession struct {
 
 type SessionFilter struct {
 	Query           string
+	WorkspaceID     string
 	After           *SessionPosition
 	ParentID        string
 	ParentOnly      bool
@@ -479,6 +483,15 @@ type SessionPosition struct {
 }
 
 func SessionMatchesFilter(session Session, filter SessionFilter) bool {
+	if filter.WorkspaceID != "" {
+		ws := session.WorkspaceID
+		if ws == "" {
+			ws = LocalWorkspaceID
+		}
+		if ws != filter.WorkspaceID {
+			return false
+		}
+	}
 	if filter.Query != "" && !strings.Contains(strings.ToLower(session.Title+"\n"+session.Slug), strings.ToLower(filter.Query)) {
 		return false
 	}

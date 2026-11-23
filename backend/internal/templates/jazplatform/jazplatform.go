@@ -32,8 +32,6 @@ type MemoryData struct {
 
 type RuntimePaths struct {
 	Root             string
-	AgentsPath       string
-	SoulPath         string
 	SkillsPath       string
 	SessionsPath     string
 	DefaultWorkspace string
@@ -59,7 +57,6 @@ type Data struct {
 	Cwd             string
 	Device          string
 	RuntimePaths    RuntimePaths
-	Soul            string
 	BrowserEnabled  bool
 	ArtifactSurface string
 	CanvasDir       string

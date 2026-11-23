@@ -67,6 +67,12 @@ type connectionMCPServerReader struct {
 }
 
 func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) {
+	ctx := context.Background()
+	if r.cloudMCP != nil {
+		if cloudServer, ok := r.cloudMCP(ctx); ok {
+			return []mcpconfig.Server{cloudServer}, nil
+		}
+	}
 	servers, err := r.store.ListMCPServers()
 	if err != nil {
 		return nil, err
@@ -77,12 +83,6 @@ func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) 
 			return nil, err
 		}
 		servers = append(servers, derived...)
-	}
-	ctx := context.Background()
-	if r.cloudMCP != nil {
-		if cloudServer, ok := r.cloudMCP(ctx); ok {
-			servers = append(servers, cloudServer)
-		}
 	}
 	for _, plugin := range r.catalog.ListPlugins() {
 		if r.enabled != nil && !r.enabled(ctx, plugin.ID) {
