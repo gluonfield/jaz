@@ -563,10 +563,11 @@ test('cloud model profiles read /v1/models { models } including string[] models 
     })
   })
   const profiles = await api.listCloudModelProfiles()
-  expect(profiles[0].models?.[0].reasoning?.status).toBe('ready')
+  // Missing server reasoning metadata stays unknown (never fabricated).
+  expect(profiles[0].models?.[0].reasoning).toBeUndefined()
   expect(profiles[3].models?.map((m) => [m.value, m.label])).toEqual([
-    ['google/gemini-3-flash-preview', 'Gemini 3 Flash'],
-    ['google/gemini-3.1-pro-preview', 'Gemini 3.1 Pro'],
+    ['google/gemini-3-flash-preview', 'gemini-3-flash-preview'],
+    ['google/gemini-3.1-pro-preview', 'gemini-3.1-pro-preview'],
   ])
   const cloudItems = profiles.map(api.cloudProfileToAgentOption)
   expect(cloudItems).toEqual([
@@ -655,7 +656,7 @@ test('Cloud mode routes session listing, creation, messages, and turns to /v1/th
   expect(paths.every((p) => !p.includes('/v1/sessions'))).toBe(true)
 })
 
-test('Vertex AI defaults include Gemini 4 Hydrogen, Neon, Carbon and Gemini 3 models', async () => {
+test('cloud model profiles preserve server-provided model list without fabricating unknown models or efforts', async () => {
   const { api } = fixture()
   replace('fetch', async () =>
     Response.json({
@@ -666,21 +667,28 @@ test('Vertex AI defaults include Gemini 4 Hydrogen, Neon, Carbon and Gemini 3 mo
           display_name: 'Vertex AI',
           default_model: 'google/gemini-4-hydrogen',
           default_effort: 'high',
+          models: [
+            { value: 'google/gemini-4-hydrogen', label: 'Gemini 4 Hydrogen', reasoning: { status: 'ready', efforts: ['low', 'high'], default_effort: 'high' } },
+            'google/gemini-4-neon',
+          ],
+        },
+        {
+          profile_id: 'empty-profile',
+          provider: 'openrouter',
         },
       ],
     }),
   )
   const profiles = await api.listCloudModelProfiles()
-  expect(profiles).toHaveLength(1)
+  expect(profiles).toHaveLength(2)
   expect(profiles[0].default_model).toBe('google/gemini-4-hydrogen')
   expect(profiles[0].default_effort).toBe('high')
   expect(profiles[0].models?.map((m) => [m.value, m.label, m.reasoning?.default_effort])).toEqual([
     ['google/gemini-4-hydrogen', 'Gemini 4 Hydrogen', 'high'],
-    ['google/gemini-4-neon', 'Gemini 4 Neon', 'high'],
-    ['google/gemini-4-carbon', 'Gemini 4 Carbon', 'high'],
-    ['google/gemini-3-flash-preview', 'Gemini 3 Flash', 'high'],
-    ['google/gemini-3.1-pro-preview', 'Gemini 3.1 Pro', 'high'],
+    ['google/gemini-4-neon', 'gemini-4-neon', undefined],
   ])
+  expect(profiles[1].models).toEqual([])
+  expect(profiles[1].default_model).toBe('')
 })
 
 test('Desktop unified single-origin mode: all session, turn, pin, and sidebar calls go strictly to local Go backend', async () => {

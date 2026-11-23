@@ -81,6 +81,7 @@ export const WORKSPACE_QUERY_ROOTS = [
   keys.sessions,
   keys.usage,
   keys.agentFiles,
+  keys.memory,
   keys.projects,
   keys.bots,
   keys.boards,

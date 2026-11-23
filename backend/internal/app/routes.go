@@ -72,11 +72,12 @@ type routeDeps struct {
 
 func NewRoutes(deps routeDeps) server.Routes {
 	listHandler := sessionsapi.NewListHandler(deps.Store)
+	messagesHandler := deps.SessionMessages
 	usageService := deps.Usage
 	feedService := deps.Feed
 	if deps.Cloud != nil {
 		listHandler.WithCloud(deps.Cloud)
-		deps.SessionMessages.WithCloud(deps.Cloud)
+		messagesHandler = messagesHandler.WithCloud(deps.Cloud)
 		usageService = usageService.WithWorkspace(deps.Cloud.ActiveWorkspaceID)
 		feedService = feedService.WithWorkspace(deps.Cloud.ActiveWorkspaceID)
 	}
@@ -89,7 +90,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		{Pattern: "PUT /v1/sessions/{session}/mcp/discovery", Handler: http.HandlerFunc(deps.AgentSession.SetMCPDiscovery)},
 		{Pattern: "POST /v1/sessions/{session}/agent/tasks/{task}/stop", Handler: http.HandlerFunc(deps.AgentSession.StopTask)},
 		{Pattern: "POST /v1/sessions/{session}/agent/input", Handler: http.HandlerFunc(deps.AgentSession.Input)},
-		{Pattern: "GET /v1/sessions/{session}/messages", Handler: deps.SessionMessages},
+		{Pattern: "GET /v1/sessions/{session}/messages", Handler: messagesHandler},
 		{Pattern: "GET /v1/sessions/{session}/overview", Handler: deps.SessionOverview},
 		{Pattern: "POST /v1/sessions/{session}/plugin-views", Handler: http.HandlerFunc(deps.PluginViews.Open)},
 		{Pattern: "GET /v1/sessions/{session}/plugin-views/state", Handler: http.HandlerFunc(deps.PluginViews.State)},

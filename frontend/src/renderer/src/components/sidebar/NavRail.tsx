@@ -9,8 +9,7 @@ import type { SettingsSection } from '@/components/settings/sections'
 import { botsQuery } from '@/lib/api/bots'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { pluginsQuery } from '@/lib/api/plugins'
-import { useCloudSession } from '@/lib/cloudSession'
-import { useIsCloud } from '@/lib/connection'
+import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
@@ -40,9 +39,9 @@ export function railTab(pathname: string, settingsOpen: boolean): RailTab {
 // Everything beside Chat takes the whole content card: the built-in sections,
 // then each sidebar app a connected MCP server declares.
 export function useRailSections() {
-  const isCloud = useIsCloud()
-  const apps = (useQuery({ ...mcpEntrypointsQuery, enabled: !isCloud }).data ?? []).filter((entry) => entry.type === 'global')
-  const plugins = useQuery(pluginsQuery).data ?? []
+  const isCloudOnly = useIsCloudOnly()
+  const apps = (useQuery({ ...mcpEntrypointsQuery, enabled: !isCloudOnly }).data ?? []).filter((entry) => entry.type === 'global')
+  const plugins = useQuery({ ...pluginsQuery, enabled: !isCloudOnly }).data ?? []
   return [
     ...SECTIONS.map(({ to, label, Icon }) => ({ path: to, label, icon: <Icon aria-hidden />, link: linkOptions({ to }) })),
     ...apps.map((app) => ({
@@ -86,8 +85,10 @@ export function NavRail({
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const { activeWorkspaceId } = useCloudSession()
   const sections = useRailSections()
+  const isCloudOnly = useIsCloudOnly()
   const botsUnread = useQuery({
     ...botsQuery,
+    enabled: !isCloudOnly,
     select: (bots) => bots.some((bot) => bot.unread),
   }).data
 

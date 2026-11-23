@@ -6,16 +6,12 @@ import (
 	"github.com/wins/jaz/backend/internal/httpapi"
 )
 
-func allowedOrigin(origin string, trusted ...string) bool {
-	return httpapi.AllowedOrigin(origin, trusted...)
-}
-
 func withCORS(next http.Handler, trusted ...string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Cache-Control", "no-store")
 		origin := r.Header.Get("Origin")
-		if origin != "" && !allowedOrigin(origin, trusted...) {
+		if origin != "" && !httpapi.AllowedOrigin(origin, trusted...) {
 			http.Error(w, "origin is not allowed", http.StatusForbidden)
 			return
 		}

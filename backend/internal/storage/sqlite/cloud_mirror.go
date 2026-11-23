@@ -299,7 +299,7 @@ func (s *Store) GetCloudThread(ctx context.Context, accountID, id string) (stora
 func (s *Store) ListCloudThreads(ctx context.Context, accountID string, archived bool) ([]storage.CloudThread, error) {
 	rows, err := cloudmirror.New(s.db).ListCloudThreads(ctx, cloudmirror.ListCloudThreadsParams{
 		AccountID: accountID,
-		Archived:  boolToInt64(archived),
+		Archived:  boolInt(archived),
 	})
 	if err != nil {
 		return nil, err
@@ -346,10 +346,10 @@ func (s *Store) UpdateCloudThreadUserState(ctx context.Context, accountID, id st
 	if err := q.UpdateCloudThreadUserState(ctx, cloudmirror.UpdateCloudThreadUserStateParams{
 		AccountID:              accountID,
 		ID:                     id,
-		Pinned:                 boolToInt64(th.Pinned),
-		Archived:               boolToInt64(th.Archived),
-		PersonalSourcesEnabled: boolToInt64(th.PersonalSourcesEnabled),
-		Unread:                 boolToInt64(th.Unread),
+		Pinned:                 boolInt(th.Pinned),
+		Archived:               boolInt(th.Archived),
+		PersonalSourcesEnabled: boolInt(th.PersonalSourcesEnabled),
+		Unread:                 boolInt(th.Unread),
 	}); err != nil {
 		return storage.CloudThread{}, err
 	}
@@ -570,10 +570,10 @@ func cloudThreadUpsertParams(accountID string, th storage.CloudThread) cloudmirr
 		ReasoningEffort:        th.ReasoningEffort,
 		ExecutorTarget:         th.ExecutorTarget,
 		RuntimeRefJson:         ref,
-		PersonalSourcesEnabled: boolToInt64(th.PersonalSourcesEnabled),
-		Pinned:                 boolToInt64(th.Pinned),
-		Archived:               boolToInt64(th.Archived),
-		Unread:                 boolToInt64(th.Unread),
+		PersonalSourcesEnabled: boolInt(th.PersonalSourcesEnabled),
+		Pinned:                 boolInt(th.Pinned),
+		Archived:               boolInt(th.Archived),
+		Unread:                 boolInt(th.Unread),
 		LastSeq:                th.LastSeq,
 		CreatedAtMs:            timeToMs(th.CreatedAt),
 		UpdatedAtMs:            timeToMs(th.UpdatedAt),
@@ -607,11 +607,4 @@ func cloudThreadFromRow(row cloudmirror.CloudThread) storage.CloudThread {
 		CreatedAt:              msToTime(row.CreatedAtMs),
 		UpdatedAt:              msToTime(row.UpdatedAtMs),
 	}
-}
-
-func boolToInt64(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
 }

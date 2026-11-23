@@ -2,13 +2,13 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/cloudsync"
+	cloudapi "github.com/wins/jaz/backend/internal/httpapi/cloud"
 	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/visualize"
@@ -71,16 +71,7 @@ func (s *Server) createCloudSession(w http.ResponseWriter, r *http.Request, req 
 		ExecutorTarget:  target,
 	})
 	if err != nil {
-		var uerr *cloudsync.UpstreamError
-		if errors.As(err, &uerr) {
-			writeError(w, uerr.StatusCode, uerr)
-			return
-		}
-		if errors.Is(err, cloudsync.ErrNotConnected) {
-			writeError(w, http.StatusUnauthorized, err)
-			return
-		}
-		writeError(w, http.StatusBadGateway, err)
+		cloudapi.WriteError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, sessionview.Public(session))
@@ -101,10 +92,6 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		writeError(w, http.StatusBadRequest, fmt.Errorf("unsupported artifact surface %q; use chat or canvas", surface))
 		return
 	}
-	workspaceID := storage.LocalWorkspaceID
-	if s.Cloud != nil {
-		workspaceID = s.Cloud.ActiveWorkspaceID()
-	}
 	ctx, cancel := serverACPBootstrapContext()
 	defer cancel()
 	session, err := s.ACP.CreateSession(ctx, acp.SpawnRequest{
@@ -113,7 +100,7 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		Title:           req.Title,
 		Directory:       directory,
 		Worktree:        req.Worktree,
-		WorkspaceID:     workspaceID,
+		WorkspaceID:     s.activeWorkspaceID(),
 		ArtifactSurface: surface,
 		ModelProvider:   strings.TrimSpace(req.ModelProvider),
 		Model:           strings.TrimSpace(req.Model),

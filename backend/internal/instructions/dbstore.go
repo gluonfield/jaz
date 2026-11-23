@@ -17,10 +17,11 @@ import (
 // import from legacy <root>/AGENTS.md on first access) and delegates bot-scoped
 // files to fallback.
 type DBStore struct {
-	db         storage.LocalInstructionStore
-	legacyRoot string
-	fallback   Store
-	mu         sync.Mutex
+	db            storage.LocalInstructionStore
+	legacyRoot    string
+	fallback      Store
+	mu            sync.Mutex
+	legacyChecked bool
 }
 
 var _ Store = (*DBStore)(nil)
@@ -59,6 +60,9 @@ func (s *DBStore) Get(ctx context.Context, key Key) (Document, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.legacyChecked {
+		return Document{Key: key}, nil
+	}
 	return s.ensureLegacyImportedLocked(ctx, key)
 }
 
@@ -77,8 +81,10 @@ func (s *DBStore) Save(ctx context.Context, key Key, content, expectedVersion st
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := s.ensureLegacyImportedLocked(ctx, key); err != nil {
-		return Document{}, err
+	if !s.legacyChecked {
+		if _, err := s.ensureLegacyImportedLocked(ctx, key); err != nil {
+			return Document{}, err
+		}
 	}
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	saved, conflict, err := s.db.SaveLocalInstruction(ctx, storage.LocalInstruction{
@@ -105,14 +111,17 @@ func (s *DBStore) ensureLegacyImportedLocked(ctx context.Context, key Key) (Docu
 		return Document{}, err
 	}
 	if found {
+		s.legacyChecked = true
 		return docFromLocalRecord(key, rec), nil
 	}
 	if s.legacyRoot == "" {
+		s.legacyChecked = true
 		return Document{Key: key}, nil
 	}
 	path := filepath.Join(s.legacyRoot, "AGENTS.md")
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
+		s.legacyChecked = true
 		return Document{Key: key}, nil
 	}
 	if err != nil {
@@ -133,6 +142,7 @@ func (s *DBStore) ensureLegacyImportedLocked(ctx context.Context, key Key) (Docu
 	if err != nil {
 		return Document{}, err
 	}
+	s.legacyChecked = true
 	return docFromLocalRecord(key, imported), nil
 }
 

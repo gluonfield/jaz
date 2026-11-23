@@ -61,12 +61,20 @@ type CloudThread struct {
 	UpdatedAt              time.Time       `json:"updated_at,omitzero"`
 }
 
+func NormalizeWorkspaceID(id string) string {
+	trimmed := strings.TrimSpace(id)
+	if trimmed == "" {
+		return LocalWorkspaceID
+	}
+	return trimmed
+}
+
 func (t CloudThread) ToSession() Session {
 	var ref map[string]any
 	if len(t.RuntimeRefJSON) > 0 {
 		_ = json.Unmarshal(t.RuntimeRefJSON, &ref)
 	}
-	agentName := "codex"
+	var agentName string
 	if v, ok := ref["agent"].(string); ok && strings.TrimSpace(v) != "" {
 		agentName = strings.TrimSpace(v)
 	}

@@ -6,7 +6,7 @@ import { agentLabel } from '@/lib/agentLabel'
 import { cloudModelProfilesQuery, cloudProfileToAgentOption } from '@/lib/api/cloudThreads'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
-import { useHasCloud, useIsCloudOnly } from '@/lib/cloudSession'
+import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
 import { composerConfig } from '@/lib/jazDefaults'
 import { useModelReasoningState } from '@/lib/modelReasoning'
 import {
@@ -16,6 +16,7 @@ import {
   type PickerAgentOption,
 } from '@/lib/modelPicker'
 import { modelSuggestionFor } from '@/lib/modelSuggestion'
+import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 import {
   NEW_SESSION_AGENT_KEY,
   NEW_SESSION_CLOUD_PROFILE_KEY,
@@ -23,13 +24,17 @@ import {
 } from '@/lib/newSessionConfig'
 
 export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
-  const hasCloud = useHasCloud()
+  const cloud = useCloudSession()
+  const hasCloud = cloud.active
   const cloudOnly = useIsCloudOnly()
   const usingCloudProfiles = cloudOnly || (targetLocation ? targetLocation === 'cloud' : false)
   const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles && !cloudOnly })
   const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: usingCloudProfiles && hasCloud })
   const agentSettings = usingCloudProfiles ? undefined : settingsQuery.data
-  const cloudProfiles = usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : []
+  const cloudProfiles = useMemo(
+    () => (usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : []),
+    [cloudProfilesQuery.data, usingCloudProfiles],
+  )
 
   const agentItems: PickerAgentOption[] = useMemo(() => {
     if (usingCloudProfiles) {
@@ -39,6 +44,16 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
   }, [agentSettings, cloudProfiles, usingCloudProfiles])
 
   const agents = useMemo(() => agentItems.map((item) => item.id), [agentItems])
+  const runtimeError = usingCloudProfiles
+    ? (hasCloud && cloudProfilesQuery.isError ? cloudProfilesQuery.error : null)
+    : (settingsQuery.isError ? settingsQuery.error : null)
+  const retryRuntime = () => {
+    if (usingCloudProfiles) {
+      void cloudProfilesQuery.refetch()
+      return
+    }
+    void settingsQuery.refetch()
+  }
   const runtimeReady = usingCloudProfiles ? (!hasCloud || cloudProfilesQuery.isSuccess) : settingsQuery.isSuccess
   const runtimeAvailable = runtimeReady && agents.length > 0
 
@@ -81,14 +96,17 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
   const model = runtimeModelState(agentSettings, runtime)
   const { usesProvider, provider } = model
   const agentOptions = agentSettings?.acp_options?.[runtime]
+  const cloudModels = activeCloudProfile?.models ?? []
   const selectionKey = usingCloudProfiles
-    ? `cloud:${activeCloudProfile?.profile_id ?? runtime}`
+    ? `cloud:${cloud.activeWorkspaceId || cloud.url}:${activeCloudProfile?.profile_id ?? runtime}`
     : `${runtime}/${provider}`
   const selection = selections[selectionKey]
-  const selectedModel = selection?.model
-    ?? (usingCloudProfiles
-      ? activeCloudProfile?.default_model || activeCloudProfile?.models?.[0]?.value || ''
-      : model.defaultModel)
+  const cloudStoredModel = selection?.model && (cloudModels.length === 0 || cloudModels.some((m) => m.value === selection.model))
+    ? selection.model
+    : undefined
+  const selectedModel = usingCloudProfiles
+    ? cloudStoredModel ?? activeCloudProfile?.default_model ?? cloudModels[0]?.value ?? ''
+    : selection?.model ?? model.defaultModel
   const requestedEffort = selection?.effort
     ?? (usingCloudProfiles ? activeCloudProfile?.default_effort || '' : model.defaultEffort)
 
@@ -100,11 +118,10 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
     provider,
   })
 
-  const cloudModels = activeCloudProfile?.models ?? []
   const cloudSelectedSuggestion = modelSuggestionFor(cloudModels, selectedModel)
   const cloudEffortOptions = (cloudSelectedSuggestion?.reasoning?.efforts ?? []).map((value) => ({
     value,
-    label: value.charAt(0).toUpperCase() + value.slice(1),
+    label: reasoningEffortLabel(value, []),
   }))
   const cloudEffort = cloudEffortOptions.some((o) => o.value === requestedEffort)
     ? requestedEffort
@@ -143,6 +160,8 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
     isCloudTarget: usingCloudProfiles,
     runtimeReady,
     runtimeAvailable,
+    runtimeError,
+    retryRuntime,
     // Picker visibility lives here so the controls and the mobile summary agree.
     showAgentPicker: agents.length > 1,
     showModelPicker: !composer.hideModelPicker,
@@ -199,6 +218,21 @@ export function AgentModelControls({
   disabled?: boolean
 }) {
   if (!controls.runtimeAvailable) {
+    if (controls.runtimeError) {
+      const detail = controls.runtimeError instanceof Error ? controls.runtimeError.message : String(controls.runtimeError)
+      return (
+        <span className="inline-flex items-center gap-1.5 px-1.5 text-[13px] text-danger" title={detail}>
+          <span>{controls.isCloudTarget ? "Couldn't load cloud models" : "Couldn't load agents"}</span>
+          <button
+            type="button"
+            onClick={controls.retryRuntime}
+            className="cursor-pointer underline decoration-current/50 underline-offset-2 hover:text-ink"
+          >
+            Retry
+          </button>
+        </span>
+      )
+    }
     return controls.runtimeReady ? (
       <span className="px-1.5 text-[13px] text-ink-3">
         {controls.isCloudTarget ? 'No cloud models configured' : 'Connect an agent in Settings'}

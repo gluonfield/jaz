@@ -5,8 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"net"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -35,6 +33,7 @@ type MachineBridgeSupervisor struct {
 	minBackoff time.Duration
 	maxBackoff time.Duration
 
+	opMu    sync.Mutex
 	mu      sync.Mutex
 	baseCtx context.Context
 	running bool
@@ -67,6 +66,14 @@ func (s *MachineBridgeSupervisor) Start(ctx context.Context) {
 func (s *MachineBridgeSupervisor) Stop(ctx context.Context) {
 	s.mu.Lock()
 	s.running = false
+	earlyCancel := s.cancel
+	s.mu.Unlock()
+	if earlyCancel != nil {
+		earlyCancel()
+	}
+
+	s.opMu.Lock()
+	s.mu.Lock()
 	cancel := s.cancel
 	done := s.done
 	s.url = ""
@@ -74,6 +81,7 @@ func (s *MachineBridgeSupervisor) Stop(ctx context.Context) {
 	s.cancel = nil
 	s.done = nil
 	s.mu.Unlock()
+	s.opMu.Unlock()
 
 	if cancel != nil {
 		cancel()
@@ -87,6 +95,9 @@ func (s *MachineBridgeSupervisor) Stop(ctx context.Context) {
 }
 
 func (s *MachineBridgeSupervisor) Reconcile(ctx context.Context) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+
 	baseURL, token, ok := s.cloud.CloudAuth(ctx)
 
 	s.mu.Lock()
@@ -181,7 +192,7 @@ func (s *MachineBridgeSupervisor) newClient(baseURL, token string) (*machinebrid
 		DisplayName:            displayName,
 		Capabilities:           machinebridge.Capabilities{FileStaging: true},
 		FolderGrants:           grants,
-		AllowLoopbackTransfers: isLoopbackBaseURL(baseURL),
+		AllowLoopbackTransfers: cloudsync.IsLoopbackURL(baseURL),
 		MinBackoff:             s.minBackoff,
 		MaxBackoff:             s.maxBackoff,
 		OnConnect: func(caps machinebridge.Capabilities) {
@@ -215,17 +226,4 @@ func (s *MachineBridgeSupervisor) resolveDeviceID() string {
 		}
 	}
 	return id
-}
-
-func isLoopbackBaseURL(raw string) bool {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return false
-	}
-	host := strings.ToLower(u.Hostname())
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }

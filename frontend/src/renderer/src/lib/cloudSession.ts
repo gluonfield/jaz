@@ -31,6 +31,7 @@ export function useCloudSession(): ActiveCloudSession {
 
   if (primary.mode === 'cloud' || !clientRuntime.capabilities.localBackend) {
     const isPrimaryCloud = primary.mode === 'cloud'
+    const primaryPresent = isPrimaryCloud && (primary.status === 'connected' || primary.status === 'reconnecting')
     const status: CloudAccountStatus = !isPrimaryCloud
       ? 'disconnected'
       : primary.status === 'connected'
@@ -39,7 +40,7 @@ export function useCloudSession(): ActiveCloudSession {
           ? 'checking'
           : 'disconnected'
     const primaryWorkspace: CloudWorkspaceSummary | null =
-      isPrimaryCloud && primary.status === 'connected' && primary.url
+      primaryPresent && primary.url
         ? {
             id: primary.user?.org_id || primary.url,
             url: primary.url,
@@ -53,7 +54,7 @@ export function useCloudSession(): ActiveCloudSession {
           }
         : null
     return {
-      active: isPrimaryCloud && primary.status === 'connected',
+      active: primaryPresent,
       source: 'primary',
       status,
       activeWorkspaceId: primaryWorkspace?.id ?? '',

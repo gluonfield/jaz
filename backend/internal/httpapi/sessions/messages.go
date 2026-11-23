@@ -24,6 +24,7 @@ const (
 )
 
 type CloudTranscriptLoader interface {
+	ActiveWorkspaceID() string
 	LoadTranscript(context.Context, string) (cloudsync.ProjectedTranscript, bool, error)
 }
 
@@ -68,8 +69,9 @@ func NewMessagesHandler(service *transcript.Service) *MessagesHandler {
 }
 
 func (h *MessagesHandler) WithCloud(cloud CloudTranscriptLoader) *MessagesHandler {
-	h.cloud = cloud
-	return h
+	copied := *h
+	copied.cloud = cloud
+	return &copied
 }
 
 func (h *MessagesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +82,9 @@ func (h *MessagesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionID := r.PathValue("session")
 	view, err := h.service.Load(r.Context(), sessionID, request)
+	if err == nil && h.cloud != nil && storage.NormalizeWorkspaceID(view.Session.WorkspaceID) != storage.NormalizeWorkspaceID(h.cloud.ActiveWorkspaceID()) {
+		err = storage.ErrSessionNotFound
+	}
 	if err != nil {
 		if errors.Is(err, storage.ErrSessionNotFound) && h.cloud != nil {
 			projected, found, cloudErr := h.cloud.LoadTranscript(r.Context(), sessionID)

@@ -1,6 +1,7 @@
 package cloud
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -34,7 +35,7 @@ func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 	}
 	status, err := h.service.Connect(r.Context(), req)
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, status)
@@ -55,7 +56,7 @@ func (h *Handler) Switch(w http.ResponseWriter, r *http.Request) {
 	}
 	status, err := h.service.SwitchWorkspace(r.Context(), workspaceID)
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, status)
@@ -81,7 +82,7 @@ func (h *Handler) Disconnect(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Sync(w http.ResponseWriter, r *http.Request) {
 	status, err := h.service.SyncNow(r.Context())
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, status)
@@ -90,7 +91,7 @@ func (h *Handler) Sync(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 	raw, err := h.service.ListModels(r.Context())
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	writeRawJSON(w, http.StatusOK, raw)
@@ -99,7 +100,7 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListMachines(w http.ResponseWriter, r *http.Request) {
 	raw, err := h.service.ListMachines(r.Context())
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	writeRawJSON(w, http.StatusOK, raw)
@@ -108,7 +109,7 @@ func (h *Handler) ListMachines(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListSpaces(w http.ResponseWriter, r *http.Request) {
 	spaces, err := h.service.ListSpaces(r.Context())
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"spaces": spaces})
@@ -129,24 +130,14 @@ func (h *Handler) CreateSpace(w http.ResponseWriter, r *http.Request) {
 	}
 	created, err := h.service.CreateSpace(r.Context(), name)
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusCreated, created)
 }
 
 func (h *Handler) AddSpaceMember(w http.ResponseWriter, r *http.Request) {
-	body, err := readLimitedBody(w, r)
-	if err != nil {
-		httpapi.WriteError(w, http.StatusBadRequest, err)
-		return
-	}
-	raw, status, err := h.service.AddSpaceMember(r.Context(), r.PathValue("id"), body)
-	if err != nil {
-		writeCloudError(w, err)
-		return
-	}
-	writeRawJSON(w, status, raw)
+	h.proxyJSON(w, r, r.PathValue("id"), h.service.AddSpaceMember)
 }
 
 func (h *Handler) GetInstruction(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +148,7 @@ func (h *Handler) GetInstruction(w http.ResponseWriter, r *http.Request) {
 		r.PathValue("kind"),
 	)
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, doc)
@@ -181,7 +172,7 @@ func (h *Handler) PutInstruction(w http.ResponseWriter, r *http.Request) {
 		body.ExpectedVersion,
 	)
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, saved)
@@ -190,24 +181,14 @@ func (h *Handler) PutInstruction(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UsageSummary(w http.ResponseWriter, r *http.Request) {
 	raw, err := h.service.GetUsageSummary(r.Context())
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	writeRawJSON(w, http.StatusOK, raw)
 }
 
 func (h *Handler) CreateTurn(w http.ResponseWriter, r *http.Request) {
-	body, err := readLimitedBody(w, r)
-	if err != nil {
-		httpapi.WriteError(w, http.StatusBadRequest, err)
-		return
-	}
-	raw, status, err := h.service.CreateTurn(r.Context(), r.PathValue("id"), body)
-	if err != nil {
-		writeCloudError(w, err)
-		return
-	}
-	writeRawJSON(w, status, raw)
+	h.proxyJSON(w, r, r.PathValue("id"), h.service.CreateTurn)
 }
 
 func (h *Handler) UpdateThreadUserState(w http.ResponseWriter, r *http.Request) {
@@ -226,35 +207,34 @@ func (h *Handler) UpdateThreadUserState(w http.ResponseWriter, r *http.Request) 
 		PersonalSourcesEnabled: body.PersonalSourcesEnabled,
 	})
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	writeRawJSON(w, http.StatusOK, raw)
 }
 
 func (h *Handler) PresignUpload(w http.ResponseWriter, r *http.Request) {
-	body, err := readLimitedBody(w, r)
-	if err != nil {
-		httpapi.WriteError(w, http.StatusBadRequest, err)
-		return
-	}
-	raw, status, err := h.service.PresignUpload(r.Context(), r.PathValue("run_id"), body)
-	if err != nil {
-		writeCloudError(w, err)
-		return
-	}
-	writeRawJSON(w, status, raw)
+	h.proxyJSON(w, r, r.PathValue("run_id"), h.service.PresignUpload)
 }
 
 func (h *Handler) CommitUpload(w http.ResponseWriter, r *http.Request) {
+	h.proxyJSON(w, r, r.PathValue("run_id"), h.service.CommitUpload)
+}
+
+func (h *Handler) proxyJSON(
+	w http.ResponseWriter,
+	r *http.Request,
+	id string,
+	fn func(context.Context, string, json.RawMessage) (json.RawMessage, int, error),
+) {
 	body, err := readLimitedBody(w, r)
 	if err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
-	raw, status, err := h.service.CommitUpload(r.Context(), r.PathValue("run_id"), body)
+	raw, status, err := fn(r.Context(), id, body)
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	writeRawJSON(w, status, raw)
@@ -263,7 +243,7 @@ func (h *Handler) CommitUpload(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ProxyRunFile(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.service.OpenRunFile(r.Context(), r.PathValue("run_id"), r.PathValue("path"))
 	if err != nil {
-		writeCloudError(w, err)
+		WriteError(w, err)
 		return
 	}
 	defer resp.Body.Close()
@@ -297,7 +277,7 @@ func writeRawJSON(w http.ResponseWriter, status int, raw json.RawMessage) {
 	_, _ = w.Write(raw)
 }
 
-func writeCloudError(w http.ResponseWriter, err error) {
+func WriteError(w http.ResponseWriter, err error) {
 	var uerr *cloudsync.UpstreamError
 	if errors.As(err, &uerr) {
 		if len(uerr.Body) > 0 {
@@ -308,7 +288,7 @@ func writeCloudError(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
-	case errors.Is(err, cloudsync.ErrInvalidURL):
+	case errors.Is(err, cloudsync.ErrInvalidURL), errors.Is(err, cloudsync.ErrInvalidPath):
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 	case errors.Is(err, cloudsync.ErrNotFound):
 		httpapi.WriteError(w, http.StatusNotFound, err)

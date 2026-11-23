@@ -340,17 +340,22 @@ func TestValidateStageCommitRequestsSSRFAndPreconditions(t *testing.T) {
 		t.Fatalf("rwd delete commit failed: %v", err)
 	}
 
-	if err := CheckCommitPrecondition(target, &mtime, digest); err != nil {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatalf("OpenRoot: %v", err)
+	}
+	defer root.Close()
+	if err := checkRootPrecondition(root, "calc.xlsx", &mtime, digest, false); err != nil {
 		t.Fatalf("matching precondition failed: %v", err)
 	}
 	wrongMtime := mtime - 1000
-	if err := CheckCommitPrecondition(target, &wrongMtime, digest); !errors.Is(err, ErrConflict) {
+	if err := checkRootPrecondition(root, "calc.xlsx", &wrongMtime, digest, false); !errors.Is(err, ErrConflict) {
 		t.Fatalf("mismatched mtime err = %v, want ErrConflict", err)
 	}
-	if err := CheckCommitPrecondition(target, &mtime, "0000000000000000"); !errors.Is(err, ErrConflict) {
+	if err := checkRootPrecondition(root, "calc.xlsx", &mtime, "0000000000000000", false); !errors.Is(err, ErrConflict) {
 		t.Fatalf("mismatched sha256 err = %v, want ErrConflict", err)
 	}
-	if err := CheckCommitPrecondition(filepath.Join(dir, "missing.xlsx"), &mtime, ""); !errors.Is(err, ErrConflict) {
+	if err := checkRootPrecondition(root, "missing.xlsx", &mtime, "", false); !errors.Is(err, ErrConflict) {
 		t.Fatalf("missing file precondition err = %v, want ErrConflict", err)
 	}
 }

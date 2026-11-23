@@ -610,6 +610,7 @@ func (m *Manager) startSession(ctx context.Context, created createdSession, stat
 	absCwd := session.RuntimeRef.Cwd
 	ctx = mcpsession.With(ctx, session.ID)
 	ctx = sessioncontext.WithSourceType(ctx, session.SourceType)
+	ctx = sessioncontext.WithWorkspaceID(ctx, session.WorkspaceID)
 	if cfg.Local {
 		return m.spawnLocalSession(session, req.ACPAgent, absCwd, req.SystemPromptExtensions, state)
 	}

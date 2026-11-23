@@ -263,7 +263,7 @@ test('SidebarWorkspaceSwitcher NEVER shows Local in cloud-only mode (localBacken
   expect(multiCloudHtml).not.toContain('Add Cloud Workspace')
 })
 
-test('SidebarWorkspaceSwitcher switches workspace and navigates to /new when viewing a session route', async () => {
+test('SidebarWorkspaceSwitcher delegates workspace switching without duplicate navigation', async () => {
   const switched = []
   const navigated = []
   const Switcher = loadSwitcher(
@@ -293,7 +293,6 @@ test('SidebarWorkspaceSwitcher switches workspace and navigates to /new when vie
   )
 
   const tree = Switcher({})
-  // Find menu buttons recursively in the returned React element tree.
   const buttons = []
   const walk = (node) => {
     if (!node || typeof node !== 'object') return
@@ -313,80 +312,38 @@ test('SidebarWorkspaceSwitcher switches workspace and navigates to /new when vie
   expect(buttons).toHaveLength(3)
   await buttons[1].props.onClick()
   expect(switched).toEqual(['ws_personal'])
-  expect(navigated).toEqual([{ to: '/new' }])
-
   await buttons[2].props.onClick()
   expect(switched).toEqual(['ws_personal', 'local'])
-  expect(navigated).toEqual([{ to: '/new' }, { to: '/new' }])
+  // Navigation on workspace switch is owned solely by __root.tsx via onWorkspaceChange.
+  expect(navigated).toEqual([])
 })
 
-test('SidebarWorkspaceSwitcher leaves workspace-specific bot, board, loop, plugin, app, and space routes cleanly and preserves Settings', async () => {
-  const cloudState = {
-    active: true,
-    source: 'attached',
-    status: 'connected',
-    activeWorkspaceId: 'ws_cas',
-    workspaces: [casWorkspace, personalWorkspace],
-    url: casWorkspace.url,
-    user: { id: 'u1', org_id: 'org_cas', org_name: 'Cambridge Advanced Systems', email: 'august@cas.example', display_name: 'August', role: 'admin' },
-    error: null,
-    oidcLoginUrl: '/v1/auth/login',
-    capabilities: { spaces: true },
-    lastSyncAt: '',
-  }
-
-  const findMenuRadioButtons = (tree) => {
-    const buttons = []
-    const walk = (node) => {
-      if (!node || typeof node !== 'object') return
-      if (Array.isArray(node)) {
-        for (const child of node) walk(child)
-        return
-      }
-      if (node.props?.role === 'menuitemradio') {
-        buttons.push(node)
-      }
-      if (node.props?.trigger) walk(node.props.trigger)
-      if (node.props?.children) walk(node.props.children)
-    }
-    walk(tree)
-    return buttons
-  }
-
+test('workspaceSwitchNavigation leaves workspace-specific routes cleanly and preserves Settings', async () => {
+  const { workspaceSwitchNavigation } = await import('../../lib/workspaceNavigation.ts')
   const cases = [
-    { pathname: '/bots/bot_42', search: {}, expected: [{ to: '/bots' }] },
-    { pathname: '/boards/brd_9', search: {}, expected: [{ to: '/boards' }] },
-    { pathname: '/loops/lp_3', search: {}, expected: [{ to: '/loops' }] },
-    { pathname: '/plugins/tenders', search: {}, expected: [{ to: '/new' }] },
-    { pathname: '/apps/crm/show_crm', search: {}, expected: [{ to: '/new' }] },
-    { pathname: '/new', search: { space: 'spc_old' }, expected: [{ to: '/new', search: {}, replace: true }] },
+    { pathname: '/sessions/thr_123', search: {}, expected: { to: '/new' } },
+    { pathname: '/bots/bot_42', search: {}, expected: { to: '/bots' } },
+    { pathname: '/boards/brd_9', search: {}, expected: { to: '/boards' } },
+    { pathname: '/loops/lp_3', search: {}, expected: { to: '/loops' } },
+    { pathname: '/plugins/tenders', search: {}, expected: { to: '/new' } },
+    { pathname: '/apps/crm/show_crm', search: {}, expected: { to: '/new' } },
+    { pathname: '/new', search: { space: 'spc_old' }, expected: { to: '/new', search: {}, replace: true } },
     {
       pathname: '/bots/bot_42',
       search: { settings: 'plugins' },
-      expected: [{ to: '/bots', search: { settings: 'plugins' }, replace: true }],
+      expected: { to: '/bots', search: { settings: 'plugins' }, replace: true },
     },
     {
       pathname: '/boards/brd_9',
       search: { settings: 'cloud' },
-      expected: [{ to: '/boards', search: { settings: 'cloud' }, replace: true }],
+      expected: { to: '/boards', search: { settings: 'cloud' }, replace: true },
     },
-    { pathname: '/boards', search: {}, expected: [] },
-    { pathname: '/bots', search: {}, expected: [] },
+    { pathname: '/boards', search: {}, expected: null },
+    { pathname: '/bots', search: {}, expected: null },
   ]
 
   for (const tc of cases) {
-    const navigated = []
-    const Switcher = loadSwitcher(cloudState, {
-      localBackend: true,
-      forcePopoverOpen: true,
-      pathname: tc.pathname,
-      search: tc.search,
-      onSwitchWorkspace: async () => null,
-      onNavigate: (target) => navigated.push(target),
-    })
-    const buttons = findMenuRadioButtons(Switcher({}))
-    await buttons[1].props.onClick()
-    expect(navigated).toEqual(tc.expected)
+    expect(workspaceSwitchNavigation({ pathname: tc.pathname, search: tc.search })).toEqual(tc.expected)
   }
 })
 

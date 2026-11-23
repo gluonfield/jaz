@@ -64,6 +64,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 	}
 	ctx = mcpsession.With(ctx, session.ID)
 	ctx = sessioncontext.WithSourceType(ctx, session.SourceType)
+	ctx = sessioncontext.WithWorkspaceID(ctx, session.WorkspaceID)
 	mcpServerPolicy := effectiveMCPServerPolicy(session)
 	agentName := CanonicalAgentName(session.RuntimeRef.Agent)
 	sessionChanged := false

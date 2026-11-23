@@ -124,7 +124,7 @@ func (s Service) Daily(query DailyQuery) ([]DailyBucket, error) {
 		acc := accs[i]
 		AddDaily(&out[i].Usage, event.Usage)
 		addUsageGroup(acc.categories, usageCategory(event.SourceType), event)
-		if event.Runtime == storage.RuntimeACP {
+		if event.Runtime == storage.RuntimeACP || event.Runtime == "cloud" {
 			addUsageGroup(acc.models, modelKey(event), event)
 		}
 		if event.Usage.Countable() {
@@ -154,7 +154,7 @@ func (s Service) Models(query DailyQuery) ([]ModelUsage, error) {
 	}
 	groups := map[modelUsageKey]*usageGroup{}
 	for _, event := range events {
-		if event.Source != storage.UsageEventSourceTurn || event.Runtime != storage.RuntimeACP {
+		if event.Source != storage.UsageEventSourceTurn || (event.Runtime != storage.RuntimeACP && event.Runtime != "cloud") {
 			continue
 		}
 		if event.CreatedAt.Before(start) || !event.CreatedAt.Before(end) {

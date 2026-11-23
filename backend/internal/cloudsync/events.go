@@ -238,7 +238,7 @@ func cloudEventToSessionEvent(threadID string, ev storage.CloudThreadEvent, assi
 			ACP: &sessionevents.ACPEvent{
 				ID:          sessionID,
 				Slug:        sessionID,
-				Agent:       "codex",
+				Agent:       payloadString(p, "agent"),
 				SessionID:   sessionID,
 				State:       "running",
 				Assistant:   text,
@@ -255,7 +255,7 @@ func cloudEventToSessionEvent(threadID string, ev storage.CloudThreadEvent, assi
 			ACP: &sessionevents.ACPEvent{
 				ID:          sessionID,
 				Slug:        sessionID,
-				Agent:       "codex",
+				Agent:       payloadString(p, "agent"),
 				SessionID:   sessionID,
 				State:       term,
 				Error:       strings.TrimSpace(payloadString(p, "error")),

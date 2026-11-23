@@ -29,6 +29,19 @@ func newCloudClient() *cloudClient {
 	}
 }
 
+func IsLoopbackURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 func normalizeBaseURL(raw string) (string, error) {
 	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
 	if trimmed == "" {
@@ -42,17 +55,36 @@ func normalizeBaseURL(raw string) (string, error) {
 	case "https":
 		return u.Scheme + "://" + u.Host + strings.TrimRight(u.Path, "/"), nil
 	case "http":
-		host := u.Hostname()
-		if host == "localhost" || host == "127.0.0.1" || host == "::1" {
-			return u.Scheme + "://" + u.Host + strings.TrimRight(u.Path, "/"), nil
-		}
-		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		if IsLoopbackURL(trimmed) {
 			return u.Scheme + "://" + u.Host + strings.TrimRight(u.Path, "/"), nil
 		}
 		return "", ErrInvalidURL
 	default:
 		return "", ErrInvalidURL
 	}
+}
+
+func validatePathSegment(value string) error {
+	if value == "" || value == "." || value == ".." || strings.ContainsAny(value, "/\\\x00") {
+		return ErrInvalidPath
+	}
+	return nil
+}
+
+func cleanRelPath(relpath string) ([]string, error) {
+	trimmed := strings.TrimLeft(relpath, "/")
+	if trimmed == "" {
+		return nil, ErrInvalidPath
+	}
+	parts := strings.Split(trimmed, "/")
+	escaped := make([]string, len(parts))
+	for i, seg := range parts {
+		if err := validatePathSegment(seg); err != nil {
+			return nil, err
+		}
+		escaped[i] = url.PathEscape(seg)
+	}
+	return escaped, nil
 }
 
 func (c *cloudClient) doJSON(ctx context.Context, method, baseURL, path, token string, reqBody any) (json.RawMessage, int, error) {
@@ -274,6 +306,9 @@ func (c *cloudClient) listThreads(ctx context.Context, baseURL, token string) ([
 }
 
 func (c *cloudClient) getThread(ctx context.Context, baseURL, token, threadID string) (storage.CloudThread, error) {
+	if err := validatePathSegment(threadID); err != nil {
+		return storage.CloudThread{}, err
+	}
 	raw, _, err := c.doJSON(ctx, http.MethodGet, baseURL, "/v1/threads/"+url.PathEscape(threadID), token, nil)
 	if err != nil {
 		return storage.CloudThread{}, err
@@ -286,26 +321,7 @@ func (c *cloudClient) getThread(ctx context.Context, baseURL, token, threadID st
 }
 
 func (c *cloudClient) createThread(ctx context.Context, baseURL, token string, req CreateThreadRequest) (storage.CloudThread, error) {
-	payload := map[string]any{}
-	if req.Title != "" {
-		payload["title"] = req.Title
-	}
-	if req.SpaceID != "" {
-		payload["space_id"] = req.SpaceID
-	}
-	if req.ModelProfileID != "" {
-		payload["model_profile_id"] = req.ModelProfileID
-	}
-	if req.Model != "" {
-		payload["model"] = req.Model
-	}
-	if req.ReasoningEffort != "" {
-		payload["reasoning_effort"] = req.ReasoningEffort
-	}
-	if req.ExecutorTarget != "" {
-		payload["executor_target"] = req.ExecutorTarget
-	}
-	raw, _, err := c.doJSON(ctx, http.MethodPost, baseURL, "/v1/threads", token, payload)
+	raw, _, err := c.doJSON(ctx, http.MethodPost, baseURL, "/v1/threads", token, req)
 	if err != nil {
 		return storage.CloudThread{}, err
 	}
@@ -320,8 +336,20 @@ func (c *cloudClient) createThread(ctx context.Context, baseURL, token string, r
 	return th, nil
 }
 
+func instructionPath(scope, scopeID, kind string) (string, error) {
+	for _, seg := range []string{scope, scopeID, kind} {
+		if err := validatePathSegment(seg); err != nil {
+			return "", err
+		}
+	}
+	return fmt.Sprintf("/v1/instructions/%s/%s/%s", url.PathEscape(scope), url.PathEscape(scopeID), url.PathEscape(kind)), nil
+}
+
 func (c *cloudClient) getInstruction(ctx context.Context, baseURL, token, scope, scopeID, kind string) (storage.CloudInstruction, error) {
-	path := fmt.Sprintf("/v1/instructions/%s/%s/%s", url.PathEscape(scope), url.PathEscape(scopeID), url.PathEscape(kind))
+	path, err := instructionPath(scope, scopeID, kind)
+	if err != nil {
+		return storage.CloudInstruction{}, err
+	}
 	raw, _, err := c.doJSON(ctx, http.MethodGet, baseURL, path, token, nil)
 	if err != nil {
 		return storage.CloudInstruction{}, err
@@ -343,7 +371,10 @@ func (c *cloudClient) getInstruction(ctx context.Context, baseURL, token, scope,
 }
 
 func (c *cloudClient) saveInstruction(ctx context.Context, baseURL, token, scope, scopeID, kind, bodyMD, expectedVersion string) (storage.CloudInstruction, error) {
-	path := fmt.Sprintf("/v1/instructions/%s/%s/%s", url.PathEscape(scope), url.PathEscape(scopeID), url.PathEscape(kind))
+	path, err := instructionPath(scope, scopeID, kind)
+	if err != nil {
+		return storage.CloudInstruction{}, err
+	}
 	raw, _, err := c.doJSON(ctx, http.MethodPut, baseURL, path, token, map[string]string{
 		"body_md":          bodyMD,
 		"expected_version": expectedVersion,
@@ -373,35 +404,11 @@ func (c *cloudClient) listUsageEvents(ctx context.Context, baseURL, token string
 	return wrapper.Events, nil
 }
 
-func (c *cloudClient) fetchEventsOnce(ctx context.Context, baseURL, token, threadID string, afterSeq int64) ([]storage.CloudThreadEvent, error) {
-	path := fmt.Sprintf("/v1/threads/%s/events?once=1&after_seq=%d", url.PathEscape(threadID), afterSeq)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)
-	if err != nil {
-		return nil, err
+func (c *cloudClient) readEvents(ctx context.Context, client *http.Client, baseURL, token, threadID, query string, onEvent func(storage.CloudThreadEvent) error) error {
+	if err := validatePathSegment(threadID); err != nil {
+		return err
 	}
-	req.Header.Set("Accept", "text/event-stream")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return nil, parseUpstreamError(resp.StatusCode, raw)
-	}
-	var events []storage.CloudThreadEvent
-	err = readSSEStream(resp.Body, threadID, func(ev storage.CloudThreadEvent) error {
-		events = append(events, ev)
-		return nil
-	})
-	return events, err
-}
-
-func (c *cloudClient) streamEvents(ctx context.Context, baseURL, token, threadID string, afterSeq int64, onEvent func(storage.CloudThreadEvent) error) error {
-	path := fmt.Sprintf("/v1/threads/%s/events?after_seq=%d", url.PathEscape(threadID), afterSeq)
+	path := fmt.Sprintf("/v1/threads/%s/events?%s", url.PathEscape(threadID), query)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)
 	if err != nil {
 		return err
@@ -410,7 +417,7 @@ func (c *cloudClient) streamEvents(ctx context.Context, baseURL, token, threadID
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := c.stream.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -422,10 +429,26 @@ func (c *cloudClient) streamEvents(ctx context.Context, baseURL, token, threadID
 	return readSSEStream(resp.Body, threadID, onEvent)
 }
 
+func (c *cloudClient) fetchEventsOnce(ctx context.Context, baseURL, token, threadID string, afterSeq int64) ([]storage.CloudThreadEvent, error) {
+	var events []storage.CloudThreadEvent
+	err := c.readEvents(ctx, c.http, baseURL, token, threadID, fmt.Sprintf("once=1&after_seq=%d", afterSeq), func(ev storage.CloudThreadEvent) error {
+		events = append(events, ev)
+		return nil
+	})
+	return events, err
+}
+
+func (c *cloudClient) streamEvents(ctx context.Context, baseURL, token, threadID string, afterSeq int64, onEvent func(storage.CloudThreadEvent) error) error {
+	return c.readEvents(ctx, c.stream, baseURL, token, threadID, fmt.Sprintf("after_seq=%d", afterSeq), onEvent)
+}
+
 func (c *cloudClient) openRunFile(ctx context.Context, baseURL, token, runID, relpath string) (*http.Response, error) {
-	segments := strings.Split(strings.TrimLeft(relpath, "/"), "/")
-	for i, seg := range segments {
-		segments[i] = url.PathEscape(seg)
+	if err := validatePathSegment(runID); err != nil {
+		return nil, err
+	}
+	segments, err := cleanRelPath(relpath)
+	if err != nil {
+		return nil, err
 	}
 	path := fmt.Sprintf("/v1/runs/%s/files/%s", url.PathEscape(runID), strings.Join(segments, "/"))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)

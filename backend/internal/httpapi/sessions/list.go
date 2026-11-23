@@ -52,11 +52,17 @@ func (h *ListHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if query.Get("last") == "true" {
 		if h.cloud != nil {
 			sessions, err := h.store.ListSessions(storage.SessionFilter{WorkspaceID: workspaceID, RootOnly: true, Limit: 1})
-			if err != nil || len(sessions) == 0 {
-				if err == nil {
-					err = fmt.Errorf("no root sessions found")
+			if err != nil {
+				httpapi.WriteError(w, http.StatusInternalServerError, err)
+				return
+			}
+			if workspaceID != storage.LocalWorkspaceID {
+				if cloudSessions, cloudErr := h.cloud.ListSessions(r.Context(), false); cloudErr == nil && len(cloudSessions) > 0 {
+					sessions = mergeSessionLists(sessions, filterCloudSessions(cloudSessions, storage.SessionFilter{RootOnly: true}))
 				}
-				httpapi.WriteError(w, http.StatusNotFound, err)
+			}
+			if len(sessions) == 0 {
+				httpapi.WriteError(w, http.StatusNotFound, fmt.Errorf("no root sessions found"))
 				return
 			}
 			httpapi.WriteJSON(w, http.StatusOK, sessionview.Public(sessions[0]))

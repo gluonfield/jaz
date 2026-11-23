@@ -9,7 +9,7 @@ import {
   peekPendingOidcLogin,
   validateOidcCallback,
 } from '@/lib/api/cloudAuth'
-import { completeAttachedOidcCallback } from '@/lib/cloudAccount'
+import { completeAttachedOidcCallback, refreshCloudAccountStatus, resetCloudAccountState } from '@/lib/cloudAccount'
 import type {
   CloudUser,
   ServerAuthMethod,
@@ -228,6 +228,7 @@ function begin(url: string, announce = true): Attempt {
 
 function block(error: string | null, keepPreference = false, meta?: Partial<ServerMeta>): void {
   invalidate()
+  resetCloudAccountState()
   if (ownsConnection) {
     if (!keepPreference) clearConnectionPreference()
     if (bridge && desktop) {
@@ -266,6 +267,11 @@ function activate(value: Attempt, candidate: Candidate): void {
   }
   setApiServerMode(meta.mode)
   setApiAuthToken(candidate.url, candidate.token, candidate.ticket)
+  if (meta.mode === 'local' && clientRuntime.capabilities.localBackend) {
+    void refreshCloudAccountStatus()
+  } else {
+    resetCloudAccountState()
+  }
   setState({
     status: 'connected',
     url: candidate.url,
@@ -741,41 +747,35 @@ async function init(): Promise<void> {
   }
   const webCallback = consumeWebOidcCallback()
   const pendingOidc = webCallback ? peekPendingOidcLogin() : null
-  if (webCallback && pendingOidc) {
-    if (pendingOidc.purpose === 'attached') {
-      void completeAttachedOidcCallback(webCallback, { passive: true })
-    } else {
-      await completeOidcCallback(webCallback, { passive: true })
-      return
-    }
+  const deferredAttachedCallback = webCallback && pendingOidc?.purpose === 'attached' ? webCallback : null
+  if (webCallback && pendingOidc && pendingOidc.purpose !== 'attached') {
+    await completeOidcCallback(webCallback, { passive: true })
+    return
   }
   const preference = connectionPreference()
   if (preference?.mode === 'remote' && preference.remoteUrl) {
     await restore(preference.remoteUrl)
-    return
-  }
-  if (clientRuntime.capabilities.localBackend) {
+  } else if (clientRuntime.capabilities.localBackend) {
     await startLocal()
-    return
-  }
-  if (clientRuntime.cloudUrl) {
+  } else if (clientRuntime.cloudUrl) {
     await connectRemote(clientRuntime.cloudUrl)
-    return
-  }
-  if (clientRuntime.kind === 'electron') {
+  } else if (clientRuntime.kind === 'electron') {
     block(null)
-    return
-  }
-  const url = normalizeBaseUrl(localBaseUrl())
-  const value = begin(url)
-  const discovery = await discoverServer(url, value.controller.signal)
-  if (!current(value)) {
-    return
-  }
-  if (discovery.ok && !discovery.authRequired) {
-    activate(value, { url, token: '', remembered: false, meta: discoveryMeta(discovery) })
   } else {
-    block(null, false, discovery.ok ? discoveryMeta(discovery) : undefined)
+    const url = normalizeBaseUrl(localBaseUrl())
+    const value = begin(url)
+    const discovery = await discoverServer(url, value.controller.signal)
+    if (!current(value)) {
+      return
+    }
+    if (discovery.ok && !discovery.authRequired) {
+      activate(value, { url, token: '', remembered: false, meta: discoveryMeta(discovery) })
+    } else {
+      block(null, false, discovery.ok ? discoveryMeta(discovery) : undefined)
+    }
+  }
+  if (deferredAttachedCallback && state.status === 'connected' && state.mode === 'local') {
+    void completeAttachedOidcCallback(deferredAttachedCallback, { passive: true })
   }
 }
 

@@ -1,4 +1,3 @@
-import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { ChevronsUpDown, LoaderCircle } from 'lucide-react'
 import { useState } from 'react'
 import { AddCloudWorkspaceModal } from '@/components/connection/AddCloudWorkspaceModal'
@@ -8,15 +7,11 @@ import { clientRuntime } from '@/lib/clientRuntime'
 import { LOCAL_WORKSPACE_ID, switchWorkspace } from '@/lib/cloudAccount'
 import { useCloudSession } from '@/lib/cloudSession'
 import { activeCloudWorkspace, workspaceDisplayName } from '@/lib/cloudWorkspaceDisplay'
-import { workspaceSwitchNavigation } from '@/lib/workspaceNavigation'
 
 const DEFAULT_CLASS_NAME = 'shrink-0 pl-1.5 pr-3 pt-1.5 pb-0.5 max-sm:px-4 max-sm:pt-2'
 
 export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { className?: string }) {
   const cloud = useCloudSession()
-  const navigate = useNavigate()
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const search = useRouterState({ select: (s) => s.location.search })
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [switchingTo, setSwitchingTo] = useState<string | null>(null)
@@ -55,11 +50,6 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
       const err = await switchWorkspace(workspaceId)
       if (err) {
         toast(err, 'danger')
-        return
-      }
-      const nextRoute = workspaceSwitchNavigation({ pathname, search })
-      if (nextRoute) {
-        void navigate(nextRoute)
       }
     } finally {
       setSwitchingTo(null)

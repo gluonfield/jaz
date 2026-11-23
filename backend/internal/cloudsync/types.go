@@ -15,6 +15,7 @@ const LocalWorkspaceID = storage.LocalWorkspaceID
 var (
 	ErrNotConnected = errors.New("not signed in to Jaz Cloud")
 	ErrInvalidURL   = errors.New("Jaz Cloud connections require HTTPS")
+	ErrInvalidPath  = errors.New("invalid cloud resource path")
 	ErrNotFound     = errors.New("workspace not found")
 )
 
@@ -71,16 +72,6 @@ type CreateThreadRequest struct {
 	Model           string `json:"model,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 	ExecutorTarget  string `json:"executor_target,omitempty"`
-}
-
-type CreateTurnRequest struct {
-	ClientRequestID string          `json:"client_request_id,omitempty"`
-	Text            string          `json:"text"`
-	Prompt          string          `json:"prompt,omitempty"`
-	ModelProfileID  string          `json:"model_profile_id,omitempty"`
-	ExecutorTarget  string          `json:"executor_target,omitempty"`
-	RequireSandbox  *bool           `json:"require_sandbox,omitempty"`
-	Uploads         json.RawMessage `json:"uploads,omitempty"`
 }
 
 type ProjectedTranscript struct {

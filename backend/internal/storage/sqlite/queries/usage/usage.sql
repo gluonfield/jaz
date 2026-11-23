@@ -76,8 +76,8 @@ FROM (
   UNION ALL
   SELECT
     c.thread_id,
-    'acp' AS runtime,
-    'codex' AS agent,
+    'cloud' AS runtime,
+    '' AS agent,
     c.model_profile_id AS model_provider,
     c.model,
     c.input_tokens,

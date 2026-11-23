@@ -92,81 +92,23 @@ export interface CreateCloudTurnInput {
   signal?: AbortSignal
 }
 
-const CLOUD_PROVIDER_DEFAULTS: Record<
-  string,
-  { label: string; logoAgent: string; models: ModelPickerOption[] }
-> = {
-  openai: {
-    label: 'Codex',
-    logoAgent: 'codex',
-    models: [
-      { value: 'gpt-5.4', label: 'GPT-5.4', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: 'high' } },
-      { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: 'high' } },
-    ],
-  },
-  azure_openai: {
-    label: 'Codex Azure',
-    logoAgent: 'codex',
-    models: [
-      { value: 'gpt-5.4', label: 'GPT-5.4', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: 'high' } },
-    ],
-  },
-  anthropic: {
-    label: 'Claude',
-    logoAgent: 'claude',
-    models: [
-      { value: 'claude-opus-4-6', label: 'Claude Opus 4.6', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high', 'max'], default_effort: 'high' } },
-      { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'medium' } },
-    ],
-  },
-  bedrock: {
-    label: 'Claude Bedrock',
-    logoAgent: 'claude',
-    models: [
-      { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'medium' } },
-    ],
-  },
-  xai: {
-    label: 'Grok',
-    logoAgent: 'grok',
-    models: [
-      { value: 'grok-4', label: 'Grok 4', reasoning: { status: 'ready', efforts: ['low', 'high'], default_effort: 'high' } },
-    ],
-  },
-  vertex: {
-    label: 'Vertex AI',
-    logoAgent: 'codex',
-    models: [
-      { value: 'google/gemini-4-hydrogen', label: 'Gemini 4 Hydrogen', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
-      { value: 'google/gemini-4-neon', label: 'Gemini 4 Neon', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
-      { value: 'google/gemini-4-carbon', label: 'Gemini 4 Carbon', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
-      { value: 'google/gemini-3-flash-preview', label: 'Gemini 3 Flash', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
-      { value: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', reasoning: { status: 'ready', efforts: ['low', 'medium', 'high'], default_effort: 'high' } },
-    ],
-  },
-  openrouter: {
-    label: 'OpenRouter',
-    logoAgent: 'codex',
-    models: [],
-  },
+const CLOUD_PROVIDER_META: Record<string, { label: string; logoAgent: string }> = {
+  openai: { label: 'Codex', logoAgent: 'codex' },
+  azure_openai: { label: 'Codex Azure', logoAgent: 'codex' },
+  anthropic: { label: 'Claude', logoAgent: 'claude' },
+  bedrock: { label: 'Claude Bedrock', logoAgent: 'claude' },
+  xai: { label: 'Grok', logoAgent: 'grok' },
+  vertex: { label: 'Vertex AI', logoAgent: 'codex' },
+  openrouter: { label: 'OpenRouter', logoAgent: 'codex' },
 }
 
-function normalizeModelOption(
-  option: RawCloudModelOption,
-  defaults?: { models: ModelPickerOption[] },
-  fallbackEffort?: string,
-): ModelPickerOption | null {
+function normalizeModelOption(option: RawCloudModelOption): ModelPickerOption | null {
   if (typeof option === 'string') {
     const value = option.trim()
     if (!value) return null
-    const known = defaults?.models.find((item) => item.value === value)
-    if (known) return known
     return {
       value,
       label: value.includes('/') ? value.slice(value.indexOf('/') + 1) : value,
-      ...(fallbackEffort
-        ? { reasoning: { status: 'ready' as const, efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: fallbackEffort } }
-        : {}),
     }
   }
   if (!option || typeof option !== 'object' || typeof option.value !== 'string' || !option.value.trim()) {
@@ -188,33 +130,26 @@ function normalizeModelOption(
 
 function normalizeCloudModelProfile(raw: RawCloudModelProfile): CloudModelProfile {
   const provider = (raw.provider ?? '').trim().toLowerCase()
-  const defaults = CLOUD_PROVIDER_DEFAULTS[provider]
-  const fallbackEffort = raw.default_effort?.trim()
+  const meta = CLOUD_PROVIDER_META[provider]
+  const fallbackEffort = raw.default_effort?.trim() ?? ''
   const parsedModels = Array.isArray(raw.models)
     ? raw.models
-        .map((item) => normalizeModelOption(item, defaults, fallbackEffort))
+        .map((item) => normalizeModelOption(item))
         .filter((item): item is ModelPickerOption => item !== null)
     : []
-  const providedModels = parsedModels.length > 0 ? parsedModels : undefined
-  const models: ModelPickerOption[] = providedModels
-    ?? (raw.default_model
-      ? [
-          normalizeModelOption(raw.default_model, defaults, fallbackEffort) ?? {
-            value: raw.default_model,
-            label: raw.default_model,
-          },
-          ...(defaults?.models.filter((item) => item.value !== raw.default_model) ?? []),
-        ]
-      : defaults?.models.length
-        ? defaults.models
-        : [{ value: raw.profile_id, label: raw.display_name?.trim() || raw.profile_id }])
+  const defaultModelOpt = raw.default_model ? normalizeModelOption(raw.default_model) : null
+  const models: ModelPickerOption[] = parsedModels.length > 0
+    ? parsedModels
+    : defaultModelOpt
+      ? [defaultModelOpt]
+      : []
   const defaultModel = raw.default_model?.trim() || models[0]?.value || ''
   const defaultEffort = fallbackEffort || models.find((m) => m.value === defaultModel)?.reasoning?.default_effort || ''
   return {
     ...raw,
     provider,
-    display_name: raw.display_name?.trim() || defaults?.label || raw.provider || raw.profile_id,
-    agent: raw.agent?.trim() || defaults?.logoAgent || 'codex',
+    display_name: raw.display_name?.trim() || meta?.label || raw.provider || raw.profile_id,
+    agent: raw.agent?.trim() || meta?.logoAgent || '',
     default_model: defaultModel,
     default_effort: defaultEffort,
     models,
@@ -223,11 +158,11 @@ function normalizeCloudModelProfile(raw: RawCloudModelProfile): CloudModelProfil
 
 export function cloudProfileToAgentOption(profile: CloudModelProfile): PickerAgentOption {
   const provider = profile.provider.trim().toLowerCase()
-  const defaults = CLOUD_PROVIDER_DEFAULTS[provider]
+  const meta = CLOUD_PROVIDER_META[provider]
   return {
     id: profile.profile_id,
-    label: profile.display_name?.trim() || defaults?.label || profile.provider || profile.profile_id,
-    logoAgent: profile.agent?.trim() || defaults?.logoAgent || 'codex',
+    label: profile.display_name?.trim() || meta?.label || profile.provider || profile.profile_id,
+    logoAgent: profile.agent?.trim() || meta?.logoAgent || '',
     provider,
   }
 }
@@ -298,7 +233,7 @@ export function cloudThreadToSession(thread: CloudThread): Session {
     runtime: 'acp',
     runtime_ref: {
       type: 'acp',
-      agent: typeof ref.agent === 'string' && ref.agent ? ref.agent : 'codex',
+      agent: typeof ref.agent === 'string' && ref.agent ? ref.agent : '',
       ...(typeof ref.cwd === 'string' ? { cwd: ref.cwd } : {}),
     },
     model_provider: thread.model_profile_id || undefined,
@@ -445,7 +380,7 @@ export function cloudEventToSessionEvent(threadId: string, ev: CloudSessionEvent
       acp: {
         id: threadId,
         slug: threadId,
-        agent: 'codex',
+        agent: typeof payload.agent === 'string' ? payload.agent : '',
         session_id: threadId,
         state: 'running',
         assistant: text,
@@ -462,7 +397,7 @@ export function cloudEventToSessionEvent(threadId: string, ev: CloudSessionEvent
       acp: {
         id: threadId,
         slug: threadId,
-        agent: 'codex',
+        agent: typeof payload.agent === 'string' ? payload.agent : '',
         session_id: threadId,
         state: terminalState,
         ...(error ? { error } : {}),
@@ -513,6 +448,7 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
 
     if (isCloudUserEvent(ev.type) && text) {
       flushPendingAssistant()
+      acpState = 'running'
       acpError = undefined
       const blocks: MessageBlock[] = [{ type: 'text', text }]
       messages.push({
@@ -531,6 +467,7 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
 
     if (isCloudAssistantDeltaEvent(ev.type)) {
       if (text) {
+        acpState = 'running'
         pendingAssistantText += text
         pendingAssistantSeq = ev.seq
         pendingAssistantAt = ev.created_at
@@ -638,6 +575,10 @@ export function openCloudThreadEvents(
         signal: controller.signal,
       })
       if (!response.ok || !response.body) {
+        if (response.status === 401 || response.status === 403 || response.status === 404) {
+          onConnection?.(false)
+          return
+        }
         throw new Error(`Cloud event stream failed (${response.status})`)
       }
       if (closed || apiSessionRevision() !== revision) return
@@ -649,10 +590,10 @@ export function openCloudThreadEvents(
         const { done, value } = await reader.read()
         if (done) break
         if (closed || apiSessionRevision() !== revision) return
-        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
+        buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, '\n')
         let sep = buffer.indexOf('\n\n')
         while (sep !== -1) {
-          const parsed = parseSseFrame(buffer.slice(0, sep))
+          const parsed = parseSseFrame(buffer.slice(0, sep).replace(/\r/g, ''))
           buffer = buffer.slice(sep + 2)
           if (parsed) {
             if (parsed.seq > lastSeq) lastSeq = parsed.seq

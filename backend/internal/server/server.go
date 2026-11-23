@@ -287,6 +287,9 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session, err := s.Store.LoadSession(sessionRef)
+	if err == nil && storage.NormalizeWorkspaceID(session.WorkspaceID) != s.activeWorkspaceID() {
+		err = storage.ErrSessionNotFound
+	}
 	if err != nil {
 		if s.Cloud != nil {
 			cloudSession, found, cloudErr := s.Cloud.GetSession(r.Context(), sessionRef)
@@ -348,6 +351,9 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session, err := s.Store.LoadSession(sessionRef)
+	if err == nil && storage.NormalizeWorkspaceID(session.WorkspaceID) != s.activeWorkspaceID() {
+		err = storage.ErrSessionNotFound
+	}
 	if err != nil {
 		if s.Cloud != nil {
 			cloudSession, found, cloudErr := s.Cloud.GetSession(r.Context(), sessionRef)

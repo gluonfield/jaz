@@ -70,23 +70,17 @@ type connectionMCPServerReader struct {
 
 func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) {
 	ctx := context.Background()
-	ws := ""
+	ws := storage.LocalWorkspaceID
 	if r.workspace != nil {
-		ws = r.workspace()
+		ws = storage.NormalizeWorkspaceID(r.workspace())
 	}
 	var servers []mcpconfig.Server
 	hasCloud := false
 	if r.cloudMCP != nil {
 		if cloudServer, ok := r.cloudMCP(ctx); ok {
 			hasCloud = true
-			if ws == "" {
-				return []mcpconfig.Server{cloudServer}, nil
-			}
 			servers = append(servers, cloudServer)
 		}
-	}
-	if ws == "" {
-		ws = storage.LocalWorkspaceID
 	}
 	var (
 		custom []mcpconfig.Server
@@ -94,9 +88,9 @@ func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) 
 	)
 	if wsStore, ok := r.store.(interface {
 		ListMCPServersForWorkspace(string) ([]mcpconfig.Server, error)
-	}); ok {
+	}); ok && (!hasCloud || ws != storage.LocalWorkspaceID) {
 		custom, err = wsStore.ListMCPServersForWorkspace(ws)
-	} else if ws == storage.LocalWorkspaceID {
+	} else if !hasCloud && ws == storage.LocalWorkspaceID {
 		custom, err = r.store.ListMCPServers()
 	}
 	if err != nil {

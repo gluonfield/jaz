@@ -275,40 +275,6 @@ func (g *PolicyGuard) ValidateCommitRequest(req DeviceCommitRequest) ([]Resolved
 	return resolved, nil
 }
 
-// CheckCommitPrecondition verifies expected mtime/sha256 before writing back
-// staged outputs so a local edit made while the cloud turn ran is not clobbered.
-func CheckCommitPrecondition(path string, expectedMtimeMs *int64, expectedSHA256 string) error {
-	expectedSHA256 = strings.ToLower(strings.TrimSpace(expectedSHA256))
-	if expectedMtimeMs == nil && expectedSHA256 == "" {
-		return nil
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("%w: file missing on device", ErrConflict)
-		}
-		return err
-	}
-	if expectedMtimeMs != nil && info.ModTime().UnixMilli() != *expectedMtimeMs {
-		return fmt.Errorf("%w: mtime changed (%d != %d)", ErrConflict, info.ModTime().UnixMilli(), *expectedMtimeMs)
-	}
-	if expectedSHA256 != "" {
-		f, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		got, err := readerSHA256(f)
-		if err != nil {
-			return err
-		}
-		if got != expectedSHA256 {
-			return fmt.Errorf("%w: sha256 mismatch", ErrConflict)
-		}
-	}
-	return nil
-}
-
 func checkRootPrecondition(root *os.Root, rel string, expectedMtimeMs *int64, expectedSHA256 string, noFollow bool) error {
 	expectedSHA256 = strings.ToLower(strings.TrimSpace(expectedSHA256))
 	if expectedMtimeMs == nil && expectedSHA256 == "" {

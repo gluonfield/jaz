@@ -139,7 +139,7 @@ function CloudAgentsEditor({ userId, readOnly }: { userId: string; readOnly: boo
       }
     >
       <MarkdownEditor
-        key={`cloud:${userId}:${doc?.version ?? 'empty'}:${editorResetSeq}`}
+        key={`cloud:${userId}:${editorResetSeq}`}
         initialValue={value}
         readOnly={locked}
         placeholder={DESCRIPTION}

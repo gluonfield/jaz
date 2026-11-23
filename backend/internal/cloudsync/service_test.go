@@ -17,6 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/instructions"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -517,5 +518,71 @@ func TestCloudSyncHandlesNullSpacesAndThreads(t *testing.T) {
 	}
 	if st.LastError != "" || st.LastSyncAt.IsZero() {
 		t.Fatalf("expected clean sync with null slices, got last_error=%q last_sync_at=%v", st.LastError, st.LastSyncAt)
+	}
+}
+
+func TestCloudSyncRejectsPathTraversalAndScopesContextBySessionWorkspace(t *testing.T) {
+	ctx := context.Background()
+	upstreamHits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/.well-known/jaz-server":
+			_, _ = w.Write([]byte(`{"ok":true,"mode":"cloud","auth":"oidc"}`))
+		case "/v1/auth/me":
+			_, _ = w.Write([]byte(`{"user_id":"u1","org_id":"o1","org_name":"CAS","email":"u@cas.dev","display_name":"Dev","role":"member"}`))
+		case "/v1/spaces":
+			_, _ = w.Write([]byte(`{"spaces":[]}`))
+		case "/v1/threads":
+			_, _ = w.Write([]byte(`{"threads":[]}`))
+		case "/v1/usage/events":
+			_, _ = w.Write([]byte(`{"events":[]}`))
+		default:
+			if strings.HasPrefix(r.URL.Path, "/v1/runs/") || strings.HasPrefix(r.URL.Path, "/v1/auth/secret") {
+				upstreamHits++
+			}
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	svc := cloudsync.New(store, nil)
+	st, err := svc.Connect(ctx, cloudsync.ConnectRequest{URL: srv.URL, Token: "tok"})
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	// Path traversal segments must fail with ErrInvalidPath before contacting upstream.
+	if _, err := svc.OpenRunFile(ctx, "run-1", "../../auth/secret"); !errors.Is(err, cloudsync.ErrInvalidPath) {
+		t.Fatalf("OpenRunFile traversal err = %v, want ErrInvalidPath", err)
+	}
+	if _, err := svc.OpenRunFile(ctx, "..", "report.pdf"); !errors.Is(err, cloudsync.ErrInvalidPath) {
+		t.Fatalf("OpenRunFile runID traversal err = %v, want ErrInvalidPath", err)
+	}
+	if _, _, err := svc.CreateTurn(ctx, "../other", json.RawMessage(`{"text":"hi"}`)); !errors.Is(err, cloudsync.ErrInvalidPath) {
+		t.Fatalf("CreateTurn traversal err = %v, want ErrInvalidPath", err)
+	}
+	if upstreamHits != 0 {
+		t.Fatalf("expected 0 upstream hits for traversal requests, got %d", upstreamHits)
+	}
+
+	// Session workspace context overrides the sidebar's active workspace for CloudScope.
+	localCtx := sessioncontext.WithWorkspaceID(ctx, storage.LocalWorkspaceID)
+	if scope := svc.CloudScope(localCtx); scope != nil {
+		t.Fatalf("local session must not inherit active Cloud workspace scope, got %+v", scope)
+	}
+	if _, err := svc.SwitchWorkspace(ctx, cloudsync.LocalWorkspaceID); err != nil {
+		t.Fatalf("SwitchWorkspace local: %v", err)
+	}
+	cloudSessionCtx := sessioncontext.WithWorkspaceID(ctx, st.ActiveWorkspaceID)
+	scope := svc.CloudScope(cloudSessionCtx)
+	if scope == nil || scope.OrgID != "o1" || scope.UserID != "u1" {
+		t.Fatalf("cloud session must keep its own CloudScope while sidebar is local, got %+v", scope)
 	}
 }

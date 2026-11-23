@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	cloudapi "github.com/wins/jaz/backend/internal/httpapi/cloud"
 	"github.com/wins/jaz/backend/internal/instructions"
 )
 
@@ -92,6 +94,11 @@ func (s *Server) handleWriteAgentFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		var uerr *cloudsync.UpstreamError
+		if errors.As(err, &uerr) || errors.Is(err, cloudsync.ErrNotConnected) {
+			cloudapi.WriteError(w, err)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}

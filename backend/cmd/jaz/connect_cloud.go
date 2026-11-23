@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/charmbracelet/log"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/machinebridge"
 )
 
@@ -67,8 +68,9 @@ func runConnectCloud(args []string, out io.Writer) error {
 			FileStaging: true,
 			LocalExec:   cfg.AllowExec,
 		},
-		FolderGrants:        cfg.Grants,
-		ExecLauncherFactory: execFactory,
+		FolderGrants:           cfg.Grants,
+		AllowLoopbackTransfers: cloudsync.IsLoopbackURL(cfg.URL),
+		ExecLauncherFactory:    execFactory,
 		OnConnect: func(caps machinebridge.Capabilities) {
 			log.Info("connected to jaz cloud", "device_id", cfg.DeviceID, "file_staging", caps.FileStaging, "local_exec", caps.LocalExec, "max_stage_bytes", caps.MaxStageBytes)
 		},

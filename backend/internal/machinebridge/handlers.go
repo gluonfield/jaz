@@ -495,25 +495,16 @@ func (h *Handler) CommitFiles(ctx context.Context, caps Capabilities, req Device
 		}
 	}
 
-	// Phase 4: apply renames and deletes through os.Root.
+	// Phase 4: apply renames and deletes through os.Root (Phase 3 just verified preconditions).
 	committed := make([]CommittedFile, 0, len(staged))
 	for i := range staged {
 		item := &staged[i]
 		if item.entry.Delete {
-			if err := verifyDeletableTarget(item.resolved.Root, item.resolved.RelPath); err != nil {
-				return DeviceCommitResponse{}, err
-			}
-			if err := checkRootPrecondition(item.resolved.Root, item.resolved.RelPath, item.entry.ExpectedMtimeMs, item.entry.ExpectedSHA256, true); err != nil {
-				return DeviceCommitResponse{}, err
-			}
 			if err := item.resolved.Root.Remove(item.resolved.RelPath); err != nil {
 				return DeviceCommitResponse{}, classifyRootError(err)
 			}
 			committed = append(committed, CommittedFile{RelPath: item.resolved.RelPath, Deleted: true})
 			continue
-		}
-		if err := checkRootPrecondition(item.resolved.Root, item.resolved.RelPath, item.entry.ExpectedMtimeMs, item.entry.ExpectedSHA256, false); err != nil {
-			return DeviceCommitResponse{}, err
 		}
 		if err := item.resolved.Root.Rename(item.tmpRel, item.resolved.RelPath); err != nil {
 			return DeviceCommitResponse{}, classifyRootError(err)

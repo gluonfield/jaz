@@ -1,11 +1,10 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
-	"github.com/wins/jaz/backend/internal/cloudsync"
+	cloudapi "github.com/wins/jaz/backend/internal/httpapi/cloud"
 	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -55,12 +54,7 @@ func (s *Server) handleCloudSessionAction(w http.ResponseWriter, r *http.Request
 	}
 	updated, _, err := s.Cloud.UpdateUserState(r.Context(), session.ID, patch)
 	if err != nil {
-		var uerr *cloudsync.UpstreamError
-		if errors.As(err, &uerr) {
-			writeError(w, uerr.StatusCode, uerr)
-			return
-		}
-		writeError(w, http.StatusBadGateway, err)
+		cloudapi.WriteError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, sessionview.Public(updated))

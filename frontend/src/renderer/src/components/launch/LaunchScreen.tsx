@@ -94,14 +94,14 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
     }
   }, [currentAuth, currentOidcUrl, currentUrl, manual, status])
 
-  const run = async (target: string, action: () => Promise<string | null>) => {
+  const run = async (target: string, action: () => Promise<string | null>, closeOnSuccess = true) => {
     setBusy(target)
     setActionError(null)
     try {
       const err = await action()
       if (err) {
         setActionError(err)
-      } else {
+      } else if (closeOnSuccess && currentConnection().status === 'connected') {
         onClose?.()
       }
     } catch (error) {
@@ -132,16 +132,20 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
     })
 
   const launchSso = (target: SsoTarget) =>
-    run(`sso:${target.url}`, async () => {
-      const err = await startCloudSignIn(target.url, target.oidcLoginUrl)
-      if (err) return err
-      if (clientRuntime.kind === 'electron') {
-        setSsoTarget(target)
-        setMode('sso')
-        setAwaitingBrowserSso(true)
-      }
-      return null
-    })
+    run(
+      `sso:${target.url}`,
+      async () => {
+        const err = await startCloudSignIn(target.url, target.oidcLoginUrl)
+        if (err) return err
+        if (clientRuntime.kind === 'electron') {
+          setSsoTarget(target)
+          setMode('sso')
+          setAwaitingBrowserSso(true)
+        }
+        return null
+      },
+      false,
+    )
 
   const isCurrent = (target: string) => manual && sameBackend(currentUrl, target)
 
@@ -315,7 +319,9 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                           onClick={onStartLocal}
                         />
                       ) : null}
-                      {visibleBackends.map((backend) => {
+                      {visibleBackends
+                        .filter((backend) => !(cloudOnly && activeSso && !isCurrent(activeSso.url) && sameBackend(backend.url, activeSso.url)))
+                        .map((backend) => {
                         const isCloud = backend.mode === 'cloud' || backend.auth === 'oidc'
                         const connected = isCurrent(backend.url)
                         return (
