@@ -16,7 +16,7 @@ import type { BrowserPasswordAPI } from '@shared/browserPasswords'
 import type { BrowserDownloadAPI } from '@shared/browserDownloads'
 import type { VoiceOverlayAPI } from '@shared/voice'
 import type { ConnectionSessionAPI } from '@shared/connectionSession'
-import type { FileActionsAPI } from '@shared/fileActions'
+import type { FileActionsAPI, InspectDroppedFile } from '@shared/fileActions'
 
 declare global {
   interface Window {
@@ -40,7 +40,7 @@ declare global {
       apiBaseUrl: string
       localBackendTransport?: string
       windowKind: WindowKind
-      pathForFile: (file: File) => string
+      inspectDroppedFile: InspectDroppedFile
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
       setWindowButtonsVisible: (visible: boolean) => void
       startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>

@@ -38,7 +38,7 @@ import { setupLauncher, teardownLauncher } from './spotlight'
 import { attachVoiceOverlay } from './voiceOverlay'
 import { createUpdateController } from './updater'
 import { createConnectionSession } from '@main/connectionSession'
-import { installFileActions } from '@main/fileActions'
+import { installDroppedFileInspection, installFileActions } from '@main/fileActions'
 import { attachContextMenu } from '@main/contextMenu'
 import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
 import { LOCAL_BACKEND_URL } from '@shared/localBackend'
@@ -290,6 +290,7 @@ function openBoardWindow(boardId: string): void {
 app.whenReady().then(() => {
   configureBrowserSessions(join(__dirname, '../preload/chrome.js'), join(__dirname, '../preload/passkeyFallback.js'))
   installBrowserDownloads()
+  installDroppedFileInspection()
   installFileActions(connectionSession)
   installApplicationMenu()
   registerDictation()

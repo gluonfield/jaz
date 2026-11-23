@@ -6,8 +6,9 @@ import {
   createContext,
   forwardRef,
   useContext,
-  useEffect,
+  useEffectEvent,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react'
@@ -21,6 +22,21 @@ import { dataTransferHasFiles } from './fileTransfer'
 // so dragging a selection into an input stays native.
 
 const FileDropScopeContext = createContext<string | undefined>(undefined)
+
+type DroppedItem =
+  | { kind: 'file'; file: File }
+  | { kind: 'directory'; path?: string }
+  | { kind: 'unavailable' }
+
+async function inspectDropItem(item: DataTransferItem): Promise<DroppedItem | undefined> {
+  if (item.kind !== 'file') return
+  const directory = item.webkitGetAsEntry?.()?.isDirectory
+  const file = item.getAsFile()
+  const native = file && await window.jaz?.inspectDroppedFile(file)
+  if (native && native.kind !== 'file') return native
+  if (file && (native || !directory)) return { kind: 'file', file }
+  return directory ? { kind: 'directory' } : { kind: 'unavailable' }
+}
 
 export const FileDropScope = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function FileDropScope(
   { children, ...props },
@@ -58,20 +74,23 @@ export function installFileDropGuard() {
 
 export function useFileDropTarget<T extends HTMLElement>({
   disabled = false,
+  identity,
   onDrop,
 }: {
   disabled?: boolean
-  onDrop: (files: File[], folders: File[]) => void
-}): { dropTargetRef: RefObject<T | null>; dragging: boolean } {
+  identity?: string
+  onDrop: (items: DroppedItem[]) => void
+}): { dropTargetRef: RefObject<T | null>; dragging: boolean; resolving: boolean } {
   const scope = useContext(FileDropScopeContext)
   const dropTargetRef = useRef<T>(null)
-  const onDropRef = useRef(onDrop)
-  onDropRef.current = onDrop
+  const deliverDrop = useEffectEvent(onDrop)
   const [dragging, setDragging] = useState(false)
-  useEffect(() => {
+  const [pendingDrops, setPendingDrops] = useState(0)
+  useLayoutEffect(() => {
     const target = dropTargetRef.current
     if (!target) return
     if (disabled) return
+    let active = true
     // dragenter/dragleave fire per child; the counter nets out nested targets
     // so only leaving this scope (or dropping) clears its overlay.
     let depth = 0
@@ -119,24 +138,21 @@ export function useFileDropTarget<T extends HTMLElement>({
       depth = Math.max(0, depth - 1)
       if (depth === 0) clear()
     }
-    const onTargetDrop = (event: DragEvent) => {
+    const onTargetDrop = async (event: DragEvent) => {
       if (!dataTransferHasFiles(event.dataTransfer)) return
       if (!ownsDrag(event)) {
         clear()
         return
       }
       event.preventDefault()
-      const files: File[] = []
-      const folders: File[] = []
-      for (const item of Array.from(event.dataTransfer?.items ?? [])) {
-        const file = item.kind === 'file' ? item.getAsFile() : null
-        if (file) {
-          (item.webkitGetAsEntry()?.isDirectory ? folders : files).push(file)
-        }
-      }
       clear()
-      if (files.length + folders.length > 0) {
-        onDropRef.current(files, folders)
+      setPendingDrops((count) => count + 1)
+      try {
+        const items = (await Promise.all(Array.from(event.dataTransfer?.items ?? [], inspectDropItem)))
+          .filter((item) => item !== undefined)
+        if (active && items.length > 0) deliverDrop(items)
+      } finally {
+        if (active) setPendingDrops((count) => count - 1)
       }
     }
     window.addEventListener('dragenter', onDragEnter)
@@ -144,14 +160,16 @@ export function useFileDropTarget<T extends HTMLElement>({
     window.addEventListener('dragleave', onDragLeave)
     window.addEventListener('drop', onTargetDrop)
     return () => {
+      active = false
       clear()
+      setPendingDrops(0)
       window.removeEventListener('dragenter', onDragEnter)
       window.removeEventListener('dragover', onDragOver)
       window.removeEventListener('dragleave', onDragLeave)
       window.removeEventListener('drop', onTargetDrop)
     }
-  }, [disabled, scope])
-  return { dropTargetRef, dragging }
+  }, [disabled, identity, scope])
+  return { dropTargetRef, dragging, resolving: pendingDrops > 0 }
 }
 
 export function FileDropOverlay({ visible }: { visible: boolean }) {
