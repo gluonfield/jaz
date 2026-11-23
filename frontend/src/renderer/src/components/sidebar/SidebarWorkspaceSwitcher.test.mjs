@@ -49,6 +49,7 @@ function loadSwitcher(
         let stateCall = 0
         return {
           ...React,
+          useRef: (initial) => ({ current: initial }),
           useState: (initial) => {
             const idx = stateCall++
             if (idx === 0 && forcePopoverOpen) return [true, () => {}]
@@ -131,25 +132,34 @@ const personalWorkspace = {
   role: 'member',
 }
 
-test('SidebarWorkspaceSwitcher renders nothing in pure Local mode (0 Cloud workspaces)', () => {
-  const Switcher = loadSwitcher(
-    {
-      active: false,
-      source: null,
-      status: 'disconnected',
-      activeWorkspaceId: 'local',
-      workspaces: [],
-      url: '',
-      user: null,
-      error: null,
-      oidcLoginUrl: '',
-      capabilities: {},
-      lastSyncAt: '',
-    },
-    { localBackend: true, forcePopoverOpen: true },
-  )
+const noWorkspaces = {
+  active: false,
+  source: null,
+  status: 'disconnected',
+  activeWorkspaceId: 'local',
+  workspaces: [],
+  url: '',
+  user: null,
+  error: null,
+  oidcLoginUrl: '',
+  capabilities: {},
+  lastSyncAt: '',
+}
+
+test('SidebarWorkspaceSwitcher keeps Local and Add Cloud Workspace reachable before any Cloud workspace exists', () => {
+  const Switcher = loadSwitcher(noWorkspaces, { localBackend: true, forcePopoverOpen: true })
   const html = renderToStaticMarkup(React.createElement(Switcher))
-  expect(html).toBe('')
+  expect(html).toContain('aria-label="Workspace: Local"')
+  expect(html).toContain('role="menuitemradio" aria-checked="true">Local<')
+  expect(html).toContain('>Add Cloud Workspace<')
+})
+
+test('SidebarWorkspaceSwitcher renders nothing when Local is disabled and no Cloud workspace is connected', () => {
+  const Switcher = loadSwitcher(
+    { ...noWorkspaces, source: 'primary', activeWorkspaceId: '' },
+    { localBackend: false, forcePopoverOpen: true },
+  )
+  expect(renderToStaticMarkup(React.createElement(Switcher))).toBe('')
 })
 
 test('SidebarWorkspaceSwitcher lists Cloud workspaces, Local, and Add Cloud Workspace as single-line rows when localBackend=true', () => {

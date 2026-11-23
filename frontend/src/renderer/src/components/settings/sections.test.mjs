@@ -38,9 +38,7 @@ function renderSettingsNav({ cloudState, cloudOnly = false, section = 'cloud' })
       if (name === '@/components/sidebar/SidebarWorkspaceSwitcher') {
         return {
           SidebarWorkspaceSwitcher: ({ className }) =>
-            cloudState.workspaces.length > 0
-              ? React.createElement('div', { 'data-switcher': 'true', className }, 'Switcher')
-              : null,
+            React.createElement('div', { 'data-switcher': 'true', className }, 'Switcher'),
         }
       }
       if (name === '@/lib/cloudSession') {
@@ -166,7 +164,7 @@ test('SettingsNav heads workspace settings with the switcher alone and keeps App
     },
     cloudOnly: false,
   })
-  expect(pureLocalHtml).not.toContain('data-switcher="true"')
+  expect(pureLocalHtml).toContain('data-switcher="true"')
   expect(pureLocalHtml).toContain('>Workspace<')
   expect(pureLocalHtml).toContain('>App<')
 

@@ -1,5 +1,5 @@
 import { ChevronsUpDown, LoaderCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AddCloudWorkspaceModal } from '@/components/connection/AddCloudWorkspaceModal'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
@@ -16,33 +16,32 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
   const [open, setOpen] = useState(false)
   const [switchingTo, setSwitchingTo] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   const localAllowed = clientRuntime.capabilities.localBackend && cloud.source !== 'primary'
   const workspaces = cloud.workspaces
-
-  // Pure Local mode: zero extra chrome.
-  if (workspaces.length === 0) {
-    return null
-  }
-
   const activeCloud = activeCloudWorkspace(cloud)
-  const isLocalActive = localAllowed && !activeCloud
 
-  const activeName = activeCloud ? workspaceDisplayName(activeCloud) : 'Local'
-
-  // Cloud-only packaging with a single primary workspace: clean static header, no Local escape hatch.
-  if (!localAllowed && workspaces.length === 1) {
-    return (
+  // Without Local there is nothing to switch to or add around a single Cloud workspace.
+  if (!localAllowed && workspaces.length <= 1) {
+    return activeCloud ? (
       <div className={className}>
         <p className="truncate px-2.5 text-[13px] leading-7 font-semibold text-ink max-sm:px-3 max-sm:text-[15px] max-sm:leading-11">
-          {activeName}
+          {workspaceDisplayName(activeCloud)}
         </p>
       </div>
-    )
+    ) : null
+  }
+
+  const isLocalActive = localAllowed && !activeCloud
+  const activeName = activeCloud ? workspaceDisplayName(activeCloud) : 'Local'
+  const closeMenu = () => {
+    setOpen(false)
+    triggerRef.current?.focus()
   }
 
   const handleSelect = async (workspaceId: string) => {
-    setOpen(false)
+    closeMenu()
     const currentId = activeCloud ? activeCloud.id : LOCAL_WORKSPACE_ID
     if (workspaceId === currentId || switchingTo !== null) return
     setSwitchingTo(workspaceId)
@@ -60,18 +59,21 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
     <div className={className}>
       <Popover
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={closeMenu}
         placement="below"
         align="start"
         trigger={
           <button
+            ref={triggerRef}
             type="button"
-            disabled={switchingTo !== null}
+            aria-disabled={switchingTo !== null}
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={`Workspace: ${activeName}`}
-            onClick={() => setOpen((value) => !value)}
-            className="group/workspace flex h-7 max-w-full cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-left text-[13px] font-semibold text-ink transition-[background-color,scale] duration-150 hover:bg-list-hover active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-primary/40 aria-expanded:bg-list-hover disabled:cursor-default disabled:opacity-60 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]"
+            onClick={() => {
+              if (switchingTo === null) setOpen((value) => !value)
+            }}
+            className="group/workspace flex h-7 max-w-full cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-left text-[13px] font-semibold text-ink transition-[background-color,scale] duration-150 hover:bg-list-hover active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-primary/40 aria-expanded:bg-list-hover aria-disabled:cursor-default aria-disabled:opacity-60 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]"
           >
             <span className="min-w-0 truncate">{activeName}</span>
             {switchingTo !== null ? (
@@ -85,11 +87,24 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
           </button>
         }
       >
-        <div role="menu" aria-label="Switch workspace" className="min-w-[200px] max-w-[280px]">
+        <div
+          role="menu"
+          aria-label="Switch workspace"
+          className="min-w-[200px] max-w-[280px]"
+          onKeyDown={(event) => {
+            if (event.key === 'Tab') closeMenu()
+            if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+            event.preventDefault()
+            const rows = [...event.currentTarget.querySelectorAll('button')]
+            const index = rows.indexOf(document.activeElement as HTMLButtonElement)
+            rows[(index + (event.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length]?.focus()
+          }}
+        >
           {workspaces.map((ws) => (
             <MenuRow
               key={ws.id}
               role="menuitemradio"
+              autoFocus={activeCloud?.id === ws.id}
               selected={activeCloud?.id === ws.id}
               onClick={() => void handleSelect(ws.id)}
             >
@@ -100,6 +115,7 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
             <>
               <MenuRow
                 role="menuitemradio"
+                autoFocus={isLocalActive}
                 selected={isLocalActive}
                 onClick={() => void handleSelect(LOCAL_WORKSPACE_ID)}
               >
@@ -109,7 +125,7 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
               <MenuRow
                 role="menuitem"
                 onClick={() => {
-                  setOpen(false)
+                  closeMenu()
                   setAdding(true)
                 }}
               >
