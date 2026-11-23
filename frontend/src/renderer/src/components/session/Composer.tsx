@@ -140,8 +140,26 @@ export function ComposerCard({
     disabled,
     onUploadAttachment,
   })
+  const toast = useToast()
+  const { dropTargetRef, dragging: draggingFiles, resolving } = useFileDropTarget<HTMLDivElement>({
+    disabled,
+    identity: draftStorageKey,
+    onDrop: (items) => {
+      attachmentDraft.addFiles(items.filter((item) => item.kind === 'file').map((item) => item.file))
+      const folders = items.filter((item) => item.kind === 'directory')
+      if (folders.length > 0 && (!isLocalBackendUrl(apiBaseUrl()) || !window.jaz)) {
+        toast('Folders attach only in the desktop app with a local backend', 'danger')
+        return
+      }
+      const paths = folders.map((folder) => folder.path).filter((path) => path !== undefined)
+      if (paths.length > 0) mention.insertPaths(paths)
+      if (paths.length < folders.length || items.some((item) => item.kind === 'unavailable')) {
+        toast('Couldn’t access a dropped item', 'danger')
+      }
+    },
+  })
   const canSendWhileStreaming = streaming && sendWhileStreaming
-  const attachmentBusy = attachmentDraft.busy
+  const attachmentBusy = attachmentDraft.busy || resolving
   const hasNonTextDraftContent =
     attachmentDraft.files.length > 0 || attachmentDraft.uploaded.length > 0 || hasMessageContextContent(contextInputs(contexts))
   const hasSendableDraft = (messageEmpty: boolean) => !messageEmpty || hasNonTextDraftContent
@@ -182,24 +200,6 @@ export function ComposerCard({
   useEffect(() => {
     if (!goalAvailable || goalEngaged) setGoalRequested(false)
   }, [goalEngaged, goalAvailable, setGoalRequested])
-
-  const toast = useToast()
-  const { dropTargetRef, dragging: draggingFiles } = useFileDropTarget<HTMLDivElement>({
-    disabled,
-    onDrop: (files, folders) => {
-      attachmentDraft.addFiles(files)
-      if (folders.length === 0) {
-        return
-      }
-      if (!isLocalBackendUrl(apiBaseUrl()) || !window.jaz?.droppedDirectoryPath) {
-        toast('Folders attach only in the desktop app with a local backend', 'danger')
-        return
-      }
-      const paths = folders.filter((path) => path !== null)
-      if (paths.length > 0) mention.insertPaths(paths)
-      if (paths.length < folders.length) toast('Couldn’t access the dropped folder', 'danger')
-    },
-  })
 
   const onPasteCapture = (event: ClipboardEvent<HTMLDivElement>) => {
     if (disabled || event.target !== mention.textareaRef.current) {

@@ -4,21 +4,23 @@ import { isAbsolute, join } from 'node:path'
 import { app, ipcMain, shell } from 'electron'
 import type { createConnectionSession } from '@main/connectionSession'
 import { trustedWindow } from '@main/permissions'
-import { DROPPED_DIRECTORY_CHANNEL, FILE_ACTIONS_CHANNEL } from '@shared/fileActions'
+import { FILE_ACTIONS_CHANNEL, INSPECT_DROPPED_FILE_CHANNEL, type DroppedPath } from '@shared/fileActions'
 import { isPreviewProxyTargetHostname } from '@shared/preview'
 import type { SessionSnapshot } from '@shared/connectionSession'
 
-export function installDroppedDirectory(): void {
-  ipcMain.handle(DROPPED_DIRECTORY_CHANNEL, async (event, path: unknown) => {
+export function installDroppedFileInspection(): void {
+  ipcMain.handle(INSPECT_DROPPED_FILE_CHANNEL, async (event, path: unknown): Promise<DroppedPath> => {
     trustedWindow(event)
-    if (typeof path !== 'string' || !isAbsolute(path)) return null
-    const info = await stat(path).catch(() => null)
-    return info?.isDirectory() ? path : null
+    if (typeof path === 'string' && isAbsolute(path)) {
+      const info = await stat(path).catch(() => undefined)
+      if (info?.isDirectory()) return { kind: 'directory', path }
+      if (info?.isFile()) return { kind: 'file' }
+    }
+    return { kind: 'unavailable' }
   })
 }
 
 export function installFileActions(connection: Pick<ReturnType<typeof createConnectionSession>, 'authorize' | 'current'>): void {
-  installDroppedDirectory()
   const read = (active: SessionSnapshot, sessionId: string, path: string, raw = false) => {
     const url = new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/file`, active.url)
     url.search = new URLSearchParams({ path, ...(raw && { raw: '1' }) }).toString()

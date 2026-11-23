@@ -2,7 +2,7 @@ import { claudeVoice } from '@preload/claudeVoiceAPI'
 import { CLAUDE_VOICE_ARGUMENT } from '@shared/claudeVoice'
 import { installClaudeVoice } from '@preload/claudeVoice'
 import { contextBridge, ipcRenderer } from 'electron'
-import { droppedDirectoryPath } from '@preload/droppedDirectory'
+import { inspectDroppedFile } from '@preload/inspectDroppedFile'
 import { COMPUTER_CHANNEL, type ComputerAPI } from '@shared/computerControl'
 import {
   PERMISSION_GUIDE_CHANNEL,
@@ -158,7 +158,7 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
     apiBaseUrl,
     localBackendTransport: LOCAL_BACKEND_TRANSPORT_URL,
     windowKind,
-    droppedDirectoryPath,
+    inspectDroppedFile,
     setNativeTheme: (source: 'light' | 'dark' | 'system') =>
       ipcRenderer.send('jaz:set-native-theme', source),
     setWindowButtonsVisible: (visible: boolean) => ipcRenderer.send('jaz:set-window-buttons-visible', visible),

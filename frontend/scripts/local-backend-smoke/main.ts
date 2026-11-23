@@ -1,10 +1,10 @@
 import { app, BrowserWindow, session } from 'electron'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
-import { installDroppedDirectory } from '@main/fileActions'
+import { installDroppedFileInspection } from '@main/fileActions'
 import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
 import { configureAppPermissions } from '@main/permissions'
 import { LOCAL_BACKEND_TRANSPORT_URL, LOCAL_BACKEND_URL } from '@shared/localBackend'
@@ -154,7 +154,7 @@ async function run() {
   await app.whenReady()
   configureAppPermissions(session.defaultSession)
   configureLocalBackendTransport(session.defaultSession, backend)
-  installDroppedDirectory()
+  installDroppedFileInspection()
   const window = new BrowserWindow({ show: false, focusable: false, webPreferences: { preload: join(output, 'preload.cjs'), backgroundThrottling: false } })
   window.webContents.on('console-message', ({ level, message }) => {
     if (level === 'error') console.error(message)
@@ -196,23 +196,37 @@ async function run() {
   stage = 'folder drop without a browser entry starts a thread'
   const directory = join(output, 'Folder fixture')
   const file = join(output, 'sample.txt')
+  const unavailable = join(output, 'Missing folder link')
   await mkdir(directory)
   await writeFile(file, 'Sample attachment')
+  await symlink(join(output, 'missing'), unavailable, 'dir')
   await evaluate(`fixture.showComposer()
     void (DataTransferItem.prototype.webkitGetAsEntry = () => null)`)
   await until(() => evaluate('Boolean(document.querySelector("textarea"))'))
+  await evaluate(`(() => {
+    const textarea = document.querySelector('textarea')
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(textarea, 'Look at ')
+    textarea.dispatchEvent(new InputEvent('input', { bubbles: true }))
+  })()`)
+  const sendButton = `document.querySelector('button[aria-label="Send message"]')`
+  await until(() => evaluate(`${sendButton}?.disabled === false`))
   const { x, y } = await evaluate(`(() => {
     const rect = document.querySelector('textarea').getBoundingClientRect()
     return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) }
   })()`)
-  const data = { items: [], files: [directory, file], dragOperationsMask: 1 }
+  const data = { items: [], files: [directory, file, unavailable], dragOperationsMask: 1 }
   for (const type of ['dragEnter', 'dragOver', 'drop']) {
     await window.webContents.debugger.sendCommand('Input.dispatchDragEvent', { type, x, y, data })
   }
-  await until(() => evaluate('document.querySelector("button[aria-label=\\"Send message\\"]:enabled") !== null'))
-  await evaluate('document.querySelector("button[aria-label=\\"Send message\\"]").click()')
+  await until(() => evaluate(`${sendButton}?.disabled === true`))
+  await evaluate(`void document.querySelector('textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`)
+  assert.equal(await evaluate('fixture.submission'), undefined)
+  await evaluate('resumeDroppedFileInspection()')
+  await until(() => evaluate(`document.body.textContent.includes('Couldn’t access a dropped item') &&
+    ${sendButton}?.disabled === false`))
+  await evaluate(`${sendButton}.click()`)
   assert.equal(await evaluate('fixture.submission'), 'folder-drop')
-  assert.equal(initialPrompt, `[@Folder fixture](<${directory}>)`)
+  assert.equal(initialPrompt, `Look at [@Folder fixture](<${directory}>)`)
   assert.equal(uploaded.length, 1)
   assert.match(uploaded[0], /filename="sample.txt"[\s\S]*Sample attachment/)
   stage = 'offline streaming and embedded resources'

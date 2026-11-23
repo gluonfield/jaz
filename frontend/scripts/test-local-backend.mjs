@@ -32,7 +32,7 @@ export async function checkLocalBackend() {
   for (const bundle of bundles) {
     if (!bundle.success) throw new AggregateError(bundle.logs)
   }
-  await writeFile(join(output, 'renderer/index.html'), '<!doctype html><script src="renderer.js" defer></script>')
+  await writeFile(join(output, 'renderer/index.html'), '<!doctype html><meta charset="utf-8"><script src="renderer.js" defer></script>')
   await writeFile(join(output, 'bootstrap.cjs'), `const { app, dialog } = require('electron')
 if (process.platform === 'darwin') app.setActivationPolicy('prohibited')
 dialog.showErrorBox = (title, content) => {
