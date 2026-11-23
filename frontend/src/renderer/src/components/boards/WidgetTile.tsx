@@ -122,10 +122,10 @@ export function WidgetTile({
   theme: 'light' | 'dark'
   scale: number
   dragging?: boolean
-  onHeaderPointerDown: (e: ReactPointerEvent) => void
-  onResizePointerDown: (e: ReactPointerEvent) => void
-  onRemove: () => void
-  onEdit: () => void
+  onHeaderPointerDown?: (e: ReactPointerEvent) => void
+  onResizePointerDown?: (e: ReactPointerEvent) => void
+  onRemove?: () => void
+  onEdit?: () => void
   // Fired when a board window hands the loop off to the main app, with the
   // click point so the board can flash a cue there.
   onOpenedInMain: (x: number, y: number) => void
@@ -289,49 +289,65 @@ export function WidgetTile({
     >
       <div
         onPointerDown={onHeaderPointerDown}
-        className="flex h-8 shrink-0 cursor-grab select-none items-center gap-1.5 border-b border-border px-2.5 transition-colors duration-150 hover:bg-surface-2/60 active:cursor-grabbing"
+        className={`flex h-8 shrink-0 select-none items-center gap-1.5 border-b border-border px-2.5 transition-colors duration-150 ${
+          onHeaderPointerDown ? 'cursor-grab hover:bg-surface-2/60 active:cursor-grabbing' : ''
+        }`}
       >
-        <GripVertical
-          size={13}
-          aria-hidden
-          className="-ml-1 shrink-0 text-ink-3 transition-colors duration-150 group-hover:text-ink-2"
-        />
+        {onHeaderPointerDown ? (
+          <GripVertical
+            size={13}
+            aria-hidden
+            className="-ml-1 shrink-0 text-ink-3 transition-colors duration-150 group-hover:text-ink-2"
+          />
+        ) : null}
         <TileStatusDot item={item} />
         <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink" title={item.loop_name}>
           {item.title}
         </span>
-        <span className="shrink-0 text-[11px] tabular-nums text-ink-3 group-hover:hidden">
+        <span
+          className={`shrink-0 text-[11px] tabular-nums text-ink-3 ${
+            onEdit || onRemove ? 'group-hover:hidden' : ''
+          }`}
+        >
           {updated}
         </span>
-        <div className="hidden shrink-0 items-center group-hover:flex">
-          <IconButton
-            variant="ghost"
-            size="xs"
-            aria-label="Run loop now"
-            title="Run loop now"
-            onClick={() => void runLoopNow(item.loop_id).catch(() => {})}
-          >
-            <Play size={12} />
-          </IconButton>
-          <IconButton
-            variant="ghost"
-            size="xs"
-            aria-label="Edit loop"
-            title="Edit loop"
-            onClick={onEdit}
-          >
-            <Pencil size={12} />
-          </IconButton>
-          <IconButton
-            variant="ghost"
-            size="xs"
-            aria-label="Remove from board"
-            title="Remove from board"
-            onClick={onRemove}
-          >
-            <X size={12} />
-          </IconButton>
-        </div>
+        {onEdit || onRemove ? (
+          <div className="hidden shrink-0 items-center group-hover:flex">
+            {onEdit ? (
+              <>
+                <IconButton
+                  variant="ghost"
+                  size="xs"
+                  aria-label="Run loop now"
+                  title="Run loop now"
+                  onClick={() => void runLoopNow(item.loop_id).catch(() => {})}
+                >
+                  <Play size={12} />
+                </IconButton>
+                <IconButton
+                  variant="ghost"
+                  size="xs"
+                  aria-label="Edit loop"
+                  title="Edit loop"
+                  onClick={onEdit}
+                >
+                  <Pencil size={12} />
+                </IconButton>
+              </>
+            ) : null}
+            {onRemove ? (
+              <IconButton
+                variant="ghost"
+                size="xs"
+                aria-label="Remove from board"
+                title="Remove from board"
+                onClick={onRemove}
+              >
+                <X size={12} />
+              </IconButton>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       {item.current_version > 0 && layers.length > 0 ? (
         <div className="relative m-2.5 min-h-0 flex-1">
@@ -423,13 +439,15 @@ export function WidgetTile({
           {item.last_error}
         </div>
       ) : null}
-      <div
-        onPointerDown={onResizePointerDown}
-        aria-hidden
-        className="absolute right-0 bottom-0 z-10 size-4 cursor-nwse-resize opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-      >
-        <span className="absolute right-1 bottom-1 size-2 rounded-br border-r-2 border-b-2 border-ink-3" />
-      </div>
+      {onResizePointerDown ? (
+        <div
+          onPointerDown={onResizePointerDown}
+          aria-hidden
+          className="absolute right-0 bottom-0 z-10 size-4 cursor-nwse-resize opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+        >
+          <span className="absolute right-1 bottom-1 size-2 rounded-br border-r-2 border-b-2 border-ink-3" />
+        </div>
+      ) : null}
     </div>
   )
 }

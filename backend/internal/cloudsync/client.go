@@ -26,9 +26,12 @@ var (
 	discardV6       = netip.MustParsePrefix("100::/64")
 )
 
+type fileLoopbackHostKey struct{}
+
 type cloudClient struct {
-	http   *http.Client
-	stream *http.Client
+	http          *http.Client
+	stream        *http.Client
+	fileTransport *http.Transport
 }
 
 func newCloudClient() *cloudClient {
@@ -36,9 +39,48 @@ func newCloudClient() *cloudClient {
 		return http.ErrUseLastResponse
 	}
 	return &cloudClient{
-		http:   &http.Client{Timeout: 30 * time.Second, CheckRedirect: noRedirect},
-		stream: &http.Client{Timeout: 0, CheckRedirect: noRedirect},
+		http:          &http.Client{Timeout: 30 * time.Second, CheckRedirect: noRedirect},
+		stream:        &http.Client{Timeout: 0, CheckRedirect: noRedirect},
+		fileTransport: newSafeFileTransport(),
 	}
+}
+
+func newSafeFileTransport() *http.Transport {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	dialer := &net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}
+	tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid file host", ErrInvalidURL)
+		}
+		allowedLoopback, _ := ctx.Value(fileLoopbackHostKey{}).(string)
+		allowLoopback := allowedLoopback != "" && strings.EqualFold(addr, allowedLoopback)
+		if ip, err := netip.ParseAddr(strings.Trim(host, "[]")); err == nil {
+			if isBlockedRedirectAddr(ip, allowLoopback) {
+				return nil, fmt.Errorf("%w: blocked file redirect address", ErrInvalidURL)
+			}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(ip.Unmap().String(), port))
+		}
+		ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		if err != nil || len(ips) == 0 {
+			return nil, fmt.Errorf("%w: failed to resolve file host", ErrInvalidURL)
+		}
+		for _, ip := range ips {
+			if isBlockedRedirectAddr(ip, allowLoopback) {
+				return nil, fmt.Errorf("%w: file host resolved to blocked address", ErrInvalidURL)
+			}
+		}
+		var lastErr error
+		for _, ip := range ips {
+			conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.Unmap().String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		return nil, lastErr
+	}
+	return tr
 }
 
 func isBlockedRedirectAddr(addr netip.Addr, allowLoopback bool) bool {
@@ -58,37 +100,38 @@ func isBlockedRedirectAddr(addr netip.Addr, allowLoopback bool) bool {
 	return addr.Is6() && discardV6.Contains(addr)
 }
 
-func validateRunFileRedirectTarget(ctx context.Context, baseURL string, target *url.URL) error {
+func canonicalHostPort(u *url.URL) string {
+	if u == nil || u.Host == "" {
+		return ""
+	}
+	port := u.Port()
+	if port == "" {
+		if strings.EqualFold(u.Scheme, "https") {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	return strings.ToLower(net.JoinHostPort(u.Hostname(), port))
+}
+
+func validateRunFileRedirectTarget(baseParsed *url.URL, baseIsLoopback bool, target *url.URL) error {
 	if target == nil || target.Host == "" || target.User != nil {
 		return fmt.Errorf("%w: invalid file redirect target", ErrInvalidURL)
 	}
-	baseParsed, _ := url.Parse(baseURL)
 	sameLoopbackOrigin := baseParsed != nil &&
-		IsLoopbackURL(baseURL) &&
+		baseIsLoopback &&
 		strings.EqualFold(target.Scheme, baseParsed.Scheme) &&
 		strings.EqualFold(target.Host, baseParsed.Host)
-	scheme := strings.ToLower(target.Scheme)
-	if scheme != "https" && !sameLoopbackOrigin {
+	if !strings.EqualFold(target.Scheme, "https") && !sameLoopbackOrigin {
 		return fmt.Errorf("%w: file redirect requires HTTPS", ErrInvalidURL)
 	}
 	host := strings.ToLower(strings.TrimSuffix(target.Hostname(), "."))
 	if host == "" || host == "metadata" || host == "metadata.google.internal" || strings.HasSuffix(host, ".internal") {
 		return fmt.Errorf("%w: blocked file redirect host", ErrInvalidURL)
 	}
-	if ip, err := netip.ParseAddr(host); err == nil {
-		if isBlockedRedirectAddr(ip, sameLoopbackOrigin) {
-			return fmt.Errorf("%w: blocked file redirect address", ErrInvalidURL)
-		}
-		return nil
-	}
-	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
-	if err != nil || len(ips) == 0 {
-		return fmt.Errorf("%w: failed to resolve file redirect host", ErrInvalidURL)
-	}
-	for _, ip := range ips {
-		if isBlockedRedirectAddr(ip, sameLoopbackOrigin) {
-			return fmt.Errorf("%w: file redirect host resolved to blocked address", ErrInvalidURL)
-		}
+	if ip, err := netip.ParseAddr(host); err == nil && isBlockedRedirectAddr(ip, sameLoopbackOrigin) {
+		return fmt.Errorf("%w: blocked file redirect address", ErrInvalidURL)
 	}
 	return nil
 }
@@ -515,21 +558,27 @@ func (c *cloudClient) openRunFile(ctx context.Context, baseURL, token, runID, re
 		return nil, err
 	}
 	path := fmt.Sprintf("/v1/runs/%s/files/%s", url.PathEscape(runID), strings.Join(segments, "/"))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)
+	baseParsed, _ := url.Parse(baseURL)
+	baseIsLoopback := IsLoopbackURL(baseURL)
+	reqCtx := ctx
+	if baseIsLoopback {
+		reqCtx = context.WithValue(ctx, fileLoopbackHostKey{}, canonicalHostPort(baseParsed))
+	}
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, baseURL+path, nil)
 	if err != nil {
 		return nil, err
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	baseParsed, _ := url.Parse(baseURL)
 	fileClient := &http.Client{
-		Timeout: 60 * time.Second,
+		Timeout:   60 * time.Second,
+		Transport: c.fileTransport,
 		CheckRedirect: func(next *http.Request, via []*http.Request) error {
 			if len(via) >= 2 {
 				return fmt.Errorf("%w: too many file preview redirects", ErrInvalidURL)
 			}
-			if err := validateRunFileRedirectTarget(next.Context(), baseURL, next.URL); err != nil {
+			if err := validateRunFileRedirectTarget(baseParsed, baseIsLoopback, next.URL); err != nil {
 				return err
 			}
 			if baseParsed == nil || !strings.EqualFold(next.URL.Host, baseParsed.Host) || !strings.EqualFold(next.URL.Scheme, baseParsed.Scheme) {

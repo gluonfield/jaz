@@ -42,9 +42,9 @@ export function BoardGrid({
   items: BoardItem[]
   theme: 'light' | 'dark'
   scale: number
-  onLayoutChange: (entry: BoardLayoutEntry) => void
-  onRemove: (widgetId: string) => void
-  onEdit: (loopId: string) => void
+  onLayoutChange?: (entry: BoardLayoutEntry) => void
+  onRemove?: (widgetId: string) => void
+  onEdit?: (loopId: string) => void
   onNewWidget?: () => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -107,6 +107,7 @@ export function BoardGrid({
   }
 
   const startDrag = (e: ReactPointerEvent, item: BoardItem, mode: DragState['mode']) => {
+    if (!onLayoutChange) return
     // Buttons and links inside the header keep their click behavior.
     if ((e.target as HTMLElement).closest('button, a')) return
     if (cellW <= 0) return
@@ -278,10 +279,10 @@ export function BoardGrid({
               theme={theme}
               scale={scale}
               dragging={isDragging}
-              onHeaderPointerDown={(e) => startDrag(e, item, 'move')}
-              onResizePointerDown={(e) => startDrag(e, item, 'resize')}
-              onRemove={() => onRemove(item.widget_id)}
-              onEdit={() => onEdit(item.loop_id)}
+              onHeaderPointerDown={onLayoutChange ? (e) => startDrag(e, item, 'move') : undefined}
+              onResizePointerDown={onLayoutChange ? (e) => startDrag(e, item, 'resize') : undefined}
+              onRemove={onRemove ? () => onRemove(item.widget_id) : undefined}
+              onEdit={onEdit ? () => onEdit(item.loop_id) : undefined}
               onOpenedInMain={showOpenCue}
             />
           </div>

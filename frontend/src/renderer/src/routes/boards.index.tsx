@@ -119,11 +119,13 @@ function BoardsPage() {
         </div>
       )}
 
-      <BoardModal
-        open={creating}
-        initialVisibility={createVisibility}
-        onClose={() => setCreating(false)}
-      />
+      {creating ? (
+        <BoardModal
+          open
+          initialVisibility={createVisibility}
+          onClose={() => setCreating(false)}
+        />
+      ) : null}
     </div>
   )
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
@@ -100,14 +99,7 @@ func (s *Service) CreateSpace(ctx context.Context, name string) (storage.CloudSp
 }
 
 func (s *Service) AddSpaceMember(ctx context.Context, spaceID string, body json.RawMessage) (json.RawMessage, int, error) {
-	if err := validatePathSegment(spaceID); err != nil {
-		return nil, 0, err
-	}
-	acc, _, ok := s.activeAccountWithGen()
-	if !ok || acc.Token == "" {
-		return nil, 0, ErrNotConnected
-	}
-	return s.client.doJSON(ctx, http.MethodPost, acc.BaseURL, "/v1/spaces/"+url.PathEscape(spaceID)+"/members", acc.Token, body)
+	return s.authedSegmentJSON(ctx, http.MethodPost, "/v1/spaces/", spaceID, "/members", body)
 }
 
 func (s *Service) GetInstruction(ctx context.Context, scope, scopeID, kind string) (storage.CloudInstruction, error) {
@@ -158,31 +150,17 @@ func (s *Service) saveInstructionForAccount(ctx context.Context, acc storage.Clo
 }
 
 func (s *Service) PresignUpload(ctx context.Context, runID string, body json.RawMessage) (json.RawMessage, int, error) {
-	if err := validatePathSegment(runID); err != nil {
-		return nil, 0, err
-	}
-	acc, _, ok := s.activeAccountWithGen()
-	if !ok || acc.Token == "" {
-		return nil, 0, ErrNotConnected
-	}
-	return s.client.doJSON(ctx, http.MethodPost, acc.BaseURL, "/v1/runs/"+url.PathEscape(runID)+"/uploads/presign", acc.Token, body)
+	return s.authedSegmentJSON(ctx, http.MethodPost, "/v1/runs/", runID, "/uploads/presign", body)
 }
 
 func (s *Service) CommitUpload(ctx context.Context, runID string, body json.RawMessage) (json.RawMessage, int, error) {
-	if err := validatePathSegment(runID); err != nil {
-		return nil, 0, err
-	}
-	acc, _, ok := s.activeAccountWithGen()
-	if !ok || acc.Token == "" {
-		return nil, 0, ErrNotConnected
-	}
-	return s.client.doJSON(ctx, http.MethodPost, acc.BaseURL, "/v1/runs/"+url.PathEscape(runID)+"/uploads/commit", acc.Token, body)
+	return s.authedSegmentJSON(ctx, http.MethodPost, "/v1/runs/", runID, "/uploads/commit", body)
 }
 
 func (s *Service) OpenRunFile(ctx context.Context, runID, relpath string) (*http.Response, error) {
-	acc, _, ok := s.activeAccountWithGen()
-	if !ok || acc.Token == "" {
-		return nil, ErrNotConnected
+	acc, err := s.activeAuthedAccount()
+	if err != nil {
+		return nil, err
 	}
 	return s.client.openRunFile(ctx, acc.BaseURL, acc.Token, runID, relpath)
 }

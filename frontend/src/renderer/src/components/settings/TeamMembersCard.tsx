@@ -40,7 +40,8 @@ export function TeamMembersCard({ workspace }: { workspace: CloudWorkspaceSummar
   const [role, setRole] = useState<OrgMemberRole>('member')
   const [search, setSearch] = useState('')
 
-  const invalidateMembers = () => void queryClient.invalidateQueries({ queryKey: keys.cloud })
+  const invalidateMembers = () =>
+    void queryClient.invalidateQueries({ queryKey: keys.cloudMembersRoot })
 
   const addMutation = useMutation({
     mutationFn: () =>
@@ -246,7 +247,7 @@ export function TeamMembersCard({ workspace }: { workspace: CloudWorkspaceSummar
                       <select
                         aria-label={`Role for ${primary}`}
                         value={roleValue}
-                        disabled={roleMutation.isPending}
+                        disabled={roleMutation.isPending && roleMutation.variables?.id === member.id}
                         onChange={(e) =>
                           roleMutation.mutate({
                             id: member.id,
@@ -264,7 +265,7 @@ export function TeamMembersCard({ workspace }: { workspace: CloudWorkspaceSummar
                         size="sm"
                         aria-label={`Remove ${primary}`}
                         title="Remove from team"
-                        disabled={removeMutation.isPending}
+                        disabled={removeMutation.isPending && removeMutation.variables === member.id}
                         onClick={() => {
                           if (
                             confirm(`Remove ${primary} (${member.email}) from this workspace?`)

@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, SquarePen, UserPlus, Users, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { useOrgMemberSearch } from '@/components/cloud/useOrgMemberSearch'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/toast'
-import { filterOrgMembers, orgMembersQuery } from '@/lib/api/cloudMembers'
+import { filterOrgMembers } from '@/lib/api/cloudMembers'
 import { addSpaceMember, createSpace, spacesQuery, type CloudSpace } from '@/lib/api/cloudSpaces'
 import { keys } from '@/lib/query/keys'
 
@@ -24,11 +25,12 @@ export function SidebarSpaces({
   const [memberTarget, setMemberTarget] = useState<string | null>(null)
   const [memberInput, setMemberInput] = useState('')
   const [memberRole, setMemberRole] = useState<'member' | 'admin'>('member')
-  const orgMembers = useQuery({ ...orgMembersQuery('', 50), enabled: memberTarget !== null })
-  const memberSuggestions = useMemo(
-    () => filterOrgMembers(orgMembers.data ?? [], memberInput).slice(0, 5),
-    [orgMembers.data, memberInput],
-  )
+  const { members: orgMembers } = useOrgMemberSearch(memberInput, memberTarget !== null)
+  const memberSuggestions = useMemo(() => {
+    const trimmed = memberInput.trim().toLowerCase()
+    if (trimmed && orgMembers.some((m) => m.email.toLowerCase() === trimmed)) return []
+    return filterOrgMembers(orgMembers, memberInput).slice(0, 5)
+  }, [orgMembers, memberInput])
 
   const create = useMutation({
     mutationFn: (name: string) => createSpace({ name }),

@@ -1,11 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { LoaderCircle, UserPlus, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { useOrgMemberSearch } from '@/components/cloud/useOrgMemberSearch'
 import {
   createOrgMember,
   filterOrgMembers,
   looksLikeEmail,
-  orgMembersQuery,
   type OrgMember,
 } from '@/lib/api/cloudMembers'
 import { keys } from '@/lib/query/keys'
@@ -35,33 +35,16 @@ export function MemberPicker({
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 150)
-    return () => window.clearTimeout(timer)
-  }, [query])
-
-  const baseMembers = useQuery({ ...orgMembersQuery('', 50), enabled: !disabled })
-  const searchedMembers = useQuery({
-    ...orgMembersQuery(debouncedQuery, 20),
-    enabled: !disabled && debouncedQuery.length > 0,
-  })
+  const { members: allKnown, isSearching } = useOrgMemberSearch(query, !disabled)
 
   const excludeSet = useMemo(() => {
     const set = new Set<string>(excludeUserIds)
     for (const item of selected) set.add(item.user_id)
     return set
   }, [excludeUserIds, selected])
-
-  const allKnown = useMemo(() => {
-    const byId = new Map<string, OrgMember>()
-    for (const member of baseMembers.data ?? []) byId.set(member.id, member)
-    for (const member of searchedMembers.data ?? []) byId.set(member.id, member)
-    return Array.from(byId.values())
-  }, [baseMembers.data, searchedMembers.data])
 
   const matches = useMemo(
     () => filterOrgMembers(allKnown, query, excludeSet).slice(0, 8),
@@ -78,31 +61,23 @@ export function MemberPicker({
 
   const canQuickAdd = canAddTeamMember && looksLikeEmail(trimmed) && !exactEmailExists
 
-  const quickAdd = useMutation({
-    mutationFn: (email: string) => createOrgMember({ email, role: 'member' }),
-    onSuccess: (created) => {
-      void queryClient.invalidateQueries({ queryKey: keys.cloud })
-      onChange([
-        ...selected,
-        { user_id: created.id, email: created.email, display_name: created.display_name },
-      ])
-      setQuery('')
-      setDebouncedQuery('')
-      setActiveIndex(0)
-      inputRef.current?.focus()
-    },
-  })
-
-  const selectMember = (member: OrgMember) => {
-    onChange([
-      ...selected,
-      { user_id: member.id, email: member.email, display_name: member.display_name },
-    ])
+  const appendMember = (member: PickedMember) => {
+    onChange([...selected, member])
     setQuery('')
-    setDebouncedQuery('')
     setActiveIndex(0)
     inputRef.current?.focus()
   }
+
+  const quickAdd = useMutation({
+    mutationFn: (email: string) => createOrgMember({ email, role: 'member' }),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: keys.cloudMembersRoot })
+      appendMember({ user_id: created.id, email: created.email, display_name: created.display_name })
+    },
+  })
+
+  const selectMember = (member: OrgMember) =>
+    appendMember({ user_id: member.id, email: member.email, display_name: member.display_name })
 
   const removeMember = (userId: string) => {
     onChange(selected.filter((item) => item.user_id !== userId))
@@ -111,13 +86,7 @@ export function MemberPicker({
   const totalOptions = matches.length + (canQuickAdd ? 1 : 0)
   const clampedActiveIndex = totalOptions > 0 ? Math.min(activeIndex, totalOptions - 1) : 0
   const showDropdown =
-    open &&
-    !disabled &&
-    (matches.length > 0 ||
-      canQuickAdd ||
-      baseMembers.isPending ||
-      searchedMembers.isFetching ||
-      trimmed.length > 0)
+    open && !disabled && (matches.length > 0 || canQuickAdd || isSearching || trimmed.length > 0)
 
   return (
     <div
@@ -274,7 +243,7 @@ export function MemberPicker({
 
           {matches.length === 0 && !canQuickAdd ? (
             <p className="px-2.5 py-2 text-[12px] text-ink-3">
-              {baseMembers.isPending || searchedMembers.isFetching
+              {isSearching
                 ? 'Searching team…'
                 : trimmed
                   ? 'No matching team members found.'

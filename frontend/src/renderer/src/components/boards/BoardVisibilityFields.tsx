@@ -98,6 +98,10 @@ export function BoardVisibilityFields({
   )
 }
 
+export function boardVisibilityIcon(visibility?: BoardVisibility): typeof Lock {
+  return (VISIBILITY_OPTIONS.find((opt) => opt.value === visibility) ?? VISIBILITY_OPTIONS[0]).Icon
+}
+
 export function boardVisibilityLabel(board: Pick<Board, 'visibility' | 'members'>): string {
   if (board.visibility === 'team') return 'Team'
   if (board.visibility === 'selected') {
@@ -114,12 +118,7 @@ export function BoardVisibilityBadge({
   board: Pick<Board, 'visibility' | 'members'>
   className?: string
 }) {
-  const Icon =
-    board.visibility === 'team'
-      ? Users
-      : board.visibility === 'selected'
-        ? UserCheck
-        : Lock
+  const Icon = boardVisibilityIcon(board.visibility)
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2 ${className}`}

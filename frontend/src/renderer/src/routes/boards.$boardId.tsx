@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { ExternalLink, Lock, Plus, UserCheck, Users, ZoomIn, ZoomOut } from 'lucide-react'
+import { ExternalLink, Plus, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { AddWidgetModal } from '@/components/boards/AddWidgetModal'
 import { BoardGrid } from '@/components/boards/BoardGrid'
 import { BoardShareModal } from '@/components/boards/BoardShareModal'
-import { boardVisibilityLabel } from '@/components/boards/BoardVisibilityFields'
+import { boardVisibilityIcon, boardVisibilityLabel } from '@/components/boards/BoardVisibilityFields'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -83,6 +83,13 @@ function BoardPage() {
     }
   }, [isBoardWindow, detail.data?.board.name])
 
+  useEffect(
+    () => () => {
+      if (scaleTimer.current) window.clearTimeout(scaleTimer.current)
+    },
+    [],
+  )
+
   const layoutMutation = useMutation({
     mutationFn: (entry: BoardLayoutEntry) => patchBoard(boardId, { layout: [entry] }),
     onMutate: async (entry) => {
@@ -139,12 +146,7 @@ function BoardPage() {
 
   const { board, items } = detail.data
   const canEdit = !cloud.active || board.can_edit !== false
-  const VisibilityIcon =
-    board.visibility === 'team'
-      ? Users
-      : board.visibility === 'selected'
-        ? UserCheck
-        : Lock
+  const VisibilityIcon = boardVisibilityIcon(board.visibility)
   const boardTabs = isBoardWindow && boards.data ? boards.data : [board]
   // Single commit path: Enter blurs the input, blur commits. Escape unmounts
   // the input without blurring, so a cancel never saves.
@@ -161,6 +163,7 @@ function BoardPage() {
     queryClient.setQueryData<BoardDetail>(keys.boardDetail(boardId), (prev) =>
       prev ? { ...prev, board: { ...prev.board, font_scale: next } } : prev,
     )
+    if (!canEdit) return
     if (scaleTimer.current) window.clearTimeout(scaleTimer.current)
     scaleTimer.current = window.setTimeout(() => scaleMutation.mutate(next), 400)
   }
@@ -335,13 +338,9 @@ function BoardPage() {
             items={items}
             theme={resolved}
             scale={scale}
-            onLayoutChange={(entry) => {
-              if (canEdit) layoutMutation.mutate(entry)
-            }}
-            onRemove={(widgetId) => {
-              if (canEdit) removeMutation.mutate(widgetId)
-            }}
-            onEdit={editingLoop.mutate}
+            onLayoutChange={canEdit ? (entry) => layoutMutation.mutate(entry) : undefined}
+            onRemove={canEdit ? (widgetId) => removeMutation.mutate(widgetId) : undefined}
+            onEdit={!cloud.active && canEdit ? editingLoop.mutate : undefined}
             onNewWidget={!cloud.active && canEdit ? () => setModal('add') : undefined}
           />
         </div>

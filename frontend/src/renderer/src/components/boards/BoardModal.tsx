@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { BoardIllustration } from '@/components/boards/BoardIllustration'
 import { BoardVisibilityFields } from '@/components/boards/BoardVisibilityFields'
 import type { PickedMember } from '@/components/cloud/MemberPicker'
@@ -30,20 +30,6 @@ export function BoardModal({
   const [visibility, setVisibility] = useState<BoardVisibility>(initialVisibility)
   const [selectedMembers, setSelectedMembers] = useState<PickedMember[]>([])
 
-  useEffect(() => {
-    if (open) {
-      setVisibility(initialVisibility)
-    }
-  }, [open, initialVisibility])
-
-  const close = () => {
-    setName('')
-    setVisibility(initialVisibility)
-    setSelectedMembers([])
-    create.reset()
-    onClose()
-  }
-
   const create = useMutation({
     mutationFn: () => {
       const boardName = name.trim() || 'Board'
@@ -58,7 +44,7 @@ export function BoardModal({
     },
     onSuccess: (created) => {
       void queryClient.invalidateQueries({ queryKey: keys.boards })
-      close()
+      onClose()
       void navigate({
         to: '/boards/$boardId',
         params: { boardId: created.id },
@@ -72,7 +58,7 @@ export function BoardModal({
   return (
     <Modal
       open={open}
-      onClose={close}
+      onClose={onClose}
       size="lg"
       title="New board"
       description="A tiled board your loops keep up to date."
@@ -82,7 +68,7 @@ export function BoardModal({
             {create.isError ? (create.error as Error).message : ''}
           </p>
           <div className="flex shrink-0 items-center gap-1">
-            <Button variant="ghost" size="md" onClick={close}>
+            <Button variant="ghost" size="md" onClick={onClose}>
               Cancel
             </Button>
             <Button
