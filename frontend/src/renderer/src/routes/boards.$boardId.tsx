@@ -8,6 +8,7 @@ import { LoopModal } from '@/components/loops/LoopModal'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconButton } from '@/components/ui/IconButton'
+import { Modal } from '@/components/ui/Modal'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import {
   type BoardDetail,
@@ -17,6 +18,7 @@ import {
   patchBoard,
   removeWidgetFromBoard,
 } from '@/lib/api/boards'
+import { loopDetailQuery } from '@/lib/api/loops'
 import { clientRuntime, popOutBoard } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
 import { useTheme } from '@/lib/theme'
@@ -41,6 +43,10 @@ function BoardPage() {
   // hands off to the loop modal. Either way the board stays put and scrolls
   // the fresh tile into view once it appears.
   const [modal, setModal] = useState<'add' | 'new-loop' | null>(null)
+  const editingLoop = useMutation({
+    mutationKey: [...keys.boardDetail(boardId), 'edit-loop'],
+    mutationFn: (loopId: string) => queryClient.fetchQuery({ ...loopDetailQuery(loopId), staleTime: 0 }),
+  })
   const pendingLoopId = useRef<string | null>(null)
   // null = displaying; a string = the draft name being edited inline.
   const [draftName, setDraftName] = useState<string | null>(null)
@@ -284,6 +290,7 @@ function BoardPage() {
             scale={scale}
             onLayoutChange={(entry) => layoutMutation.mutate(entry)}
             onRemove={(widgetId) => removeMutation.mutate(widgetId)}
+            onEdit={editingLoop.mutate}
             onNewWidget={() => setModal('add')}
           />
         </div>
@@ -299,12 +306,34 @@ function BoardPage() {
         }}
       />
       <LoopModal
-        open={modal === 'new-loop'}
-        onClose={() => setModal(null)}
+        key={boardId}
+        open={modal === 'new-loop' || editingLoop.isSuccess}
+        onClose={() => {
+          setModal(null)
+          editingLoop.reset()
+        }}
+        loop={editingLoop.data?.loop}
+        boardIds={editingLoop.data?.boardIds}
         onCreated={(created) => {
           pendingLoopId.current = created.id
         }}
       />
+      {editingLoop.isPending || editingLoop.isError ? (
+        <Modal open onClose={editingLoop.reset} title="Edit loop" size="md">
+          {editingLoop.isError ? (
+            <div className="space-y-3">
+              <p role="alert" className="text-[13px] text-danger">
+                {editingLoop.error.message}
+              </p>
+              <Button variant="secondary" size="sm" onClick={() => editingLoop.mutate(editingLoop.variables)}>
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <SkeletonRows count={4} />
+          )}
+        </Modal>
+      ) : null}
     </div>
   )
 }

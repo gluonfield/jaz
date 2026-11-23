@@ -4,6 +4,7 @@ import { browserPasswords } from '@preload/browserPasswords'
 import { browserDownloads } from '@preload/browserDownloads'
 import { BROWSER_COMMAND_CHANNEL } from '@shared/browserControl'
 import { BROWSER_CLOSE_SHORTCUT_CHANNEL } from '@shared/browserCloseShortcut'
+import { BROWSER_PASSKEY_FALLBACK_CHANNEL } from '@shared/preview'
 import { BROWSER_PROFILE_CHANNELS, type BrowserProfileAPI } from '@shared/browserProfile'
 import { LOCAL_BACKEND_TRANSPORT_URL } from '@shared/localBackend'
 
@@ -34,6 +35,13 @@ if (process.env.JAZ_BROWSER_SMOKE_SUITE === 'google-passkeys') {
     const listener = () => handler()
     ipcRenderer.on(BROWSER_CLOSE_SHORTCUT_CHANNEL, listener)
     return () => ipcRenderer.removeListener(BROWSER_CLOSE_SHORTCUT_CHANNEL, listener)
+  },
+  onBrowserPasskeyFallback: (handler: (webContentsId: number) => void) => {
+    const listener = (_event: unknown, webContentsId: unknown) => {
+      if (typeof webContentsId === 'number') handler(webContentsId)
+    }
+    ipcRenderer.on(BROWSER_PASSKEY_FALLBACK_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(BROWSER_PASSKEY_FALLBACK_CHANNEL, listener)
   },
   get apiBaseUrl() {
     return location.origin

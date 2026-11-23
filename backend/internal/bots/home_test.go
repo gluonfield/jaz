@@ -47,6 +47,23 @@ func write(t *testing.T, path, text string) {
 	}
 }
 
+func assertTaskLifecycleGuidance(t *testing.T, prompt string, want int) {
+	t.Helper()
+	for _, guidance := range []string{
+		"A worker or thread ending is not task completion",
+		"Keep partial work in_progress",
+		"Stop known owned outside jobs through their owner",
+		"answered_question equal to its current question_seq",
+		"check_at (RFC3339)",
+		"depends_on=[] clear",
+		"task to create_thread or send_message_to_thread",
+	} {
+		if got := strings.Count(prompt, guidance); got != want {
+			t.Errorf("task lifecycle guidance %q appears %d times, want %d", guidance, got, want)
+		}
+	}
+}
+
 func TestBotChatsReceiveIdentityAndRoutineWorkersReceiveMemoryAccess(t *testing.T) {
 	service, store, manager := newHomeService(t)
 	bot, err := service.Create(t.Context(), CreateBot{Name: "Research", Prompt: "Follow robotics research."})
@@ -92,6 +109,7 @@ func TestBotChatsReceiveIdentityAndRoutineWorkersReceiveMemoryAccess(t *testing.
 		if text := strings.Join(modules, "\n"); strings.Contains(text, "Biscuit") || !strings.Contains(text, "Sign reports") || !strings.Contains(text, "Read it before your first answer") {
 			t.Fatalf("thread %s must receive identity instructions and read memory on demand: %q", id, modules)
 		}
+		assertTaskLifecycleGuidance(t, strings.Join(modules, "\n"), 1)
 	}
 	if text := routine(""); strings.Contains(text, "Follow robotics research.") || !strings.Contains(text, "read MEMORY.md in your bot's home, "+home) || strings.Contains(text, "Biscuit") {
 		t.Fatalf("a routine run in the bot's home got %q, want memory access without bot policy", text)

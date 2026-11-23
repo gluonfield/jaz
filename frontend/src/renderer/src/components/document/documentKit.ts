@@ -107,6 +107,24 @@ function tokenizer(name: string, level: 'block' | 'inline', pattern: string): Ma
 // which the document already has.
 const MarkdownTable = Table.extend({ renderMarkdown: (node, helpers) => renderTableToMarkdown(node, helpers).trim() })
 
+const DocumentStarterKit = StarterKit.extend({
+  addExtensions() {
+    return this.parent!().map((extension) => {
+      if (extension.name !== 'link') return extension
+      return extension.extend({
+        renderMarkdown(node, helpers, context) {
+          const href: string = node.attrs?.href ?? ''
+          if (/[\s()<>\\]/.test(href)) {
+            const destination = `<${href.replace(/[\\<>]/g, '\\$&')}>`
+            node = { ...node, attrs: { ...node.attrs, href: destination } }
+          }
+          return this.parent!(node, helpers, context)
+        },
+      })
+    })
+  },
+}).configure({ underline: false, trailingNode: false, codeBlock: false, link: { openOnClick: false, HTMLAttributes: { class: 'chat-prose-link', target: null, rel: null } } })
+
 // Text copied as Markdown arrives as what it says, not as its punctuation.
 const BLOCK_MARKDOWN = /^(?:#{1,6} |[-*+] |\d+\. |> |```|\|.+\|\s*$)/m
 const MarkdownPaste = Extension.create({
@@ -136,7 +154,7 @@ export function replaceSource(editor: Editor, pos: number, markdown: string): bo
 // rather than the browser.
 export const documentKit = ({ sourceView, saveImage }: { sourceView?: () => NodeViewRenderer; saveImage?: SaveImage } = {}) => [
   ...(saveImage ? [documentImages(saveImage)] : []),
-  StarterKit.configure({ underline: false, trailingNode: false, codeBlock: false, link: { openOnClick: false, HTMLAttributes: { class: 'chat-prose-link', target: null, rel: null } } }),
+  DocumentStarterKit,
   Markdown,
   TaskList,
   TaskItem.configure({ nested: true }),

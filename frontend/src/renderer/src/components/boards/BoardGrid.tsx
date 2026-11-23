@@ -35,6 +35,7 @@ export function BoardGrid({
   scale,
   onLayoutChange,
   onRemove,
+  onEdit,
   onNewWidget,
 }: {
   board: Board
@@ -43,6 +44,7 @@ export function BoardGrid({
   scale: number
   onLayoutChange: (entry: BoardLayoutEntry) => void
   onRemove: (widgetId: string) => void
+  onEdit: (loopId: string) => void
   onNewWidget?: () => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -279,6 +281,7 @@ export function BoardGrid({
               onHeaderPointerDown={(e) => startDrag(e, item, 'move')}
               onResizePointerDown={(e) => startDrag(e, item, 'resize')}
               onRemove={() => onRemove(item.widget_id)}
+              onEdit={() => onEdit(item.loop_id)}
               onOpenedInMain={showOpenCue}
             />
           </div>

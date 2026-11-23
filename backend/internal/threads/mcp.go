@@ -12,7 +12,7 @@ func (s *Service) AddMCPTools(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolReadThread,
 		Title:       "Read thread",
-		Description: "Read a saved Jaz conversation by threadId. With query, return matching message neighborhoods; with before_seq, after_seq, or around_seq, return a page; otherwise return recent messages. Use list_threads or search_threads to discover IDs. Returns bounded visible messages and tool summaries.",
+		Description: "Read thread messages. Use query or one seq cursor; otherwise returns recent messages.",
 	}, s.ContextMCP)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_threads",

@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => ({
   preload: {
     define: defineCloudEnv(mode),
     resolve: { alias: { '@shared': resolve('src/shared'), '@preload': resolve('src/preload') } },
-    build: { lib: { entry: { index: resolve('src/preload/index.ts'), chrome: resolve('src/preload/chrome.ts') } } },
+    build: { lib: { entry: { index: resolve('src/preload/index.ts'), chrome: resolve('src/preload/chrome.ts'), passkeyFallback: resolve('src/preload/passkeyFallback.ts') } } },
   },
   renderer: {
     define: { ...defineTelemetryEnv(mode), ...defineCloudEnv(mode) },

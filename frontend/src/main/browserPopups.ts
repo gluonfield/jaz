@@ -1,5 +1,5 @@
 import { session, shell, type Event, type WebContents } from 'electron'
-import { PREVIEW_WEB_PREFERENCES } from '@main/previewSession'
+import { PREVIEW_WEB_PREFERENCES, registerPreviewPopupOpener } from '@main/previewSession'
 import { PREVIEW_PARTITION, isPreviewURL } from '@shared/preview'
 
 function canNavigate(url: string): boolean {
@@ -46,6 +46,7 @@ export function attachWindowOpenHandler(
     }
   })
   contents.on('did-create-window', (window, { url }) => {
+    registerPreviewPopupOpener(window.webContents, contents)
     const updateTitle = () => {
       const current = window.webContents.getURL() || url
       window.setTitle(current === 'about:blank' ? 'Jaz browser' : new URL(current).origin)

@@ -323,7 +323,7 @@ function openBoardWindow(boardId: string): void {
 
 if (singleInstanceLock) {
   app.whenReady().then(() => {
-  configureBrowserSessions(join(__dirname, '../preload/chrome.js'))
+  configureBrowserSessions(join(__dirname, '../preload/chrome.js'), join(__dirname, '../preload/passkeyFallback.js'))
   installBrowserDownloads()
   installFileActions(connectionSession)
   installApplicationMenu()

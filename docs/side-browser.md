@@ -136,9 +136,7 @@ with Google” popups, continues to Google's password or passkey step. Google's 
 can still change; if it rejects again, sign in with Chrome and use
 **Import cookies and passwords** with **Cookies** enabled.
 
-On macOS builds without native browser passkeys, a Google passkey challenge in
-a side-browser tab offers **Open Google sign-in in browser**. The button starts
-a separate sign-in in your default browser.
+On macOS builds without native browser passkeys, Jaz reports passkey and hybrid WebAuthn capabilities accurately and rejects non-roaming passkey prompts cleanly instead of letting them hang silently in tabs or popups. When a page requests a passkey, the side browser shows an inline notice with **Import cookies** and **Open in browser** (using a clean Google sign-in destination for Google passkey challenges) while leaving the page free to fall back to another sign-in method.
 
 ### LinkedIn
 

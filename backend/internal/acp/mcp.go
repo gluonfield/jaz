@@ -37,7 +37,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, t.CreateDefinition(), t.Create)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolSendMessageToThread,
-		Description: "Send a follow-up to a Jaz thread: start an idle thread or steer its running turn through the agent's native capability. A running turn keeps its mode and result routing. Unsupported steering returns an error without stopping the thread. The prompt becomes a visible user message. Use threadId from create_thread, list_threads, or search_threads. Returns after dispatch.",
+		Description: "Send a visible follow-up: start an idle thread or steer its running turn. Unsupported steering returns an error. Returns after dispatch.",
 	}, t.Send)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolWaitThreads,
@@ -54,18 +54,18 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 }
 
 type MCPCreateInput struct {
-	Prompt        string `json:"prompt" jsonschema:"Initial user prompt for the new thread."`
-	Agent         string `json:"agent,omitempty" jsonschema:"Agent harness to use. Omit to use the configured default."`
-	Slug          string `json:"slug,omitempty" jsonschema:"Optional human-readable thread handle."`
-	Title         string `json:"title,omitempty" jsonschema:"Optional thread title."`
-	Directory     string `json:"directory,omitempty" jsonschema:"Project directory on the server; relative paths resolve inside the Jaz workspace. Omit for a permanent directory named by thread ID."`
-	Worktree      bool   `json:"worktree,omitempty" jsonschema:"Use a disposable Git worktree of directory."`
-	Branch        string `json:"branch,omitempty" jsonschema:"Base ref for worktree. Omit to use the current HEAD."`
-	ModelProvider string `json:"modelProvider,omitempty" jsonschema:"Optional provider override."`
-	Model         string `json:"model,omitempty" jsonschema:"Model override. Omit unless the user requests a specific model."`
-	Thinking      string `json:"thinking,omitempty" jsonschema:"Reasoning effort supported by the selected model. Omit to use its configured default."`
-	Plan          bool   `json:"plan,omitempty" jsonschema:"Request the agent's plan mode for this prompt."`
-	Commitment    int64  `json:"task,omitempty" jsonschema:"For a Jaz bot's own chat: the id of the open task this thread serves."`
+	Prompt        string `json:"prompt"`
+	Agent         string `json:"agent,omitempty"`
+	Slug          string `json:"slug,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Directory     string `json:"directory,omitempty" jsonschema:"Server path; relative to workspace."`
+	Worktree      bool   `json:"worktree,omitempty"`
+	Branch        string `json:"branch,omitempty"`
+	ModelProvider string `json:"modelProvider,omitempty"`
+	Model         string `json:"model,omitempty"`
+	Thinking      string `json:"thinking,omitempty"`
+	Plan          bool   `json:"plan,omitempty"`
+	Commitment    int64  `json:"task,omitempty" jsonschema:"Bot task id."`
 }
 
 func (t *MCPTools) AskUser(ctx context.Context, req *mcp.CallToolRequest, input AskUserInput) (*mcp.CallToolResult, AskUserOutput, error) {
@@ -80,7 +80,7 @@ func (t *MCPTools) CreateDefinition() *mcp.Tool {
 	}
 	return &mcp.Tool{
 		Name:        ToolCreateThread,
-		Description: "Create a separate, saved Jaz conversation and start its initial prompt. A thread has an ID, message history, working directory, and agent settings, and appears in the user's sidebar. Reuse existing work and honor the configured server admission policy. Do not bypass a rejected start by creating a duplicate session. Use only when the user or your instructions ask for a separate thread or agent session. Returns after dispatch. Omit model unless the user requests one. Use list_agent_options for available agents and models.",
+		Description: "Start an authorized saved thread; reuse work. Omit model unless requested. Returns after dispatch.",
 		InputSchema: schema,
 	}
 }
@@ -125,10 +125,10 @@ func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input M
 }
 
 type MCPSendInput struct {
-	ThreadID   string `json:"threadId" jsonschema:"Jaz thread ID or slug."`
-	Prompt     string `json:"prompt" jsonschema:"Follow-up user prompt."`
-	Plan       bool   `json:"plan,omitempty" jsonschema:"Request the agent's plan mode for this prompt."`
-	Commitment int64  `json:"task,omitempty" jsonschema:"For a Jaz bot's own chat: the id of the open task this follow-up continues the thread for. The thread then serves it too."`
+	ThreadID   string `json:"threadId" jsonschema:"Thread id or slug."`
+	Prompt     string `json:"prompt"`
+	Plan       bool   `json:"plan,omitempty"`
+	Commitment int64  `json:"task,omitempty" jsonschema:"Bot task id."`
 }
 
 func (t *MCPTools) Send(ctx context.Context, req *mcp.CallToolRequest, input MCPSendInput) (*mcp.CallToolResult, ThreadSnapshot, error) {

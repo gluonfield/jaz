@@ -71,6 +71,7 @@ declare global {
       onBrowserNavigation: (handler: (direction: BrowserNavigationDirection) => void) => () => void
       onBrowserCloseShortcut: (handler: () => void) => () => void
       onPreviewFindShortcut: (handler: () => void) => () => void
+      onBrowserPasskeyFallback: (handler: (webContentsId: number) => void) => () => void
     }
   }
 }

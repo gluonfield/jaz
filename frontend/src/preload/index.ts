@@ -13,7 +13,11 @@ import { SECONDARY_WINDOW_KINDS } from '@shared/windowKind'
 import { browserPasswords } from '@preload/browserPasswords'
 import { browserDownloads } from '@preload/browserDownloads'
 import { installBrowserPasswordCapture } from '@preload/browser'
-import { BROWSER_PASSKEY_FALLBACK_ARGUMENT, BROWSER_PRELOAD_ARGUMENT } from '@shared/preview'
+import {
+  BROWSER_PASSKEY_FALLBACK_ARGUMENT,
+  BROWSER_PASSKEY_FALLBACK_CHANNEL,
+  BROWSER_PRELOAD_ARGUMENT,
+} from '@shared/preview'
 import { BROWSER_COMMAND_CHANNEL, type BrowserCommandRequest } from '@shared/browserControl'
 import { BROWSER_PROFILE_CHANNELS, type BrowserProfileAPI } from '@shared/browserProfile'
 import {
@@ -250,6 +254,15 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
       const listener = (): void => handler()
       ipcRenderer.on(PREVIEW_FIND_SHORTCUT_CHANNEL, listener)
       return () => ipcRenderer.removeListener(PREVIEW_FIND_SHORTCUT_CHANNEL, listener)
+    },
+    onBrowserPasskeyFallback: (handler: (webContentsId: number) => void): (() => void) => {
+      const listener = (_event: unknown, webContentsId: unknown): void => {
+        if (typeof webContentsId === 'number') {
+          handler(webContentsId)
+        }
+      }
+      ipcRenderer.on(BROWSER_PASSKEY_FALLBACK_CHANNEL, listener)
+      return () => ipcRenderer.removeListener(BROWSER_PASSKEY_FALLBACK_CHANNEL, listener)
     },
   })
 }
