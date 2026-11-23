@@ -291,11 +291,15 @@ func (h *Handler) ProxyRunFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	for _, header := range []string{"Content-Type", "Content-Disposition", "Content-Length", "ETag", "Cache-Control"} {
+	for _, header := range []string{"Content-Type", "Content-Disposition", "Content-Length", "ETag"} {
 		if v := resp.Header.Get(header); v != "" {
 			w.Header().Set(header, v)
 		}
 	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
 }

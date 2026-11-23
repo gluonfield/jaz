@@ -79,7 +79,7 @@ func (s *Server) handleCreateBoard(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -210,7 +210,7 @@ func (s *Server) handleAssignLoopsToBoard(w http.ResponseWriter, r *http.Request
 	var req struct {
 		LoopIDs []string `json:"loop_ids"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -249,7 +249,7 @@ func (s *Server) handlePatchBoard(w http.ResponseWriter, r *http.Request, boardI
 		FontScale    *float64              `json:"font_scale,omitempty"`
 		Layout       []widgets.LayoutEntry `json:"layout,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -305,7 +305,7 @@ func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Message string `json:"message"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"slices"
 	"sort"
 	"strings"
@@ -90,6 +91,22 @@ func accountID(baseURL, orgID, userID string) string {
 		return org + "@" + base
 	}
 	return base
+}
+
+func sanitizeOIDCLoginURL(baseURL, raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.ContainsAny(trimmed, "\\\r\n\x00") {
+		return ""
+	}
+	base, err := url.Parse(baseURL)
+	if err != nil || base.Scheme == "" || base.Host == "" {
+		return ""
+	}
+	resolved, err := base.Parse(trimmed)
+	if err != nil || !strings.EqualFold(resolved.Scheme, base.Scheme) || !strings.EqualFold(resolved.Host, base.Host) {
+		return ""
+	}
+	return trimmed
 }
 
 func (s *Service) AddOnAccountChanged(fn func(context.Context)) {
@@ -300,8 +317,8 @@ func (s *Service) Connect(ctx context.Context, req ConnectRequest) (Status, erro
 	oidcLoginURL := "/v1/auth/login"
 	caps := json.RawMessage(`{}`)
 	if discErr == nil {
-		if disc.OIDCLoginURL != "" {
-			oidcLoginURL = disc.OIDCLoginURL
+		if safe := sanitizeOIDCLoginURL(baseURL, disc.OIDCLoginURL); safe != "" {
+			oidcLoginURL = safe
 		}
 		if len(disc.Capabilities) > 0 {
 			caps = disc.Capabilities

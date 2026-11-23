@@ -586,3 +586,92 @@ func TestCloudSyncRejectsPathTraversalAndScopesContextBySessionWorkspace(t *test
 		t.Fatalf("cloud session must keep its own CloudScope while sidebar is local, got %+v", scope)
 	}
 }
+
+func TestCloudSyncSecurityRedirectsAndDiscoverySanitization(t *testing.T) {
+	ctx := context.Background()
+	ssrfHits := 0
+	victim := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ssrfHits++
+		_, _ = w.Write([]byte("secret-local-service"))
+	}))
+	defer victim.Close()
+
+	var srvURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/jaz-server":
+			w.Header().Set("Content-Type", "application/json")
+			// Malicious cross-origin oidc_login_url must be rejected and reset to /v1/auth/login.
+			_, _ = w.Write([]byte(`{"ok":true,"mode":"cloud","auth":"oidc","oidc_login_url":"https://phish.evil.test/login"}`))
+		case "/v1/auth/me":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"user_id":"u1","org_id":"o1","org_name":"CAS","email":"u@cas.dev","display_name":"Dev","role":"member"}`))
+		case "/v1/spaces":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"spaces":[]}`))
+		case "/v1/threads":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"threads":[]}`))
+		case "/v1/usage/events":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"events":[]}`))
+		case "/v1/models":
+			// API endpoints must never follow redirects.
+			http.Redirect(w, r, victim.URL+"/steal", http.StatusFound)
+		case "/v1/runs/r1/files/evil.txt":
+			// Redirecting to a different local loopback service must be blocked.
+			http.Redirect(w, r, victim.URL+"/secret", http.StatusFound)
+		case "/v1/runs/r1/files/meta.txt":
+			// Redirecting to cloud metadata link-local IP must be blocked.
+			http.Redirect(w, r, "http://169.254.169.254/latest/meta-data/", http.StatusFound)
+		case "/v1/runs/r1/files/ok.txt":
+			// Same-origin loopback blob preview redirect stays permitted in local dev.
+			http.Redirect(w, r, srvURL+"/_blobs/ok.txt", http.StatusFound)
+		case "/_blobs/ok.txt":
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte("safe-content"))
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	srvURL = srv.URL
+
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	svc := cloudsync.New(store, nil)
+	st, err := svc.Connect(ctx, cloudsync.ConnectRequest{URL: srv.URL, Token: "tok"})
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if st.OIDCLoginURL != "/v1/auth/login" {
+		t.Fatalf("malicious discovery oidc_login_url was not sanitized: %q", st.OIDCLoginURL)
+	}
+	if _, err := svc.ListModels(ctx); err == nil {
+		t.Fatalf("expected API 302 redirect to fail instead of following")
+	}
+	if resp, err := svc.OpenRunFile(ctx, "r1", "evil.txt"); err == nil {
+		resp.Body.Close()
+		t.Fatalf("expected cross-origin loopback redirect to be blocked")
+	}
+	if resp, err := svc.OpenRunFile(ctx, "r1", "meta.txt"); err == nil {
+		resp.Body.Close()
+		t.Fatalf("expected metadata IP redirect to be blocked")
+	}
+	if ssrfHits != 0 {
+		t.Fatalf("redirect reached victim local service %d times", ssrfHits)
+	}
+	resp, err := svc.OpenRunFile(ctx, "r1", "ok.txt")
+	if err != nil {
+		t.Fatalf("same-origin loopback preview redirect failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("same-origin preview status = %d, want 200", resp.StatusCode)
+	}
+}

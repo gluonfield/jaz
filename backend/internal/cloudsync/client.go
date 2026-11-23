@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -17,16 +18,79 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
+var (
+	cgnatPrefix     = netip.MustParsePrefix("100.64.0.0/10")
+	ietfProtoPrefix = netip.MustParsePrefix("192.0.0.0/24")
+	benchPrefix     = netip.MustParsePrefix("198.18.0.0/15")
+	reservedV4      = netip.MustParsePrefix("240.0.0.0/4")
+	discardV6       = netip.MustParsePrefix("100::/64")
+)
+
 type cloudClient struct {
 	http   *http.Client
 	stream *http.Client
 }
 
 func newCloudClient() *cloudClient {
-	return &cloudClient{
-		http:   &http.Client{Timeout: 30 * time.Second},
-		stream: &http.Client{Timeout: 0},
+	noRedirect := func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
+	return &cloudClient{
+		http:   &http.Client{Timeout: 30 * time.Second, CheckRedirect: noRedirect},
+		stream: &http.Client{Timeout: 0, CheckRedirect: noRedirect},
+	}
+}
+
+func isBlockedRedirectAddr(addr netip.Addr, allowLoopback bool) bool {
+	if !addr.IsValid() {
+		return true
+	}
+	addr = addr.Unmap()
+	if addr.IsLoopback() {
+		return !allowLoopback
+	}
+	if !addr.IsGlobalUnicast() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsMulticast() || addr.IsUnspecified() {
+		return true
+	}
+	if addr.Is4() && (cgnatPrefix.Contains(addr) || ietfProtoPrefix.Contains(addr) || benchPrefix.Contains(addr) || reservedV4.Contains(addr)) {
+		return true
+	}
+	return addr.Is6() && discardV6.Contains(addr)
+}
+
+func validateRunFileRedirectTarget(ctx context.Context, baseURL string, target *url.URL) error {
+	if target == nil || target.Host == "" || target.User != nil {
+		return fmt.Errorf("%w: invalid file redirect target", ErrInvalidURL)
+	}
+	baseParsed, _ := url.Parse(baseURL)
+	sameLoopbackOrigin := baseParsed != nil &&
+		IsLoopbackURL(baseURL) &&
+		strings.EqualFold(target.Scheme, baseParsed.Scheme) &&
+		strings.EqualFold(target.Host, baseParsed.Host)
+	scheme := strings.ToLower(target.Scheme)
+	if scheme != "https" && !sameLoopbackOrigin {
+		return fmt.Errorf("%w: file redirect requires HTTPS", ErrInvalidURL)
+	}
+	host := strings.ToLower(strings.TrimSuffix(target.Hostname(), "."))
+	if host == "" || host == "metadata" || host == "metadata.google.internal" || strings.HasSuffix(host, ".internal") {
+		return fmt.Errorf("%w: blocked file redirect host", ErrInvalidURL)
+	}
+	if ip, err := netip.ParseAddr(host); err == nil {
+		if isBlockedRedirectAddr(ip, sameLoopbackOrigin) {
+			return fmt.Errorf("%w: blocked file redirect address", ErrInvalidURL)
+		}
+		return nil
+	}
+	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	if err != nil || len(ips) == 0 {
+		return fmt.Errorf("%w: failed to resolve file redirect host", ErrInvalidURL)
+	}
+	for _, ip := range ips {
+		if isBlockedRedirectAddr(ip, sameLoopbackOrigin) {
+			return fmt.Errorf("%w: file redirect host resolved to blocked address", ErrInvalidURL)
+		}
+	}
+	return nil
 }
 
 func IsLoopbackURL(raw string) bool {
@@ -458,7 +522,23 @@ func (c *cloudClient) openRunFile(ctx context.Context, baseURL, token, runID, re
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	return c.http.Do(req)
+	baseParsed, _ := url.Parse(baseURL)
+	fileClient := &http.Client{
+		Timeout: 60 * time.Second,
+		CheckRedirect: func(next *http.Request, via []*http.Request) error {
+			if len(via) >= 2 {
+				return fmt.Errorf("%w: too many file preview redirects", ErrInvalidURL)
+			}
+			if err := validateRunFileRedirectTarget(next.Context(), baseURL, next.URL); err != nil {
+				return err
+			}
+			if baseParsed == nil || !strings.EqualFold(next.URL.Host, baseParsed.Host) || !strings.EqualFold(next.URL.Scheme, baseParsed.Scheme) {
+				next.Header.Del("Authorization")
+			}
+			return nil
+		},
+	}
+	return fileClient.Do(req)
 }
 
 func readSSEStream(r io.Reader, threadID string, onEvent func(storage.CloudThreadEvent) error) error {
