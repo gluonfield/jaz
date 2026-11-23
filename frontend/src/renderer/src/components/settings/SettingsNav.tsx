@@ -1,15 +1,8 @@
 import { ArrowLeft } from 'lucide-react'
-import { Fragment, useState } from 'react'
+import { Fragment } from 'react'
 import { SidebarWorkspaceSwitcher } from '@/components/sidebar/SidebarWorkspaceSwitcher'
-import { SearchField } from '@/components/ui/SearchField'
 import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
-import { workspaceSettingsHeading } from '@/lib/cloudWorkspaceDisplay'
-import {
-  type SettingsGroup,
-  type SettingsSection,
-  useExperimentalFeaturesEnabled,
-  visibleSettingsSections,
-} from './sections'
+import { type SettingsSection, useExperimentalFeaturesEnabled, visibleSettingsSections } from './sections'
 
 // The Settings menu. On desktop it takes the left column on the window colour,
 // like the thread list; phones show it as a drawer inside full-screen Settings.
@@ -25,14 +18,7 @@ export function SettingsNav({
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const cloud = useCloudSession()
   const cloudOnly = useIsCloudOnly()
-  const localBackend = !cloudOnly
-  const [query, setQuery] = useState('')
-  const q = query.trim().toLowerCase()
-  const items = visibleSettingsSections(experimentalEnabled, cloud.active, localBackend).filter(
-    (item) => !q || item.label.toLowerCase().includes(q),
-  )
-  const groupHeading = (group: SettingsGroup) =>
-    group === 'workspace' ? workspaceSettingsHeading(cloud, localBackend) : 'App'
+  const items = visibleSettingsSections(experimentalEnabled, cloud.active, !cloudOnly)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col pt-1.5 pr-3 pl-1.5 max-sm:px-3 max-sm:pt-0">
@@ -45,32 +31,17 @@ export function SettingsNav({
         <span className="flex-1">Back to jaz</span>
       </button>
 
-      <SidebarWorkspaceSwitcher className="mb-1.5 shrink-0" />
-
-      <div className="pb-2.5">
-        <SearchField
-          value={query}
-          onChange={setQuery}
-          placeholder="Search settings…"
-          className="h-8 max-sm:h-11 max-sm:pl-9 max-sm:text-[15px]"
-        />
-      </div>
+      <SidebarWorkspaceSwitcher className="shrink-0 pt-1.5 pb-0.5" />
 
       <nav aria-label="Settings sections" className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto pb-2.5">
         {items.map((item, index) => {
           const Icon = item.icon
           const selected = item.id === section
-          const heading = item.group !== items[index - 1]?.group ? groupHeading(item.group) : undefined
           return (
             <Fragment key={item.id}>
-              {heading ? (
-                <p
-                  title={heading}
-                  className={`truncate px-2.5 pb-1 text-[11.5px] font-medium text-ink-3 max-sm:px-3 max-sm:text-[13px] ${
-                    index === 0 ? 'pt-1' : 'pt-3.5'
-                  }`}
-                >
-                  {heading}
+              {item.group === 'app' && items[index - 1]?.group !== 'app' ? (
+                <p className="px-2.5 pt-3.5 pb-1 text-[11.5px] font-medium text-ink-3 max-sm:px-3 max-sm:text-[13px]">
+                  App
                 </p>
               ) : null}
               <button
@@ -87,7 +58,6 @@ export function SettingsNav({
             </Fragment>
           )
         })}
-        {items.length === 0 ? <p className="px-2 text-[13px] text-ink-3">No matching settings.</p> : null}
       </nav>
     </div>
   )

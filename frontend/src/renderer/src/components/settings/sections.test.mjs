@@ -15,7 +15,6 @@ const navBundle = await build({
     'react/jsx-dev-runtime',
     'lucide-react',
     '@/components/sidebar/SidebarWorkspaceSwitcher',
-    '@/components/ui/SearchField',
     '@/lib/cloudSession',
   ],
   define: { 'import.meta.env': '{}' },
@@ -34,7 +33,6 @@ function renderSettingsNav({ cloudState, cloudOnly = false, section = 'cloud' })
         return {
           ...React,
           useSyncExternalStore: (_sub, snap) => snap(),
-          useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
         }
       }
       if (name === '@/components/sidebar/SidebarWorkspaceSwitcher') {
@@ -43,11 +41,6 @@ function renderSettingsNav({ cloudState, cloudOnly = false, section = 'cloud' })
             cloudState.workspaces.length > 0
               ? React.createElement('div', { 'data-switcher': 'true', className }, 'Switcher')
               : null,
-        }
-      }
-      if (name === '@/components/ui/SearchField') {
-        return {
-          SearchField: ({ placeholder }) => React.createElement('input', { placeholder }),
         }
       }
       if (name === '@/lib/cloudSession') {
@@ -133,8 +126,7 @@ test('visibleSettingsSections enforces requiresCloud and requiresLocal boundarie
   expect(cloudOnlyDisconnectedIds).not.toContain('computer')
 })
 
-test('SettingsNav displays active workspace heading, workspace switcher, and App group cleanly across modes', () => {
-  // Desktop with active Cloud workspace
+test('SettingsNav heads workspace settings with the switcher alone and keeps App settings separate', () => {
   const cloudDesktopHtml = renderSettingsNav({
     cloudState: {
       active: true,
@@ -143,16 +135,16 @@ test('SettingsNav displays active workspace heading, workspace switcher, and App
     },
     cloudOnly: false,
   })
-  expect(cloudDesktopHtml).toContain('data-switcher="true"')
-  expect(cloudDesktopHtml).toContain('Cambridge Advanced Systems')
-  expect(cloudDesktopHtml).toContain('Workspace')
-  expect(cloudDesktopHtml).toContain('Connected Machines')
-  expect(cloudDesktopHtml).toContain('App')
-  expect(cloudDesktopHtml).toContain('Agents (ACP)')
+  const switcherAt = cloudDesktopHtml.indexOf('data-switcher="true"')
+  const appAt = cloudDesktopHtml.indexOf('>App<')
+  expect(switcherAt).toBeGreaterThan(-1)
+  expect(switcherAt).toBeLessThan(cloudDesktopHtml.indexOf('>Workspace<'))
+  expect(cloudDesktopHtml.indexOf('Connected Machines')).toBeLessThan(appAt)
+  expect(appAt).toBeLessThan(cloudDesktopHtml.indexOf('Agents (ACP)'))
   expect(cloudDesktopHtml).toContain('Computer Use')
-  expect(cloudDesktopHtml.indexOf('Cambridge Advanced Systems')).toBeLessThan(cloudDesktopHtml.indexOf('>App<'))
+  expect(cloudDesktopHtml).not.toContain('Cambridge Advanced Systems')
+  expect(cloudDesktopHtml).not.toContain('<input')
 
-  // Desktop with Cloud connected, currently switched to Local
   const localWithCloudHtml = renderSettingsNav({
     cloudState: {
       active: false,
@@ -162,11 +154,10 @@ test('SettingsNav displays active workspace heading, workspace switcher, and App
     cloudOnly: false,
   })
   expect(localWithCloudHtml).toContain('data-switcher="true"')
-  expect(localWithCloudHtml).toContain('>Local<')
+  expect(localWithCloudHtml).not.toContain('>Local<')
   expect(localWithCloudHtml).not.toContain('Connected Machines')
   expect(localWithCloudHtml).toContain('Agents (ACP)')
 
-  // Pure Local desktop (0 Cloud workspaces): no switcher chrome, clean Workspace + App groups
   const pureLocalHtml = renderSettingsNav({
     cloudState: {
       active: false,
@@ -179,7 +170,6 @@ test('SettingsNav displays active workspace heading, workspace switcher, and App
   expect(pureLocalHtml).toContain('>Workspace<')
   expect(pureLocalHtml).toContain('>App<')
 
-  // Cloud-only mode: hides device-only sections and never renders Local
   const cloudOnlyHtml = renderSettingsNav({
     cloudState: {
       active: true,
@@ -188,11 +178,10 @@ test('SettingsNav displays active workspace heading, workspace switcher, and App
     },
     cloudOnly: true,
   })
-  expect(cloudOnlyHtml).toContain('Cambridge Advanced Systems')
+  expect(cloudOnlyHtml).toContain('data-switcher="true"')
   expect(cloudOnlyHtml).toContain('Connected Machines')
   expect(cloudOnlyHtml).not.toContain('Agents (ACP)')
   expect(cloudOnlyHtml).not.toContain('Model Providers')
   expect(cloudOnlyHtml).not.toContain('Browser')
   expect(cloudOnlyHtml).not.toContain('Computer Use')
-  expect(cloudOnlyHtml).not.toContain('Local')
 })

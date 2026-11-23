@@ -34,7 +34,7 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
   if (!localAllowed && workspaces.length === 1) {
     return (
       <div className={className}>
-        <p className="flex h-[30px] items-center truncate px-2.5 text-[13px] font-semibold text-ink max-sm:h-11 max-sm:px-3 max-sm:text-[15px]">
+        <p className="truncate px-2.5 text-[13px] leading-7 font-semibold text-ink max-sm:px-3 max-sm:text-[15px] max-sm:leading-11">
           {activeName}
         </p>
       </div>
@@ -71,7 +71,7 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
             aria-expanded={open}
             aria-label={`Workspace: ${activeName}`}
             onClick={() => setOpen((value) => !value)}
-            className="group/workspace flex h-[30px] w-full cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-left text-[13px] font-semibold text-ink transition-[background-color,scale] duration-150 hover:bg-list-hover active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-default disabled:opacity-60 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]"
+            className="group/workspace flex h-7 max-w-full cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-left text-[13px] font-semibold text-ink transition-[background-color,scale] duration-150 hover:bg-list-hover active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-primary/40 aria-expanded:bg-list-hover disabled:cursor-default disabled:opacity-60 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]"
           >
             <span className="min-w-0 truncate">{activeName}</span>
             {switchingTo !== null ? (

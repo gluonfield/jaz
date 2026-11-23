@@ -19,13 +19,3 @@ export function activeCloudWorkspace(
   if (!cloud.active) return null
   return cloud.workspaces.find((ws) => ws.id === cloud.activeWorkspaceId) ?? cloud.workspaces[0] ?? null
 }
-
-export function workspaceSettingsHeading(
-  cloud: { active: boolean; activeWorkspaceId: string; workspaces: CloudWorkspaceSummary[] },
-  localBackend: boolean,
-): string {
-  const activeCloud = activeCloudWorkspace(cloud)
-  if (activeCloud) return workspaceDisplayName(activeCloud)
-  if (localBackend && cloud.workspaces.length > 0) return 'Local'
-  return 'Workspace'
-}
