@@ -200,7 +200,7 @@ export function parseOidcCallbackUrl(input: string): ParsedOidcCallback {
   if (!trimmed) {
     return { code: '', token: '', state: '', server: '' }
   }
-  let fragment = ''
+  let fragment: string
   if (/^(?:https?|jaz):\/\//i.test(trimmed)) {
     try {
       const parsed = new URL(trimmed)
@@ -230,11 +230,11 @@ export function validateOidcCallback(
   now: () => number = Date.now,
 ): ValidatedOidcCallback {
   if (!pending) {
-    return { ok: false, error: 'No active SSO sign-in request found. Start sign-in from Jaz.' }
+    return { ok: false, error: 'No active sign-in request found. Start sign-in from Jaz.' }
   }
   const elapsed = now() - pending.startedAt
   if (elapsed < -60_000 || elapsed > PENDING_OIDC_TTL_MS) {
-    return { ok: false, error: 'SSO sign-in request expired. Please start sign-in again.' }
+    return { ok: false, error: 'Sign-in request expired. Please start sign-in again.' }
   }
   const expectedServer = normalizeBaseUrl(pending.server)
   if (!secureBackendConnection(expectedServer)) {

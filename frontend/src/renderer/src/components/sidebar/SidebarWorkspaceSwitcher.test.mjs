@@ -14,6 +14,7 @@ const bundle = await build({
     'react/jsx-dev-runtime',
     '@tanstack/react-router',
     'lucide-react',
+    '@/components/connection/AddCloudWorkspaceModal',
     '@/components/ui/Popover',
     '@/components/ui/toast',
     '@/lib/clientRuntime',
@@ -37,6 +38,8 @@ function loadSwitcher(
     search = {},
     onSwitchWorkspace = async () => null,
     onNavigate = () => {},
+    adding = false,
+    onSetAdding = () => {},
   } = {},
 ) {
   const mod = { exports: {} }
@@ -49,6 +52,7 @@ function loadSwitcher(
           useState: (initial) => {
             const idx = stateCall++
             if (idx === 0 && forcePopoverOpen) return [true, () => {}]
+            if (idx === 2) return [adding, onSetAdding]
             return [typeof initial === 'function' ? initial() : initial, () => {}]
           },
         }
@@ -59,8 +63,16 @@ function loadSwitcher(
           useRouterState: ({ select }) => select({ location: { pathname, search } }),
         }
       }
+      if (name === '@/components/connection/AddCloudWorkspaceModal') {
+        return {
+          AddCloudWorkspaceModal: ({ open }) =>
+            open ? React.createElement('div', { 'data-add-cloud-modal': 'open' }) : null,
+        }
+      }
       if (name === '@/components/ui/Popover') {
         return {
+          MenuRow: ({ role, selected, onClick, children }) =>
+            React.createElement('button', { role, 'aria-checked': selected, onClick }, children),
           Popover: ({ open, trigger, children }) =>
             React.createElement(
               React.Fragment,
@@ -136,11 +148,11 @@ test('SidebarWorkspaceSwitcher renders nothing in pure Local mode (0 Cloud works
     },
     { localBackend: true, forcePopoverOpen: true },
   )
-  const html = renderToStaticMarkup(React.createElement(Switcher, { onAddWorkspace: () => {} }))
+  const html = renderToStaticMarkup(React.createElement(Switcher))
   expect(html).toBe('')
 })
 
-test('SidebarWorkspaceSwitcher lists Cloud workspaces, Local, and Add Cloud workspace when localBackend=true', () => {
+test('SidebarWorkspaceSwitcher lists Cloud workspaces, Local, and Add Cloud Workspace as single-line rows when localBackend=true', () => {
   const cloudActiveHtml = renderToStaticMarkup(
     React.createElement(
       loadSwitcher(
@@ -159,17 +171,18 @@ test('SidebarWorkspaceSwitcher lists Cloud workspaces, Local, and Add Cloud work
         },
         { localBackend: true, forcePopoverOpen: true },
       ),
-      { onAddWorkspace: () => {} },
     ),
   )
 
   expect(cloudActiveHtml).toContain('aria-label="Workspace: Cambridge Advanced Systems"')
   expect(cloudActiveHtml).toContain('Cambridge Advanced Systems')
-  expect(cloudActiveHtml).toContain('august@cas.example')
   expect(cloudActiveHtml).toContain('Personal Cloud')
   expect(cloudActiveHtml).toContain('Local')
-  expect(cloudActiveHtml).toContain('This computer')
-  expect(cloudActiveHtml).toContain('Add Cloud workspace')
+  expect(cloudActiveHtml).toContain('Add Cloud Workspace')
+  expect(cloudActiveHtml).not.toContain('august@cas.example')
+  expect(cloudActiveHtml).not.toContain('cas.jaz.example')
+  expect(cloudActiveHtml).not.toContain('This computer')
+  expect(cloudActiveHtml).toContain('<button role="menuitemradio" aria-checked="true">Cambridge Advanced Systems</button>')
 
   const localActiveHtml = renderToStaticMarkup(
     React.createElement(
@@ -189,12 +202,11 @@ test('SidebarWorkspaceSwitcher lists Cloud workspaces, Local, and Add Cloud work
         },
         { localBackend: true, forcePopoverOpen: true },
       ),
-      { onAddWorkspace: () => {} },
     ),
   )
   expect(localActiveHtml).toContain('aria-label="Workspace: Local"')
   expect(localActiveHtml).toContain('Cambridge Advanced Systems')
-  expect(localActiveHtml).toContain('This computer')
+  expect(localActiveHtml).toContain('<button role="menuitemradio" aria-checked="true">Local</button>')
 })
 
 test('SidebarWorkspaceSwitcher NEVER shows Local in cloud-only mode (localBackend=false)', () => {
@@ -217,14 +229,12 @@ test('SidebarWorkspaceSwitcher NEVER shows Local in cloud-only mode (localBacken
         },
         { localBackend: false, forcePopoverOpen: true },
       ),
-      { onAddWorkspace: () => {} },
     ),
   )
   expect(singleCloudHtml).toContain('Cambridge Advanced Systems')
   expect(singleCloudHtml).not.toContain('Local')
-  expect(singleCloudHtml).not.toContain('This computer')
   expect(singleCloudHtml).not.toContain('aria-haspopup')
-  expect(singleCloudHtml).not.toContain('Add Cloud workspace')
+  expect(singleCloudHtml).not.toContain('Add Cloud Workspace')
 
   // Multiple Cloud workspaces with localBackend=false: lists Cloud workspaces only, NEVER Local.
   const multiCloudHtml = renderToStaticMarkup(
@@ -245,13 +255,12 @@ test('SidebarWorkspaceSwitcher NEVER shows Local in cloud-only mode (localBacken
         },
         { localBackend: false, forcePopoverOpen: true },
       ),
-      { onAddWorkspace: () => {} },
     ),
   )
   expect(multiCloudHtml).toContain('Cambridge Advanced Systems')
   expect(multiCloudHtml).toContain('Personal Cloud')
   expect(multiCloudHtml).not.toContain('Local')
-  expect(multiCloudHtml).not.toContain('This computer')
+  expect(multiCloudHtml).not.toContain('Add Cloud Workspace')
 })
 
 test('SidebarWorkspaceSwitcher switches workspace and navigates to /new when viewing a session route', async () => {
@@ -283,7 +292,7 @@ test('SidebarWorkspaceSwitcher switches workspace and navigates to /new when vie
     },
   )
 
-  const tree = Switcher({ onAddWorkspace: () => {} })
+  const tree = Switcher({})
   // Find menu buttons recursively in the returned React element tree.
   const buttons = []
   const walk = (node) => {
@@ -292,7 +301,7 @@ test('SidebarWorkspaceSwitcher switches workspace and navigates to /new when vie
       for (const child of node) walk(child)
       return
     }
-    if (node.type === 'button' && node.props?.role === 'menuitemradio') {
+    if (node.props?.role === 'menuitemradio') {
       buttons.push(node)
     }
     if (node.props?.trigger) walk(node.props.trigger)
@@ -334,7 +343,7 @@ test('SidebarWorkspaceSwitcher leaves workspace-specific bot, board, loop, plugi
         for (const child of node) walk(child)
         return
       }
-      if (node.type === 'button' && node.props?.role === 'menuitemradio') {
+      if (node.props?.role === 'menuitemradio') {
         buttons.push(node)
       }
       if (node.props?.trigger) walk(node.props.trigger)
@@ -375,8 +384,46 @@ test('SidebarWorkspaceSwitcher leaves workspace-specific bot, board, loop, plugi
       onSwitchWorkspace: async () => null,
       onNavigate: (target) => navigated.push(target),
     })
-    const buttons = findMenuRadioButtons(Switcher({ onAddWorkspace: () => {} }))
+    const buttons = findMenuRadioButtons(Switcher({}))
     await buttons[1].props.onClick()
     expect(navigated).toEqual(tc.expected)
   }
+})
+
+test('Add Cloud Workspace opens the sign-in modal in place instead of navigating to Settings', () => {
+  const cloudState = {
+    active: true,
+    source: 'attached',
+    status: 'connected',
+    activeWorkspaceId: 'ws_cas',
+    workspaces: [casWorkspace],
+    url: casWorkspace.url,
+    user: null,
+    error: null,
+    oidcLoginUrl: '/v1/auth/login',
+    capabilities: {},
+    lastSyncAt: '',
+  }
+  const navigated = []
+  const addingCalls = []
+  const Switcher = loadSwitcher(cloudState, {
+    forcePopoverOpen: true,
+    onNavigate: (target) => navigated.push(target),
+    onSetAdding: (value) => addingCalls.push(value),
+  })
+  let addRow
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) return node.forEach(walk)
+    if (node.props?.role === 'menuitem') addRow = node
+    walk(node.props?.children)
+  }
+  walk(Switcher({}))
+  expect(addRow.props.children).toBe('Add Cloud Workspace')
+  addRow.props.onClick()
+  expect(addingCalls).toEqual([true])
+  expect(navigated).toEqual([])
+
+  const openHtml = renderToStaticMarkup(React.createElement(loadSwitcher(cloudState, { adding: true })))
+  expect(openHtml).toContain('data-add-cloud-modal="open"')
 })

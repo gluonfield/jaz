@@ -16,12 +16,10 @@ import {
 export function SettingsNav({
   section,
   onSectionChange,
-  onAddWorkspace,
   onClose,
 }: {
   section?: SettingsSection
   onSectionChange: (section: SettingsSection) => void
-  onAddWorkspace: () => void
   onClose: () => void
 }) {
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
@@ -47,7 +45,7 @@ export function SettingsNav({
         <span className="flex-1">Back to jaz</span>
       </button>
 
-      <SidebarWorkspaceSwitcher onAddWorkspace={onAddWorkspace} className="mb-1.5 shrink-0" />
+      <SidebarWorkspaceSwitcher className="mb-1.5 shrink-0" />
 
       <div className="pb-2.5">
         <SearchField

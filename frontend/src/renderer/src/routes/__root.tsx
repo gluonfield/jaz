@@ -127,7 +127,6 @@ function RootLayout() {
   const [resizing, setResizing] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
-  const [addCloudRequestId, setAddCloudRequestId] = useState(0)
   const [panelRow, setPanelRow] = useState<HTMLDivElement | null>(null)
   const [panelSlot, setPanelSlot] = useState<HTMLDivElement | null>(null)
   const sidePanelSlot = useMemo(() => ({ slot: panelSlot, row: panelRow }), [panelSlot, panelRow])
@@ -158,13 +157,8 @@ function RootLayout() {
       }),
     [navigate],
   )
-  const openAddCloud = useCallback(() => {
-    setAddCloudRequestId((id) => id + 1)
-    openSettings('cloud')
-  }, [openSettings])
   const goToSettingsSection = useCallback(
     (section: SettingsSection, options?: SettingsSectionNavigation) => {
-      if (section !== 'cloud') setAddCloudRequestId(0)
       if (section === settingsSection) return
       void navigate({
         to: '.',
@@ -175,7 +169,6 @@ function RootLayout() {
     [navigate, settingsSection],
   )
   const closeSettings = useCallback(() => {
-    setAddCloudRequestId(0)
     void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined }) })
   }, [navigate])
 
@@ -367,12 +360,11 @@ function RootLayout() {
                         <SettingsNav
                           section={settingsSection}
                           onSectionChange={goToSettingsSection}
-                          onAddWorkspace={openAddCloud}
                           onClose={closeSettings}
                         />
                       ) : (
                         <>
-                          <SidebarWorkspaceSwitcher onAddWorkspace={openAddCloud} />
+                          <SidebarWorkspaceSwitcher />
                           {tab === '/bots' ? (
                             <BotsPanel mobile={isMobile} />
                           ) : (
@@ -412,9 +404,7 @@ function RootLayout() {
                 <SettingsOverlay
                   open={settingsOpen}
                   section={settingsSection}
-                  addCloudRequestId={addCloudRequestId}
                   onSectionChange={goToSettingsSection}
-                  onAddWorkspace={openAddCloud}
                   onClose={closeSettings}
                 />
               </div>

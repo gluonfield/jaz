@@ -65,7 +65,6 @@ function renderSettingsNav({ cloudState, cloudOnly = false, section = 'cloud' })
     React.createElement(mod.exports.SettingsNav, {
       section,
       onSectionChange: () => {},
-      onAddWorkspace: () => {},
       onClose: () => {},
     }),
   )

@@ -727,7 +727,7 @@ test('org-baked cloud build with local disabled auto-connects to cloudUrl and re
   expect(await connection.startLocal()).toContain('disabled')
 })
 
-test('Cloud OIDC endpoint verifies via /v1/auth/me, stores user identity, and surfaces SSO requirement without token', async () => {
+test('Cloud OIDC endpoint verifies via /v1/auth/me, stores user identity, and surfaces the sign-in requirement without token', async () => {
   const cloudUrl = 'https://jaz-cloud.example'
   let authCheckHits = 0
   const { connection } = await fixture({
@@ -757,7 +757,7 @@ test('Cloud OIDC endpoint verifies via /v1/auth/me, stores user identity, and su
     },
   })
 
-  expect(await connection.connectRemote(cloudUrl)).toContain('Sign in with SSO')
+  expect(await connection.connectRemote(cloudUrl)).toContain('Sign in to connect')
   expect(connection.useConnection()).toMatchObject({
     status: 'disconnected',
     mode: 'cloud',

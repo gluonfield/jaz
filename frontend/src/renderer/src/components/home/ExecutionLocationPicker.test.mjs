@@ -13,10 +13,10 @@ const bundle = await build({
     'react/jsx-runtime',
     'react/jsx-dev-runtime',
     'lucide-react',
+    '@/components/connection/AddCloudWorkspaceModal',
     '@/components/ui/Popover',
     '@/lib/clientRuntime',
     '@/lib/cloudSession',
-    '@/lib/connectionDisplay',
   ],
   define: { 'import.meta.env': '{}' },
 })
@@ -26,18 +26,24 @@ if (!bundle.success) {
 const evaluate = new Function('require', 'module', 'exports', await bundle.outputs[0].text())
 const require = createRequire(import.meta.url)
 
-function loadPicker(cloudState, { forcePopoverOpen = false, localBackend = true } = {}) {
+function loadPicker(cloudState, { forcePopoverOpen = false, localBackend = true, onSetAdding = () => {} } = {}) {
   const mod = { exports: {} }
   evaluate(
     (name) => {
       if (name === 'react') {
+        let stateCall = 0
         return {
           ...React,
-          useState: (initial) => [forcePopoverOpen ? true : (typeof initial === 'function' ? initial() : initial), () => {}],
+          useState: (initial) => (stateCall++ === 0 ? [forcePopoverOpen, () => {}] : [initial, onSetAdding]),
         }
+      }
+      if (name === '@/components/connection/AddCloudWorkspaceModal') {
+        return { AddCloudWorkspaceModal: () => null }
       }
       if (name === '@/components/ui/Popover') {
         return {
+          MenuRow: ({ role, selected, onClick, children }) =>
+            React.createElement('button', { role, 'aria-checked': selected, onClick }, children),
           Popover: ({ open, trigger, children }) =>
             React.createElement(React.Fragment, null, trigger, open ? React.createElement('div', { 'data-popover': 'open' }, children) : null),
         }
@@ -51,11 +57,6 @@ function loadPicker(cloudState, { forcePopoverOpen = false, localBackend = true 
         return {
           useCloudSession: () => cloudState,
           useHasCloud: () => cloudState.active,
-        }
-      }
-      if (name === '@/lib/connectionDisplay') {
-        return {
-          describeBackend: (url) => ({ local: false, title: url ? new URL(url).host : '', url }),
         }
       }
       return require(name)
@@ -77,7 +78,7 @@ const acmeWorkspace = {
 }
 
 test('ExecutionLocationPicker handles pure Local, Local workspace (with connected Cloud), Cloud workspace, and locked Cloud-only mode', () => {
-  // 1. Pure Local (0 Cloud workspaces): Local + Cloud (Sign in…)
+  // 1. Pure Local (0 Cloud workspaces): single-line Local + Cloud rows
   const pureLocal = {
     active: false,
     source: null,
@@ -97,12 +98,12 @@ test('ExecutionLocationPicker handles pure Local, Local workspace (with connecte
       location: 'local',
       lockedCloud: false,
       onChange: () => {},
-      onConnectCloud: () => {},
     }),
   )
-  expect(pureLocalHtml).toContain('Local')
-  expect(pureLocalHtml).toContain('Work in')
-  expect(pureLocalHtml).toContain('Sign in…')
+  expect(pureLocalHtml).toContain('aria-label="Work in: Local"')
+  expect(pureLocalHtml).toContain('<button role="menuitemradio" aria-checked="true">Local</button>')
+  expect(pureLocalHtml).toContain('<button role="menuitemradio" aria-checked="false">Cloud</button>')
+  expect(pureLocalHtml).not.toContain('Sign in')
 
   // 2. Local workspace while Cloud workspace(s) exist: strictly Local (no Cloud leakage)
   const localWithCloudConnected = {
@@ -116,7 +117,6 @@ test('ExecutionLocationPicker handles pure Local, Local workspace (with connecte
       location: 'local',
       lockedCloud: false,
       onChange: () => {},
-      onConnectCloud: () => {},
     }),
   )
   expect(localWorkspaceHtml).toContain('Local')
@@ -143,15 +143,13 @@ test('ExecutionLocationPicker handles pure Local, Local workspace (with connecte
       location: 'cloud',
       lockedCloud: false,
       onChange: () => {},
-      onConnectCloud: () => {},
     }),
   )
   expect(connectedHtml).toContain('aria-label="Work in: Cloud"')
-  expect(connectedHtml).toContain('Local')
-  expect(connectedHtml).toContain('Runs on this machine')
-  expect(connectedHtml).toContain('Acme Org')
-  expect(connectedHtml).not.toContain('Connected machine')
-  expect(connectedHtml).not.toContain('Sign in…')
+  expect(connectedHtml).toContain('<button role="menuitemradio" aria-checked="false">Local</button>')
+  expect(connectedHtml).toContain('<button role="menuitemradio" aria-checked="true">Cloud</button>')
+  expect(connectedHtml).not.toContain('Runs on this machine')
+  expect(connectedHtml).not.toContain('Acme Org')
 
   // 4. Locked cloud-only mode (via lockedCloud OR localBackend=false): strictly Cloud, zero Local option
   const lockedHtml = renderToStaticMarkup(
@@ -159,7 +157,6 @@ test('ExecutionLocationPicker handles pure Local, Local workspace (with connecte
       location: 'cloud',
       lockedCloud: true,
       onChange: () => {},
-      onConnectCloud: () => {},
     }),
   )
   expect(lockedHtml).toContain('Cloud')
@@ -172,10 +169,34 @@ test('ExecutionLocationPicker handles pure Local, Local workspace (with connecte
       location: 'local',
       lockedCloud: false,
       onChange: () => {},
-      onConnectCloud: () => {},
     }),
   )
   expect(cloudOnlyRuntimeHtml).toContain('Cloud')
   expect(cloudOnlyRuntimeHtml).not.toContain('Local')
   expect(cloudOnlyRuntimeHtml).not.toContain('aria-haspopup')
+})
+
+test('Choosing Cloud with no Cloud workspace opens the Add Cloud Workspace modal; with one it only switches', () => {
+  const cloudRow = (Picker, onChange) => {
+    let row
+    const walk = (node) => {
+      if (!node || typeof node !== 'object') return
+      if (Array.isArray(node)) return node.forEach(walk)
+      if (node.props?.role === 'menuitemradio' && node.props.children === 'Cloud') row = node
+      walk(node.props?.children)
+    }
+    walk(Picker({ location: 'local', onChange }))
+    return row
+  }
+  const disconnected = { active: false, status: 'disconnected', workspaces: [], url: '' }
+  const connected = { active: true, status: 'connected', workspaces: [acmeWorkspace], url: acmeWorkspace.url }
+
+  for (const [cloudState, expectedAdding] of [[disconnected, [true]], [connected, []]]) {
+    const changes = []
+    const addingCalls = []
+    const Picker = loadPicker(cloudState, { onSetAdding: (value) => addingCalls.push(value) })
+    cloudRow(Picker, (next) => changes.push(next)).props.onClick()
+    expect(changes).toEqual(['cloud'])
+    expect(addingCalls).toEqual(expectedAdding)
+  }
 })

@@ -39,16 +39,12 @@ type SectionNavigationOptions = { replace?: boolean }
 export function SettingsOverlay({
   open,
   section,
-  addCloudRequestId = 0,
   onSectionChange,
-  onAddWorkspace,
   onClose,
 }: {
   open: boolean
   section?: SettingsSection
-  addCloudRequestId?: number
   onSectionChange: (section: SettingsSection, options?: SectionNavigationOptions) => void
-  onAddWorkspace: () => void
   onClose: () => void
 }) {
   const reduce = useReducedMotion()
@@ -124,10 +120,6 @@ export function SettingsOverlay({
                   onSectionChange(next)
                   setNavOpen(false)
                 }}
-                onAddWorkspace={() => {
-                  onAddWorkspace()
-                  setNavOpen(false)
-                }}
                 onClose={onClose}
               />
             </aside>
@@ -158,11 +150,11 @@ export function SettingsOverlay({
                   transition={{ duration: 0.14, ease: 'easeOut' }}
                 >
                   {current.fullHeight ? (
-                    <SectionContent section={current.id} addCloudRequestId={addCloudRequestId} onNavigate={onSectionChange} />
+                    <SectionContent section={current.id} onNavigate={onSectionChange} />
                   ) : (
                     <div className="h-full overflow-y-auto">
                       <div className={`mx-auto px-10 pb-8 max-sm:px-4 ${current.wide ? 'max-w-[920px]' : 'max-w-[760px]'}`}>
-                        <SectionContent section={current.id} addCloudRequestId={addCloudRequestId} onNavigate={onSectionChange} />
+                        <SectionContent section={current.id} onNavigate={onSectionChange} />
                       </div>
                     </div>
                   )}
@@ -178,11 +170,9 @@ export function SettingsOverlay({
 
 function SectionContent({
   section,
-  addCloudRequestId,
   onNavigate,
 }: {
   section: SettingsSection
-  addCloudRequestId?: number
   onNavigate: (section: SettingsSection, options?: SectionNavigationOptions) => void
 }) {
   switch (section) {
@@ -215,7 +205,7 @@ function SectionContent({
     case 'machines':
       return <ConnectedMachinesSettings />
     case 'cloud':
-      return <CloudSettings addCloudRequestId={addCloudRequestId} onNavigate={onNavigate} />
+      return <CloudSettings />
     case 'browser':
       return <BrowserSettings />
     case 'usage':

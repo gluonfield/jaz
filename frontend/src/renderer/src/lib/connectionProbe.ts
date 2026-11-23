@@ -166,7 +166,7 @@ export async function readCloudAccess(url: string, token: string, signal?: Abort
     return { ok: false, error: 'Remote connections require HTTPS', recoverable: false }
   }
   if (!token && clientRuntime.kind !== 'web') {
-    return { ok: false, error: 'Sign in with SSO to connect to this server', recoverable: false, code: 'oidc_required' }
+    return { ok: false, error: 'Sign in to connect to this server', recoverable: false, code: 'oidc_required' }
   }
   try {
     const { user, ticket } = await fetchAuthMe(origin, {
@@ -180,7 +180,7 @@ export async function readCloudAccess(url: string, token: string, signal?: Abort
       if (error.status === 401 || error.status === 403) {
         return {
           ok: false,
-          error: token ? 'Session expired. Sign in with SSO again.' : 'Sign in with SSO to connect to this server',
+          error: token ? 'Session expired. Sign in again.' : 'Sign in to connect to this server',
           recoverable: false,
           code: 'oidc_required',
         }

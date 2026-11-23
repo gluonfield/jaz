@@ -1,10 +1,10 @@
 import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
-import { Lock, Users } from 'lucide-react'
 import { ExecutionLocationPicker, type ExecutionLocation } from '@/components/home/ExecutionLocationPicker'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { NewThreadOptions } from '@/components/home/NewThreadOptions'
 import { ThreadModeSwitch } from '@/components/home/ThreadModeSwitch'
+import { ThreadVisibilityPicker } from '@/components/home/ThreadVisibilityPicker'
 import { CloudSpendBanner } from '@/components/session/CloudSpendBanner'
 import { deleteAttachmentDraft, saveAttachmentDraft } from '@/components/session/composerAttachmentDraftStore'
 import { fileAttachment } from '@/components/session/composerAttachmentTypes'
@@ -145,11 +145,6 @@ function NewSessionPage() {
     setSpaceId(search.space ?? '')
   }, [cloud.active, cloud.activeWorkspaceId, search.space])
 
-  const openCloudSettings = () => {
-    setLocation('cloud')
-    void navigate({ to: '.', search: (prev) => ({ ...prev, settings: 'cloud' }) })
-  }
-
   const handleStart = async (text?: string, options: SendMessageOptions = {}, fromApp = false) => {
     if (text === undefined && voice.sessionId && voice.phase !== 'off') {
       await navigate({ to: '/sessions/$sessionId', params: { sessionId: voice.sessionId } })
@@ -276,27 +271,16 @@ function NewSessionPage() {
         placement={controlPlacement}
         disabled={creating}
         onChange={selectLocation}
-        onConnectCloud={openCloudSettings}
       />
       {targetIsCloud ? (
         <>
-          <label className="inline-flex h-7 items-center gap-1.5 rounded-full bg-surface px-2.5 text-[12px] text-ink-2">
-            {spaceId ? <Users size={12} className="text-primary" /> : <Lock size={12} className="text-ink-3" />}
-            <select
-              aria-label="Thread visibility"
-              value={spaceId}
-              disabled={creating}
-              onChange={(event) => setSpaceId(event.target.value)}
-              className="cursor-pointer bg-transparent font-medium text-ink outline-none"
-            >
-              <option value="">Private</option>
-              {(spaces.data ?? []).map((space) => (
-                <option key={space.id} value={space.id}>
-                  {space.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <ThreadVisibilityPicker
+            spaceId={spaceId}
+            spaces={spaces.data ?? []}
+            placement={controlPlacement}
+            disabled={creating}
+            onChange={setSpaceId}
+          />
           <span className="flex-1" />
         </>
       ) : (

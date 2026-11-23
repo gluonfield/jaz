@@ -154,9 +154,9 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
 
   const reconnectHint = canStartLocal
     ? 'Start one here or connect to a cloud server.'
-    : 'Sign in with SSO to connect to your Jaz Cloud workspace.'
+    : 'Sign in to connect to your Jaz Cloud workspace.'
 
-  const ssoPromptNeeded = cloudOnly && currentAuth === 'oidc' && error === 'Sign in with SSO to connect to this server'
+  const ssoPromptNeeded = cloudOnly && currentAuth === 'oidc' && error === 'Sign in to connect to this server'
   const visibleError = ssoPromptNeeded ? null : error
 
   const heading = manual
@@ -245,7 +245,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                 </motion.p>
               ) : cloudOnly && activeSso ? (
                 <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
-                  Sign in with your organization SSO to open <span className="text-ink">{activeSso.label}</span>.
+                  Sign in to open <span className="text-ink">{activeSso.label}</span>.
                 </motion.p>
               ) : null}
 
@@ -261,13 +261,13 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                         <span className="min-w-0 truncate text-[13px] font-medium text-ink">{activeSso.label}</span>
                         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary">
                           <Cloud size={11} />
-                          Cloud SSO
+                          Cloud
                         </span>
                       </div>
                       <ChoiceButton
                         primary
-                        label={awaitingBrowserSso ? 'Reopen browser sign-in' : 'Sign in with SSO'}
-                        busyLabel="Opening SSO…"
+                        label="Sign in"
+                        busyLabel="Opening browser…"
                         busy={busy === `sso:${activeSso.url}`}
                         disabled={busy !== null}
                         onClick={() => launchSso(activeSso)}
@@ -296,8 +296,8 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                       {cloudOnly && activeSso && !isCurrent(activeSso.url) ? (
                         <ChoiceButton
                           primary
-                          label="Sign in with SSO"
-                          busyLabel="Opening SSO…"
+                          label="Sign in"
+                          busyLabel="Opening browser…"
                           busy={busy === `sso:${activeSso.url}`}
                           disabled={busy !== null}
                           onClick={() => launchSso(activeSso)}

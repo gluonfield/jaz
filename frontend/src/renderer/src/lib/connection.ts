@@ -391,7 +391,7 @@ async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<st
       const error = options.missingCredentialError
         ? options.missingCredentialError(meta)
         : meta.auth === 'oidc'
-          ? 'Sign in with SSO to connect to this server'
+          ? 'Sign in to connect to this server'
           : 'Authentication required to connect to this server'
       block(error, false, meta)
       return error
@@ -790,7 +790,7 @@ async function restore(url: string): Promise<void> {
     allowWebCookie: true,
     retryOnRecoverable: true,
     missingCredentialError: (meta) => meta.auth === 'oidc'
-      ? 'Sign in with SSO to connect to this server'
+      ? 'Sign in to connect to this server'
       : 'Connect again with an authorized credential',
   })
 }
