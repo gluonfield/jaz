@@ -31,7 +31,7 @@ export function SettingsNav({
         <span className="flex-1">Back to jaz</span>
       </button>
 
-      <SidebarWorkspaceSwitcher className="shrink-0 pt-1.5 pb-0.5" />
+      <SidebarWorkspaceSwitcher className="shrink-0 pb-0.5" showWithoutCloud />
 
       <nav aria-label="Settings sections" className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto pb-2.5">
         {items.map((item, index) => {
@@ -40,7 +40,7 @@ export function SettingsNav({
           return (
             <Fragment key={item.id}>
               {item.group === 'app' && items[index - 1]?.group !== 'app' ? (
-                <p className="px-2.5 pt-3.5 pb-1 text-[11.5px] font-medium text-ink-3 max-sm:px-3 max-sm:text-[13px]">
+                <p className="mt-2.5 border-t border-border px-2.5 pt-3.5 pb-1 text-[11.5px] font-medium text-ink-3 max-sm:px-3 max-sm:text-[13px]">
                   App
                 </p>
               ) : null}

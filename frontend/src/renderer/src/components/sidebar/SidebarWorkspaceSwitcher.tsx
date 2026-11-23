@@ -1,16 +1,48 @@
-import { ChevronsUpDown, LoaderCircle } from 'lucide-react'
+import { ChevronsUpDown, Laptop, LoaderCircle, Plus } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { AddCloudWorkspaceModal } from '@/components/connection/AddCloudWorkspaceModal'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
 import { clientRuntime } from '@/lib/clientRuntime'
-import { LOCAL_WORKSPACE_ID, switchWorkspace } from '@/lib/cloudAccount'
+import { type CloudWorkspaceSummary, LOCAL_WORKSPACE_ID, switchWorkspace } from '@/lib/cloudAccount'
 import { useCloudSession } from '@/lib/cloudSession'
 import { activeCloudWorkspace, workspaceDisplayName } from '@/lib/cloudWorkspaceDisplay'
 
-const DEFAULT_CLASS_NAME = 'shrink-0 pl-1.5 pr-3 pt-1.5 pb-0.5 max-sm:px-4 max-sm:pt-2'
+const DEFAULT_CLASS_NAME = 'shrink-0 pl-1.5 pr-3 pt-1.5 pb-1 max-sm:px-4 max-sm:pt-2'
+const IDENTITY_CLASS =
+  'flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-semibold text-ink max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
 
-export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { className?: string }) {
+// A Cloud workspace shows its initial; Local shows the device.
+function WorkspaceMark({ workspace }: { workspace: CloudWorkspaceSummary | null }) {
+  return (
+    <span
+      className={`grid size-5 shrink-0 place-items-center rounded-md text-[11px] font-semibold uppercase ${
+        workspace ? 'bg-ink text-bg' : 'bg-list-active text-ink-2'
+      }`}
+    >
+      {workspace ? workspaceDisplayName(workspace).charAt(0) : <Laptop size={12} />}
+    </span>
+  )
+}
+
+function WorkspaceLabel({ workspace }: { workspace: CloudWorkspaceSummary | null }) {
+  return (
+    <span className="flex min-w-0 flex-1 items-center gap-2">
+      <WorkspaceMark workspace={workspace} />
+      <span className="min-w-0 truncate">{workspace ? workspaceDisplayName(workspace) : 'Local'}</span>
+    </span>
+  )
+}
+
+// The main sidebar shows the switcher once a Cloud workspace is connected;
+// Settings always shows it, so the first Cloud workspace can be added there.
+export function SidebarWorkspaceSwitcher({
+  className = DEFAULT_CLASS_NAME,
+  showWithoutCloud = false,
+}: {
+  className?: string
+  showWithoutCloud?: boolean
+}) {
   const cloud = useCloudSession()
   const toast = useToast()
   const [open, setOpen] = useState(false)
@@ -26,12 +58,13 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
   if (!localAllowed && workspaces.length <= 1) {
     return activeCloud ? (
       <div className={className}>
-        <p className="truncate px-2.5 text-[13px] leading-7 font-semibold text-ink max-sm:px-3 max-sm:text-[15px] max-sm:leading-11">
-          {workspaceDisplayName(activeCloud)}
+        <p className={IDENTITY_CLASS}>
+          <WorkspaceLabel workspace={activeCloud} />
         </p>
       </div>
     ) : null
   }
+  if (workspaces.length === 0 && !showWithoutCloud) return null
 
   const isLocalActive = localAllowed && !activeCloud
   const activeName = activeCloud ? workspaceDisplayName(activeCloud) : 'Local'
@@ -73,15 +106,15 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
             onClick={() => {
               if (switchingTo === null) setOpen((value) => !value)
             }}
-            className="group/workspace flex h-7 max-w-full cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-left text-[13px] font-semibold text-ink transition-[background-color,scale] duration-150 hover:bg-list-hover active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-primary/40 aria-expanded:bg-list-hover aria-disabled:cursor-default aria-disabled:opacity-60 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]"
+            className={`group/workspace ${IDENTITY_CLASS} cursor-pointer transition-colors duration-150 hover:bg-list-hover aria-expanded:bg-list-hover aria-disabled:cursor-default aria-disabled:opacity-60`}
           >
-            <span className="min-w-0 truncate">{activeName}</span>
+            <WorkspaceLabel workspace={activeCloud} />
             {switchingTo !== null ? (
-              <LoaderCircle size={12} className="shrink-0 animate-spin text-ink-3" />
+              <LoaderCircle size={13} className="shrink-0 animate-spin text-ink-3" />
             ) : (
               <ChevronsUpDown
-                size={12}
-                className="shrink-0 text-ink-3 transition-colors duration-150 group-hover/workspace:text-ink-2"
+                size={13}
+                className="shrink-0 text-ink-3 transition-colors duration-150 group-hover/workspace:text-ink-2 group-aria-expanded/workspace:text-ink-2"
               />
             )}
           </button>
@@ -90,7 +123,7 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
         <div
           role="menu"
           aria-label="Switch workspace"
-          className="min-w-[200px] max-w-[280px]"
+          className="w-[232px]"
           onKeyDown={(event) => {
             if (event.key === 'Tab') closeMenu()
             if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
@@ -108,7 +141,7 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
               selected={activeCloud?.id === ws.id}
               onClick={() => void handleSelect(ws.id)}
             >
-              {workspaceDisplayName(ws)}
+              <WorkspaceLabel workspace={ws} />
             </MenuRow>
           ))}
           {localAllowed ? (
@@ -119,7 +152,7 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
                 selected={isLocalActive}
                 onClick={() => void handleSelect(LOCAL_WORKSPACE_ID)}
               >
-                Local
+                <WorkspaceLabel workspace={null} />
               </MenuRow>
               <div className="mx-2.5 my-1.5 h-px bg-border" />
               <MenuRow
@@ -129,7 +162,12 @@ export function SidebarWorkspaceSwitcher({ className = DEFAULT_CLASS_NAME }: { c
                   setAdding(true)
                 }}
               >
-                Add Cloud Workspace
+                <span className="flex items-center gap-2">
+                  <span className="grid size-5 shrink-0 place-items-center">
+                    <Plus size={14} />
+                  </span>
+                  Add Cloud Workspace
+                </span>
               </MenuRow>
             </>
           ) : null}

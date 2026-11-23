@@ -146,12 +146,22 @@ const noWorkspaces = {
   lastSyncAt: '',
 }
 
-test('SidebarWorkspaceSwitcher keeps Local and Add Cloud Workspace reachable before any Cloud workspace exists', () => {
+// The text of the menu row marked as the current workspace.
+function checkedRow(html) {
+  return html.match(/aria-checked="true">(.*?)<\/button>/)?.[1].replace(/<[^>]+>/g, '')
+}
+
+test('SidebarWorkspaceSwitcher stays out of the main sidebar until a Cloud workspace is connected', () => {
   const Switcher = loadSwitcher(noWorkspaces, { localBackend: true, forcePopoverOpen: true })
-  const html = renderToStaticMarkup(React.createElement(Switcher))
+  expect(renderToStaticMarkup(React.createElement(Switcher))).toBe('')
+})
+
+test('SidebarWorkspaceSwitcher offers Local and Add Cloud Workspace in Settings before any Cloud workspace exists', () => {
+  const Switcher = loadSwitcher(noWorkspaces, { localBackend: true, forcePopoverOpen: true })
+  const html = renderToStaticMarkup(React.createElement(Switcher, { showWithoutCloud: true }))
   expect(html).toContain('aria-label="Workspace: Local"')
-  expect(html).toContain('role="menuitemradio" aria-checked="true">Local<')
-  expect(html).toContain('>Add Cloud Workspace<')
+  expect(checkedRow(html)).toBe('Local')
+  expect(html).toContain('Add Cloud Workspace')
 })
 
 test('SidebarWorkspaceSwitcher renders nothing when Local is disabled and no Cloud workspace is connected', () => {
@@ -159,7 +169,7 @@ test('SidebarWorkspaceSwitcher renders nothing when Local is disabled and no Clo
     { ...noWorkspaces, source: 'primary', activeWorkspaceId: '' },
     { localBackend: false, forcePopoverOpen: true },
   )
-  expect(renderToStaticMarkup(React.createElement(Switcher))).toBe('')
+  expect(renderToStaticMarkup(React.createElement(Switcher, { showWithoutCloud: true }))).toBe('')
 })
 
 test('SidebarWorkspaceSwitcher lists Cloud workspaces, Local, and Add Cloud Workspace as single-line rows when localBackend=true', () => {
@@ -192,7 +202,7 @@ test('SidebarWorkspaceSwitcher lists Cloud workspaces, Local, and Add Cloud Work
   expect(cloudActiveHtml).not.toContain('august@cas.example')
   expect(cloudActiveHtml).not.toContain('cas.jaz.example')
   expect(cloudActiveHtml).not.toContain('This computer')
-  expect(cloudActiveHtml).toContain('<button role="menuitemradio" aria-checked="true">Cambridge Advanced Systems</button>')
+  expect(checkedRow(cloudActiveHtml)).toBe('CCambridge Advanced Systems')
 
   const localActiveHtml = renderToStaticMarkup(
     React.createElement(
@@ -216,7 +226,7 @@ test('SidebarWorkspaceSwitcher lists Cloud workspaces, Local, and Add Cloud Work
   )
   expect(localActiveHtml).toContain('aria-label="Workspace: Local"')
   expect(localActiveHtml).toContain('Cambridge Advanced Systems')
-  expect(localActiveHtml).toContain('<button role="menuitemradio" aria-checked="true">Local</button>')
+  expect(checkedRow(localActiveHtml)).toBe('Local')
 })
 
 test('SidebarWorkspaceSwitcher NEVER shows Local in cloud-only mode (localBackend=false)', () => {
@@ -386,7 +396,6 @@ test('Add Cloud Workspace opens the sign-in modal in place instead of navigating
     walk(node.props?.children)
   }
   walk(Switcher({}))
-  expect(addRow.props.children).toBe('Add Cloud Workspace')
   addRow.props.onClick()
   expect(addingCalls).toEqual([true])
   expect(navigated).toEqual([])
