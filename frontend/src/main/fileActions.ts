@@ -3,11 +3,22 @@ import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { app, ipcMain, shell } from 'electron'
 import type { createConnectionSession } from '@main/connectionSession'
-import { FILE_ACTIONS_CHANNEL } from '@shared/fileActions'
+import { trustedWindow } from '@main/permissions'
+import { DROPPED_DIRECTORY_CHANNEL, FILE_ACTIONS_CHANNEL } from '@shared/fileActions'
 import { isPreviewProxyTargetHostname } from '@shared/preview'
 import type { SessionSnapshot } from '@shared/connectionSession'
 
+export function installDroppedDirectory(): void {
+  ipcMain.handle(DROPPED_DIRECTORY_CHANNEL, async (event, path: unknown) => {
+    trustedWindow(event)
+    if (typeof path !== 'string' || !isAbsolute(path)) return null
+    const info = await stat(path).catch(() => null)
+    return info?.isDirectory() ? path : null
+  })
+}
+
 export function installFileActions(connection: Pick<ReturnType<typeof createConnectionSession>, 'authorize' | 'current'>): void {
+  installDroppedDirectory()
   const read = (active: SessionSnapshot, sessionId: string, path: string, raw = false) => {
     const url = new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/file`, active.url)
     url.search = new URLSearchParams({ path, ...(raw && { raw: '1' }) }).toString()
@@ -34,12 +45,7 @@ export function installFileActions(connection: Pick<ReturnType<typeof createConn
     const document = connection.authorize(event).document
     const active = connection.current()
     if (active.url !== backendUrl) throw new Error('Backend connection changed')
-    let available = false
-    try {
-      available = await canReveal(active, sessionId)
-    } catch {
-      available = false
-    }
+    const available = await canReveal(active, sessionId).catch(() => false)
     connection.authorize(event, document)
     if (connection.current().revision !== active.revision) throw new Error('Backend connection changed')
     if (action === 'canReveal') return available

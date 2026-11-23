@@ -191,12 +191,13 @@ export function ComposerCard({
       if (folders.length === 0) {
         return
       }
-      const pathFor = isLocalBackendUrl(apiBaseUrl()) ? window.jaz?.pathForFile : undefined
-      if (pathFor) {
-        mention.insertPaths(folders.map((folder) => pathFor(folder)))
-      } else {
+      if (!isLocalBackendUrl(apiBaseUrl()) || !window.jaz?.droppedDirectoryPath) {
         toast('Folders attach only in the desktop app with a local backend', 'danger')
+        return
       }
+      const paths = folders.filter((path) => path !== null)
+      if (paths.length > 0) mention.insertPaths(paths)
+      if (paths.length < folders.length) toast('Couldn’t access the dropped folder', 'danger')
     },
   })
 

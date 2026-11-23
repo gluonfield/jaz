@@ -9,6 +9,7 @@ import { installBrowserControl } from '@main/browserControl'
 import { attachWindowOpenHandler } from '@main/browserPopups'
 import { attachPreviewWebviews, configureBrowserSessions, previewHostPreferences } from '@main/previewSession'
 import { createConnectionSession } from '@main/connectionSession'
+import { installDroppedDirectory } from '@main/fileActions'
 import { attachBrowserCloseShortcut } from '@main/browserCloseShortcut'
 import { installBrowserPasswords } from '@main/browserPasswords'
 import { installBrowserDownloads } from '@main/browserDownloads'
@@ -280,6 +281,7 @@ server.listen(0, '127.0.0.1', async () => {
   installBrowserDownloads()
   process.env.ELECTRON_RENDERER_URL = `http://127.0.0.1:${address.port}`
   configureLocalBackendTransport(session.defaultSession, process.env.JAZ_BROWSER_SMOKE_BACKEND!)
+  installDroppedDirectory()
   configureAppPermissions(session.defaultSession)
   const cert = await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'cert.pem'))
   const fingerprint = new X509Certificate(cert).fingerprint256

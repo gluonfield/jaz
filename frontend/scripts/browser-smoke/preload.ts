@@ -1,4 +1,5 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
+import { droppedDirectoryPath } from '@preload/droppedDirectory'
 import { claudeVoice } from '@preload/claudeVoiceAPI'
 import { browserPasswords } from '@preload/browserPasswords'
 import { browserDownloads } from '@preload/browserDownloads'
@@ -20,7 +21,7 @@ if (process.env.JAZ_BROWSER_SMOKE_SUITE === 'google-passkeys') {
     import: (id, selection) => ipcRenderer.invoke(BROWSER_PROFILE_CHANNELS.import, id, selection),
   } satisfies BrowserProfileAPI,
   windowKind: 'main',
-  pathForFile: (file: File) => webUtils.getPathForFile(file),
+  droppedDirectoryPath,
   openExternalURL: (url: string) => ipcRenderer.send('jaz:open-external-url', url),
   onOpenPreviewURL: (handler: (url: string) => void) => {
     const listener = (_event: unknown, url: string) => handler(url)

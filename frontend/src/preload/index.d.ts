@@ -40,7 +40,7 @@ declare global {
       apiBaseUrl: string
       localBackendTransport?: string
       windowKind: WindowKind
-      pathForFile: (file: File) => string
+      droppedDirectoryPath: (file: File) => Promise<string | null>
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
       setWindowButtonsVisible: (visible: boolean) => void
       startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>

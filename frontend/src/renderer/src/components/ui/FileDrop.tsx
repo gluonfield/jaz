@@ -61,7 +61,7 @@ export function useFileDropTarget<T extends HTMLElement>({
   onDrop,
 }: {
   disabled?: boolean
-  onDrop: (files: File[], folders: File[]) => void
+  onDrop: (files: File[], folders: (string | null)[]) => void
 }): { dropTargetRef: RefObject<T | null>; dragging: boolean } {
   const scope = useContext(FileDropScopeContext)
   const dropTargetRef = useRef<T>(null)
@@ -72,6 +72,7 @@ export function useFileDropTarget<T extends HTMLElement>({
     const target = dropTargetRef.current
     if (!target) return
     if (disabled) return
+    let active = true
     // dragenter/dragleave fire per child; the counter nets out nested targets
     // so only leaving this scope (or dropping) clears its overlay.
     let depth = 0
@@ -119,22 +120,28 @@ export function useFileDropTarget<T extends HTMLElement>({
       depth = Math.max(0, depth - 1)
       if (depth === 0) clear()
     }
-    const onTargetDrop = (event: DragEvent) => {
+    const onTargetDrop = async (event: DragEvent) => {
       if (!dataTransferHasFiles(event.dataTransfer)) return
       if (!ownsDrag(event)) {
         clear()
         return
       }
       event.preventDefault()
-      const files: File[] = []
-      const folders: File[] = []
-      for (const item of Array.from(event.dataTransfer?.items ?? [])) {
-        const file = item.kind === 'file' ? item.getAsFile() : null
-        if (file) {
-          (item.webkitGetAsEntry()?.isDirectory ? folders : files).push(file)
-        }
-      }
       clear()
+      const items = await Promise.all(Array.from(event.dataTransfer?.items ?? [], async (item) => {
+        const file = item.kind === 'file' ? item.getAsFile() : null
+        if (!file) return undefined
+        const entry = item.webkitGetAsEntry()
+        const path = await window.jaz?.droppedDirectoryPath?.(file).catch(() => null)
+        return path ?? (entry?.isDirectory ? null : file)
+      }))
+      if (!active) return
+      const files: File[] = []
+      const folders: (string | null)[] = []
+      for (const item of items) {
+        if (item instanceof File) files.push(item)
+        else if (item !== undefined) folders.push(item)
+      }
       if (files.length + folders.length > 0) {
         onDropRef.current(files, folders)
       }
@@ -144,6 +151,7 @@ export function useFileDropTarget<T extends HTMLElement>({
     window.addEventListener('dragleave', onDragLeave)
     window.addEventListener('drop', onTargetDrop)
     return () => {
+      active = false
       clear()
       window.removeEventListener('dragenter', onDragEnter)
       window.removeEventListener('dragover', onDragOver)
