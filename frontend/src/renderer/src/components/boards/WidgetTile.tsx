@@ -115,6 +115,7 @@ export function WidgetTile({
   onHeaderPointerDown,
   onResizePointerDown,
   onRemove,
+  onEdit,
   onOpenedInMain,
 }: {
   item: BoardItem
@@ -124,6 +125,7 @@ export function WidgetTile({
   onHeaderPointerDown: (e: ReactPointerEvent) => void
   onResizePointerDown: (e: ReactPointerEvent) => void
   onRemove: () => void
+  onEdit: () => void
   // Fired when a board window hands the loop off to the main app, with the
   // click point so the board can flash a cue there.
   onOpenedInMain: (x: number, y: number) => void
@@ -314,9 +316,9 @@ export function WidgetTile({
           <IconButton
             variant="ghost"
             size="xs"
-            aria-label={clientRuntime.windowKind === 'board' ? 'Open bot in Jaz' : 'Open bot'}
-            title={clientRuntime.windowKind === 'board' ? 'Open bot in Jaz' : 'Open bot'}
-            onClick={openBot}
+            aria-label="Edit loop"
+            title="Edit loop"
+            onClick={onEdit}
           >
             <Pencil size={12} />
           </IconButton>
