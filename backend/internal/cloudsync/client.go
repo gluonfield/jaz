@@ -208,17 +208,27 @@ func (c *cloudClient) listSpaces(ctx context.Context, baseURL, token string) ([]
 	if err != nil {
 		return nil, err
 	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return []storage.CloudSpace{}, nil
+	}
+	if trimmed[0] == '[' {
+		var direct []storage.CloudSpace
+		if err := json.Unmarshal(trimmed, &direct); err != nil {
+			return nil, err
+		}
+		return direct, nil
+	}
 	var wrapper struct {
 		Spaces []storage.CloudSpace `json:"spaces"`
 	}
-	if err := json.Unmarshal(raw, &wrapper); err == nil && wrapper.Spaces != nil {
-		return wrapper.Spaces, nil
-	}
-	var direct []storage.CloudSpace
-	if err := json.Unmarshal(raw, &direct); err != nil {
+	if err := json.Unmarshal(trimmed, &wrapper); err != nil {
 		return nil, err
 	}
-	return direct, nil
+	if wrapper.Spaces == nil {
+		return []storage.CloudSpace{}, nil
+	}
+	return wrapper.Spaces, nil
 }
 
 func (c *cloudClient) createSpace(ctx context.Context, baseURL, token, name string) (storage.CloudSpace, error) {
@@ -238,14 +248,23 @@ func (c *cloudClient) listThreads(ctx context.Context, baseURL, token string) ([
 	if err != nil {
 		return nil, err
 	}
-	var wrapper struct {
-		Threads []wireThread `json:"threads"`
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return []storage.CloudThread{}, nil
 	}
 	var items []wireThread
-	if err := json.Unmarshal(raw, &wrapper); err == nil && wrapper.Threads != nil {
+	if trimmed[0] == '[' {
+		if err := json.Unmarshal(trimmed, &items); err != nil {
+			return nil, err
+		}
+	} else {
+		var wrapper struct {
+			Threads []wireThread `json:"threads"`
+		}
+		if err := json.Unmarshal(trimmed, &wrapper); err != nil {
+			return nil, err
+		}
 		items = wrapper.Threads
-	} else if err := json.Unmarshal(raw, &items); err != nil {
-		return nil, err
 	}
 	out := make([]storage.CloudThread, 0, len(items))
 	for _, item := range items {

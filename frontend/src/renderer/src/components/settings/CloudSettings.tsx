@@ -138,6 +138,14 @@ export function CloudSettings({
               </div>
             </SettingsRow>
 
+            {visibleError ? (
+              <div className="border-t border-border px-3.5 py-2">
+                <p role="alert" className="text-[12px] text-danger">
+                  {visibleError}
+                </p>
+              </div>
+            ) : null}
+
             <SettingsRow
               title="Session"
               description={

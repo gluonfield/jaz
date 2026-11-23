@@ -314,3 +314,40 @@ func TestCloudSyncDisconnectCancelsInFlightSyncWithoutResurrection(t *testing.T)
 		t.Fatalf("in-flight SyncNow resurrected disconnected cloud account in SQLite: ok=%v err=%v", ok, err)
 	}
 }
+
+func TestCloudSyncHandlesNullSpacesAndThreads(t *testing.T) {
+	ctx := context.Background()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/.well-known/jaz-server":
+			_, _ = w.Write([]byte(`{"ok":true,"mode":"cloud","auth":"oidc"}`))
+		case "/v1/auth/me":
+			_, _ = w.Write([]byte(`{"user_id":"u1","org_id":"o1","org_name":"CAS","email":"u@cas.dev","display_name":"Dev","role":"member"}`))
+		case "/v1/spaces":
+			_, _ = w.Write([]byte(`{"spaces":null}`))
+		case "/v1/threads":
+			_, _ = w.Write([]byte(`{"threads":null}`))
+		case "/v1/usage/events":
+			_, _ = w.Write([]byte(`{"events":null}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	svc := cloudsync.New(store, nil)
+	st, err := svc.Connect(ctx, cloudsync.ConnectRequest{URL: srv.URL, Token: "tok"})
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if st.LastError != "" || st.LastSyncAt.IsZero() {
+		t.Fatalf("expected clean sync with null slices, got last_error=%q last_sync_at=%v", st.LastError, st.LastSyncAt)
+	}
+}
