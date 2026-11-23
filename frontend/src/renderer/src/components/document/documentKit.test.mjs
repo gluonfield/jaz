@@ -87,6 +87,16 @@ describe('document editor', () => {
     editor.destroy()
   })
 
+  test('round-trips links with literal delimiters and leaves ordinary links intact', () => {
+    const markdown = String.raw`[Guide](https://example.com/guide "Reference") and [**Build**](<reports\\Build (1) \<draft\>.md> "Local report")`
+    const editor = open(markdown)
+    expect(editor.getMarkdown()).toBe(markdown)
+    const reopened = open(editor.getMarkdown())
+    expect(reopened.getJSON()).toEqual(editor.getJSON())
+    reopened.destroy()
+    editor.destroy()
+  })
+
   test('edits a table in its cells and writes it as a Markdown table', () => {
     const editor = open(report)
     let press = -1
