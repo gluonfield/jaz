@@ -12,10 +12,14 @@ import type { FileReference } from '@shared/fileReader'
 export async function exerciseMarkdownDocuments() {
   const size = { width: innerWidth, height: innerHeight }
   const path = '/workspace/reports/route-comparison.md'
+  const workbook = '/workspace/Example  Tender/Responses (1).xlsx'
+  const audit = `Review  [Audit](<${workbook}#Queries!A2:H45>) now.`
+  const auditEdit = ' Check  again.'
+  const auditText = 'Review  Audit now.'
   const filler = 'A short paragraph explaining the manufacturing options.\n\n'.repeat(12)
   const content = '# Route comparison\n\n## Contents\n\n- [Résumé and costs](#résumé--costs)\n- [Next steps](#next-steps)\n- [More steps](#next-steps-1)\n\n' + filler +
     '## Résumé & **costs**\n\nUse the available presses.\n\nA part costs \\(c = m + t\\) to make.\n\n| Route | Cost |\n| --- | ---: |\n| Press | £1 |\n\n- [ ] Confirm the press\n- [x] Price the blank\n\n```sh\nmake check\n```\n\n' + filler +
-    '## Next steps\n\nConfirm the route.\n\n' + filler + '## Next steps\n\nReserve the presses.\n\n' + filler + '## Next steps-1\n\nKeep the deadline.\n\n' + filler + 'See [the other route](other-route.md).\n'
+    '## Next steps\n\nConfirm the route.\n\n' + filler + '## Next steps\n\nReserve the presses.\n\n' + filler + '## Next steps-1\n\nKeep the deadline.\n\n' + filler + 'See [the other route](other-route.md).\n\n' + audit + '\n\nA [blocked](<data:text/plain,still blocked>) link.\n'
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
   // The file as the backend holds it: a save is refused unless it is made over
   // this version.
@@ -281,16 +285,38 @@ export async function exerciseMarkdownDocuments() {
       await new Promise(requestAnimationFrame)
       await click(fileLink)
       await until(() => linked?.path === '/workspace/reports/other-route.md')
+      const auditLink = [...reader.querySelectorAll('a')].find((node) => node.textContent === 'Audit')
+      const auditLine = auditLink?.closest('p')
+      if (!auditLink || !auditLine || auditLine.textContent !== auditText + (width === 1200 ? '' : auditEdit)) throw new Error('The workbook link or its spacing was lost on open')
+      auditLine.scrollIntoView({ block: 'center' })
+      await new Promise(requestAnimationFrame)
+      linked = undefined
+      await click(auditLink)
+      await until(() => linked?.path === workbook && linked.location?.sheet === 'Queries' && linked.location.range === 'A2:H45')
       window.removeEventListener('click', lastWord)
       if (followed) throw new Error('A file link was left for the browser to follow')
       if (saves.length !== saved) throw new Error('Reading a document saved it')
-      if (width === 1200) await edit(reader)
+      const blocked = [...reader.querySelectorAll('p')].find((node) => node.textContent === 'A blocked link.')
+      if (!blocked || blocked.querySelector('a[href]:not([href=""])')) throw new Error('The editor did not block a disallowed URL')
+      if (width === 1200) {
+        await edit(reader)
+        const paragraph = [...reader.querySelectorAll('.ProseMirror p')].find((node) => node.textContent === auditText) ?? null
+        paragraph?.scrollIntoView({ block: 'center' })
+        await new Promise(requestAnimationFrame)
+        await click(paragraph)
+        await window.smoke.key('End')
+        const version = stored.version
+        await type(auditEdit)
+        await until(() => stored.version !== version)
+        if (!stored.content.includes(audit + auditEdit + '\n')) throw new Error('The workbook link or its spacing was lost on save: ' + stored.content.split('\n').find((line) => line.includes('Audit')))
+      }
       if (reader.scrollWidth > reader.clientWidth || document.documentElement.scrollWidth > innerWidth) throw new Error('Document reader overflows its viewport')
       scroll.scrollTop = 0
       await window.smoke.capture(width === 1200 ? 'markdown-document-desktop' : 'markdown-document-phone')
       await click(reader.querySelector('[aria-label="Close document"]'))
       await until(() => !host.querySelector('[data-document-reader]'))
       if (!host.querySelector('[data-document-chat] .markdown-document-card')) throw new Error('Closing the document removed the chat')
+      if (width === 1200) await client.invalidateQueries({ queryKey: keys.sessionFile('documents', path) })
     }
   } finally {
     root.unmount()
