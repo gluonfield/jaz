@@ -15,7 +15,6 @@ import type { PluginView } from '@/lib/api/types'
 import type { MCPAppThread } from '@/lib/mcpAppThread'
 import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, pluginViewTab, type NewSidePanelTab, type PanelPresentation, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
 
-const PANEL_MAX_WIDTH = 1180
 const PANEL_MIN_THREAD_WIDTH = 360
 
 type SavedPanel = { state: SidePanelTabs; open: boolean; mode: SidePanelMode; widthOverride?: number }
@@ -78,12 +77,12 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
   const availableWidth = containerWidth - PANEL_MIN_THREAD_WIDTH
   const minWidth = Math.min(400, Math.max(240, availableWidth))
   const defaultWidth = Math.max(640, Math.round(containerWidth * 0.6))
-  const maxWidth = Math.max(minWidth, Math.min(PANEL_MAX_WIDTH, availableWidth))
+  const maxWidth = Math.max(minWidth, availableWidth)
   const width = mode === 'overview' ? OVERVIEW_PANEL_WIDTH : clampWidth(widthOverride ?? defaultWidth, minWidth, maxWidth)
   const availableCSS = `calc(100% - ${PANEL_MIN_THREAD_WIDTH}px)`
   const preferredCSS = widthOverride === undefined ? 'max(640px, 60%)' : `${widthOverride}px`
   const widthStyle = mode === 'tabs'
-    ? `clamp(min(400px, max(240px, ${availableCSS})), ${preferredCSS}, max(240px, min(${PANEL_MAX_WIDTH}px, ${availableCSS})))`
+    ? `clamp(min(400px, max(240px, ${availableCSS})), ${preferredCSS}, max(240px, ${availableCSS}))`
     : `${width}px`
 
   useLayoutEffect(() => {
