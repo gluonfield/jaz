@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { ExternalLink, Plus, ZoomIn, ZoomOut } from 'lucide-react'
+import { ExternalLink, Lock, Plus, UserCheck, Users, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { AddWidgetModal } from '@/components/boards/AddWidgetModal'
 import { BoardGrid } from '@/components/boards/BoardGrid'
+import { BoardShareModal } from '@/components/boards/BoardShareModal'
+import { boardVisibilityLabel } from '@/components/boards/BoardVisibilityFields'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -20,6 +22,7 @@ import {
 } from '@/lib/api/boards'
 import { loopDetailQuery } from '@/lib/api/loops'
 import { clientRuntime, popOutBoard } from '@/lib/clientRuntime'
+import { useCloudSession } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import { useTheme } from '@/lib/theme'
 
@@ -34,6 +37,7 @@ function BoardPage() {
   const { add } = Route.useSearch()
   const navigate = Route.useNavigate()
   const detail = useQuery(boardDetailQuery(boardId))
+  const cloud = useCloudSession()
   const queryClient = useQueryClient()
   const { resolved } = useTheme()
   const scaleTimer = useRef<number | null>(null)
@@ -43,6 +47,7 @@ function BoardPage() {
   // hands off to the loop modal. Either way the board stays put and scrolls
   // the fresh tile into view once it appears.
   const [modal, setModal] = useState<'add' | 'new-loop' | null>(null)
+  const [sharing, setSharing] = useState(false)
   const editingLoop = useMutation({
     mutationKey: [...keys.boardDetail(boardId), 'edit-loop'],
     mutationFn: (loopId: string) => queryClient.fetchQuery({ ...loopDetailQuery(loopId), staleTime: 0 }),
@@ -133,6 +138,13 @@ function BoardPage() {
   }
 
   const { board, items } = detail.data
+  const canEdit = !cloud.active || board.can_edit !== false
+  const VisibilityIcon =
+    board.visibility === 'team'
+      ? Users
+      : board.visibility === 'selected'
+        ? UserCheck
+        : Lock
   const boardTabs = isBoardWindow && boards.data ? boards.data : [board]
   // Single commit path: Enter blurs the input, blur commits. Escape unmounts
   // the input without blurring, so a cancel never saves.
@@ -140,7 +152,7 @@ function BoardPage() {
     if (draftName === null) return
     const name = draftName.trim()
     setDraftName(null)
-    if (name && name !== board.name) renameMutation.mutate(name)
+    if (canEdit && name && name !== board.name) renameMutation.mutate(name)
   }
   const scale = board.font_scale > 0 ? board.font_scale : 1
   // Steps apply to the cache immediately; the PATCH is debounced so rapid
@@ -200,15 +212,19 @@ function BoardPage() {
           </nav>
         ) : (
           <h1 className="min-w-0 flex-1 text-lg font-semibold text-ink">
-            {draftName === null ? (
-              <button
-                type="button"
-                title="Rename board"
-                onClick={() => setDraftName(board.name)}
-                className="-mx-1.5 block max-w-full cursor-text truncate rounded-md px-1.5 text-left transition-colors duration-150 hover:bg-surface-2"
-              >
-                {board.name}
-              </button>
+            {draftName === null || !canEdit ? (
+              canEdit ? (
+                <button
+                  type="button"
+                  title="Rename board"
+                  onClick={() => setDraftName(board.name)}
+                  className="-mx-1.5 block max-w-full cursor-text truncate rounded-md px-1.5 text-left transition-colors duration-150 hover:bg-surface-2"
+                >
+                  {board.name}
+                </button>
+              ) : (
+                <span className="block max-w-full truncate">{board.name}</span>
+              )
             ) : (
               <input
                 autoFocus
@@ -227,6 +243,17 @@ function BoardPage() {
           </h1>
         )}
         <div className="flex shrink-0 items-center gap-1">
+          {cloud.active ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setSharing(true)}
+              title={canEdit ? 'Manage board visibility and access' : 'View board access'}
+            >
+              <VisibilityIcon size={13} />
+              {boardVisibilityLabel(board)}
+            </Button>
+          ) : null}
           {isBoardWindow ? null : (
             <Button variant="secondary" size="sm" onClick={() => popOutBoard(boardId)}>
               <ExternalLink size={13} />
@@ -267,13 +294,33 @@ function BoardPage() {
       </div>
       {items.length === 0 ? (
         <EmptyState title="Nothing on this board yet">
-          <p>Widgets are live tiles your loops keep up to date. Add one to get started.</p>
-          <div className="mt-3 flex justify-center">
-            <Button variant="primary" size="sm" onClick={() => setModal('add')}>
-              <Plus size={13} />
-              Add widget
-            </Button>
-          </div>
+          {cloud.active ? (
+            <>
+              <p>
+                {canEdit
+                  ? 'Manage who can see this board with the visibility button above.'
+                  : `Shared by ${board.owner_display_name || board.owner_email || 'a teammate'}.`}
+              </p>
+              {canEdit ? (
+                <div className="mt-3 flex justify-center">
+                  <Button variant="secondary" size="sm" onClick={() => setSharing(true)}>
+                    <VisibilityIcon size={13} />
+                    Manage access
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <p>Widgets are live tiles your loops keep up to date. Add one to get started.</p>
+              <div className="mt-3 flex justify-center">
+                <Button variant="primary" size="sm" onClick={() => setModal('add')}>
+                  <Plus size={13} />
+                  Add widget
+                </Button>
+              </div>
+            </>
+          )}
         </EmptyState>
       ) : (
         // pt-1: a dragged tile's lift shadow is drawn outside the box; with no
@@ -288,13 +335,20 @@ function BoardPage() {
             items={items}
             theme={resolved}
             scale={scale}
-            onLayoutChange={(entry) => layoutMutation.mutate(entry)}
-            onRemove={(widgetId) => removeMutation.mutate(widgetId)}
+            onLayoutChange={(entry) => {
+              if (canEdit) layoutMutation.mutate(entry)
+            }}
+            onRemove={(widgetId) => {
+              if (canEdit) removeMutation.mutate(widgetId)
+            }}
             onEdit={editingLoop.mutate}
-            onNewWidget={() => setModal('add')}
+            onNewWidget={!cloud.active && canEdit ? () => setModal('add') : undefined}
           />
         </div>
       )}
+      {cloud.active && sharing ? (
+        <BoardShareModal board={board} open onClose={() => setSharing(false)} />
+      ) : null}
       <AddWidgetModal
         open={modal === 'add'}
         onClose={() => setModal(null)}

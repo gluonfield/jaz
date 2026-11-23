@@ -375,6 +375,15 @@ export interface LoopRun {
   created_at: string
 }
 
+export type BoardVisibility = 'private' | 'team' | 'selected'
+
+export interface BoardMember {
+  user_id: string
+  email: string
+  display_name: string
+  role: string
+}
+
 export interface Board {
   id: string
   name: string
@@ -386,6 +395,15 @@ export interface Board {
   is_default: boolean
   created_at: string
   updated_at: string
+  // Cloud workspace fields (absent on local boards).
+  org_id?: string
+  owner_user_id?: string
+  owner_display_name?: string
+  owner_email?: string
+  visibility?: BoardVisibility
+  is_owner?: boolean
+  can_edit?: boolean
+  members?: BoardMember[]
 }
 
 // board_widgets joined with the widget and its loop (backend/internal/widgets).

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,10 +10,41 @@ import (
 	"strconv"
 	"strings"
 
+	cloudapi "github.com/wins/jaz/backend/internal/httpapi/cloud"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
 
-func (s *Server) handleListBoards(w http.ResponseWriter, _ *http.Request) {
+type cloudBoardsBridge interface {
+	ListBoards(context.Context) (json.RawMessage, error)
+	CreateBoard(context.Context, json.RawMessage) (json.RawMessage, int, error)
+	GetBoard(context.Context, string) (json.RawMessage, int, error)
+	PatchBoard(context.Context, string, json.RawMessage) (json.RawMessage, int, error)
+	DeleteBoard(context.Context, string) (json.RawMessage, int, error)
+	DeleteBoardWidget(context.Context, string, string) (json.RawMessage, int, error)
+}
+
+func (s *Server) cloudBoards() cloudBoardsBridge {
+	if s.activeWorkspaceID() == storage.LocalWorkspaceID || s.Cloud == nil {
+		return nil
+	}
+	cb, ok := s.Cloud.(cloudBoardsBridge)
+	if !ok {
+		return nil
+	}
+	return cb
+}
+
+func (s *Server) handleListBoards(w http.ResponseWriter, r *http.Request) {
+	if cb := s.cloudBoards(); cb != nil {
+		raw, err := cb.ListBoards(r.Context())
+		if err != nil {
+			cloudapi.WriteError(w, err)
+			return
+		}
+		cloudapi.WriteRawJSON(w, http.StatusOK, raw)
+		return
+	}
 	if s.Widgets == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("widgets are not configured"))
 		return
@@ -26,6 +58,20 @@ func (s *Server) handleListBoards(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleCreateBoard(w http.ResponseWriter, r *http.Request) {
+	if cb := s.cloudBoards(); cb != nil {
+		body, err := cloudapi.ReadLimitedBody(w, r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		raw, status, err := cb.CreateBoard(r.Context(), body)
+		if err != nil {
+			cloudapi.WriteError(w, err)
+			return
+		}
+		cloudapi.WriteRawJSON(w, status, raw)
+		return
+	}
 	if s.Widgets == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("widgets are not configured"))
 		return
@@ -46,14 +92,18 @@ func (s *Server) handleCreateBoard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBoardAction(w http.ResponseWriter, r *http.Request) {
-	if s.Widgets == nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("widgets are not configured"))
-		return
-	}
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/boards/")
 	boardID, sub, hasSub := strings.Cut(rest, "/")
 	if strings.TrimSpace(boardID) == "" {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("board id is required"))
+		return
+	}
+	if cb := s.cloudBoards(); cb != nil {
+		s.handleCloudBoardAction(w, r, cb, boardID, sub, hasSub)
+		return
+	}
+	if s.Widgets == nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("widgets are not configured"))
 		return
 	}
 	if hasSub {
@@ -91,6 +141,56 @@ func (s *Server) handleBoardAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	default:
+		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
+	}
+}
+
+func (s *Server) handleCloudBoardAction(w http.ResponseWriter, r *http.Request, cb cloudBoardsBridge, boardID, sub string, hasSub bool) {
+	if hasSub {
+		if widgetID, ok := strings.CutPrefix(sub, "widgets/"); ok && r.Method == http.MethodDelete {
+			raw, status, err := cb.DeleteBoardWidget(r.Context(), boardID, widgetID)
+			if err != nil {
+				cloudapi.WriteError(w, err)
+				return
+			}
+			cloudapi.WriteRawJSON(w, status, raw)
+			return
+		}
+		if sub == "loops" && r.Method == http.MethodPost {
+			writeError(w, http.StatusNotImplemented, fmt.Errorf("assigning local loops to cloud boards is not supported"))
+			return
+		}
+		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		raw, status, err := cb.GetBoard(r.Context(), boardID)
+		if err != nil {
+			cloudapi.WriteError(w, err)
+			return
+		}
+		cloudapi.WriteRawJSON(w, status, raw)
+	case http.MethodPatch:
+		body, err := cloudapi.ReadLimitedBody(w, r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		raw, status, err := cb.PatchBoard(r.Context(), boardID, body)
+		if err != nil {
+			cloudapi.WriteError(w, err)
+			return
+		}
+		cloudapi.WriteRawJSON(w, status, raw)
+	case http.MethodDelete:
+		raw, status, err := cb.DeleteBoard(r.Context(), boardID)
+		if err != nil {
+			cloudapi.WriteError(w, err)
+			return
+		}
+		cloudapi.WriteRawJSON(w, status, raw)
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 	}

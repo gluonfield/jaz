@@ -2,7 +2,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
 import { apiFetch, del, get, patch, post } from './client'
 import { activeRunStatus } from './loops'
-import type { Board, BoardItem } from './types'
+import type { Board, BoardItem, BoardVisibility } from './types'
 
 export const boardsQuery = queryOptions({
   queryKey: keys.boards,
@@ -21,7 +21,7 @@ export const boardDetailQuery = (id: string) =>
   queryOptions({
     queryKey: keys.boardDetail(id),
     queryFn: async () => {
-      const data = await get<{ board: Board; items: BoardItem[] | null }>(`/v1/boards/${id}`)
+      const data = await get<{ board: Board; items: BoardItem[] | null }>(`/v1/boards/${encodeURIComponent(id)}`)
       return { board: data.board, items: data.items ?? [] } satisfies BoardDetail
     },
     // Tiles refresh when a publish bumps current_version; poll tighter while
@@ -32,8 +32,15 @@ export const boardDetailQuery = (id: string) =>
         : 15_000,
   })
 
-export function createBoard(name: string): Promise<Board> {
-  return post<Board>('/v1/boards', { name })
+export interface CreateBoardInput {
+  name: string
+  visibility?: BoardVisibility
+  member_user_ids?: string[]
+}
+
+export function createBoard(input: string | CreateBoardInput): Promise<Board> {
+  const payload = typeof input === 'string' ? { name: input } : input
+  return post<Board>('/v1/boards', payload)
 }
 
 export interface BoardLayoutEntry {
@@ -46,22 +53,30 @@ export interface BoardLayoutEntry {
 
 export function patchBoard(
   id: string,
-  input: { name?: string; font_scale?: number; layout?: BoardLayoutEntry[] },
+  input: {
+    name?: string
+    font_scale?: number
+    layout?: BoardLayoutEntry[]
+    visibility?: BoardVisibility
+    member_user_ids?: string[]
+  },
 ): Promise<Board> {
-  return patch<Board>(`/v1/boards/${id}`, input)
+  return patch<Board>(`/v1/boards/${encodeURIComponent(id)}`, input)
 }
 
 export function deleteBoard(id: string): Promise<{ ok: boolean }> {
-  return del<{ ok: boolean }>(`/v1/boards/${id}`)
+  return del<{ ok: boolean }>(`/v1/boards/${encodeURIComponent(id)}`)
 }
 
 export function removeWidgetFromBoard(boardId: string, widgetId: string): Promise<{ ok: boolean }> {
-  return del<{ ok: boolean }>(`/v1/boards/${boardId}/widgets/${widgetId}`)
+  return del<{ ok: boolean }>(
+    `/v1/boards/${encodeURIComponent(boardId)}/widgets/${encodeURIComponent(widgetId)}`,
+  )
 }
 
 // Additive: assigns loops to this board without touching their other boards.
 export function assignLoopsToBoard(boardId: string, loopIds: string[]): Promise<{ ok: boolean }> {
-  return post<{ ok: boolean }>(`/v1/boards/${boardId}/loops`, { loop_ids: loopIds })
+  return post<{ ok: boolean }>(`/v1/boards/${encodeURIComponent(boardId)}/loops`, { loop_ids: loopIds })
 }
 
 export function reportWidgetError(widgetId: string, message: string): Promise<{ ok: boolean }> {

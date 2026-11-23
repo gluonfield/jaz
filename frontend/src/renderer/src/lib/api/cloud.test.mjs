@@ -16,6 +16,8 @@ const bundle = await build({
         contents: [
           `export * from ${JSON.stringify(new URL('./serverTypes.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./cloudAuth.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./cloudMembers.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./boards.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./cloudSpaces.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./cloudInstructions.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./cloudUploads.ts', import.meta.url).pathname)}`,
@@ -757,4 +759,71 @@ test('Desktop unified single-origin mode: all session, turn, pin, and sidebar ca
     ['loc_1', 'local'],
   ])
   expect(calls.every((c) => c.origin === 'http://127.0.0.1:5299' && c.auth === 'Bearer local-token')).toBe(true)
+})
+
+test('Org members API, typeahead filtering, email detection, and Cloud board visibility payloads', async () => {
+  const { api } = fixture()
+  const requests = []
+  replace('fetch', async (url, init) => {
+    const parsed = new URL(String(url))
+    const method = init?.method || 'GET'
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined
+    requests.push({ method, path: parsed.pathname + parsed.search, body })
+    if (parsed.pathname === '/v1/members' && method === 'GET') {
+      return Response.json({
+        members: [
+          { id: 'u_1', org_id: 'org_1', email: 'alice@acme.test', display_name: 'Alice Admin', role: 'admin', status: 'active', created_at: '2026-11-23T00:00:00Z' },
+          { id: 'u_2', org_id: 'org_1', email: 'bob@acme.test', display_name: 'Bob Builder', role: 'member', status: 'invited', created_at: '2026-11-23T00:00:00Z' },
+          { id: 'u_3', org_id: 'org_1', email: 'zara.bob@acme.test', display_name: 'Zara', role: 'viewer', status: 'active', created_at: '2026-11-23T00:00:00Z' },
+        ],
+      })
+    }
+    if (parsed.pathname === '/v1/members' && method === 'POST') {
+      return Response.json({ id: 'u_4', org_id: 'org_1', email: body.email, display_name: body.display_name || body.email, role: body.role || 'member', status: 'invited', created_at: '2026-11-23T00:00:00Z' })
+    }
+    if (parsed.pathname === '/v1/members/u_4' && method === 'PATCH') {
+      return Response.json({ id: 'u_4', org_id: 'org_1', email: 'dave@acme.test', display_name: 'Dave', role: body.role, status: 'invited', created_at: '2026-11-23T00:00:00Z' })
+    }
+    if (parsed.pathname === '/v1/members/u_4' && method === 'DELETE') {
+      return Response.json({ ok: true })
+    }
+    if (parsed.pathname === '/v1/boards' && method === 'POST') {
+      return Response.json({ id: 'b_1', name: body.name, visibility: body.visibility, grid_cols: 12, row_height: 90, font_scale: 1, is_default: false, created_at: '2026-11-23T00:00:00Z', updated_at: '2026-11-23T00:00:00Z' })
+    }
+    if (parsed.pathname === '/v1/boards/b_1' && method === 'PATCH') {
+      return Response.json({ id: 'b_1', name: 'Ops', visibility: body.visibility, grid_cols: 12, row_height: 90, font_scale: 1, is_default: false, created_at: '2026-11-23T00:00:00Z', updated_at: '2026-11-23T00:00:00Z' })
+    }
+    throw new Error(`Unexpected ${method} ${parsed.pathname}`)
+  })
+
+  const members = await api.listOrgMembers('bob', 20)
+  expect(members).toHaveLength(3)
+  expect(requests[0].path).toBe('/v1/members?q=bob&limit=20')
+
+  // Prefix matches rank ahead of substring matches; excluded IDs are omitted.
+  const filtered = api.filterOrgMembers(members, 'bob', new Set(['u_1']))
+  expect(filtered.map((m) => m.id)).toEqual(['u_2', 'u_3'])
+  expect(api.looksLikeEmail('dave@acme.test')).toBe(true)
+  expect(api.looksLikeEmail('not-an-email')).toBe(false)
+  expect(api.looksLikeEmail('bad@localhost')).toBe(false)
+
+  const added = await api.createOrgMember({ email: '  DAVE@acme.test ', display_name: 'Dave', role: 'member' })
+  expect(added.email).toBe('dave@acme.test')
+  expect(await api.updateOrgMember('u_4', { role: 'admin' })).toMatchObject({ id: 'u_4', role: 'admin' })
+  expect(await api.deleteOrgMember('u_4')).toEqual({ ok: true })
+
+  const createdBoard = await api.createBoard({ name: 'Ops', visibility: 'selected', member_user_ids: ['u_2'] })
+  expect(createdBoard.visibility).toBe('selected')
+  expect(requests.at(-1)).toEqual({
+    method: 'POST',
+    path: '/v1/boards',
+    body: { name: 'Ops', visibility: 'selected', member_user_ids: ['u_2'] },
+  })
+
+  await api.patchBoard('b_1', { visibility: 'team', member_user_ids: [] })
+  expect(requests.at(-1)).toEqual({
+    method: 'PATCH',
+    path: '/v1/boards/b_1',
+    body: { visibility: 'team', member_user_ids: [] },
+  })
 })

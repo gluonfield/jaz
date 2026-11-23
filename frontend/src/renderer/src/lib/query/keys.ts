@@ -69,6 +69,7 @@ export const keys = {
   boards: ['boards'] as const,
   boardDetail: (id: string) => ['boards', id] as const,
   cloud: ['cloud'] as const,
+  cloudMembers: (query = '') => ['cloud', 'members', query] as const,
   cloudSpaces: ['cloud', 'spaces'] as const,
   cloudMachines: ['cloud', 'machines'] as const,
   cloudModelProfiles: ['cloud', 'model-profiles'] as const,

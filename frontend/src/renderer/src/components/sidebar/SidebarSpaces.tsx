@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, SquarePen, UserPlus, Users, X } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/toast'
+import { filterOrgMembers, orgMembersQuery } from '@/lib/api/cloudMembers'
 import { addSpaceMember, createSpace, spacesQuery, type CloudSpace } from '@/lib/api/cloudSpaces'
 import { keys } from '@/lib/query/keys'
 
@@ -23,6 +24,11 @@ export function SidebarSpaces({
   const [memberTarget, setMemberTarget] = useState<string | null>(null)
   const [memberInput, setMemberInput] = useState('')
   const [memberRole, setMemberRole] = useState<'member' | 'admin'>('member')
+  const orgMembers = useQuery({ ...orgMembersQuery('', 50), enabled: memberTarget !== null })
+  const memberSuggestions = useMemo(
+    () => filterOrgMembers(orgMembers.data ?? [], memberInput).slice(0, 5),
+    [orgMembers.data, memberInput],
+  )
 
   const create = useMutation({
     mutationFn: (name: string) => createSpace({ name }),
@@ -186,10 +192,29 @@ export function SidebarSpaces({
                       setMemberInput('')
                     }
                   }}
-                  placeholder="Email or user ID"
-                  aria-label={`Member email or user ID for ${space.name}`}
+                  placeholder="Type a name or email…"
+                  aria-label={`Member name or email for ${space.name}`}
                   className="h-7 text-[12px]"
                 />
+                {memberSuggestions.length > 0 ? (
+                  <div className="max-h-32 overflow-y-auto rounded-control bg-bg p-0.5 ring-1 ring-border/70">
+                    {memberSuggestions.map((member) => (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => setMemberInput(member.email)}
+                        className="flex w-full cursor-pointer flex-col rounded-sm px-2 py-1 text-left transition-colors hover:bg-list-hover"
+                      >
+                        <span className="truncate text-[11.5px] font-medium text-ink">
+                          {member.display_name || member.email}
+                        </span>
+                        {member.display_name && member.display_name !== member.email ? (
+                          <span className="truncate text-[10.5px] text-ink-3">{member.email}</span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between gap-1.5">
                   <select
                     aria-label="Member role"

@@ -20,6 +20,7 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/transcript"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
+	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 func TestCloudHTTPRoutesAndWorkspaceIsolation(t *testing.T) {
@@ -314,5 +315,179 @@ func TestCloudHTTPRoutesAndWorkspaceIsolation(t *testing.T) {
 	}
 	if stEmpty.ActiveWorkspaceID != "local" || stEmpty.Connected || len(stEmpty.Workspaces) != 0 {
 		t.Fatalf("expected local + 0 workspaces after disconnecting B, got %+v", stEmpty)
+	}
+}
+
+func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
+	var seenQuery string
+	var createdVisibility string
+	var patchedMembers []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/.well-known/jaz-server":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "mode": "cloud", "auth": "oidc", "capabilities": map[string]bool{"boards": true, "members": true}})
+		case r.URL.Path == "/v1/auth/me":
+			_ = json.NewEncoder(w).Encode(map[string]any{"user_id": "u_admin", "org_id": "org_1", "org_name": "Acme", "email": "admin@acme.test", "display_name": "Admin", "role": "admin"})
+		case r.URL.Path == "/v1/spaces":
+			_ = json.NewEncoder(w).Encode(map[string]any{"spaces": []any{}})
+		case r.URL.Path == "/v1/threads":
+			_ = json.NewEncoder(w).Encode(map[string]any{"threads": []any{}})
+		case r.URL.Path == "/v1/usage/events":
+			_ = json.NewEncoder(w).Encode(map[string]any{"events": []any{}})
+		case strings.HasPrefix(r.URL.Path, "/v1/instructions/"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"body_md": "", "version": ""})
+		case r.URL.Path == "/v1/members" && r.Method == http.MethodGet:
+			seenQuery = r.URL.RawQuery
+			_ = json.NewEncoder(w).Encode(map[string]any{"members": []map[string]any{
+				{"id": "u_bob", "org_id": "org_1", "email": "bob@acme.test", "display_name": "Bob Builder", "role": "member", "status": "invited"},
+			}})
+		case r.URL.Path == "/v1/members" && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "u_carol", "org_id": "org_1", "email": "carol@acme.test", "display_name": "Carol", "role": "member", "status": "invited"})
+		case r.URL.Path == "/v1/members/u_carol" && r.Method == http.MethodPatch:
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "u_carol", "org_id": "org_1", "email": "carol@acme.test", "display_name": "Carol", "role": "admin", "status": "invited"})
+		case r.URL.Path == "/v1/members/u_carol" && r.Method == http.MethodDelete:
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		case r.URL.Path == "/v1/boards" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"boards": []map[string]any{
+				{"id": "cb_1", "name": "Cloud Team Board", "visibility": "team", "is_owner": true, "can_edit": true},
+			}})
+		case r.URL.Path == "/v1/boards" && r.Method == http.MethodPost:
+			var body struct {
+				Name       string `json:"name"`
+				Visibility string `json:"visibility"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			createdVisibility = body.Visibility
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "cb_2", "name": body.Name, "visibility": body.Visibility, "is_owner": true, "can_edit": true})
+		case r.URL.Path == "/v1/boards/cb_2" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"board": map[string]any{"id": "cb_2", "name": "Ops", "visibility": "selected", "can_edit": true}, "items": []any{}})
+		case r.URL.Path == "/v1/boards/cb_2" && r.Method == http.MethodPatch:
+			var body struct {
+				Visibility    string   `json:"visibility"`
+				MemberUserIDs []string `json:"member_user_ids"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			patchedMembers = body.MemberUserIDs
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "cb_2", "name": "Ops", "visibility": body.Visibility, "can_edit": true})
+		case r.URL.Path == "/v1/boards/cb_2/widgets/w_1" && r.Method == http.MethodDelete:
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		case r.URL.Path == "/v1/boards/cb_2" && r.Method == http.MethodDelete:
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	cloudSvc := cloudsync.New(store, nil)
+	cloudHandler := cloudapi.NewHandler(cloudSvc)
+	widgetSvc := widgets.NewService(store, nil).WithWorkspace(cloudSvc.ActiveWorkspaceID)
+	srv := &server.Server{
+		Store:   store,
+		Cloud:   cloudSvc,
+		Widgets: widgetSvc,
+		Routes: server.Routes{
+			{Pattern: "POST /v1/cloud/connect", Handler: http.HandlerFunc(cloudHandler.Connect)},
+			{Pattern: "POST /v1/cloud/switch", Handler: http.HandlerFunc(cloudHandler.Switch)},
+			{Pattern: "GET /v1/members", Handler: http.HandlerFunc(cloudHandler.ListMembers)},
+			{Pattern: "POST /v1/members", Handler: http.HandlerFunc(cloudHandler.CreateMember)},
+			{Pattern: "PATCH /v1/members/{id}", Handler: http.HandlerFunc(cloudHandler.UpdateMember)},
+			{Pattern: "DELETE /v1/members/{id}", Handler: http.HandlerFunc(cloudHandler.DeleteMember)},
+		},
+	}
+	h := srv.Handler()
+
+	// Create a local board before connecting Cloud.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/boards", bytes.NewBufferString(`{"name":"Local Only Board"}`)))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Local Only Board") {
+		t.Fatalf("create local board status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Connect Cloud workspace.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/cloud/connect", bytes.NewBufferString(fmt.Sprintf(`{"url":%q,"token":"tok"}`, upstream.URL))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("connect status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Members proxy: search with query escaping, create, update, delete, path traversal rejection.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/members?q=bob+b&limit=10", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "bob@acme.test") || !strings.Contains(seenQuery, "q=bob+b") {
+		t.Fatalf("list members status=%d query=%q body=%s", rec.Code, seenQuery, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/members", bytes.NewBufferString(`{"email":"carol@acme.test","display_name":"Carol","role":"member"}`)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create member status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPatch, "/v1/members/u_carol", bytes.NewBufferString(`{"role":"admin"}`)))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"role":"admin"`) {
+		t.Fatalf("update member status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/v1/members/u_carol", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete member status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if _, _, err := cloudSvc.DeleteMember(t.Context(), "../evil"); err != cloudsync.ErrInvalidPath {
+		t.Fatalf("expected ErrInvalidPath for member traversal, got %v", err)
+	}
+
+	// Boards proxy in Cloud workspace: never leaks Local Only Board.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/boards", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Cloud Team Board") || strings.Contains(rec.Body.String(), "Local Only Board") {
+		t.Fatalf("cloud list boards status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/boards", bytes.NewBufferString(`{"name":"Ops","visibility":"team"}`)))
+	if rec.Code != http.StatusCreated || createdVisibility != "team" {
+		t.Fatalf("cloud create board status=%d vis=%q body=%s", rec.Code, createdVisibility, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/boards/cb_2", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"cb_2"`) {
+		t.Fatalf("cloud get board status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPatch, "/v1/boards/cb_2", bytes.NewBufferString(`{"visibility":"selected","member_user_ids":["u_bob"]}`)))
+	if rec.Code != http.StatusOK || len(patchedMembers) != 1 || patchedMembers[0] != "u_bob" {
+		t.Fatalf("cloud patch board status=%d members=%v body=%s", rec.Code, patchedMembers, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/v1/boards/cb_2/widgets/w_1", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("cloud delete board widget status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/v1/boards/cb_2", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("cloud delete board status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if _, _, err := cloudSvc.DeleteBoardWidget(t.Context(), "cb_2", "../escape"); err != cloudsync.ErrInvalidPath {
+		t.Fatalf("expected ErrInvalidPath for widget traversal, got %v", err)
+	}
+
+	// Switch back to Local -> /v1/boards serves local SQLite boards cleanly again.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/cloud/switch", bytes.NewBufferString(`{"workspace_id":"local"}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("switch local status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/boards", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Local Only Board") || strings.Contains(rec.Body.String(), "Cloud Team Board") {
+		t.Fatalf("local list boards status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/cloudsync"
@@ -94,7 +95,7 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, err)
 		return
 	}
-	writeRawJSON(w, http.StatusOK, raw)
+	WriteRawJSON(w, http.StatusOK, raw)
 }
 
 func (h *Handler) ListMachines(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +104,50 @@ func (h *Handler) ListMachines(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, err)
 		return
 	}
-	writeRawJSON(w, http.StatusOK, raw)
+	WriteRawJSON(w, http.StatusOK, raw)
+}
+
+func (h *Handler) ListMembers(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	limit := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	raw, err := h.service.ListMembers(r.Context(), q, limit)
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteRawJSON(w, http.StatusOK, raw)
+}
+
+func (h *Handler) CreateMember(w http.ResponseWriter, r *http.Request) {
+	body, err := ReadLimitedBody(w, r)
+	if err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	raw, status, err := h.service.CreateMember(r.Context(), body)
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteRawJSON(w, status, raw)
+}
+
+func (h *Handler) UpdateMember(w http.ResponseWriter, r *http.Request) {
+	h.proxyJSON(w, r, r.PathValue("id"), h.service.UpdateMember)
+}
+
+func (h *Handler) DeleteMember(w http.ResponseWriter, r *http.Request) {
+	raw, status, err := h.service.DeleteMember(r.Context(), r.PathValue("id"))
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteRawJSON(w, status, raw)
 }
 
 func (h *Handler) ListSpaces(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +228,7 @@ func (h *Handler) UsageSummary(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, err)
 		return
 	}
-	writeRawJSON(w, http.StatusOK, raw)
+	WriteRawJSON(w, http.StatusOK, raw)
 }
 
 func (h *Handler) CreateTurn(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +254,7 @@ func (h *Handler) UpdateThreadUserState(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, err)
 		return
 	}
-	writeRawJSON(w, http.StatusOK, raw)
+	WriteRawJSON(w, http.StatusOK, raw)
 }
 
 func (h *Handler) PresignUpload(w http.ResponseWriter, r *http.Request) {
@@ -227,7 +271,7 @@ func (h *Handler) proxyJSON(
 	id string,
 	fn func(context.Context, string, json.RawMessage) (json.RawMessage, int, error),
 ) {
-	body, err := readLimitedBody(w, r)
+	body, err := ReadLimitedBody(w, r)
 	if err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
@@ -237,7 +281,7 @@ func (h *Handler) proxyJSON(
 		WriteError(w, err)
 		return
 	}
-	writeRawJSON(w, status, raw)
+	WriteRawJSON(w, status, raw)
 }
 
 func (h *Handler) ProxyRunFile(w http.ResponseWriter, r *http.Request) {
@@ -256,7 +300,7 @@ func (h *Handler) ProxyRunFile(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, resp.Body)
 }
 
-func readLimitedBody(w http.ResponseWriter, r *http.Request) (json.RawMessage, error) {
+func ReadLimitedBody(w http.ResponseWriter, r *http.Request) (json.RawMessage, error) {
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxCloudJSONBodyBytes))
 	if err != nil {
 		return nil, err
@@ -264,7 +308,7 @@ func readLimitedBody(w http.ResponseWriter, r *http.Request) (json.RawMessage, e
 	return json.RawMessage(raw), nil
 }
 
-func writeRawJSON(w http.ResponseWriter, status int, raw json.RawMessage) {
+func WriteRawJSON(w http.ResponseWriter, status int, raw json.RawMessage) {
 	if status == 0 {
 		status = http.StatusOK
 	}
@@ -281,7 +325,7 @@ func WriteError(w http.ResponseWriter, err error) {
 	var uerr *cloudsync.UpstreamError
 	if errors.As(err, &uerr) {
 		if len(uerr.Body) > 0 {
-			writeRawJSON(w, uerr.StatusCode, uerr.Body)
+			WriteRawJSON(w, uerr.StatusCode, uerr.Body)
 			return
 		}
 		httpapi.WriteError(w, uerr.StatusCode, uerr)

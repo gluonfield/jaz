@@ -2,6 +2,7 @@ import { LoaderCircle, Plus, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { AddCloudWorkspaceModal } from '@/components/connection/AddCloudWorkspaceModal'
 import { SettingsCard, SettingsRow } from '@/components/settings/SettingsCard'
+import { TeamMembersCard } from '@/components/settings/TeamMembersCard'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { useToast } from '@/components/ui/toast'
@@ -133,6 +134,8 @@ export function CloudSettings() {
           </SettingsRow>
         </SettingsCard>
       )}
+
+      {workspace ? <TeamMembersCard workspace={workspace} /> : null}
 
       <AddCloudWorkspaceModal open={adding} onClose={() => setAdding(false)} />
     </section>
