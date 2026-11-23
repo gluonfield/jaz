@@ -283,13 +283,13 @@ export function WidgetTile({
 
   return (
     <div
-      className={`group relative flex h-full w-full flex-col overflow-hidden rounded-card bg-surface transition-shadow duration-150 ${
+      className={`group relative flex h-full w-full flex-col overflow-hidden rounded-card border border-border bg-surface transition-shadow duration-150 ${
         dragging ? 'shadow-lg ring-1 ring-primary/50' : ''
       }`}
     >
       <div
         onPointerDown={onHeaderPointerDown}
-        className="flex h-8 shrink-0 cursor-grab select-none items-center gap-1.5 px-2.5 transition-colors duration-150 hover:bg-surface-2/60 active:cursor-grabbing"
+        className="flex h-8 shrink-0 cursor-grab select-none items-center gap-1.5 border-b border-border px-2.5 transition-colors duration-150 hover:bg-surface-2/60 active:cursor-grabbing"
       >
         <GripVertical
           size={13}
@@ -334,7 +334,7 @@ export function WidgetTile({
         </div>
       </div>
       {item.current_version > 0 && layers.length > 0 ? (
-        <div className="relative min-h-0 flex-1">
+        <div className="relative m-2.5 min-h-0 flex-1">
           {layers.map((layer) => {
             // Fresh data is wiped in left-to-right behind the rainbow
             // scanline; theme/zoom reloads keep the quiet crossfade.
