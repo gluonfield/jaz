@@ -160,24 +160,26 @@ func (h *Handler) ListSpaces(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateSpace(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Name string `json:"name"`
-	}
+	var body cloudsync.CreateSpaceRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCloudJSONBodyBytes)).Decode(&body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
-	name := strings.TrimSpace(body.Name)
-	if name == "" {
+	body.Name = strings.TrimSpace(body.Name)
+	if body.Name == "" {
 		httpapi.WriteError(w, http.StatusBadRequest, errors.New("space name is required"))
 		return
 	}
-	created, err := h.service.CreateSpace(r.Context(), name)
+	created, err := h.service.CreateSpace(r.Context(), body)
 	if err != nil {
 		WriteError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusCreated, created)
+}
+
+func (h *Handler) PatchSpace(w http.ResponseWriter, r *http.Request) {
+	h.proxyJSON(w, r, r.PathValue("id"), h.service.PatchSpace)
 }
 
 func (h *Handler) AddSpaceMember(w http.ResponseWriter, r *http.Request) {

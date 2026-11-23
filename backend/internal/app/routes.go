@@ -154,6 +154,7 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service) server.Ro
 		server.Route{Pattern: "DELETE /v1/members/{id}", Handler: httpHandlerFunc(h.DeleteMember)},
 		server.Route{Pattern: "GET /v1/spaces", Handler: httpHandlerFunc(h.ListSpaces)},
 		server.Route{Pattern: "POST /v1/spaces", Handler: httpHandlerFunc(h.CreateSpace)},
+		server.Route{Pattern: "PATCH /v1/spaces/{id}", Handler: httpHandlerFunc(h.PatchSpace)},
 		server.Route{Pattern: "POST /v1/spaces/{id}/members", Handler: httpHandlerFunc(h.AddSpaceMember)},
 		server.Route{Pattern: "GET /v1/instructions/{scope}/{scope_id}/{kind}", Handler: httpHandlerFunc(h.GetInstruction)},
 		server.Route{Pattern: "PUT /v1/instructions/{scope}/{scope_id}/{kind}", Handler: httpHandlerFunc(h.PutInstruction)},

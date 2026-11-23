@@ -328,8 +328,22 @@ func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "mode": "cloud", "auth": "oidc", "capabilities": map[string]bool{"boards": true, "members": true}})
 		case r.URL.Path == "/v1/auth/me":
 			_ = json.NewEncoder(w).Encode(map[string]any{"user_id": "u_admin", "org_id": "org_1", "org_name": "Acme", "email": "admin@acme.test", "display_name": "Admin", "role": "admin"})
-		case r.URL.Path == "/v1/spaces":
-			_ = json.NewEncoder(w).Encode(map[string]any{"spaces": []any{}})
+		case r.URL.Path == "/v1/spaces" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"spaces": []map[string]any{
+				{"id": "sp_team", "org_id": "org_1", "name": "All Hands", "visibility": "team", "can_edit": true},
+			}})
+		case r.URL.Path == "/v1/spaces" && r.Method == http.MethodPost:
+			var body cloudsync.CreateSpaceRequest
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "sp_2", "org_id": "org_1", "name": body.Name, "visibility": body.Visibility, "can_edit": true})
+		case r.URL.Path == "/v1/spaces/sp_2" && r.Method == http.MethodPatch:
+			var body struct {
+				Visibility    string   `json:"visibility"`
+				MemberUserIDs []string `json:"member_user_ids"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "sp_2", "org_id": "org_1", "name": "Core", "visibility": body.Visibility, "can_edit": true})
 		case r.URL.Path == "/v1/threads":
 			_ = json.NewEncoder(w).Encode(map[string]any{"threads": []any{}})
 		case r.URL.Path == "/v1/usage/events":
@@ -401,6 +415,9 @@ func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
 			{Pattern: "POST /v1/members", Handler: http.HandlerFunc(cloudHandler.CreateMember)},
 			{Pattern: "PATCH /v1/members/{id}", Handler: http.HandlerFunc(cloudHandler.UpdateMember)},
 			{Pattern: "DELETE /v1/members/{id}", Handler: http.HandlerFunc(cloudHandler.DeleteMember)},
+			{Pattern: "GET /v1/spaces", Handler: http.HandlerFunc(cloudHandler.ListSpaces)},
+			{Pattern: "POST /v1/spaces", Handler: http.HandlerFunc(cloudHandler.CreateSpace)},
+			{Pattern: "PATCH /v1/spaces/{id}", Handler: http.HandlerFunc(cloudHandler.PatchSpace)},
 		},
 	}
 	h := srv.Handler()
@@ -477,6 +494,26 @@ func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
 	}
 	if _, _, err := cloudSvc.DeleteBoardWidget(t.Context(), "cb_2", "../escape"); err != cloudsync.ErrInvalidPath {
 		t.Fatalf("expected ErrInvalidPath for widget traversal, got %v", err)
+	}
+
+	// Spaces proxy: live visibility list, create with visibility + members, patch visibility, traversal guard.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/spaces", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"visibility":"team"`) {
+		t.Fatalf("cloud list spaces status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/spaces", bytes.NewBufferString(`{"name":"Core","visibility":"selected","member_user_ids":["u_bob"]}`)))
+	if rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"visibility":"selected"`) {
+		t.Fatalf("cloud create space status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPatch, "/v1/spaces/sp_2", bytes.NewBufferString(`{"visibility":"team","member_user_ids":[]}`)))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"visibility":"team"`) {
+		t.Fatalf("cloud patch space status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if _, _, err := cloudSvc.PatchSpace(t.Context(), "../evil", json.RawMessage(`{}`)); err != cloudsync.ErrInvalidPath {
+		t.Fatalf("expected ErrInvalidPath for space traversal, got %v", err)
 	}
 
 	// Switch back to Local -> /v1/boards serves local SQLite boards cleanly again.

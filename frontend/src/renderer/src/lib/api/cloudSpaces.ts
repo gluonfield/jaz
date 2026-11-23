@@ -1,6 +1,8 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '@/lib/query/keys'
-import { get as cloudGet, post as cloudPost, put as cloudPut } from './client'
+import { get as cloudGet, patch as cloudPatch, post as cloudPost, put as cloudPut } from './client'
+
+export type SpaceVisibility = 'team' | 'selected'
 
 export interface CloudSpaceMember {
   space_id?: string
@@ -15,7 +17,9 @@ export interface CloudSpace {
   id: string
   org_id?: string
   name: string
+  visibility?: SpaceVisibility
   created_by?: string
+  can_edit?: boolean
   created_at?: string
   member_count?: number
   members?: CloudSpaceMember[]
@@ -42,10 +46,32 @@ export const spacesQuery = queryOptions({
   staleTime: 15_000,
 })
 
-export async function createSpace(input: { name: string }): Promise<CloudSpace> {
+export async function createSpace(input: {
+  name: string
+  visibility?: SpaceVisibility
+  member_user_ids?: string[]
+}): Promise<CloudSpace> {
   const name = input.name.trim()
   if (!name) throw new Error('Space name is required')
-  return cloudPost<CloudSpace>('/v1/spaces', { name })
+  const payload: {
+    name: string
+    visibility?: SpaceVisibility
+    member_user_ids?: string[]
+  } = { name }
+  if (input.visibility) payload.visibility = input.visibility
+  if (input.member_user_ids) payload.member_user_ids = input.member_user_ids
+  return cloudPost<CloudSpace>('/v1/spaces', payload)
+}
+
+export async function patchSpace(
+  spaceId: string,
+  input: {
+    name?: string
+    visibility?: SpaceVisibility
+    member_user_ids?: string[]
+  },
+): Promise<CloudSpace> {
+  return cloudPatch<CloudSpace>(`/v1/spaces/${encodeURIComponent(spaceId)}`, input)
 }
 
 export async function addSpaceMember(

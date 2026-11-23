@@ -24,14 +24,26 @@ type CloudAccount struct {
 	LastError        string
 }
 
+type CloudSpaceMember struct {
+	SpaceID     string `json:"space_id,omitempty"`
+	UserID      string `json:"user_id"`
+	Email       string `json:"email,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+	Role        string `json:"role,omitempty"`
+}
+
 type CloudSpace struct {
-	AccountID string    `json:"-"`
-	ID        string    `json:"id"`
-	OrgID     string    `json:"org_id,omitempty"`
-	Name      string    `json:"name"`
-	CreatedBy string    `json:"created_by,omitempty"`
-	CreatedAt time.Time `json:"created_at,omitzero"`
-	UpdatedAt time.Time `json:"updated_at,omitzero"`
+	AccountID   string             `json:"-"`
+	ID          string             `json:"id"`
+	OrgID       string             `json:"org_id,omitempty"`
+	Name        string             `json:"name"`
+	Visibility  string             `json:"visibility,omitempty"`
+	CreatedBy   string             `json:"created_by,omitempty"`
+	CanEdit     bool               `json:"can_edit,omitempty"`
+	MemberCount int                `json:"member_count,omitempty"`
+	Members     []CloudSpaceMember `json:"members,omitempty"`
+	CreatedAt   time.Time          `json:"created_at,omitzero"`
+	UpdatedAt   time.Time          `json:"updated_at,omitzero"`
 }
 
 type CloudThread struct {

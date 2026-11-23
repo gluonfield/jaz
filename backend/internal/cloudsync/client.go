@@ -370,8 +370,14 @@ func (c *cloudClient) listSpaces(ctx context.Context, baseURL, token string) ([]
 	return wrapper.Spaces, nil
 }
 
-func (c *cloudClient) createSpace(ctx context.Context, baseURL, token, name string) (storage.CloudSpace, error) {
-	raw, _, err := c.doJSON(ctx, http.MethodPost, baseURL, "/v1/spaces", token, map[string]string{"name": name})
+type CreateSpaceRequest struct {
+	Name          string   `json:"name"`
+	Visibility    string   `json:"visibility,omitempty"`
+	MemberUserIDs []string `json:"member_user_ids,omitempty"`
+}
+
+func (c *cloudClient) createSpace(ctx context.Context, baseURL, token string, req CreateSpaceRequest) (storage.CloudSpace, error) {
+	raw, _, err := c.doJSON(ctx, http.MethodPost, baseURL, "/v1/spaces", token, req)
 	if err != nil {
 		return storage.CloudSpace{}, err
 	}

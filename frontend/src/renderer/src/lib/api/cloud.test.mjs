@@ -793,6 +793,12 @@ test('Org members API, typeahead filtering, email detection, and Cloud board vis
     if (parsed.pathname === '/v1/boards/b_1' && method === 'PATCH') {
       return Response.json({ id: 'b_1', name: 'Ops', visibility: body.visibility, grid_cols: 12, row_height: 90, font_scale: 1, is_default: false, created_at: '2026-11-23T00:00:00Z', updated_at: '2026-11-23T00:00:00Z' })
     }
+    if (parsed.pathname === '/v1/spaces' && method === 'POST') {
+      return Response.json({ id: 'sp_1', name: body.name, visibility: body.visibility || 'selected', can_edit: true })
+    }
+    if (parsed.pathname === '/v1/spaces/sp_1' && method === 'PATCH') {
+      return Response.json({ id: 'sp_1', name: body.name || 'Eng', visibility: body.visibility, can_edit: true })
+    }
     throw new Error(`Unexpected ${method} ${parsed.pathname}`)
   })
 
@@ -824,6 +830,22 @@ test('Org members API, typeahead filtering, email detection, and Cloud board vis
   expect(requests.at(-1)).toEqual({
     method: 'PATCH',
     path: '/v1/boards/b_1',
+    body: { visibility: 'team', member_user_ids: [] },
+  })
+
+  const createdSpace = await api.createSpace({ name: 'Eng', visibility: 'selected', member_user_ids: ['u_2'] })
+  expect(createdSpace.visibility).toBe('selected')
+  expect(requests.at(-1)).toEqual({
+    method: 'POST',
+    path: '/v1/spaces',
+    body: { name: 'Eng', visibility: 'selected', member_user_ids: ['u_2'] },
+  })
+
+  const patchedSpace = await api.patchSpace('sp_1', { visibility: 'team', member_user_ids: [] })
+  expect(patchedSpace.visibility).toBe('team')
+  expect(requests.at(-1)).toEqual({
+    method: 'PATCH',
+    path: '/v1/spaces/sp_1',
     body: { visibility: 'team', member_user_ids: [] },
   })
 })

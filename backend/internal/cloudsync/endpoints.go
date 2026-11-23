@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
@@ -65,29 +66,27 @@ func (s *Service) ListSpaces(ctx context.Context) ([]storage.CloudSpace, error) 
 	if !ok {
 		return []storage.CloudSpace{}, nil
 	}
+	if acc.Token != "" {
+		if remote, err := s.client.listSpaces(ctx, acc.BaseURL, acc.Token); err == nil {
+			if s.isGeneration(gen) {
+				_ = s.store.ReplaceCloudSpaces(ctx, acc.ID, remote)
+			}
+			return remote, nil
+		}
+	}
 	spaces, err := s.store.ListCloudSpaces(ctx, acc.ID)
 	if err != nil {
 		return nil, err
 	}
-	if len(spaces) > 0 || acc.Token == "" {
-		return spaces, nil
-	}
-	remote, err := s.client.listSpaces(ctx, acc.BaseURL, acc.Token)
-	if err != nil {
-		return spaces, nil
-	}
-	if s.isGeneration(gen) {
-		_ = s.store.ReplaceCloudSpaces(ctx, acc.ID, remote)
-	}
-	return remote, nil
+	return spaces, nil
 }
 
-func (s *Service) CreateSpace(ctx context.Context, name string) (storage.CloudSpace, error) {
+func (s *Service) CreateSpace(ctx context.Context, req CreateSpaceRequest) (storage.CloudSpace, error) {
 	acc, gen, ok := s.activeAccountWithGen()
 	if !ok || acc.Token == "" {
 		return storage.CloudSpace{}, ErrNotConnected
 	}
-	created, err := s.client.createSpace(ctx, acc.BaseURL, acc.Token, name)
+	created, err := s.client.createSpace(ctx, acc.BaseURL, acc.Token, req)
 	if err != nil {
 		return storage.CloudSpace{}, err
 	}
@@ -96,6 +95,26 @@ func (s *Service) CreateSpace(ctx context.Context, name string) (storage.CloudSp
 		_ = s.store.UpsertCloudSpace(ctx, acc.ID, created)
 	}
 	return created, nil
+}
+
+func (s *Service) PatchSpace(ctx context.Context, spaceID string, body json.RawMessage) (json.RawMessage, int, error) {
+	if err := validatePathSegment(spaceID); err != nil {
+		return nil, 0, err
+	}
+	acc, gen, ok := s.activeAccountWithGen()
+	if !ok || acc.Token == "" {
+		return nil, 0, ErrNotConnected
+	}
+	raw, status, err := s.client.doJSON(ctx, http.MethodPatch, acc.BaseURL, "/v1/spaces/"+url.PathEscape(spaceID), acc.Token, body)
+	if err != nil {
+		return nil, status, err
+	}
+	var updated storage.CloudSpace
+	if json.Unmarshal(raw, &updated) == nil && updated.ID != "" && s.isGeneration(gen) {
+		updated.AccountID = acc.ID
+		_ = s.store.UpsertCloudSpace(ctx, acc.ID, updated)
+	}
+	return raw, status, nil
 }
 
 func (s *Service) AddSpaceMember(ctx context.Context, spaceID string, body json.RawMessage) (json.RawMessage, int, error) {
