@@ -43,8 +43,10 @@ function BoardPage() {
   // hands off to the loop modal. Either way the board stays put and scrolls
   // the fresh tile into view once it appears.
   const [modal, setModal] = useState<'add' | 'new-loop' | null>(null)
-  const [editLoopId, setEditLoopId] = useState<string | null>(null)
-  const editingLoop = useQuery({ ...loopDetailQuery(editLoopId ?? ''), enabled: editLoopId !== null })
+  const editingLoop = useMutation({
+    mutationKey: [...keys.boardDetail(boardId), 'edit-loop'],
+    mutationFn: (loopId: string) => queryClient.fetchQuery({ ...loopDetailQuery(loopId), staleTime: 0 }),
+  })
   const pendingLoopId = useRef<string | null>(null)
   // null = displaying; a string = the draft name being edited inline.
   const [draftName, setDraftName] = useState<string | null>(null)
@@ -288,7 +290,7 @@ function BoardPage() {
             scale={scale}
             onLayoutChange={(entry) => layoutMutation.mutate(entry)}
             onRemove={(widgetId) => removeMutation.mutate(widgetId)}
-            onEdit={setEditLoopId}
+            onEdit={editingLoop.mutate}
             onNewWidget={() => setModal('add')}
           />
         </div>
@@ -304,10 +306,11 @@ function BoardPage() {
         }}
       />
       <LoopModal
-        open={modal === 'new-loop' || (editLoopId !== null && !!editingLoop.data)}
+        key={boardId}
+        open={modal === 'new-loop' || editingLoop.isSuccess}
         onClose={() => {
           setModal(null)
-          setEditLoopId(null)
+          editingLoop.reset()
         }}
         loop={editingLoop.data?.loop}
         boardIds={editingLoop.data?.boardIds}
@@ -315,14 +318,14 @@ function BoardPage() {
           pendingLoopId.current = created.id
         }}
       />
-      {editLoopId !== null && !editingLoop.data ? (
-        <Modal open onClose={() => setEditLoopId(null)} title="Edit loop" size="md">
+      {editingLoop.isPending || editingLoop.isError ? (
+        <Modal open onClose={editingLoop.reset} title="Edit loop" size="md">
           {editingLoop.isError ? (
             <div className="space-y-3">
               <p role="alert" className="text-[13px] text-danger">
                 {editingLoop.error.message}
               </p>
-              <Button variant="secondary" size="sm" onClick={() => void editingLoop.refetch()}>
+              <Button variant="secondary" size="sm" onClick={() => editingLoop.mutate(editingLoop.variables)}>
                 Retry
               </Button>
             </div>
