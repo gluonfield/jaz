@@ -225,16 +225,25 @@ func (s *Store) view(ref string) (string, error) {
 	if !ok || !manifest.SafeName(plugin) || !name.MatchString(view) {
 		return "", fmt.Errorf("%w: view %q is not <plugin>/<view>", ErrInvalid, ref)
 	}
-	root, err := os.OpenRoot(filepath.Join(s.dir, plugin))
+	root, err := os.OpenRoot(s.dir)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrNotFound, err)
+		return "", viewLookupError(ref, err)
 	}
 	defer root.Close()
-	html, err := root.ReadFile("views/" + view + ".html")
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("%w: view %q", ErrNotFound, ref)
+	installed, err := root.OpenRoot(plugin)
+	if err != nil {
+		return "", viewLookupError(ref, err)
 	}
-	return string(html), err
+	defer installed.Close()
+	html, err := installed.ReadFile("views/" + view + ".html")
+	return string(html), viewLookupError(ref, err)
+}
+
+func viewLookupError(ref string, err error) error {
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%w: view %q", ErrNotFound, ref)
+	}
+	return err
 }
 
 func (s *Store) Remove(plugin string) error {

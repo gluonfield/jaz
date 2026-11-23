@@ -13,6 +13,7 @@ import { exercisePasswords } from './passwords'
 import { exerciseBrowserLayout } from './layout'
 import { exerciseAnnotations } from './annotations'
 import { exerciseSidePanelTabs } from './side-panel'
+import { exercisePluginViews } from './plugin-views'
 import { exerciseMermaid } from './mermaid'
 import { exerciseModelPicker } from './model-picker'
 import { exerciseKeyboardFocus } from './keyboard-focus'
@@ -287,6 +288,12 @@ function Fixture() {
         progress('side panel tabs and retained resources')
         await exerciseSidePanelTabs()
         window.smoke.result({ ok: true, checks: ['side panel and Overview shortcut visibility; compact tabs, browser retention, terminal, side chat, mobile layout, per-chat restoration and browsers surviving a backend reconnect'] })
+        return
+      }
+      if (new URLSearchParams(location.search).get('suite') === 'plugin-views') {
+        progress('saved plugin views')
+        await exercisePluginViews()
+        window.smoke.result({ ok: true, checks: ['overview polling refreshes the mounted iframe and preserves selection and dismissed tabs', 'denied views remove the iframe', 'saved views and file state survive thread navigation'] })
         return
       }
       progress('canvas resizing, scrolling and viewer controls')

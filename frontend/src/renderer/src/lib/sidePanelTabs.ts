@@ -18,7 +18,7 @@ export type NewSidePanelTab = Exclude<SidePanelTab['kind'], 'app' | 'view' | 'ca
 export type SidePanelMode = 'tabs' | 'overview'
 export const OVERVIEW_PANEL_WIDTH = 300
 
-export type SidePanelTabs = { tabs: SidePanelTab[]; activeId: string | null }
+export type SidePanelTabs = { tabs: SidePanelTab[]; activeId: string | null; dismissedViews?: string[] }
 export type SidePanelTabAction =
   | { type: 'open'; tab: SidePanelTab; after?: string }
   | { type: 'select' | 'close'; id: string }
@@ -27,10 +27,12 @@ export type SidePanelTabAction =
 
 export function sidePanelTabs(state: SidePanelTabs, action: SidePanelTabAction): SidePanelTabs {
   if (action.type === 'restore') {
-    const replacements = new Map(action.tabs.map((tab) => [tab.id, tab]))
+    const restored = action.tabs.filter((tab) => !state.dismissedViews?.includes(tab.id))
+    const replacements = new Map(restored.map((tab) => [tab.id, tab]))
     return {
-      tabs: [...state.tabs.map((tab) => replacements.get(tab.id) ?? tab), ...action.tabs.filter((tab) => !state.tabs.some((current) => current.id === tab.id))],
-      activeId: state.activeId ?? action.tabs[0]?.id ?? null,
+      ...state,
+      tabs: [...state.tabs.map((tab) => replacements.get(tab.id) ?? tab), ...restored.filter((tab) => !state.tabs.some((current) => current.id === tab.id))],
+      activeId: state.activeId ?? restored[0]?.id ?? null,
     }
   }
   if (action.type === 'reorder') {
@@ -47,6 +49,8 @@ export function sidePanelTabs(state: SidePanelTabs, action: SidePanelTabAction):
     const existing = tabs.some((tab) => tab.id === action.tab.id)
     const after = tabs.findIndex((tab) => tab.id === action.after)
     return {
+      ...state,
+      ...(state.dismissedViews?.includes(action.tab.id) && { dismissedViews: state.dismissedViews.filter((id) => id !== action.tab.id) }),
       tabs: existing ? tabs.map((tab) => tab.id === action.tab.id ? action.tab : tab) : tabs.toSpliced(after < 0 ? tabs.length : after + 1, 0, action.tab),
       activeId: action.tab.id,
     }
@@ -60,13 +64,15 @@ export function sidePanelTabs(state: SidePanelTabs, action: SidePanelTabAction):
   }
   const tabs = state.tabs.filter((tab) => tab.id !== action.id)
   return {
+    ...state,
+    ...(state.tabs[index].kind === 'view' && { dismissedViews: [...(state.dismissedViews ?? []), action.id] }),
     tabs,
     activeId: state.activeId === action.id ? tabs[Math.min(index, tabs.length - 1)]?.id ?? null : state.activeId,
   }
 }
 
 export function pluginViewTab(view: PluginView): Extract<SidePanelTab, { kind: 'view' }> {
-  return { id: pluginViewId(view), kind: 'view', view }
+  return { id: pluginViewId(view), kind: 'view', view: view.reference ? { ...view, widget_code: '' } : view }
 }
 
 function pluginViewId(view: PluginView): string {

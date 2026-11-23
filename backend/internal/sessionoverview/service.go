@@ -2,10 +2,12 @@ package sessionoverview
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -77,9 +79,14 @@ func (s *Service) Load(ctx context.Context, ref string) (View, error) {
 		if saved.Reference == "" {
 			continue
 		}
-		if html, err := s.plugins.View(saved.Reference); err == nil {
-			view.PluginViews[i].WidgetCode = html
+		html, err := s.plugins.View(saved.Reference)
+		if errors.Is(err, plugins.ErrNotFound) {
+			continue
 		}
+		if err != nil {
+			html = ""
+		}
+		view.PluginViews[i].WidgetCode = html
 	}
 	if active[records.SessionID].ID == "" {
 		for i := range view.AgentEvents {

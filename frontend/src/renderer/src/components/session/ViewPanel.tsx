@@ -65,6 +65,9 @@ export function ViewPanel({ sessionId, view, visible, working, asking, onOpenFil
       setError(error instanceof Error ? error.message : 'Could not open view.')
     }
   }, [sessionId, view.reference, view.file, onOpenView])
+  if (!view.widget_code) {
+    return <p className="px-5 py-6 text-sm text-ink-3">Plugin view unavailable.</p>
+  }
   if (data === undefined || state.isLoading) {
     return <p className="px-5 py-6 text-sm text-ink-3">{file.isPending || state.isLoading ? 'Loading…' : `Nothing to show yet: ${view.file} is missing or is not JSON.`}</p>
   }

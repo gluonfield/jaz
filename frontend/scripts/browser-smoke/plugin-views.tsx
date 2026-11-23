@@ -46,6 +46,7 @@ window.onData(draw);
   let replayed = false
   let opened = 0
   let savedSibling: PluginView | undefined
+  let currentView = view
   let savedPresentations = 0
   let fileContent = '{"title":"Saved state"}'
   let fileReads = 0
@@ -55,6 +56,9 @@ window.onData(draw);
   }
   window.fetch = async (input, init) => {
     const url = new URL(String(input), location.href)
+    if (url.pathname === `/v1/sessions/${id}/overview`) {
+      return Response.json({ threads: [], subagents: [], plugin_views: savedSibling ? [savedSibling, currentView] : [currentView] })
+    }
     if (url.pathname === `/v1/sessions/${id}/messages`) return Response.json(url.searchParams.has('before_event_seq') ? { ...page, before_event_seq: 600, messages: [{ ...page.messages[0], seq: 600 }] } : page)
     if (url.pathname === `/v1/sessions/${id}/events`) {
       replayed = url.searchParams.get('after_seq') !== '999'
@@ -105,8 +109,8 @@ window.onData(draw);
   const route = createRootRoute({ component: Shell })
   const router = createRouter({ routeTree: route, history: createMemoryHistory({ initialEntries: ['/'] }) })
   const mount = () => flushSync(() => root.render(<QueryClientProvider client={client}><VoiceProvider><RouterProvider router={router} /></VoiceProvider></QueryClientProvider>))
-  const until = async (check: () => boolean) => {
-    const deadline = Date.now() + 4000
+  const until = async (check: () => boolean, timeout = 4000) => {
+    const deadline = Date.now() + timeout
     while (!check()) {
       if (Date.now() > deadline) throw new Error('Plugin view: ' + check.toString() + ' · ' + element.textContent + ' · ' + JSON.stringify(client.getQueryData(keys.sessionOverview(id))))
       await new Promise(requestAnimationFrame)
@@ -185,6 +189,21 @@ window.onData(draw);
     select('draft.md')
     await until(() => element.querySelector('[role="tab"][aria-selected="true"]')?.textContent === 'draft.md')
     if (element.querySelector('.tiptap') !== editor || !editor.textContent?.includes('Retained edit.')) throw new Error('Switching tabs discarded the mounted editor or its edit')
+    element.querySelector<HTMLButtonElement>('[aria-label="Close Quiz"]')!.click()
+    await until(() => !element.querySelector('[aria-label="Close Quiz"]'))
+    const progressFrame = element.querySelector('iframe[title="Progress"]')
+    const tabOrder = [...element.querySelectorAll('[role="tab"]')].map((tab) => tab.id).join()
+    currentView = { ...view, widget_code: code('Updated Progress') }
+    await until(() => drawn.get('Updated Progress') === 'Updated while hidden', 8000)
+    if (element.querySelector('iframe[title="Progress"]') !== progressFrame || [...element.querySelectorAll('[role="tab"]')].map((tab) => tab.id).join() !== tabOrder || element.querySelector('[role="tab"][aria-selected="true"]')?.textContent !== 'draft.md') {
+      throw new Error('Overview polling replaced the mounted tab, changed tab order or selection, or reopened Quiz')
+    }
+    currentView = { ...view, widget_code: '' }
+    await client.invalidateQueries({ queryKey: keys.sessionOverview(id) })
+    await until(() => !element.querySelector('iframe[title="Progress"]') && Boolean(element.textContent?.includes('Plugin view unavailable.')))
+    currentView = view
+    await client.invalidateQueries({ queryKey: keys.sessionOverview(id) })
+    await until(() => Boolean(element.querySelector('iframe[title="Progress"]')))
     link('Open source').click()
     await until(() => pdfReads === 1 && Boolean(element.querySelector('.pdfViewer .page')))
     select('Progress')
@@ -194,6 +213,7 @@ window.onData(draw);
     drawn.delete('Progress')
     switchThread()
     await until(() => drawn.has('Progress'))
+    if (element.querySelector('[aria-label="Close Quiz"]')) throw new Error('Returning to the thread reopened the dismissed view')
     if (element.querySelector('.tiptap, .pdfViewer') || pdfReads !== 1) throw new Error('Restoring a thread mounted or downloaded hidden documents')
     select('source.pdf')
     await until(() => pdfReads === 2 && Boolean(element.querySelector('.pdfViewer .page')))
