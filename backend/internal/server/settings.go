@@ -51,16 +51,19 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		defaults, err := s.loadAgentSettings(store)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, s.agentSettingsResponse(defaults))
+		s.writeCurrentAgentSettings(w, store)
 	case http.MethodPut:
 		var input agentSettingsRequest
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if input.ACP == nil && (len(input.ProviderKeys) > 0 || len(input.ACPKeys) > 0) {
+			if status, err := s.applyRuntimeKeyUpdates(r, input.ProviderKeys, input.ACPKeys); err != nil {
+				writeError(w, status, err)
+				return
+			}
+			s.writeCurrentAgentSettings(w, store)
 			return
 		}
 		normalized, err := agentsettings.NormalizeAgentDefaults(input.AgentDefaults, s.selectableACPAgentCatalog(), acp.ModelCapabilities{Catalog: s.ModelCatalog})
@@ -85,6 +88,15 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
 	}
+}
+
+func (s *Server) writeCurrentAgentSettings(w http.ResponseWriter, store storage.SettingsStorage) {
+	defaults, err := s.loadAgentSettings(store)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.agentSettingsResponse(defaults))
 }
 
 func agentSettingsValidationStatus(err error) int {

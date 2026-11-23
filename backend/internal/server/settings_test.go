@@ -18,6 +18,7 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/serverconfig"
+	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/testexec"
 )
@@ -424,6 +425,55 @@ func TestAgentSettingsSavesModelProviderKey(t *testing.T) {
 	}
 	if !configured {
 		t.Fatalf("openrouter not reported configured: %#v", saved.Providers)
+	}
+}
+
+func TestAgentSettingsKeyUpdatesPreserveSavedDefaults(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	want := agentsettings.ACPAgentDefaults{
+		Enabled: true, Model: "saved-model", ReasoningEffort: "high",
+		Auth: acp.AgentAuthConfig{Mode: acp.AuthModeAuto},
+	}
+	if _, err := agentsettings.SaveAgentDefaults(store, agentsettings.AgentDefaults{
+		ACP: map[string]agentsettings.ACPAgentDefaults{acp.AgentCodex: want},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{
+		Store: store, Root: root, ModelCatalog: modelcatalog.NewService(nil),
+		AgentCatalog: acp.AgentCatalog{acp.AgentCodex: {Local: true}},
+	}).Handler()
+
+	for _, tc := range []struct{ body, env string }{
+		{`{"provider_keys":{"openrouter":"updated-key"}}`, "OPENROUTER_API_KEY"},
+		{`{"acp_keys":{"codex":"updated-key"}}`, "JAZ_ACP_CODEX_API_KEY"},
+	} {
+		req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(tc.body))
+		req.RemoteAddr = "127.0.0.1:1234"
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("%s: status %d: %s", tc.env, res.Code, res.Body.String())
+		}
+		var response agentSettingsResponse
+		if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		saved, err := agentsettings.LoadAgentDefaults(store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if saved.ACP[acp.AgentCodex] != want || response.ACP[acp.AgentCodex] != want {
+			t.Fatalf("%s changed defaults: stored %+v, returned %+v", tc.env, saved.ACP[acp.AgentCodex], response.ACP[acp.AgentCodex])
+		}
+		if got, ok := runtimeenv.Lookup(runtimeenv.Path(root), tc.env); !ok || got != "updated-key" {
+			t.Fatalf("%s was not updated", tc.env)
+		}
 	}
 }
 
