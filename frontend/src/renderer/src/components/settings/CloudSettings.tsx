@@ -185,12 +185,12 @@ export function CloudSettings({
                 </Button>
               </SettingsRow>
               <SettingsRow
-                title="Cloud Instructions"
-                description="Edit organization, space, and personal AGENTS.md and SOUL.md files."
+                title="Personalization"
+                description="Edit your standing AGENTS instructions synced to Jaz Cloud."
               >
                 <Button size="sm" variant="secondary" onClick={() => onNavigate('personalization')}>
                   <Sparkles size={13} />
-                  Open instructions
+                  Open personalization
                 </Button>
               </SettingsRow>
               <SettingsRow
