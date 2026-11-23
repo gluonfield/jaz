@@ -39,16 +39,43 @@ export default function PDFFileView({ load, location, visible = true }: { load: 
     linkService.setViewer(viewer)
     let task: PDFDocumentLoadingTask | undefined
     let width = 0
+    // Pages first fit the panel's width and then keep a zoom the person chose.
     const fit = () => {
       const next = container.clientWidth
       if (viewer.pdfDocument && next && next !== width) {
         width = next
-        viewer.currentScaleValue = 'page-width'
+        viewer.currentScaleValue = viewer.currentScaleValue ?? 'page-width'
       }
     }
     const observer = new ResizeObserver(fit)
     observer.observe(container)
     events.on('pagesinit', fit)
+    // A pinch arrives as a wheel event with Control held, as does a mouse
+    // wheel turned with Control, whose far larger steps are capped. pdf.js
+    // rounds each scale to a hundredth, so the part of a small step it drops
+    // is carried to the next.
+    let carried = 1
+    container.addEventListener('wheel', (event) => {
+      if (!event.ctrlKey) return
+      event.preventDefault()
+      const factor = Math.exp(-Math.max(-25, Math.min(25, event.deltaY)) / 100)
+      if ((carried > 1) !== (factor > 1)) carried = 1
+      const scale = viewer.currentScale
+      viewer.updateScale({ scaleFactor: carried * factor, origin: [event.clientX, event.clientY], drawingDelay: 400 })
+      carried *= factor * scale / viewer.currentScale
+    }, { passive: false, signal: abort.signal })
+    const keys: Record<string, () => void> = {
+      '=': () => viewer.increaseScale(),
+      '+': () => viewer.increaseScale(),
+      '-': () => viewer.decreaseScale(),
+      '0': () => { viewer.currentScaleValue = 'page-width' },
+    }
+    container.addEventListener('keydown', (event) => {
+      const zoom = (event.metaKey || event.ctrlKey) && !event.altKey && keys[event.key]
+      if (!zoom) return
+      event.preventDefault()
+      zoom()
+    }, { signal: abort.signal })
     setError('')
     setView(null)
     setTarget(null)
@@ -132,7 +159,7 @@ export default function PDFFileView({ load, location, visible = true }: { load: 
   }, [view, target, visible])
 
   return <div className="pdf-file-view relative h-full min-h-0 bg-bg text-ink" onKeyDownCapture={find.handleKeyDownCapture}>
-    <div ref={setContainer} tabIndex={0} className="absolute inset-0 overflow-y-auto overflow-x-hidden outline-none" role="region" aria-label="PDF document">
+    <div ref={setContainer} tabIndex={0} className="absolute inset-0 overflow-auto outline-none" role="region" aria-label="PDF document">
       <div className="pdfViewer" />
     </div>
     <FindBar find={find} />
