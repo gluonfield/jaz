@@ -81,7 +81,7 @@ export function Popover({
     const left = align === 'end' ? rect.right - menuWidth : rect.left
     style = {
       position: 'fixed',
-      zIndex: 'var(--z-modal)',
+      zIndex: 'calc(var(--z-modal) + 1)',
       ...(placement === 'below' ? { top: rect.bottom + GAP } : { bottom: vp.height - rect.top + GAP }),
       left: Math.max(8, Math.min(left, vp.width - menuWidth - 8)),
     }
