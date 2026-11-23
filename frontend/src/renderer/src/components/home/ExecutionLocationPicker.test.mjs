@@ -52,7 +52,7 @@ function loadPicker(cloudState, { forcePopoverOpen = false } = {}) {
   return mod.exports.ExecutionLocationPicker
 }
 
-test('ExecutionLocationPicker renders Local (This Mac), Cloud (connected org vs Sign in…), online Connected machines, and locked Cloud-only mode', () => {
+test('ExecutionLocationPicker renders Local, Cloud (connected org vs Sign in…), and locked Cloud-only mode', () => {
   const disconnectedCloud = {
     active: false,
     source: null,
@@ -73,7 +73,7 @@ test('ExecutionLocationPicker renders Local (This Mac), Cloud (connected org vs 
       onConnectCloud: () => {},
     }),
   )
-  expect(disconnectedHtml).toContain('Local (This Mac)')
+  expect(disconnectedHtml).toContain('Local')
   expect(disconnectedHtml).toContain('Work in')
   expect(disconnectedHtml).toContain('Sign in…')
 
@@ -92,17 +92,14 @@ test('ExecutionLocationPicker renders Local (This Mac), Cloud (connected org vs 
   const connectedHtml = renderToStaticMarkup(
     React.createElement(ConnectedPicker, {
       location: 'cloud',
-      machines: [{ device_id: 'mac-1', display_name: 'MacBook Pro', platform: 'darwin', online: true }],
       lockedCloud: false,
       onChange: () => {},
-      onSelectMachine: () => {},
       onConnectCloud: () => {},
     }),
   )
   expect(connectedHtml).toContain('aria-label="Work in: Cloud"')
   expect(connectedHtml).toContain('Acme Org')
-  expect(connectedHtml).toContain('MacBook Pro')
-  expect(connectedHtml).toContain('Connected machine')
+  expect(connectedHtml).not.toContain('Connected machine')
   expect(connectedHtml).not.toContain('Sign in…')
 
   const lockedHtml = renderToStaticMarkup(

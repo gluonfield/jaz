@@ -16,7 +16,6 @@ import { TaskWorkspaceControl } from '@/components/session/TaskWorkspaceControl'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
 import { spacesQuery } from '@/lib/api/cloudSpaces'
-import { machinesQuery } from '@/lib/api/cloudThreads'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
 import { createSession, projectsQuery } from '@/lib/api/sessions'
@@ -85,7 +84,6 @@ function NewSessionPage() {
     return storedLocation()
   })
   const [spaceId, setSpaceId] = useState(() => search.space ?? '')
-  const [machineId, setMachineId] = useState('')
 
   const effectiveLocation: ExecutionLocation = isPrimaryCloud
     ? 'cloud'
@@ -101,8 +99,6 @@ function NewSessionPage() {
 
   const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !isPrimaryCloud && !targetIsCloud }).data
   const spaces = useQuery({ ...spacesQuery, enabled: targetIsCloud && cloud.active })
-  const machines = useQuery({ ...machinesQuery, enabled: cloud.active })
-  const onlineMachines = (machines.data ?? []).filter((machine) => machine.online)
   const controls = useNewThreadControls(effectiveLocation)
   const incomingPrompt = useLocation({ select: (loc) => loc.state.newThreadPrompt })
   const { setDraft } = useComposerDraft({ storageKey: NEW_SESSION_DRAFT_KEY })
@@ -145,7 +141,6 @@ function NewSessionPage() {
   useEffect(() => {
     if (!cloud.active) {
       setSpaceId('')
-      setMachineId('')
     }
   }, [cloud.active])
 
@@ -189,7 +184,6 @@ function NewSessionPage() {
         ? {
             ...baseInput,
             ...(spaceId ? { space_id: spaceId, visibility: 'space' as const } : { visibility: 'private' as const }),
-            ...(machineId ? { machine_id: machineId } : {}),
           }
         : baseInput
       if (text === undefined) {
@@ -277,13 +271,10 @@ function NewSessionPage() {
     <>
       <ExecutionLocationPicker
         location={effectiveLocation}
-        machineId={machineId}
-        machines={onlineMachines}
         lockedCloud={isPrimaryCloud}
         placement={controlPlacement}
         disabled={creating}
         onChange={selectLocation}
-        onSelectMachine={setMachineId}
         onConnectCloud={openCloudSettings}
       />
       {targetIsCloud ? (
