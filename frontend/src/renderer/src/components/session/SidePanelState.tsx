@@ -13,7 +13,7 @@ import { useBrowserSessions, useSessionPreview } from '@/lib/browserSessions'
 import { SidebarVisibility } from '@/lib/sidebar'
 import type { PluginView } from '@/lib/api/types'
 import type { MCPAppThread } from '@/lib/mcpAppThread'
-import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, pluginViewTab, type NewSidePanelTab, type PanelPresentation, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
+import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, pluginViewTab, refreshPluginTabs, type NewSidePanelTab, type PanelPresentation, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
 
 const PANEL_MAX_WIDTH = 1180
 const PANEL_MIN_THREAD_WIDTH = 360
@@ -73,7 +73,10 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
   const [widthOverride, setWidthOverride] = useState(saved?.widthOverride)
   const [resizing, setResizing] = useState(false)
   const closeGuards = useRef(new Map<string, () => Promise<boolean>>())
-  const tabs = useMemo(() => state.tabs.filter((tab) => (tab.kind !== 'side-chat' || sideChatAvailable) && (tab.kind !== 'canvas' || canvasAvailable)), [state.tabs, sideChatAvailable, canvasAvailable])
+  const tabs = useMemo(() => {
+    const available = state.tabs.filter((tab) => (tab.kind !== 'side-chat' || sideChatAvailable) && (tab.kind !== 'canvas' || canvasAvailable))
+    return pluginViews?.length ? refreshPluginTabs(available, pluginViews) : available
+  }, [state.tabs, sideChatAvailable, canvasAvailable, pluginViews])
   const activeTab = tabs.find((tab) => tab.id === state.activeId) ?? tabs[0]
   const availableWidth = containerWidth - PANEL_MIN_THREAD_WIDTH
   const minWidth = Math.min(400, Math.max(240, availableWidth))

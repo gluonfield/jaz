@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/plugins"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionoverview"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -42,7 +44,7 @@ func TestOverviewHandlerReturnsFlattenedMetadata(t *testing.T) {
 			},
 		}},
 	}}
-	handler := NewOverviewHandler(sessionoverview.NewService(store, overviewHandlerLive{}))
+	handler := NewOverviewHandler(sessionoverview.NewService(store, overviewHandlerLive{}, plugins.New(runtimefiles.New(t.TempDir()))))
 	request := httptest.NewRequest(http.MethodGet, "/v1/sessions/parent/overview", nil)
 	request.SetPathValue("session", "parent")
 	response := httptest.NewRecorder()

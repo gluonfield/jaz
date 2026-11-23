@@ -492,6 +492,7 @@ export const sessionOverviewQuery = (id: string) =>
   queryOptions({
     queryKey: keys.sessionOverview(id),
     queryFn: ({ signal }) => get<SessionOverview>(`/v1/sessions/${id}/overview`, { signal }),
+    refetchInterval: (query) => query.state.data?.plugin_views?.some((view) => view.reference) ? 5000 : false,
   })
 
 export const healthQuery = queryOptions({

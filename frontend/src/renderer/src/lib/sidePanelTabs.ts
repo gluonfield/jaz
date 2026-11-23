@@ -66,5 +66,18 @@ export function sidePanelTabs(state: SidePanelTabs, action: SidePanelTabAction):
 }
 
 export function pluginViewTab(view: PluginView): Extract<SidePanelTab, { kind: 'view' }> {
-  return { id: `view:${JSON.stringify([view.reference ?? '', view.file])}`, kind: 'view', view }
+  return { id: pluginViewId(view), kind: 'view', view }
+}
+
+function pluginViewId(view: PluginView): string {
+  return `view:${JSON.stringify([view.reference ?? '', view.file])}`
+}
+
+export function refreshPluginTabs(tabs: SidePanelTab[], views: PluginView[]): SidePanelTab[] {
+  const byId = new Map(views.map((view) => [pluginViewId(view), view]))
+  return tabs.map((tab) => {
+    if (tab.kind !== 'view' || !tab.view.reference) return tab
+    const view = byId.get(tab.id)
+    return view && view !== tab.view ? { ...tab, view } : tab
+  })
 }

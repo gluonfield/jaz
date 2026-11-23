@@ -14,9 +14,14 @@ type LiveReader interface {
 	HydrationJobs([]string) map[string]acp.HydrationView
 }
 
+type PluginViewReader interface {
+	View(string) (string, error)
+}
+
 type Service struct {
-	store storage.SessionOverviewReader
-	live  LiveReader
+	store   storage.SessionOverviewReader
+	live    LiveReader
+	plugins PluginViewReader
 }
 
 type View struct {
@@ -46,8 +51,8 @@ type Subagent struct {
 	UpdatedAt time.Time
 }
 
-func NewService(store storage.SessionOverviewReader, live LiveReader) *Service {
-	return &Service{store: store, live: live}
+func NewService(store storage.SessionOverviewReader, live LiveReader, plugins PluginViewReader) *Service {
+	return &Service{store: store, live: live, plugins: plugins}
 }
 
 func (s *Service) Load(ctx context.Context, ref string) (View, error) {
@@ -68,6 +73,14 @@ func (s *Service) Load(ctx context.Context, ref string) (View, error) {
 	view.Subagents = subagentViews(records.SubagentEvents)
 	view.AgentEvents = sessionevents.CompactTranscript(records.AgentEvents)
 	view.PluginViews = sessionevents.LatestPluginViews(records.PresentationEvents)
+	for i, saved := range view.PluginViews {
+		if saved.Reference == "" {
+			continue
+		}
+		if html, err := s.plugins.View(saved.Reference); err == nil {
+			view.PluginViews[i].WidgetCode = html
+		}
+	}
 	if active[records.SessionID].ID == "" {
 		for i := range view.AgentEvents {
 			if task := view.AgentEvents[i].AgentTask; task != nil && (task.State == "running" || task.State == "paused") {
