@@ -291,8 +291,6 @@
   max-width: var(--prose-max);
 }
 .file-prose {
-  max-width: 84ch;
-  margin-inline: auto;
   padding: clamp(1rem, 3vw, 2rem);
 }
 .markdown-document-card {
@@ -313,7 +311,6 @@
   mask-image: linear-gradient(#000 75%, transparent);
 }
 .markdown-document-preview .file-prose {
-  max-width: none;
   padding: 1rem 1.25rem;
   font-size: 12px;
   line-height: 1.6;
