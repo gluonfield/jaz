@@ -511,9 +511,21 @@ img.chat-prose-link-icon {
   padding: 0.1em 0 0.1em 0.75em;
   color: var(--color-ink);
 }
-/* Rows read across without column lines: a heavier rule closes the header and
-   hairlines divide rows, inset to the padding of the card MarkdownTable wraps
-   tables in. */
+/* The card code and tables sit on, in a thread and in a document alike. */
+:where(.prose-card, .document-editor .tableWrapper) {
+  margin: 0.75rem 0;
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-border) 60%, transparent);
+}
+/* A table scrolls across its card when wide. Its rows read across without
+   column lines: a heavier rule closes the header and hairlines divide rows,
+   inset to the card's padding. */
+:where(.markdown-table, .document-editor .tableWrapper) {
+  max-width: 100%;
+  padding: 0.25rem 0.875rem;
+  overflow-x: auto;
+}
 :where(.chat-prose, .file-prose) table {
   width: 100%;
   margin: 0;

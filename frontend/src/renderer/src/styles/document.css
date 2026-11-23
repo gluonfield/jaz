@@ -28,34 +28,19 @@
   color: color-mix(in oklab, var(--color-ink-3) 70%, transparent);
   pointer-events: none;
 }
-/* A table shows every cell's edges, so an empty one can be seen and clicked;
-   the second selector outranks the prose rule that strips a row's end cells.
-   Columns take the width their text needs, so a number column stays narrow
-   and no word breaks in two. */
-.document-editor .tableWrapper {
-  margin: 0.75rem 0;
-  overflow-x: auto;
-}
+/* A table is drawn as a thread draws it, at a thread's text size. Pointing at
+   it shows its column edges, so an empty cell can be found and clicked. */
 .document-editor table {
   font-size: 0.875rem;
-  line-height: 1.5;
 }
-.document-editor :is(th, td),
-.document-editor :is(th, td):is(:first-child, :last-child) {
-  position: relative;
+.document-editor :is(th, td) {
   min-width: 3em;
-  padding: 0.5em 0.75em;
-  border: 1px solid var(--color-border);
 }
-.document-editor th {
-  background: var(--color-surface);
+.document-editor .tableWrapper:hover :is(th, td) + :is(th, td) {
+  box-shadow: inset 1px 0 var(--color-border);
 }
-.document-editor .selectedCell::after {
-  content: '';
-  position: absolute;
-  inset: 0;
+.document-editor .selectedCell {
   background: var(--color-selection);
-  pointer-events: none;
 }
 /* The caret between two blocks that hold no text of their own. */
 .document-editor .ProseMirror-gapcursor {

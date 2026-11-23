@@ -127,7 +127,7 @@ export function CodeBlock({ node, children }: ComponentProps<'pre'> & ExtraProps
     </pre>
   )
   return (
-    <div className="my-3 overflow-hidden rounded-card bg-surface ring-1 ring-border/60">
+    <div className="prose-card overflow-hidden">
       <div className="flex items-center justify-between gap-2 bg-surface-2/60 py-1 pl-3.5 pr-1.5">
         <span className="select-none text-[11px] font-medium text-ink-3">{displayLanguage(language)}</span>
         <CodeCopyButton text={text} />
