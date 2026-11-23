@@ -9,7 +9,7 @@ import { BrowserWorkspace } from '@/components/browser/BrowserWorkspace'
 import { SidePanelStateProvider } from '@/components/session/SidePanelState'
 import { ThreadView } from '@/components/session/ThreadView'
 import { ToastProvider } from '@/components/ui/toast'
-import { apiBaseUrl, setApiBaseUrl } from '@/lib/api/client'
+import { apiBaseUrl, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
 import { mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, SessionEvent, SessionMessages } from '@/lib/api/types'
@@ -24,6 +24,7 @@ export async function exerciseBotChat() {
   const { id } = await fetch(backend + '/exercise-bot-chat').then((response) => response.json()) as { id: string }
   const previousBase = apiBaseUrl()
   setApiBaseUrl(backend)
+  setApiAuthToken(backend, 'browser-smoke-credential')
   const bot: Bot = { id, kind: 'bot', name: 'Paint Bot', avatar: { shape: 'circle', color: 'blue' }, unread: false, status: 'idle', created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-01T10:00:00Z' }
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   client.setQueryData(mcpEntrypointsQuery.queryKey, [])
@@ -122,6 +123,21 @@ export async function exerciseBotChat() {
     }
     if (strictSetups !== 2 || strictCleanups !== 1) throw new Error('Bot chat fixture is not running development StrictMode')
     const initial = await painted('Bot response 19', 'bot-chat-initial')
+    const click = async (label: string) => {
+      const find = () => [...document.querySelectorAll<HTMLElement>('button,a')].find((node) => node.textContent?.trim().startsWith(label))
+      await until('missing control ' + label, () => Boolean(find()))
+      const control = find()!
+      control.scrollIntoView({ block: 'nearest' })
+      await sleep(40)
+      const box = control.getBoundingClientRect()
+      const x = Math.round(box.x + box.width / 2)
+      const y = Math.round(box.y + box.height / 2)
+      await window.smoke.pointer('mouseMove', x, y)
+      await window.smoke.pointer('mouseDown', x, y)
+      await window.smoke.pointer('mouseUp', x, y)
+    }
+    await click('sample.bin')
+    if (await window.smoke.fileDownload() !== 'sample.bin') throw new Error('Bot attachment lost its filename')
     const initialReads = await fetch(backend + '/exercise-bot-chat-reads').then((response) => response.json()) as number[]
     if (initial.paint.paintedAt < openedAt) throw new Error('Initial response used a stale painted frame')
     if (element.textContent?.includes('Private worker coordination')) throw new Error('Bot chat: internal authorship leaked')
@@ -182,19 +198,6 @@ export async function exerciseBotChat() {
     await sleep(450)
     const linked = await painted('Bot response 05', 'bot-chat-question-deep-link')
     viewport().scrollTop = viewport().scrollHeight
-    const click = async (label: string) => {
-      const find = () => [...document.querySelectorAll<HTMLElement>('button,a')].find((node) => node.textContent?.trim().startsWith(label))
-      await until('missing control ' + label, () => Boolean(find()))
-      const control = find()!
-      control.scrollIntoView({ block: 'nearest' })
-      await sleep(40)
-      const box = control.getBoundingClientRect()
-      const x = Math.round(box.x + box.width / 2)
-      const y = Math.round(box.y + box.height / 2)
-      await window.smoke.pointer('mouseMove', x, y)
-      await window.smoke.pointer('mouseDown', x, y)
-      await window.smoke.pointer('mouseUp', x, y)
-    }
     await click('Revisit the saved question')
     await click('Answer in chat')
     await sleep(450)
@@ -235,6 +238,7 @@ export async function exerciseBotChat() {
     root.unmount()
     client.clear()
     element.remove()
+    setApiAuthToken(backend, null)
     setApiBaseUrl(previousBase)
   }
   await exerciseHistoryHydration()

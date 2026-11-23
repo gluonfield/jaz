@@ -1,7 +1,7 @@
 import { useLayoutEffect, useState } from 'react'
 import { File as FileIcon, Image as ImageIcon, LoaderCircle, X } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
-import { sessionAttachmentUrl } from '@/lib/api/sessions'
+import { downloadSessionAttachment, sessionAttachmentUrl } from '@/lib/api/sessions'
 
 const IMAGE_MIME_TYPES = new Set([
   'image/avif',
@@ -17,6 +17,7 @@ const IMAGE_MIME_TYPES = new Set([
 
 export interface MessageAttachment {
   id?: string
+  session_id?: string
   name: string
   uri?: string
   mime_type?: string
@@ -60,12 +61,30 @@ export function AttachmentTile({
 }) {
   const [open, setOpen] = useState(false)
   const [failedSrc, setFailedSrc] = useState('')
+  const [downloadFailed, setDownloadFailed] = useState(false)
   const isImage = isImageAttachment(attachment)
   const objectUrl = useObjectUrl(isImage ? attachment.file : undefined)
   const src = objectUrl || attachmentContentUrl(attachment, attachmentSessionId)
   const available = isImage && Boolean(src) && src !== failedSrc
   if (!available && variant === 'message') {
-    return <FileAttachmentPill attachment={attachment} />
+    const sourceSessionID = attachment.session_id || attachmentSessionId
+    const id = attachment.id
+    const onDownload = sourceSessionID && id
+      ? async () => {
+          try {
+            await downloadSessionAttachment(sourceSessionID, id, attachment.name)
+            setDownloadFailed(false)
+          } catch {
+            setDownloadFailed(true)
+          }
+        }
+      : undefined
+    return (
+      <FileAttachmentPill
+        attachment={downloadFailed ? { ...attachment, error: 'Download failed' } : attachment}
+        onDownload={onDownload}
+      />
+    )
   }
   return (
     <>
@@ -175,10 +194,12 @@ export function FileAttachmentPill({
   attachment,
   autoFocus,
   onRemove,
+  onDownload,
 }: {
   attachment: MessageAttachment
   autoFocus?: boolean
   onRemove?: () => void
+  onDownload?: () => void
 }) {
   const Icon = isImageAttachment(attachment) ? ImageIcon : FileIcon
   const status = attachmentStatus(attachment)
@@ -188,7 +209,16 @@ export function FileAttachmentPill({
       title={attachmentTitle(attachment)}
     >
       <Icon size={13} className="shrink-0 text-ink-3" aria-hidden />
-      <span className="min-w-0 truncate text-ink">{attachment.name}</span>
+      {onDownload ? (
+        <button
+          type="button"
+          className="min-w-0 truncate text-left text-ink hover:underline focus-visible:outline-2 focus-visible:outline-primary"
+          aria-label={`Download ${attachment.name}`}
+          onClick={onDownload}
+        >
+          {attachment.name}
+        </button>
+      ) : <span className="min-w-0 truncate text-ink">{attachment.name}</span>}
       {status ? (
         <span role="status" className={`shrink-0 ${attachment.error ? 'text-danger' : 'text-ink-3'}`}>{status}</span>
       ) : null}
@@ -217,7 +247,8 @@ function attachmentStatus(attachment: MessageAttachment): string {
 
 function attachmentContentUrl(attachment: MessageAttachment, attachmentSessionId?: string): string {
   if (attachment.uri && !attachment.uri.startsWith('file:')) return attachment.uri
-  if (attachmentSessionId && attachment.id) return sessionAttachmentUrl(attachmentSessionId, attachment.id)
+  const sourceSessionID = attachment.session_id || attachmentSessionId
+  if (sourceSessionID && attachment.id) return sessionAttachmentUrl(sourceSessionID, attachment.id)
   return ''
 }
 

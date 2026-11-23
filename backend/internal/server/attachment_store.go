@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/attachments"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -206,7 +207,9 @@ func trustedAttachmentPath(sessionDir string, attachment *storage.Attachment) (s
 	if !pathWithin(absDir, path) {
 		return "", fmt.Errorf("attachment path escapes session")
 	}
-	attachment.Name = name
+	if !attachments.ValidFilename(attachment.Name) {
+		attachment.Name = name
+	}
 	attachment.ServerPath = path
 	attachment.URI = ""
 	return path, nil

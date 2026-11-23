@@ -29,65 +29,65 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request, 
 	}
 	defer file.Close()
 
-	root, err := s.attachmentRoot()
+	attachment, status, err := s.storeAttachment(session.ID, safeAttachmentName(header.Filename), header.Header.Get("Content-Type"), file, maxBytes)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	id, err := newAttachmentID()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	name := safeAttachmentName(header.Filename)
-	dir := filepath.Join(root, session.ID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	path := filepath.Join(dir, id+"-"+name)
-	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	n, copyErr := io.Copy(out, io.LimitReader(file, maxBytes+1))
-	closeErr := out.Close()
-	if copyErr != nil {
-		_ = os.Remove(path)
-		writeError(w, http.StatusBadRequest, copyErr)
-		return
-	}
-	if closeErr != nil {
-		_ = os.Remove(path)
-		writeError(w, http.StatusInternalServerError, closeErr)
-		return
-	}
-	if n > maxBytes {
-		_ = os.Remove(path)
-		writeError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("attachment exceeds %d bytes", maxBytes))
-		return
-	}
-
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		_ = os.Remove(path)
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	attachment := storage.Attachment{
-		ID:         id,
-		Name:       name,
-		MimeType:   attachmentMimeType(header.Header.Get("Content-Type"), name),
-		Size:       n,
-		ServerPath: abs,
-	}
-	if err := writeAttachmentMetadata(dir, attachment); err != nil {
-		_ = os.Remove(path)
-		writeError(w, http.StatusInternalServerError, err)
+		writeError(w, status, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, attachmentResponseFromStorage(attachment))
+}
+
+func (s *Server) SaveAttachment(sessionID, name string, source io.Reader) (storage.Attachment, error) {
+	attachment, _, err := s.storeAttachment(sessionID, name, "", source, attachmentMaxBytes())
+	return attachment, err
+}
+
+func (s *Server) storeAttachment(sessionID, name, contentType string, source io.Reader, maxBytes int64) (storage.Attachment, int, error) {
+	root, err := s.attachmentRoot()
+	if err != nil {
+		return storage.Attachment{}, http.StatusInternalServerError, err
+	}
+	id, err := newAttachmentID()
+	if err != nil {
+		return storage.Attachment{}, http.StatusInternalServerError, err
+	}
+	dir := filepath.Join(root, sessionID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return storage.Attachment{}, http.StatusInternalServerError, err
+	}
+	path := filepath.Join(dir, id+"-"+safeAttachmentName(name))
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return storage.Attachment{}, http.StatusInternalServerError, err
+	}
+	n, copyErr := io.Copy(out, io.LimitReader(source, maxBytes+1))
+	closeErr := out.Close()
+	if copyErr != nil {
+		_ = os.Remove(path)
+		return storage.Attachment{}, http.StatusBadRequest, copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(path)
+		return storage.Attachment{}, http.StatusInternalServerError, closeErr
+	}
+	if n > maxBytes {
+		_ = os.Remove(path)
+		return storage.Attachment{}, http.StatusRequestEntityTooLarge, fmt.Errorf("attachment exceeds %d bytes", maxBytes)
+	}
+
+	attachment := storage.Attachment{
+		ID:         id,
+		Name:       name,
+		MimeType:   attachmentMimeType(contentType, name),
+		Size:       n,
+		ServerPath: path,
+	}
+	if err := writeAttachmentMetadata(dir, attachment); err != nil {
+		_ = os.Remove(path)
+		_ = os.Remove(filepath.Join(dir, id+".json"))
+		return storage.Attachment{}, http.StatusInternalServerError, err
+	}
+	return attachment, http.StatusOK, nil
 }
 
 func (s *Server) handleAttachmentContent(w http.ResponseWriter, r *http.Request, session storage.Session, id string) {

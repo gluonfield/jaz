@@ -594,8 +594,10 @@ func TestBotOnlyToolsStayOnTheBotSurface(t *testing.T) {
 		if !hasTool(t, session, "message_bot") {
 			t.Fatalf("surface %v cannot message bots", surface)
 		}
-		if hasTool(t, session, "send_message") != botOnly {
-			t.Fatalf("surface %v advertises send_message = %v", surface, !botOnly)
+		for _, name := range []string{"send_message", "register_file"} {
+			if hasTool(t, session, name) != botOnly {
+				t.Fatalf("surface %v advertises %s = %v", surface, name, !botOnly)
+			}
 		}
 		closeSession()
 	}

@@ -95,7 +95,7 @@ func identityPrompt(name string, main bool) string {
 This thread is your whole life: it keeps going across days, and it is where you do your work for the user.
 %s
 ### Your voice
-Send text with send_message. Everything else you write is a private scratchpad. Data lookups stay private; an app's presentation tool, such as show_issues or show_crm, can deliver a rendered answer in your user chat, including routine turns. The tool result tells you whether Jaz presented it. A presented view counts as delivery: do not repeat its contents, reasons or links in send_message. Add text only for information the view does not contain. When answering another bot, use send_message; app results stay private in those turns.
+Send messages with send_message. To share a file, write it to .jaz-outbox in your working directory, call register_file with the filename and pass its ID in attachment_ids. Everything else you write is a private scratchpad. Data lookups stay private; an app's presentation tool, such as show_issues or show_crm, can deliver a rendered answer in your user chat, including routine turns. The tool result tells you whether Jaz presented it. A presented view counts as delivery: do not repeat its contents, reasons or links in send_message. Add text only for information the view does not contain. When answering another bot, use send_message; app results stay private in those turns.
 - On a turn a person started, your first action is send_message, before any other tool: the answer if it is quick, or a one-line acknowledgement if it is real work, which you then hand to a thread (see Background work).
 - An acknowledgement is not delivery. When a turn produces something a person is waiting on, send or present it before the turn ends.
 - During longer work, send a short update at each meaningful step: something found, a decision, a blocker. Never go quiet for long, and never narrate retries or tool mechanics.
@@ -248,7 +248,11 @@ func writeMessages(b *strings.Builder, messages []sessionevents.RoomMessageEvent
 	for _, message := range messages {
 		fmt.Fprintf(b, "%s: %s\n", message.Name, message.Text)
 		for _, attachment := range message.Attachments {
-			fmt.Fprintf(b, "  attached file %s: %s\n", attachment.Name, attachment.ServerPath)
+			if attachment.ServerPath == "" {
+				fmt.Fprintf(b, "  attached file %s\n", attachment.Name)
+			} else {
+				fmt.Fprintf(b, "  attached file %s: %s\n", attachment.Name, attachment.ServerPath)
+			}
 		}
 	}
 }

@@ -116,7 +116,8 @@ export function ChatLog({
                       {entry.name}
                     </span>
                   ) : null}
-                  <ChatBubble text={entry.text} at={entry.at} mentions={mentions} />
+                  <MessageAttachments attachments={entry.attachments ?? []} attachmentSessionId={entry.attachmentSessionId} />
+                  {entry.text ? <ChatBubble text={entry.text} at={entry.at} mentions={mentions} /> : null}
                 </div>
               </div>
             )}

@@ -38,6 +38,12 @@ describe('bot chat log', () => {
     expect(botChat([human, internal], [], self, []).work.doing).toBeUndefined()
   })
 
+  test('bot file deliveries retain their session attachment reference', () => {
+    const attachment = { id: 'fixture', name: 'config.bin', mime_type: 'application/octet-stream', size: 4, session_id: 'worker' }
+    const entry = botChat([], [event(2, { type: 'room_message', room_message: { speaker: 'bot', name: 'Gimli', text: '', attachments: [attachment] } })], self, []).entries[0]
+    expect(entry).toMatchObject({ kind: 'bot', text: '', attachments: [attachment], attachmentSessionId: self.id })
+  })
+
   test('private narration stays private when the bot sent no answer', () => {
     const messages = [user(1, 1, 'hi')]
     const events = [wrote(2, 'Checking.'), woke(3, 'message_sent', 'Pip'), tool(4), wrote(5, 'Hi! What should we work on?')]
