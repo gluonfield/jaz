@@ -13,6 +13,9 @@ import (
 )
 
 func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloudSSE(w, r) {
+		return
+	}
 	events := h.events.Subscribe(r.Context(), "", sessionevents.TypeSession, "acp", "acp_tool", "permission_request", "permission_response", sessionevents.TypeRoomMessage, sessionevents.TypeBotActivity)
 	bots, err := h.bots.List()
 	if err != nil {

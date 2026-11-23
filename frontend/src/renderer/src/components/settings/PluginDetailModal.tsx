@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import {
   savePluginConfig,
@@ -24,6 +25,9 @@ import { PluginAvatar } from './PluginVisuals'
 
 export function PluginDetailModal({
   plugin,
+  canManage = true,
+  canToggleEnabled = false,
+  togglingEnabled = false,
   connecting,
   disconnectingAccountID,
   installing,
@@ -32,11 +36,15 @@ export function PluginDetailModal({
   onClose,
   onConnect,
   onDisconnect,
+  onToggleEnabled,
   onInstall,
   onUpdate,
   onRemove,
 }: {
   plugin: Plugin | null
+  canManage?: boolean
+  canToggleEnabled?: boolean
+  togglingEnabled?: boolean
   connecting: boolean
   disconnectingAccountID?: string
   installing: boolean
@@ -45,6 +53,7 @@ export function PluginDetailModal({
   onClose: () => void
   onConnect: (plugin: Plugin) => void
   onDisconnect: (accountID: string) => void
+  onToggleEnabled?: (plugin: Plugin, enabled: boolean) => void
   onInstall: (plugin: Plugin) => void
   onUpdate: (plugin: Plugin) => void
   onRemove: (plugin: Plugin) => void
@@ -61,7 +70,7 @@ export function PluginDetailModal({
   const singleConnectedAccount =
     plugin.auth?.connected && !plugin.auth.multi_account && accounts.length === 1 ? accounts[0] : null
   const isRemoteMCPOnly = Boolean(plugin.auth && !hasSkills && !(plugin.views?.length ?? 0))
-  const canRemove = plugin.installed && plugin.origin !== 'builtin' && !isRemoteMCPOnly
+  const canRemove = canManage && plugin.installed && plugin.origin !== 'builtin' && !isRemoteMCPOnly
 
   return (
     <Modal open onClose={onClose} title={plugin.display_name} size="wide" chromeless>
@@ -69,7 +78,7 @@ export function PluginDetailModal({
         <div className="flex items-start justify-between gap-4">
           <PluginAvatar plugin={plugin} size="lg" />
           <div className="flex items-center gap-2">
-            {plugin.installed && plugin.source ? (
+            {canManage && !canToggleEnabled && plugin.installed && plugin.source ? (
               <Button variant="secondary" size="sm" disabled={updating || removing} onClick={() => onUpdate(plugin)}>
                 <RefreshCw size={13} className={updating ? 'animate-spin' : undefined} />
                 {updating ? 'Updating…' : plugin.source.update_available ? 'Update' : 'Check update'}
@@ -113,7 +122,17 @@ export function PluginDetailModal({
             </Button>
           ) : plugin.auth ? (
             <ConnectButton plugin={plugin} connecting={connecting} onConnect={() => onConnect(plugin)} />
-          ) : !plugin.installed ? (
+          ) : canToggleEnabled && plugin.installed && onToggleEnabled ? (
+            <div className="flex shrink-0 items-center gap-2 pt-1 text-[13px] text-ink-2">
+              <Switch
+                checked={plugin.enabled}
+                disabled={togglingEnabled}
+                aria-label={`Enable ${plugin.display_name}`}
+                onChange={(next) => onToggleEnabled(plugin, next)}
+              />
+              <span>{plugin.enabled ? 'Enabled' : 'Disabled'}</span>
+            </div>
+          ) : canManage && !plugin.installed ? (
             <Button variant="primary" size="lg" disabled={installing} onClick={() => onInstall(plugin)} className="shrink-0">
               {installing ? <Loader2 size={14} className="animate-spin" /> : <ArrowDownToLine size={14} />}
               {installing ? 'Installing…' : 'Install'}

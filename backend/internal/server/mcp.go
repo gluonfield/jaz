@@ -33,6 +33,9 @@ type mcpProxySessionStore interface {
 }
 
 func (s *Server) handleListMCPServers(w http.ResponseWriter, r *http.Request) {
+	if s.proxyCloud(w, r) {
+		return
+	}
 	if s.MCP == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("mcp runtime is not configured"))
 		return
@@ -54,6 +57,9 @@ func (s *Server) handleListMCPServers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateMCPServer(w http.ResponseWriter, r *http.Request) {
+	if s.proxyCloud(w, r) {
+		return
+	}
 	store, ok := s.Store.(mcpStore)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("mcp store is not configured"))
@@ -86,6 +92,9 @@ func (s *Server) loadActiveMCPServer(store mcpStore, id string) (mcpconfig.Serve
 }
 
 func (s *Server) handleMCPServerAction(w http.ResponseWriter, r *http.Request) {
+	if s.proxyCloud(w, r) {
+		return
+	}
 	store, ok := s.Store.(mcpStore)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("mcp store is not configured"))

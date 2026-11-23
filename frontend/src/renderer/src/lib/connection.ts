@@ -108,7 +108,7 @@ export function useConnection(): ConnectionState {
   return useSyncExternalStore((listener) => {
     listeners.add(listener)
     return () => listeners.delete(listener)
-  }, () => state)
+  }, () => state, () => state)
 }
 
 export function useIsCloud(): boolean {

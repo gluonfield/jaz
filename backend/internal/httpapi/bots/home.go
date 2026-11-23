@@ -18,6 +18,9 @@ type saveFileRequest struct {
 }
 
 func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	id := r.PathValue("bot")
 	if _, err := h.bots.LoadForActiveWorkspace(id); err != nil {
 		httpapi.WriteError(w, errorStatus(err), err)
@@ -34,6 +37,9 @@ func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
 // SaveFile answers a save over a stale version with 409 and the file as it
 // now is.
 func (h *Handler) SaveFile(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	var input saveFileRequest
 	if !decode(w, r, &input) {
 		return
@@ -55,6 +61,9 @@ func (h *Handler) SaveFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Activity(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	id := r.PathValue("bot")
 	if _, err := h.bots.LoadForActiveWorkspace(id); err != nil {
 		httpapi.WriteError(w, errorStatus(err), err)

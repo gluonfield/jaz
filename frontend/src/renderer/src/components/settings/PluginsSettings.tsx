@@ -14,11 +14,13 @@ import {
   refreshPluginSources,
   removePlugin,
   removePluginSource,
+  setPluginEnabled,
   updatePlugin,
   type Plugin,
   type PluginInstallInput,
   type PluginInstallResult,
 } from '@/lib/api/plugins'
+import { useCloudSession } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import { AddPluginModal, type AddPluginMode } from './AddPluginModal'
 import { ConnectionQRModal } from './ConnectionQRModal'
@@ -33,6 +35,8 @@ const CONNECTED_PREVIEW_LIMIT = 4
 export function PluginsSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const cloud = useCloudSession()
+  const canManageOrgPlugins = !cloud.active || cloud.user?.role === 'admin'
   const [query, setQuery] = useState('')
   const [selectedID, setSelectedID] = useState<string | null>(null)
   const [addMode, setAddMode] = useState<AddPluginMode | null>(null)
@@ -42,7 +46,7 @@ export function PluginsSettings() {
   const signIn = usePluginSignIn({ onStartAccepted: () => setSelectedID(null) })
   const catalog = signIn.catalog
   const allPlugins = signIn.plugins
-  const sources = catalog.data?.sources ?? []
+  const sources = useMemo(() => catalog.data?.sources ?? [], [catalog.data?.sources])
 
   const invalidateAll = () =>
     Promise.all([keys.plugins, keys.mcpServers, keys.mcpApps].map((queryKey) => queryClient.invalidateQueries({ queryKey })))
@@ -87,6 +91,13 @@ export function PluginsSettings() {
     mutationFn: (accountID: string) => disconnectPluginAccount(accountID),
     onSuccess: () => toast('Disconnected'),
     onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
+    onSettled: invalidateAll,
+  })
+
+  const toggleEnabled = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setPluginEnabled(id, enabled),
+    onSuccess: (updated) => toast(`${updated.enabled ? 'Enabled' : 'Disabled'} ${updated.display_name}`),
+    onError: (error: Error) => toast(`Couldn't update plugin: ${error.message}`, 'danger'),
     onSettled: invalidateAll,
   })
 
@@ -179,6 +190,10 @@ export function PluginsSettings() {
       installMarketplacePlugin(plugin)
       return
     }
+    if (cloud.active && !plugin.enabled) {
+      toggleEnabled.mutate({ id: plugin.id, enabled: true })
+      return
+    }
     setSelectedID(plugin.id)
   }
 
@@ -211,19 +226,23 @@ export function PluginsSettings() {
           >
             <RefreshCw size={14} className={refresh.isPending ? 'animate-spin' : undefined} />
           </IconButton>
-          <IconButton
-            variant="ghost"
-            size="sm"
-            aria-label="Manage Git marketplaces"
-            title="Manage Git marketplaces"
-            onClick={() => setManagingSources(true)}
-          >
-            <Settings2 size={14} />
-          </IconButton>
-          <Button variant="primary" size="sm" onClick={() => setAddMode('install')}>
-            <Plus size={14} />
-            Add
-          </Button>
+          {canManageOrgPlugins ? (
+            <>
+              <IconButton
+                variant="ghost"
+                size="sm"
+                aria-label="Manage Git marketplaces"
+                title="Manage Git marketplaces"
+                onClick={() => setManagingSources(true)}
+              >
+                <Settings2 size={14} />
+              </IconButton>
+              <Button variant="primary" size="sm" onClick={() => setAddMode('install')}>
+                <Plus size={14} />
+                Add
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -259,7 +278,11 @@ export function PluginsSettings() {
                   const accounts = plugin.auth?.accounts ?? []
                   const singleAccount = accounts.length === 1 ? accounts[0] : null
                   const hasSkillsOrViews = (plugin.skills?.length ?? 0) > 0 || (plugin.views?.length ?? 0) > 0
-                  const canRemove = plugin.installed && plugin.origin !== 'builtin' && (!plugin.auth || hasSkillsOrViews)
+                  const canRemove =
+                    canManageOrgPlugins &&
+                    plugin.installed &&
+                    plugin.origin !== 'builtin' &&
+                    (!plugin.auth || hasSkillsOrViews)
                   return (
                     <ConnectedPluginRow
                       key={plugin.id}
@@ -273,7 +296,7 @@ export function PluginsSettings() {
                       onAddAccount={plugin.auth?.multi_account && pluginCanConnect(plugin) ? () => signIn.start(plugin) : undefined}
                       onDisconnect={singleAccount ? () => disconnect.mutate(singleAccount.id) : undefined}
                       onRemove={canRemove ? () => remove.mutate(plugin.id) : undefined}
-                      onUpdate={plugin.installed && plugin.source ? () => update.mutate(plugin.id) : undefined}
+                      onUpdate={canManageOrgPlugins && !cloud.active && plugin.installed && plugin.source ? () => update.mutate(plugin.id) : undefined}
                     />
                   )
                 })}
@@ -297,7 +320,8 @@ export function PluginsSettings() {
                 {group.plugins.map((plugin) => {
                   const busy =
                     (signIn.isConnecting && signIn.connectingPluginID === plugin.id) ||
-                    (install.isPending && install.variables?.plugin_id === plugin.id)
+                    (install.isPending && install.variables?.plugin_id === plugin.id) ||
+                    (toggleEnabled.isPending && toggleEnabled.variables?.id === plugin.id)
                   return (
                     <CatalogPluginRow
                       key={plugin.id}
@@ -316,6 +340,9 @@ export function PluginsSettings() {
 
       <PluginDetailModal
         plugin={selected}
+        canManage={canManageOrgPlugins}
+        canToggleEnabled={cloud.active}
+        togglingEnabled={toggleEnabled.isPending && toggleEnabled.variables?.id === selected?.id}
         connecting={signIn.isConnecting && signIn.connectingPluginID === selected?.id}
         disconnectingAccountID={disconnectingAccountID}
         installing={install.isPending && install.variables?.plugin_id === selected?.id}
@@ -324,6 +351,7 @@ export function PluginsSettings() {
         onClose={() => setSelectedID(null)}
         onConnect={(plugin) => signIn.start(plugin)}
         onDisconnect={(accountID) => disconnect.mutate(accountID)}
+        onToggleEnabled={(plugin, enabled) => toggleEnabled.mutate({ id: plugin.id, enabled })}
         onInstall={installMarketplacePlugin}
         onUpdate={(plugin) => update.mutate(plugin.id)}
         onRemove={(plugin) => remove.mutate(plugin.id)}
@@ -466,6 +494,11 @@ function CatalogPluginRow({
   onOpen: () => void
   onAdd: () => void
 }) {
+  const actionLabel = plugin.auth
+    ? `Connect ${plugin.display_name}`
+    : plugin.installed && !plugin.enabled
+      ? `Enable ${plugin.display_name}`
+      : `Install ${plugin.display_name}`
   return (
     <div className="flex items-center gap-3 rounded-[10px] px-2 py-2.5 transition-colors hover:bg-surface">
       <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 text-left">
@@ -480,8 +513,8 @@ function CatalogPluginRow({
       <IconButton
         variant="ghost"
         size="sm"
-        aria-label={plugin.auth ? `Connect ${plugin.display_name}` : `Install ${plugin.display_name}`}
-        title={plugin.auth ? `Connect ${plugin.display_name}` : `Install ${plugin.display_name}`}
+        aria-label={actionLabel}
+        title={actionLabel}
         disabled={busy}
         onClick={onAdd}
       >
@@ -501,7 +534,7 @@ function hiddenConnectedSummary(plugins: Plugin[]): string {
 
 function isActivePlugin(plugin: Plugin): boolean {
   if (plugin.auth) return plugin.auth.connected
-  return plugin.installed && plugin.origin !== 'builtin'
+  return plugin.installed && plugin.enabled && plugin.origin !== 'builtin'
 }
 
 function groupCatalogPlugins(plugins: Plugin[]): { label: string; plugins: Plugin[] }[] {

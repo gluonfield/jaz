@@ -256,8 +256,21 @@ func (s *Server) activePluginsDir() string {
 	return ""
 }
 
+func (s *Server) proxyCloud(w http.ResponseWriter, r *http.Request) bool {
+	if s.activeWorkspaceID() == storage.LocalWorkspaceID || s.Cloud == nil {
+		return false
+	}
+	p, ok := s.Cloud.(interface {
+		ProxyActiveWorkspace(http.ResponseWriter, *http.Request) bool
+	})
+	return ok && p.ProxyActiveWorkspace(w, r)
+}
+
 // handleListSkills lists the skill catalog for the composer's $-mention picker.
 func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
+	if s.proxyCloud(w, r) {
+		return
+	}
 	var (
 		catalog skills.Catalog
 		err     error

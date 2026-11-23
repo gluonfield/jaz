@@ -11,6 +11,9 @@ import (
 )
 
 func (s *Server) handleListLoops(w http.ResponseWriter, r *http.Request) {
+	if s.proxyCloud(w, r) {
+		return
+	}
 	if s.Loops == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("loops are not configured"))
 		return
@@ -27,6 +30,9 @@ func (s *Server) handleListLoops(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateLoop(w http.ResponseWriter, r *http.Request) {
+	if s.proxyCloud(w, r) {
+		return
+	}
 	if s.Loops == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("loops are not configured"))
 		return
@@ -72,6 +78,9 @@ func (s *Server) loopCoordinator() loops.Coordinator {
 }
 
 func (s *Server) handleLoopAction(w http.ResponseWriter, r *http.Request) {
+	if s.proxyCloud(w, r) {
+		return
+	}
 	if s.Loops == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("loops are not configured"))
 		return

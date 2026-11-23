@@ -48,7 +48,7 @@ export function BoardModal({
       void navigate({
         to: '/boards/$boardId',
         params: { boardId: created.id },
-        search: cloud.active ? {} : { add: true },
+        search: { add: true },
       })
     },
   })

@@ -286,6 +286,12 @@ func (h *Handler) proxyJSON(
 	WriteRawJSON(w, status, raw)
 }
 
+func (h *Handler) Proxy(w http.ResponseWriter, r *http.Request) {
+	if !h.service.ProxyActiveWorkspace(w, r) {
+		WriteError(w, cloudsync.ErrNotConnected)
+	}
+}
+
 func (h *Handler) ProxyRunFile(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.service.OpenRunFile(r.Context(), r.PathValue("run_id"), r.PathValue("path"))
 	if err != nil {

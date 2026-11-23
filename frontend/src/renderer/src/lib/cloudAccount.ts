@@ -109,6 +109,7 @@ export function useCloudAccount(): CloudAccountState {
       return () => listeners.delete(listener)
     },
     () => state,
+    () => state,
   )
 }
 

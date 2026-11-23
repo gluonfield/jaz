@@ -297,32 +297,26 @@ function BoardPage() {
       </div>
       {items.length === 0 ? (
         <EmptyState title="Nothing on this board yet">
-          {cloud.active ? (
-            <>
-              <p>
-                {canEdit
-                  ? 'Manage who can see this board with the visibility button above.'
-                  : `Shared by ${board.owner_display_name || board.owner_email || 'a teammate'}.`}
-              </p>
-              {canEdit ? (
-                <div className="mt-3 flex justify-center">
-                  <Button variant="secondary" size="sm" onClick={() => setSharing(true)}>
-                    <VisibilityIcon size={13} />
-                    Manage access
-                  </Button>
-                </div>
-              ) : null}
-            </>
-          ) : (
+          {canEdit ? (
             <>
               <p>Widgets are live tiles your loops keep up to date. Add one to get started.</p>
-              <div className="mt-3 flex justify-center">
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
                 <Button variant="primary" size="sm" onClick={() => setModal('add')}>
                   <Plus size={13} />
                   Add widget
                 </Button>
+                {cloud.active ? (
+                  <Button variant="secondary" size="sm" onClick={() => setSharing(true)}>
+                    <VisibilityIcon size={13} />
+                    Manage access
+                  </Button>
+                ) : null}
               </div>
             </>
+          ) : (
+            <p>
+              {`Shared by ${board.owner_display_name || board.owner_email || 'a teammate'}.`}
+            </p>
           )}
         </EmptyState>
       ) : (
@@ -340,8 +334,8 @@ function BoardPage() {
             scale={scale}
             onLayoutChange={canEdit ? (entry) => layoutMutation.mutate(entry) : undefined}
             onRemove={canEdit ? (widgetId) => removeMutation.mutate(widgetId) : undefined}
-            onEdit={!cloud.active && canEdit ? editingLoop.mutate : undefined}
-            onNewWidget={!cloud.active && canEdit ? () => setModal('add') : undefined}
+            onEdit={canEdit ? editingLoop.mutate : undefined}
+            onNewWidget={canEdit ? () => setModal('add') : undefined}
           />
         </div>
       )}

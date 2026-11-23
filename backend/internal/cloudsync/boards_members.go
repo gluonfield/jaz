@@ -64,34 +64,3 @@ func (s *Service) UpdateMember(ctx context.Context, memberID string, body json.R
 func (s *Service) DeleteMember(ctx context.Context, memberID string) (json.RawMessage, int, error) {
 	return s.authedSegmentJSON(ctx, http.MethodDelete, "/v1/members/", memberID, "", nil)
 }
-
-func (s *Service) ListBoards(ctx context.Context) (json.RawMessage, error) {
-	raw, _, err := s.authedJSON(ctx, http.MethodGet, "/v1/boards", nil)
-	return raw, err
-}
-
-func (s *Service) CreateBoard(ctx context.Context, body json.RawMessage) (json.RawMessage, int, error) {
-	return s.authedJSON(ctx, http.MethodPost, "/v1/boards", body)
-}
-
-func (s *Service) GetBoard(ctx context.Context, boardID string) (json.RawMessage, int, error) {
-	return s.authedSegmentJSON(ctx, http.MethodGet, "/v1/boards/", boardID, "", nil)
-}
-
-func (s *Service) PatchBoard(ctx context.Context, boardID string, body json.RawMessage) (json.RawMessage, int, error) {
-	return s.authedSegmentJSON(ctx, http.MethodPatch, "/v1/boards/", boardID, "", body)
-}
-
-func (s *Service) DeleteBoard(ctx context.Context, boardID string) (json.RawMessage, int, error) {
-	return s.authedSegmentJSON(ctx, http.MethodDelete, "/v1/boards/", boardID, "", nil)
-}
-
-func (s *Service) DeleteBoardWidget(ctx context.Context, boardID, widgetID string) (json.RawMessage, int, error) {
-	if err := validatePathSegment(boardID); err != nil {
-		return nil, 0, err
-	}
-	if err := validatePathSegment(widgetID); err != nil {
-		return nil, 0, err
-	}
-	return s.authedJSON(ctx, http.MethodDelete, "/v1/boards/"+url.PathEscape(boardID)+"/widgets/"+url.PathEscape(widgetID), nil)
-}

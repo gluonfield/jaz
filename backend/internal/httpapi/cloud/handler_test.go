@@ -12,9 +12,12 @@ import (
 
 	"github.com/wins/jaz/backend/internal/app"
 	"github.com/wins/jaz/backend/internal/cloudsync"
+	botsapi "github.com/wins/jaz/backend/internal/httpapi/bots"
 	cloudapi "github.com/wins/jaz/backend/internal/httpapi/cloud"
+	pluginsapi "github.com/wins/jaz/backend/internal/httpapi/plugins"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
+	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -492,8 +495,11 @@ func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("cloud delete board status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if _, _, err := cloudSvc.DeleteBoardWidget(t.Context(), "cb_2", "../escape"); err != cloudsync.ErrInvalidPath {
-		t.Fatalf("expected ErrInvalidPath for widget traversal, got %v", err)
+	badBoardReq := httptest.NewRequest(http.MethodDelete, "/v1/boards/cb_2/widgets/escape", nil)
+	badBoardReq.URL.Path = "/v1/boards/cb_2/widgets/../escape"
+	rec = httptest.NewRecorder()
+	if !cloudSvc.ProxyActiveWorkspace(rec, badBoardReq) || rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for board widget traversal, got %d %s", rec.Code, rec.Body.String())
 	}
 
 	// Spaces proxy: live visibility list, create with visibility + members, patch visibility, traversal guard.
@@ -526,5 +532,161 @@ func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/boards", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Local Only Board") || strings.Contains(rec.Body.String(), "Cloud Team Board") {
 		t.Fatalf("local list boards status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
+	var lastSSEQuery string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/.well-known/jaz-server":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "mode": "cloud", "auth": "oidc"})
+		case r.URL.Path == "/v1/auth/me":
+			_ = json.NewEncoder(w).Encode(map[string]any{"user_id": "u1", "org_id": "org_1", "org_name": "Acme", "email": "u@acme.test", "role": "admin"})
+		case r.URL.Path == "/v1/spaces":
+			_ = json.NewEncoder(w).Encode(map[string]any{"spaces": []any{}})
+		case r.URL.Path == "/v1/threads":
+			_ = json.NewEncoder(w).Encode(map[string]any{"threads": []any{}})
+		case r.URL.Path == "/v1/usage/events":
+			_ = json.NewEncoder(w).Encode(map[string]any{"events": []any{}})
+		case strings.HasPrefix(r.URL.Path, "/v1/instructions/"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"body_md": "", "version": ""})
+		case r.URL.Path == "/v1/bots" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"bots": []map[string]any{{"id": "bot_cloud_1", "name": "Cloud Research"}}})
+		case r.URL.Path == "/v1/bots/events":
+			lastSSEQuery = r.URL.RawQuery
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "event: snapshot\ndata: {\"bots\":[{\"id\":\"bot_cloud_1\"}]}\n\n")
+		case r.URL.Path == "/v1/loops" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"loops": []map[string]any{{"id": "loop_c1", "name": "Cloud KPI"}}})
+		case r.URL.Path == "/v1/boards/b_1/loops" && r.Method == http.MethodPost:
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		case r.URL.Path == "/v1/widgets/w_c1/content" && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte("<div>Cloud Live Widget</div>"))
+		case r.URL.Path == "/v1/plugins" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"plugins": []map[string]any{{"id": "sales-kit", "display_name": "Sales Kit"}}, "sources": []any{}})
+		case r.URL.Path == "/v1/skills" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"skills": []map[string]any{{"name": "deal-review", "description": "Cloud skill", "path": "cloud://plugins/sales-kit/SKILL.md"}}})
+		case r.URL.Path == "/v1/mcp/servers" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"servers": []map[string]any{{"id": "mcp_c1", "name": "Cloud CRM"}}, "oauth_redirect_url": "https://cloud.example/v1/connectors/oauth/callback"})
+		case r.URL.Path == "/v1/connectors" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"connectors": []map[string]any{{"id": "conn_1", "server_id": "mcp_c1", "alias": "default"}}})
+		case r.URL.Path == "/v1/user-skills" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"skills": []map[string]any{{"skill_name": "personal-check"}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	cloudSvc := cloudsync.New(store, nil)
+	cloudHandler := cloudapi.NewHandler(cloudSvc)
+	botsHandler := botsapi.NewHandler(nil, nil).WithCloud(cloudSvc)
+	pluginsHandler := pluginsapi.NewHandler(nil, nil, nil, "").WithCloud(cloudSvc)
+	loopSvc := loops.NewService(store, nil, nil, loops.WithWorkspace(cloudSvc.ActiveWorkspaceID))
+	widgetSvc := widgets.NewService(store, nil).WithWorkspace(cloudSvc.ActiveWorkspaceID)
+
+	srv := &server.Server{
+		Root:    root,
+		Store:   store,
+		Cloud:   cloudSvc,
+		Loops:   loopSvc,
+		Widgets: widgetSvc,
+		Routes: server.Routes{
+			{Pattern: "POST /v1/cloud/connect", Handler: http.HandlerFunc(cloudHandler.Connect)},
+			{Pattern: "POST /v1/cloud/switch", Handler: http.HandlerFunc(cloudHandler.Switch)},
+			{Pattern: "GET /v1/bots", Handler: http.HandlerFunc(botsHandler.List)},
+			{Pattern: "GET /v1/bots/events", Handler: http.HandlerFunc(botsHandler.Events)},
+			{Pattern: "GET /v1/plugins", Handler: http.HandlerFunc(pluginsHandler.List)},
+			{Pattern: "GET /v1/connectors", Handler: http.HandlerFunc(cloudHandler.Proxy)},
+			{Pattern: "GET /v1/user-skills", Handler: http.HandlerFunc(cloudHandler.Proxy)},
+		},
+	}
+	h := srv.Handler()
+
+	// Connect Cloud workspace.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/cloud/connect", bytes.NewBufferString(fmt.Sprintf(`{"url":%q,"token":"tok"}`, upstream.URL))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("connect status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Verify every high-priority Cloud proxy endpoint forwards cleanly.
+	for _, tc := range []struct {
+		method string
+		path   string
+		body   string
+		want   string
+	}{
+		{http.MethodGet, "/v1/bots", "", "bot_cloud_1"},
+		{http.MethodGet, "/v1/bots/events?once=1&ticket=local-secret", "", "bot_cloud_1"},
+		{http.MethodGet, "/v1/loops", "", "loop_c1"},
+		{http.MethodPost, "/v1/boards/b_1/loops", `{"loop_ids":["loop_c1"]}`, `"ok":true`},
+		{http.MethodGet, "/v1/plugins", "", "Sales Kit"},
+		{http.MethodGet, "/v1/skills", "", "deal-review"},
+		{http.MethodGet, "/v1/mcp/servers", "", "Cloud CRM"},
+		{http.MethodGet, "/v1/connectors", "", "conn_1"},
+		{http.MethodGet, "/v1/user-skills", "", "personal-check"},
+	} {
+		rec := httptest.NewRecorder()
+		var bodyReader *bytes.Buffer
+		if tc.body != "" {
+			bodyReader = bytes.NewBufferString(tc.body)
+		} else {
+			bodyReader = bytes.NewBuffer(nil)
+		}
+		h.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, bodyReader))
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), tc.want) {
+			t.Fatalf("%s %s expected 200 containing %q, got %d %s", tc.method, tc.path, tc.want, rec.Code, rec.Body.String())
+		}
+	}
+
+	if strings.Contains(lastSSEQuery, "ticket") || lastSSEQuery != "once=1" {
+		t.Fatalf("expected proxy to strip local ticket query param, upstream got %q", lastSSEQuery)
+	}
+
+	// Widget HTML content proxy MUST enforce sandbox CSP & XSS defense headers.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/widgets/w_c1/content", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Cloud Live Widget") ||
+		rec.Header().Get("Content-Security-Policy") != "default-src 'none'; sandbox" ||
+		rec.Header().Get("X-Content-Type-Options") != "nosniff" ||
+		rec.Header().Get("X-Frame-Options") != "DENY" ||
+		rec.Header().Get("Referrer-Policy") != "no-referrer" ||
+		rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("widget content proxy failed security headers: code=%d hdr=%+v body=%s", rec.Code, rec.Header(), rec.Body.String())
+	}
+
+	// Proxy path traversal rejection (400).
+	badReq := httptest.NewRequest(http.MethodGet, "/v1/widgets/..%2Fsecret/content", nil)
+	badReq.URL.Path = "/v1/widgets/../secret/content"
+	rec = httptest.NewRecorder()
+	if !cloudSvc.ProxyActiveWorkspace(rec, badReq) || rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 rejecting traversal path, got %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Switch back to Local -> Cloud-only endpoints return 401 and local /v1/loops serves SQLite cleanly.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/cloud/switch", bytes.NewBufferString(`{"workspace_id":"local"}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("switch local status=%d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/connectors", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 on /v1/connectors in local mode, got %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/loops", nil))
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "loop_c1") {
+		t.Fatalf("local /v1/loops leaked cloud loop: %d %s", rec.Code, rec.Body.String())
 	}
 }

@@ -119,7 +119,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "DELETE /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.Unregister)},
 		server.Route{Pattern: "GET /v1/notifications/stream", Handler: http.HandlerFunc(push.Stream)},
 	)
-	routes = appendPluginRoutes(routes, deps.Plugins, deps.PluginSessions, deps.MCP, deps.Config)
+	routes = appendPluginRoutes(routes, deps.Plugins, deps.PluginSessions, deps.MCP, deps.Config, deps.Cloud)
 	routes = append(routes, feedRoutes(feedService)...)
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
 	if deps.Computer != nil && deps.ComputerSettings != nil {
@@ -164,6 +164,11 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service) server.Ro
 		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/presign", Handler: httpHandlerFunc(h.PresignUpload)},
 		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/commit", Handler: httpHandlerFunc(h.CommitUpload)},
 		server.Route{Pattern: "GET /v1/runs/{run_id}/files/{path...}", Handler: httpHandlerFunc(h.ProxyRunFile)},
+		server.Route{Pattern: "GET /v1/user-skills", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "PUT /v1/user-skills/{name}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "DELETE /v1/user-skills/{name}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/connectors", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "DELETE /v1/connectors/{id}", Handler: httpHandlerFunc(h.Proxy)},
 	)
 }
 
@@ -216,11 +221,14 @@ func usageRoutes(usage usagecore.Service) server.Routes {
 	}
 }
 
-func appendPluginRoutes(routes server.Routes, service *plugins.Service, sessions plugins.SessionStore, mcp pluginsapi.MCPRuntime, cfg serverconfig.Config) server.Routes {
+func appendPluginRoutes(routes server.Routes, service *plugins.Service, sessions plugins.SessionStore, mcp pluginsapi.MCPRuntime, cfg serverconfig.Config, cloud *cloudsync.Service) server.Routes {
 	if service == nil {
 		return routes
 	}
 	handler := pluginsapi.NewHandler(service, sessions, mcp, cfg.PublicBaseURL())
+	if cloud != nil {
+		handler.WithCloud(cloud)
+	}
 	return append(routes,
 		server.Route{Pattern: "GET /v1/plugins", Handler: httpHandlerFunc(handler.List)},
 		server.Route{Pattern: "GET /v1/plugins/sources", Handler: httpHandlerFunc(handler.ListSources)},

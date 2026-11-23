@@ -1089,6 +1089,7 @@ export interface MCPOAuthConfig {
 
 export interface MCPServer {
   source?: 'plugin' | 'connection'
+  scope?: 'user' | 'org'
   id: string
   name: string
   transport: 'streamable_http' | 'stdio' | 'sse'

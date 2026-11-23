@@ -29,7 +29,7 @@ export function useCloudSession(): ActiveCloudSession {
   const primary = useConnection()
   const attached = useCloudAccount()
 
-  if (primary.mode === 'cloud' || !clientRuntime.capabilities.localBackend) {
+  if (primary.mode === 'cloud' || clientRuntime.capabilities?.localBackend === false) {
     const isPrimaryCloud = primary.mode === 'cloud'
     const primaryPresent = isPrimaryCloud && (primary.status === 'connected' || primary.status === 'reconnecting')
     const status: CloudAccountStatus = !isPrimaryCloud
@@ -88,5 +88,5 @@ export function useHasCloud(): boolean {
 }
 
 export function useIsCloudOnly(): boolean {
-  return useConnection().mode === 'cloud' || !clientRuntime.capabilities.localBackend
+  return useConnection().mode === 'cloud' || clientRuntime.capabilities?.localBackend === false
 }
