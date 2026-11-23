@@ -261,26 +261,28 @@ SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_sessio
 FROM threads
 WHERE parent_id = ?1
   AND archived = ?2
-  AND (?3 = '' OR runtime = ?3)
-  AND (?4 = '' OR COALESCE(source_type, '') = ?4)
-  AND (?5 = '' OR COALESCE(source_id, '') = ?5)
+  AND (CAST(?3 AS TEXT) = '' OR workspace_id = ?3)
+  AND (?4 = '' OR runtime = ?4)
+  AND (?5 = '' OR COALESCE(source_type, '') = ?5)
+  AND (?6 = '' OR COALESCE(source_id, '') = ?6)
   AND (
-    ?4 <> ''
-    OR ?5 <> ''
-    OR ?6
+    ?5 <> ''
+    OR ?6 <> ''
+    OR ?7
     OR COALESCE(source_type, '') = ''
   )
-  AND (?7 = 0 OR updated_at_ms > ?7)
-  AND (CAST(?8 AS TEXT) = '' OR instr(lower(COALESCE(title, '') || char(10) || slug), lower(?8)) > 0)
-  AND last_attention_at_ms <= ?9
-  AND (last_attention_at_ms < ?9 OR id > CAST(?10 AS TEXT))
+  AND (?8 = 0 OR updated_at_ms > ?8)
+  AND (CAST(?9 AS TEXT) = '' OR instr(lower(COALESCE(title, '') || char(10) || slug), lower(?9)) > 0)
+  AND last_attention_at_ms <= ?10
+  AND (last_attention_at_ms < ?10 OR id > CAST(?11 AS TEXT))
 ORDER BY last_attention_at_ms DESC, id
-LIMIT CASE WHEN ?11 > 0 THEN ?11 ELSE -1 END
+LIMIT CASE WHEN ?12 > 0 THEN ?12 ELSE -1 END
 `
 
 type ListChildSessionsParams struct {
 	FilterParentID         sql.NullString `json:"filter_parent_id"`
 	FilterArchived         int64          `json:"filter_archived"`
+	FilterWorkspaceID      string         `json:"filter_workspace_id"`
 	FilterRuntime          interface{}    `json:"filter_runtime"`
 	FilterSourceType       interface{}    `json:"filter_source_type"`
 	FilterSourceID         interface{}    `json:"filter_source_id"`
@@ -296,6 +298,7 @@ func (q *Queries) ListChildSessions(ctx context.Context, arg ListChildSessionsPa
 	rows, err := q.db.QueryContext(ctx, listChildSessions,
 		arg.FilterParentID,
 		arg.FilterArchived,
+		arg.FilterWorkspaceID,
 		arg.FilterRuntime,
 		arg.FilterSourceType,
 		arg.FilterSourceID,
@@ -507,7 +510,7 @@ const listSessions = `-- name: ListSessions :many
 SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools, workspace_id
 FROM threads
 WHERE archived = ?1
-  AND (?2 = '' OR workspace_id = ?2)
+  AND (CAST(?2 AS TEXT) = '' OR workspace_id = ?2)
   AND (?3 OR parent_id IS NULL OR parent_id = '')
   AND (NOT ?4 OR parent_id IS NULL OR parent_id = '')
   AND (NOT ?5 OR COALESCE(parent_id, '') = ?6)
@@ -531,7 +534,7 @@ LIMIT CASE WHEN ?15 > 0 THEN ?15 ELSE -1 END
 
 type ListSessionsParams struct {
 	FilterArchived         int64          `json:"filter_archived"`
-	FilterWorkspaceID      interface{}    `json:"filter_workspace_id"`
+	FilterWorkspaceID      string         `json:"filter_workspace_id"`
 	FilterIncludeChildren  interface{}    `json:"filter_include_children"`
 	FilterRootOnly         interface{}    `json:"filter_root_only"`
 	FilterParentOnly       interface{}    `json:"filter_parent_only"`

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/widgetdb"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -56,7 +57,11 @@ func (s *Store) LoadWidgetByLoop(loopID string) (widgets.Widget, bool, error) {
 }
 
 func (s *Store) ListWidgets() ([]widgets.Widget, error) {
-	rows, err := widgetdb.New(s.db).ListWidgets(context.Background())
+	return s.ListWidgetsForWorkspace("")
+}
+
+func (s *Store) ListWidgetsForWorkspace(workspaceID string) ([]widgets.Widget, error) {
+	rows, err := widgetdb.New(s.db).ListWidgets(context.Background(), workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +89,7 @@ func upsertWidgetParams(widget widgets.Widget) widgetdb.UpsertWidgetParams {
 		LastLayout:     widget.LastLayout,
 		CreatedAtMs:    timeToMs(widget.CreatedAt),
 		UpdatedAtMs:    timeToMs(widget.UpdatedAt),
+		WorkspaceID:    firstNonEmpty(widget.WorkspaceID, storage.LocalWorkspaceID),
 	}
 }
 
@@ -164,6 +170,7 @@ func (s *Store) SaveBoard(board widgets.Board) error {
 		IsDefault:    boolInt(board.IsDefault),
 		CreatedAtMs:  timeToMs(board.CreatedAt),
 		UpdatedAtMs:  timeToMs(board.UpdatedAt),
+		WorkspaceID:  firstNonEmpty(board.WorkspaceID, storage.LocalWorkspaceID),
 	})
 }
 
@@ -176,7 +183,11 @@ func (s *Store) LoadBoard(id string) (widgets.Board, error) {
 }
 
 func (s *Store) DefaultBoard() (widgets.Board, bool, error) {
-	row, err := widgetdb.New(s.db).GetDefaultBoard(context.Background())
+	return s.DefaultBoardForWorkspace(storage.LocalWorkspaceID)
+}
+
+func (s *Store) DefaultBoardForWorkspace(workspaceID string) (widgets.Board, bool, error) {
+	row, err := widgetdb.New(s.db).GetDefaultBoard(context.Background(), firstNonEmpty(workspaceID, storage.LocalWorkspaceID))
 	if err == sql.ErrNoRows {
 		return widgets.Board{}, false, nil
 	}
@@ -187,7 +198,11 @@ func (s *Store) DefaultBoard() (widgets.Board, bool, error) {
 }
 
 func (s *Store) ListBoards() ([]widgets.Board, error) {
-	rows, err := widgetdb.New(s.db).ListBoards(context.Background())
+	return s.ListBoardsForWorkspace("")
+}
+
+func (s *Store) ListBoardsForWorkspace(workspaceID string) ([]widgets.Board, error) {
+	rows, err := widgetdb.New(s.db).ListBoards(context.Background(), workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -297,6 +312,7 @@ func (s *Store) ListBoardItems(boardID string) ([]widgets.BoardItem, error) {
 func widgetFromDB(row widgetdb.Widget) widgets.Widget {
 	return widgets.Widget{
 		ID:             row.ID,
+		WorkspaceID:    firstNonEmpty(row.WorkspaceID, storage.LocalWorkspaceID),
 		LoopID:         row.LoopID,
 		Title:          row.Title,
 		CurrentVersion: int(row.CurrentVersion),
@@ -311,6 +327,7 @@ func widgetFromDB(row widgetdb.Widget) widgets.Widget {
 func boardFromDB(row widgetdb.Board) widgets.Board {
 	return widgets.Board{
 		ID:           row.ID,
+		WorkspaceID:  firstNonEmpty(row.WorkspaceID, storage.LocalWorkspaceID),
 		Name:         row.Name,
 		GridCols:     int(row.GridCols),
 		RowHeight:    int(row.RowHeight),

@@ -16,7 +16,7 @@ import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { ComputerSettings } from '@/components/settings/ComputerSettings'
 import { ConnectedMachinesSettings } from '@/components/settings/ConnectedMachinesSettings'
 import { NotificationsSettings } from '@/components/settings/NotificationsSettings'
-import { useHasCloud } from '@/lib/cloudSession'
+import { useHasCloud, useIsCloudOnly } from '@/lib/cloudSession'
 import { BrowserSettings } from './BrowserSettings'
 import { CloudSettings } from './CloudSettings'
 import { GeneralSettings } from './GeneralSettings'
@@ -39,19 +39,22 @@ type SectionNavigationOptions = { replace?: boolean }
 export function SettingsOverlay({
   open,
   section,
-  openAddCloudWorkspace = false,
+  addCloudRequestId = 0,
   onSectionChange,
+  onAddWorkspace,
   onClose,
 }: {
   open: boolean
   section?: SettingsSection
-  openAddCloudWorkspace?: boolean
+  addCloudRequestId?: number
   onSectionChange: (section: SettingsSection, options?: SectionNavigationOptions) => void
+  onAddWorkspace: () => void
   onClose: () => void
 }) {
   const reduce = useReducedMotion()
   const isMobile = useIsMobile()
   const hasCloud = useHasCloud()
+  const cloudOnly = useIsCloudOnly()
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const escapeLayerID = useRef<string | null>(null)
   if (!escapeLayerID.current) escapeLayerID.current = createEscapeLayerID('settings')
@@ -84,7 +87,7 @@ export function SettingsOverlay({
     }
   }, [open, onClose])
 
-  const visibleSections = visibleSettingsSections(experimentalEnabled, hasCloud)
+  const visibleSections = visibleSettingsSections(experimentalEnabled, hasCloud, !cloudOnly)
   const current = visibleSections.find((item) => item.id === section) ?? visibleSections[0]
 
   useEffect(() => {
@@ -121,6 +124,10 @@ export function SettingsOverlay({
                   onSectionChange(next)
                   setNavOpen(false)
                 }}
+                onAddWorkspace={() => {
+                  onAddWorkspace()
+                  setNavOpen(false)
+                }}
                 onClose={onClose}
               />
             </aside>
@@ -151,11 +158,11 @@ export function SettingsOverlay({
                   transition={{ duration: 0.14, ease: 'easeOut' }}
                 >
                   {current.fullHeight ? (
-                    <SectionContent section={current.id} openAddCloudWorkspace={openAddCloudWorkspace} onNavigate={onSectionChange} />
+                    <SectionContent section={current.id} addCloudRequestId={addCloudRequestId} onNavigate={onSectionChange} />
                   ) : (
                     <div className="h-full overflow-y-auto">
                       <div className={`mx-auto px-10 pb-8 max-sm:px-4 ${current.wide ? 'max-w-[920px]' : 'max-w-[760px]'}`}>
-                        <SectionContent section={current.id} openAddCloudWorkspace={openAddCloudWorkspace} onNavigate={onSectionChange} />
+                        <SectionContent section={current.id} addCloudRequestId={addCloudRequestId} onNavigate={onSectionChange} />
                       </div>
                     </div>
                   )}
@@ -171,11 +178,11 @@ export function SettingsOverlay({
 
 function SectionContent({
   section,
-  openAddCloudWorkspace,
+  addCloudRequestId,
   onNavigate,
 }: {
   section: SettingsSection
-  openAddCloudWorkspace?: boolean
+  addCloudRequestId?: number
   onNavigate: (section: SettingsSection, options?: SectionNavigationOptions) => void
 }) {
   switch (section) {
@@ -208,7 +215,7 @@ function SectionContent({
     case 'machines':
       return <ConnectedMachinesSettings />
     case 'cloud':
-      return <CloudSettings autoOpenAddForm={openAddCloudWorkspace} onNavigate={onNavigate} />
+      return <CloudSettings addCloudRequestId={addCloudRequestId} onNavigate={onNavigate} />
     case 'browser':
       return <BrowserSettings />
     case 'usage':

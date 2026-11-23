@@ -37,6 +37,7 @@ type Loop struct {
 	WhenMissed      string         `json:"when_missed"`
 	Thread          string         `json:"thread"`
 	KeepRunning     int64          `json:"keep_running"`
+	WorkspaceID     string         `json:"workspace_id"`
 }
 
 type LoopRun struct {

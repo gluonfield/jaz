@@ -68,7 +68,8 @@ SELECT
   webhook_hash,
   when_missed,
   thread,
-  keep_running
+  keep_running,
+  workspace_id
 FROM loops
 WHERE id = ?1
 LIMIT 1
@@ -106,6 +107,7 @@ func (q *Queries) GetLoop(ctx context.Context, id string) (Loop, error) {
 		&i.WhenMissed,
 		&i.Thread,
 		&i.KeepRunning,
+		&i.WorkspaceID,
 	)
 	return i, err
 }
@@ -368,14 +370,21 @@ SELECT
   webhook_hash,
   when_missed,
   thread,
-  keep_running
+  keep_running,
+  workspace_id
 FROM loops
 WHERE status <> ?1
+  AND (CAST(?2 AS TEXT) = '' OR workspace_id = ?2)
 ORDER BY updated_at_ms DESC
 `
 
-func (q *Queries) ListLoops(ctx context.Context, deletedStatus string) ([]Loop, error) {
-	rows, err := q.db.QueryContext(ctx, listLoops, deletedStatus)
+type ListLoopsParams struct {
+	DeletedStatus     string `json:"deleted_status"`
+	FilterWorkspaceID string `json:"filter_workspace_id"`
+}
+
+func (q *Queries) ListLoops(ctx context.Context, arg ListLoopsParams) ([]Loop, error) {
+	rows, err := q.db.QueryContext(ctx, listLoops, arg.DeletedStatus, arg.FilterWorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -412,6 +421,7 @@ func (q *Queries) ListLoops(ctx context.Context, deletedStatus string) ([]Loop, 
 			&i.WhenMissed,
 			&i.Thread,
 			&i.KeepRunning,
+			&i.WorkspaceID,
 		); err != nil {
 			return nil, err
 		}
@@ -608,7 +618,8 @@ INSERT INTO loops (
   webhook_hash,
   when_missed,
   thread,
-  keep_running
+  keep_running,
+  workspace_id
 ) VALUES (
   ?1,
   ?2,
@@ -637,7 +648,8 @@ INSERT INTO loops (
   ?25,
   ?26,
   ?27,
-  ?28
+  ?28,
+  ?29
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -666,7 +678,8 @@ ON CONFLICT(id) DO UPDATE SET
   last_run_status = excluded.last_run_status,
   last_error = excluded.last_error,
   created_at_ms = excluded.created_at_ms,
-  updated_at_ms = excluded.updated_at_ms
+  updated_at_ms = excluded.updated_at_ms,
+  workspace_id = excluded.workspace_id
 `
 
 type UpsertLoopParams struct {
@@ -698,6 +711,7 @@ type UpsertLoopParams struct {
 	WhenMissed      string         `json:"when_missed"`
 	Thread          string         `json:"thread"`
 	KeepRunning     int64          `json:"keep_running"`
+	WorkspaceID     string         `json:"workspace_id"`
 }
 
 func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
@@ -730,6 +744,7 @@ func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
 		arg.WhenMissed,
 		arg.Thread,
 		arg.KeepRunning,
+		arg.WorkspaceID,
 	)
 	return err
 }

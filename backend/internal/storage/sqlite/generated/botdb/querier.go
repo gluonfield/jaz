@@ -33,7 +33,7 @@ type Querier interface {
 	LinkCommitmentDependency(ctx context.Context, arg LinkCommitmentDependencyParams) (int64, error)
 	// A thread the bot started serves its open task, whether new or continued.
 	LinkCommitmentThread(ctx context.Context, arg LinkCommitmentThreadParams) (int64, error)
-	ListBots(ctx context.Context) ([]Bot, error)
+	ListBots(ctx context.Context, filterWorkspaceID string) ([]Bot, error)
 	ListClosedCommitments(ctx context.Context, arg ListClosedCommitmentsParams) ([]BotCommitment, error)
 	ListCommitmentDependencies(ctx context.Context, ids []int64) ([]BotCommitmentDependency, error)
 	ListCommitmentMotion(ctx context.Context, ids []int64) ([]ListCommitmentMotionRow, error)
@@ -51,7 +51,7 @@ type Querier interface {
 	StartCommitment(ctx context.Context, id int64) error
 	StoppedTaskOwner(ctx context.Context, threadID string) (bool, error)
 	TransitionCommitment(ctx context.Context, arg TransitionCommitmentParams) (int64, error)
-	UnpinBots(ctx context.Context) error
+	UnpinBots(ctx context.Context, workspaceID string) error
 	UpdateCommitment(ctx context.Context, arg UpdateCommitmentParams) (int64, error)
 	UpsertBot(ctx context.Context, arg UpsertBotParams) error
 	WakeStalled(ctx context.Context, arg WakeStalledParams) ([]int64, error)

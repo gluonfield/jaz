@@ -8,7 +8,8 @@ INSERT INTO widgets (
   last_error,
   last_layout,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  workspace_id
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(loop_id),
@@ -18,7 +19,8 @@ INSERT INTO widgets (
   sqlc.narg(last_error),
   sqlc.arg(last_layout),
   sqlc.arg(created_at_ms),
-  sqlc.arg(updated_at_ms)
+  sqlc.arg(updated_at_ms),
+  sqlc.arg(workspace_id)
 )
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
@@ -28,23 +30,25 @@ ON CONFLICT(id) DO UPDATE SET
   last_error = excluded.last_error,
   last_layout = excluded.last_layout,
   created_at_ms = excluded.created_at_ms,
-  updated_at_ms = excluded.updated_at_ms;
+  updated_at_ms = excluded.updated_at_ms,
+  workspace_id = excluded.workspace_id;
 
 -- name: GetWidget :one
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout
+SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
 FROM widgets
 WHERE id = sqlc.arg(id)
 LIMIT 1;
 
 -- name: GetWidgetByLoop :one
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout
+SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
 FROM widgets
 WHERE loop_id = sqlc.arg(loop_id)
 LIMIT 1;
 
 -- name: ListWidgets :many
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout
+SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
 FROM widgets
+WHERE (CAST(sqlc.arg(filter_workspace_id) AS TEXT) = '' OR workspace_id = sqlc.arg(filter_workspace_id))
 ORDER BY updated_at_ms DESC;
 
 -- name: InsertWidgetVersion :exec
@@ -83,7 +87,8 @@ INSERT INTO boards (
   window_bounds,
   is_default,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  workspace_id
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(name),
@@ -93,7 +98,8 @@ INSERT INTO boards (
   sqlc.narg(window_bounds),
   sqlc.arg(is_default),
   sqlc.arg(created_at_ms),
-  sqlc.arg(updated_at_ms)
+  sqlc.arg(updated_at_ms),
+  sqlc.arg(workspace_id)
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -103,24 +109,27 @@ ON CONFLICT(id) DO UPDATE SET
   window_bounds = excluded.window_bounds,
   is_default = excluded.is_default,
   created_at_ms = excluded.created_at_ms,
-  updated_at_ms = excluded.updated_at_ms;
+  updated_at_ms = excluded.updated_at_ms,
+  workspace_id = excluded.workspace_id;
 
 -- name: GetBoard :one
-SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale
+SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale, workspace_id
 FROM boards
 WHERE id = sqlc.arg(id)
 LIMIT 1;
 
 -- name: GetDefaultBoard :one
-SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale
+SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale, workspace_id
 FROM boards
 WHERE is_default = 1
+  AND workspace_id = sqlc.arg(workspace_id)
 ORDER BY created_at_ms ASC
 LIMIT 1;
 
 -- name: ListBoards :many
-SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale
+SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale, workspace_id
 FROM boards
+WHERE (CAST(sqlc.arg(filter_workspace_id) AS TEXT) = '' OR workspace_id = sqlc.arg(filter_workspace_id))
 ORDER BY created_at_ms ASC;
 
 -- name: DeleteBoard :exec

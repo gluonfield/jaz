@@ -310,6 +310,7 @@ func (s *Store) listSessions(ctx context.Context, filter storage.SessionFilter) 
 		rows, err = q.ListChildSessions(ctx, threaddb.ListChildSessionsParams{
 			FilterParentID:         params.FilterParentID,
 			FilterArchived:         params.FilterArchived,
+			FilterWorkspaceID:      params.FilterWorkspaceID,
 			FilterRuntime:          params.FilterRuntime,
 			FilterSourceType:       params.FilterSourceType,
 			FilterSourceID:         params.FilterSourceID,

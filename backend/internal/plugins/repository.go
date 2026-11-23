@@ -126,10 +126,11 @@ func (s *Store) cloneCheckout(ctx context.Context, input RepositoryInput) (workD
 	if strings.HasPrefix(input.Ref, "-") || strings.ContainsAny(input.Ref, "\x00\r\n:") {
 		return "", "", "", "", fmt.Errorf("%w: invalid Git ref", ErrInvalid)
 	}
-	if err = os.MkdirAll(s.dir, 0o755); err != nil {
+	dir, _ := s.workspaceDirs()
+	if err = os.MkdirAll(dir, 0o755); err != nil {
 		return "", "", "", "", err
 	}
-	workDir, err = os.MkdirTemp(s.dir, ".install-")
+	workDir, err = os.MkdirTemp(dir, ".install-")
 	if err != nil {
 		return "", "", "", "", err
 	}
@@ -171,6 +172,7 @@ func (s *Store) InspectSource(ctx context.Context, input RepositoryInput) (stora
 		return storage.PluginSourceRecord{}, nil, err
 	}
 	defer os.RemoveAll(work)
+	_, dataDir := s.workspaceDirs()
 	var entries []MarketplaceEntry
 	isMarketplace := false
 	if len(input.Paths) > 0 {
@@ -179,7 +181,7 @@ func (s *Store) InspectSource(ctx context.Context, input RepositoryInput) (stora
 			if err != nil {
 				return storage.PluginSourceRecord{}, nil, fmt.Errorf("%w: path %q: %v", ErrInvalid, sub, err)
 			}
-			plugin, err := readPackage(resolved, s.dataDir, nil)
+			plugin, err := readPackage(resolved, dataDir, nil)
 			if err != nil {
 				return storage.PluginSourceRecord{}, nil, err
 			}
@@ -199,6 +201,7 @@ func (s *Store) InspectSource(ctx context.Context, input RepositoryInput) (stora
 	}
 	now := time.Now().UTC()
 	record := storage.PluginSourceRecord{
+		WorkspaceID:   s.ActiveWorkspaceID(),
 		ID:            sourceIDFor(repoURL, strings.TrimSpace(input.Ref)),
 		Repository:    strings.TrimSpace(input.Repository),
 		URL:           repoURL,
@@ -225,7 +228,7 @@ func (s *Store) Update(ctx context.Context, pluginID string) (InstallResult, err
 	if s.stateStore == nil {
 		return InstallResult{}, fmt.Errorf("%w: plugin state store unavailable", ErrInvalid)
 	}
-	state, ok, err := s.stateStore.GetPluginState(ctx, pluginID)
+	state, ok, err := s.stateStore.GetPluginState(ctx, s.ActiveWorkspaceID(), pluginID)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -253,6 +256,7 @@ func (s *Store) installRepository(ctx context.Context, input RepositoryInput, wa
 	}
 	defer os.RemoveAll(work)
 
+	_, dataDir := s.workspaceDirs()
 	var prepared []preparedPlugin
 	var skipped []SkippedPlugin
 	var entries []MarketplaceEntry
@@ -262,7 +266,7 @@ func (s *Store) installRepository(ctx context.Context, input RepositoryInput, wa
 			if err != nil {
 				return result, fmt.Errorf("%w: path %q: %v", ErrInvalid, sub, err)
 			}
-			plugin, err := readPackage(resolved, s.dataDir, nil)
+			plugin, err := readPackage(resolved, dataDir, nil)
 			if err != nil {
 				return result, err
 			}
@@ -327,7 +331,7 @@ func (s *Store) installRepository(ctx context.Context, input RepositoryInput, wa
 		prepared[i].source = &src
 		prepared[i].expected = expectedCommit
 	}
-	prepared, err = stagePackages(checkout, prepared, filepath.Join(work, "ready"), s.dataDir)
+	prepared, err = stagePackages(checkout, prepared, filepath.Join(work, "ready"), dataDir)
 	if err != nil {
 		return result, err
 	}

@@ -48,7 +48,7 @@ func (h *Handler) List(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	bot, err := h.bots.Load(r.PathValue("bot"))
+	bot, err := h.bots.LoadForActiveWorkspace(r.PathValue("bot"))
 	writeBot(w, bot, err)
 }
 
@@ -75,7 +75,12 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	bot, err := h.bots.Update(r.Context(), r.PathValue("bot"), input)
+	id := r.PathValue("bot")
+	if _, err := h.bots.LoadForActiveWorkspace(id); err != nil {
+		httpapi.WriteError(w, errorStatus(err), err)
+		return
+	}
+	bot, err := h.bots.Update(r.Context(), id, input)
 	writeBot(w, bot, err)
 }
 
@@ -92,7 +97,12 @@ func (h *Handler) Pin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.bots.Delete(r.PathValue("bot")); err != nil {
+	id := r.PathValue("bot")
+	if _, err := h.bots.LoadForActiveWorkspace(id); err != nil {
+		httpapi.WriteError(w, errorStatus(err), err)
+		return
+	}
+	if err := h.bots.Delete(id); err != nil {
 		httpapi.WriteError(w, errorStatus(err), err)
 		return
 	}
@@ -104,7 +114,12 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	if err := h.bots.Post(r.PathValue("bot"), input.Text, input.AttachmentIDs); err != nil {
+	id := r.PathValue("bot")
+	if _, err := h.bots.LoadForActiveWorkspace(id); err != nil {
+		httpapi.WriteError(w, errorStatus(err), err)
+		return
+	}
+	if err := h.bots.Post(id, input.Text, input.AttachmentIDs); err != nil {
 		httpapi.WriteError(w, errorStatus(err), err)
 		return
 	}

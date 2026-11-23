@@ -96,6 +96,10 @@ type FeedStore interface {
 	LoadFeed() ([]FeedItem, error)
 }
 
+type WorkspaceFeedStore interface {
+	LoadFeedForWorkspace(workspaceID string) ([]FeedItem, error)
+}
+
 type Store interface {
 	SessionStore
 	SessionTranscriptReader

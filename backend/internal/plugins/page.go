@@ -51,7 +51,9 @@ func (s *Store) PageWithContext(ctx context.Context, plugin string, sessions Ses
 	if !manifest.SafeName(plugin) {
 		return PageContent{}, fmt.Errorf("%w: name %q", ErrInvalid, plugin)
 	}
-	installed, err := manifest.Read(filepath.Join(s.dir, plugin))
+	dir, _ := s.workspaceDirs()
+	ws := s.ActiveWorkspaceID()
+	installed, err := manifest.Read(filepath.Join(dir, plugin))
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, manifest.ErrNotPlugin) {
 		return PageContent{}, ErrNotFound
 	}
@@ -69,7 +71,7 @@ func (s *Store) PageWithContext(ctx context.Context, plugin string, sessions Ses
 	seenThreads := map[string]bool{}
 
 	if s.stateStore != nil {
-		rows, err := s.stateStore.ListThreadPluginStatesByPlugin(ctx, plugin)
+		rows, err := s.stateStore.ListThreadPluginStatesByPlugin(ctx, ws, plugin)
 		if err != nil {
 			return PageContent{}, err
 		}
@@ -104,6 +106,9 @@ func (s *Store) PageWithContext(ctx context.Context, plugin string, sessions Ses
 	}
 	latest := map[string]storage.SessionPluginView{}
 	for _, presentation := range presentations {
+		if presentation.WorkspaceID != "" && presentation.WorkspaceID != ws {
+			continue
+		}
 		if seenThreads[presentation.ID] {
 			continue
 		}

@@ -45,6 +45,7 @@ type OAuthConfig struct {
 }
 
 type Server struct {
+	WorkspaceID       string            `json:"workspace_id,omitempty"`
 	Source            string            `json:"source,omitempty"`
 	Cwd               string            `json:"cwd,omitempty"`
 	ID                string            `json:"id"`
@@ -73,6 +74,7 @@ func (s Server) UsesBearer() bool {
 }
 
 type ServerInput struct {
+	WorkspaceID       string            `json:"-"`
 	Name              string            `json:"name"`
 	Transport         string            `json:"transport,omitempty"`
 	URL               string            `json:"url"`
@@ -89,6 +91,7 @@ type ServerInput struct {
 // Server is the server these settings describe.
 func (in ServerInput) Server(id string, createdAt, updatedAt time.Time) Server {
 	return Server{
+		WorkspaceID:       in.WorkspaceID,
 		ID:                id,
 		Name:              in.Name,
 		Transport:         in.Transport,

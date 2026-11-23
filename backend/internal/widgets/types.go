@@ -18,6 +18,7 @@ const (
 
 type Widget struct {
 	ID             string `json:"id"`
+	WorkspaceID    string `json:"workspace_id,omitempty"`
 	LoopID         string `json:"loop_id"`
 	Title          string `json:"title"`
 	CurrentVersion int    `json:"current_version"`
@@ -39,10 +40,11 @@ type Version struct {
 }
 
 type Board struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	GridCols  int    `json:"grid_cols"`
-	RowHeight int    `json:"row_height"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	Name        string `json:"name"`
+	GridCols    int    `json:"grid_cols"`
+	RowHeight   int    `json:"row_height"`
 	// FontScale zooms every widget document on the board (big-screen comfort).
 	FontScale    float64   `json:"font_scale"`
 	WindowBounds string    `json:"window_bounds,omitempty"`

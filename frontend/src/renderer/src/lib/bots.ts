@@ -74,10 +74,14 @@ export function randomAvatar(): BotAvatar {
 }
 
 const LAST_BOT_KEY = 'jaz.lastBot'
+const lastBotStorageKey = (workspaceId?: string) =>
+  workspaceId && workspaceId !== 'local' ? `${LAST_BOT_KEY}:${workspaceId}` : LAST_BOT_KEY
 
 // The Bots tab returns to the chat the user left, as Chat returns to its thread.
-export const lastBotId = () => localStorage.getItem(LAST_BOT_KEY) ?? undefined
-export const rememberBot = (id: string) => localStorage.setItem(LAST_BOT_KEY, id)
+export const lastBotId = (workspaceId?: string) =>
+  localStorage.getItem(lastBotStorageKey(workspaceId)) ?? undefined
+export const rememberBot = (id: string, workspaceId?: string) =>
+  localStorage.setItem(lastBotStorageKey(workspaceId), id)
 
 const TARGET_PREFIX = 'bot:'
 

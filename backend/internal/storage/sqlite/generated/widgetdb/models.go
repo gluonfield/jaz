@@ -18,6 +18,7 @@ type Board struct {
 	CreatedAtMs  int64          `json:"created_at_ms"`
 	UpdatedAtMs  int64          `json:"updated_at_ms"`
 	FontScale    float64        `json:"font_scale"`
+	WorkspaceID  string         `json:"workspace_id"`
 }
 
 type BoardWidget struct {
@@ -42,6 +43,7 @@ type Widget struct {
 	CreatedAtMs    int64          `json:"created_at_ms"`
 	UpdatedAtMs    int64          `json:"updated_at_ms"`
 	LastLayout     string         `json:"last_layout"`
+	WorkspaceID    string         `json:"workspace_id"`
 }
 
 type WidgetVersion struct {

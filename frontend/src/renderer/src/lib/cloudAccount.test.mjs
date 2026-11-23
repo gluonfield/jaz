@@ -396,16 +396,57 @@ test('Multi-workspace status, switchWorkspace, and per-workspace signOutCloudAcc
     workspaces: [wsAcme, wsPersonal],
   })
 
+  const { queryClient, keys } = f.mod
+  const seedWorkspaceCaches = () => {
+    queryClient.setQueryData(keys.sidebarSessions, [{ id: 'thr_1' }])
+    queryClient.setQueryData([...keys.archivedSessions, ''], { pages: [{ sessions: [{ id: 'thr_arch' }] }] })
+    queryClient.setQueryData(keys.session('thr_1'), { id: 'thr_1' })
+    queryClient.setQueryData(keys.usageDaily({ days: 30 }, 'UTC'), [])
+    queryClient.setQueryData(keys.agentFiles, { files: [] })
+    queryClient.setQueryData(keys.projects, [{ path: '/repo' }])
+    queryClient.setQueryData(keys.bots, [{ id: 'bot_1' }])
+    queryClient.setQueryData(keys.botActivity('bot_1'), { items: [], owed: [] })
+    queryClient.setQueryData(keys.boards, [{ id: 'brd_1' }])
+    queryClient.setQueryData(keys.boardDetail('brd_1'), { board: { id: 'brd_1' }, items: [] })
+    queryClient.setQueryData(keys.loops, [{ id: 'lp_1' }])
+    queryClient.setQueryData(keys.loopDetail('lp_1'), { loop: { id: 'lp_1' }, runs: [], boardIds: [] })
+    queryClient.setQueryData(keys.botRoutines('bot_1'), [])
+    queryClient.setQueryData(keys.plugins, { plugins: [], sources: [] })
+    queryClient.setQueryData(keys.pluginPage('tenders'), { view: '', items: [] })
+    queryClient.setQueryData(keys.mcpServers, { servers: [], oauth_redirect_url: '' })
+    queryClient.setQueryData(keys.mcpApps, [])
+    queryClient.setQueryData(keys.mcpApp('crm', 'show'), '<html/>')
+    queryClient.setQueryData(keys.feed, [{ id: 'feed_1' }])
+    queryClient.setQueryData(keys.threadSearch('demo', true), [{ thread_id: 'thr_1' }])
+    queryClient.setQueryData(keys.connectionSearch('demo'), [{ server_id: 'crm' }])
+    queryClient.setQueryData(keys.skills('/repo'), [{ name: 'skill-a' }])
+    queryClient.setQueryData(keys.cloudSpaces, [{ id: 'spc_1' }])
+    queryClient.setQueryData(keys.cloudMachines, [{ id: 'mac_1' }])
+    queryClient.setQueryData(keys.cloudUsageSummary, { user_spent_usd: 1 })
+    queryClient.setQueryData(keys.cloudInstruction('user', 'u1', 'agents'), { body_md: 'hi' })
+    // Device-global caches must remain intact across workspace switches.
+    queryClient.setQueryData(keys.agentSettings, { default_agent: 'codex' })
+    queryClient.setQueryData(keys.browserSettings, { enabled: true })
+  }
+  seedWorkspaceCaches()
+
+  const workspaceChanges = []
+  const unsubscribeChanges = f.mod.onWorkspaceChange((id) => workspaceChanges.push(id))
+
   const invalidated = []
-  const origInvalidate = f.mod.queryClient.invalidateQueries.bind(f.mod.queryClient)
-  f.mod.queryClient.invalidateQueries = (opts) => {
+  const origInvalidate = queryClient.invalidateQueries.bind(queryClient)
+  queryClient.invalidateQueries = (opts) => {
     invalidated.push(opts?.queryKey)
     return origInvalidate(opts)
   }
 
+  // Initial hydration must not have emitted a spurious workspace-switch event.
+  expect(workspaceChanges).toEqual([])
+
   // Switch to Local workspace: Cloud becomes inactive while preserving both Cloud workspaces.
   expect(await f.mod.switchWorkspace('local')).toBeNull()
   expect(switchPayloads).toEqual([{ workspace_id: 'local' }])
+  expect(workspaceChanges).toEqual(['local'])
   expect(f.mod.currentCloudAccount()).toMatchObject({
     status: 'disconnected',
     activeWorkspaceId: 'local',
@@ -414,13 +455,54 @@ test('Multi-workspace status, switchWorkspace, and per-workspace signOutCloudAcc
   expect(f.mod.currentCloudAccount().workspaces).toEqual([wsAcme, wsPersonal])
   expect(f.mod.useCloudSession().active).toBe(false)
   expect(f.mod.useHasCloud()).toBe(false)
-  expect(invalidated).toContainEqual(['cloud'])
-  expect(invalidated).toContainEqual(f.mod.keys.sidebarSessions)
-  expect(invalidated).toContainEqual(f.mod.keys.usage)
-  expect(invalidated).toContainEqual(f.mod.keys.agentFiles)
-  expect(invalidated).toContainEqual(f.mod.keys.projects)
 
-  // Switch to second Cloud workspace.
+  // Every workspace-scoped query root is invalidated and stale cached data is evicted.
+  for (const expectedKey of [
+    keys.sessions,
+    keys.usage,
+    keys.agentFiles,
+    keys.projects,
+    keys.bots,
+    keys.boards,
+    keys.loops,
+    keys.plugins,
+    keys.mcp,
+    keys.feed,
+    keys.search,
+    keys.skillsRoot,
+  ]) {
+    expect(invalidated).toContainEqual(expectedKey)
+  }
+  expect(queryClient.getQueryData(keys.sidebarSessions)).toBeUndefined()
+  expect(queryClient.getQueryData([...keys.archivedSessions, ''])).toBeUndefined()
+  expect(queryClient.getQueryData(keys.session('thr_1'))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.bots)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.botActivity('bot_1'))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.boards)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.boardDetail('brd_1'))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.loops)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.loopDetail('lp_1'))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.botRoutines('bot_1'))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.plugins)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.pluginPage('tenders'))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.mcpServers)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.mcpApps)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.mcpApp('crm', 'show'))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.feed)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.threadSearch('demo', true))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.connectionSearch('demo'))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.skills('/repo'))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.cloudSpaces)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.cloudMachines)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.cloudUsageSummary)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.cloudInstruction('user', 'u1', 'agents'))).toBeUndefined()
+  // Device-global queries stay cached.
+  expect(queryClient.getQueryData(keys.agentSettings)).toEqual({ default_agent: 'codex' })
+  expect(queryClient.getQueryData(keys.browserSettings)).toEqual({ enabled: true })
+
+  // Switch to second Cloud workspace: cloud root is also invalidated for refetch.
+  invalidated.length = 0
+  seedWorkspaceCaches()
   expect(await f.mod.switchWorkspace('ws_personal')).toBeNull()
   expect(f.mod.currentCloudAccount()).toMatchObject({
     status: 'connected',
@@ -429,8 +511,17 @@ test('Multi-workspace status, switchWorkspace, and per-workspace signOutCloudAcc
     user: { org_name: 'Personal Cloud' },
   })
   expect(f.mod.useHasCloud()).toBe(true)
+  expect(invalidated).toContainEqual(keys.cloud)
+  expect(invalidated).toContainEqual(keys.bots)
+  expect(invalidated).toContainEqual(keys.boards)
+  expect(invalidated).toContainEqual(keys.loops)
+  expect(invalidated).toContainEqual(keys.plugins)
+  expect(invalidated).toContainEqual(keys.mcp)
+  expect(queryClient.getQueryData(keys.bots)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.boards)).toBeUndefined()
 
-  // Sign out inactive ws_acme: keeps ws_personal active and connected.
+  // Sign out inactive ws_acme: keeps ws_personal active and leaves its cached data intact.
+  queryClient.setQueryData(keys.bots, [{ id: 'bot_personal' }])
   await f.mod.signOutCloudAccount('ws_acme')
   expect(disconnectPayloads).toEqual([{ workspace_id: 'ws_acme' }])
   expect(f.mod.currentCloudAccount()).toMatchObject({
@@ -439,6 +530,19 @@ test('Multi-workspace status, switchWorkspace, and per-workspace signOutCloudAcc
     url: 'https://personal.jaz.example',
   })
   expect(f.mod.currentCloudAccount().workspaces).toEqual([wsPersonal])
+  expect(queryClient.getQueryData(keys.bots)).toEqual([{ id: 'bot_personal' }])
+  expect(workspaceChanges).toEqual(['local', 'ws_personal'])
+
+  // Sign out active ws_personal: falls back to local and clears workspace-scoped caches.
+  await f.mod.signOutCloudAccount('ws_personal')
+  expect(f.mod.currentCloudAccount()).toMatchObject({
+    status: 'disconnected',
+    activeWorkspaceId: 'local',
+    workspaces: [],
+  })
+  expect(queryClient.getQueryData(keys.bots)).toBeUndefined()
+  expect(workspaceChanges).toEqual(['local', 'ws_personal', 'local'])
+  unsubscribeChanges()
 })
 
 test('Cloud-only primary Cloud mode exposes connected primary workspace and NEVER activeWorkspaceId === local', async () => {

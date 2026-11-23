@@ -12,7 +12,7 @@ type Querier interface {
 	CreateMCPServer(ctx context.Context, arg CreateMCPServerParams) error
 	DeleteMCPServer(ctx context.Context, id string) (int64, error)
 	GetMCPServer(ctx context.Context, id string) (GetMCPServerRow, error)
-	ListMCPServers(ctx context.Context) ([]ListMCPServersRow, error)
+	ListMCPServers(ctx context.Context, filterWorkspaceID string) ([]ListMCPServersRow, error)
 	SetMCPServerEnabled(ctx context.Context, arg SetMCPServerEnabledParams) (int64, error)
 	UpdateMCPSecrets(ctx context.Context, arg UpdateMCPSecretsParams) error
 	UpdateMCPServer(ctx context.Context, arg UpdateMCPServerParams) (int64, error)

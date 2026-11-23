@@ -37,7 +37,11 @@ func (s *Service) Message(fromThread, ref, text string, done ...int64) error {
 	if err == nil && caller.SourceType == storage.SourceBotWorker {
 		return errors.New("a thread a bot started cannot message bots; put what you need from them in your report")
 	}
-	to, err := s.resolve(ref)
+	ws := s.ActiveWorkspaceID()
+	if err == nil {
+		ws = normalizeWorkspaceID(caller.WorkspaceID)
+	}
+	to, err := s.resolveInWorkspace(ref, ws)
 	if err != nil {
 		return err
 	}
@@ -254,13 +258,14 @@ func appendEvent(store EventStore, bus Publisher, event sessionevents.Event) err
 	return nil
 }
 
-// resolve finds a bot or group by id, mention target or exact name.
-func (s *Service) resolve(ref string) (string, error) {
+// resolveInWorkspace finds a bot or group by id, mention target or exact name within a workspace.
+func (s *Service) resolveInWorkspace(ref, workspaceID string) (string, error) {
+	ws := normalizeWorkspaceID(workspaceID)
 	ref = strings.TrimPrefix(strings.TrimSpace(ref), "bot:")
-	if _, _, err := s.load(ref); err == nil {
+	if _, _, err := s.loadInWorkspace(ref, ws); err == nil {
 		return ref, nil
 	}
-	sessions, err := s.store.ListSessions(storage.SessionFilter{SourceType: storage.SourceBot})
+	sessions, err := s.store.ListSessions(storage.SessionFilter{SourceType: storage.SourceBot, WorkspaceID: ws})
 	if err != nil {
 		return "", err
 	}

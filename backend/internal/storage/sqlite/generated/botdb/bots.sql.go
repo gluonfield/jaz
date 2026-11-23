@@ -10,7 +10,7 @@ import (
 )
 
 const getBot = `-- name: GetBot :one
-SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins
+SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins, workspace_id
 FROM bots
 WHERE thread_id = ?1
 LIMIT 1
@@ -30,6 +30,7 @@ func (q *Queries) GetBot(ctx context.Context, threadID string) (Bot, error) {
 		&i.Main,
 		&i.Workspaces,
 		&i.Plugins,
+		&i.WorkspaceID,
 	)
 	return i, err
 }
@@ -78,12 +79,13 @@ func (q *Queries) GetMembershipByThread(ctx context.Context, threadID string) (B
 }
 
 const listBots = `-- name: ListBots :many
-SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins
+SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins, workspace_id
 FROM bots
+WHERE (CAST(?1 AS TEXT) = '' OR workspace_id = ?1)
 `
 
-func (q *Queries) ListBots(ctx context.Context) ([]Bot, error) {
-	rows, err := q.db.QueryContext(ctx, listBots)
+func (q *Queries) ListBots(ctx context.Context, filterWorkspaceID string) ([]Bot, error) {
+	rows, err := q.db.QueryContext(ctx, listBots, filterWorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +104,7 @@ func (q *Queries) ListBots(ctx context.Context) ([]Bot, error) {
 			&i.Main,
 			&i.Workspaces,
 			&i.Plugins,
+			&i.WorkspaceID,
 		); err != nil {
 			return nil, err
 		}
@@ -150,16 +153,17 @@ func (q *Queries) ListMemberships(ctx context.Context) ([]BotMembership, error) 
 }
 
 const pinBot = `-- name: PinBot :exec
-UPDATE bots SET pinned = ?1 WHERE thread_id = ?2
+UPDATE bots SET pinned = ?1 WHERE thread_id = ?2 AND workspace_id = ?3
 `
 
 type PinBotParams struct {
-	Pinned   int64  `json:"pinned"`
-	ThreadID string `json:"thread_id"`
+	Pinned      int64  `json:"pinned"`
+	ThreadID    string `json:"thread_id"`
+	WorkspaceID string `json:"workspace_id"`
 }
 
 func (q *Queries) PinBot(ctx context.Context, arg PinBotParams) error {
-	_, err := q.db.ExecContext(ctx, pinBot, arg.Pinned, arg.ThreadID)
+	_, err := q.db.ExecContext(ctx, pinBot, arg.Pinned, arg.ThreadID, arg.WorkspaceID)
 	return err
 }
 
@@ -189,17 +193,17 @@ func (q *Queries) SaveMembership(ctx context.Context, arg SaveMembershipParams) 
 }
 
 const unpinBots = `-- name: UnpinBots :exec
-UPDATE bots SET pinned = 0
+UPDATE bots SET pinned = 0 WHERE workspace_id = ?1
 `
 
-func (q *Queries) UnpinBots(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, unpinBots)
+func (q *Queries) UnpinBots(ctx context.Context, workspaceID string) error {
+	_, err := q.db.ExecContext(ctx, unpinBots, workspaceID)
 	return err
 }
 
 const upsertBot = `-- name: UpsertBot :exec
-INSERT INTO bots (thread_id, kind, prompt, shape, color, members, main, workspaces, plugins)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+INSERT INTO bots (thread_id, kind, prompt, shape, color, members, main, workspaces, plugins, workspace_id)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
 ON CONFLICT(thread_id) DO UPDATE SET
   kind = excluded.kind,
   main = excluded.main,
@@ -208,19 +212,21 @@ ON CONFLICT(thread_id) DO UPDATE SET
   color = excluded.color,
   members = excluded.members,
   workspaces = excluded.workspaces,
-  plugins = excluded.plugins
+  plugins = excluded.plugins,
+  workspace_id = excluded.workspace_id
 `
 
 type UpsertBotParams struct {
-	ThreadID   string `json:"thread_id"`
-	Kind       string `json:"kind"`
-	Prompt     string `json:"prompt"`
-	Shape      string `json:"shape"`
-	Color      string `json:"color"`
-	Members    string `json:"members"`
-	Main       int64  `json:"main"`
-	Workspaces string `json:"workspaces"`
-	Plugins    string `json:"plugins"`
+	ThreadID    string `json:"thread_id"`
+	Kind        string `json:"kind"`
+	Prompt      string `json:"prompt"`
+	Shape       string `json:"shape"`
+	Color       string `json:"color"`
+	Members     string `json:"members"`
+	Main        int64  `json:"main"`
+	Workspaces  string `json:"workspaces"`
+	Plugins     string `json:"plugins"`
+	WorkspaceID string `json:"workspace_id"`
 }
 
 func (q *Queries) UpsertBot(ctx context.Context, arg UpsertBotParams) error {
@@ -234,6 +240,7 @@ func (q *Queries) UpsertBot(ctx context.Context, arg UpsertBotParams) error {
 		arg.Main,
 		arg.Workspaces,
 		arg.Plugins,
+		arg.WorkspaceID,
 	)
 	return err
 }

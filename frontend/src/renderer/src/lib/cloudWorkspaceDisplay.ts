@@ -21,6 +21,23 @@ export function workspaceSubtitle(workspace: Pick<CloudWorkspaceSummary, 'org_na
   return email || host
 }
 
+export function activeCloudWorkspace(
+  cloud: { active: boolean; activeWorkspaceId: string; workspaces: CloudWorkspaceSummary[] },
+): CloudWorkspaceSummary | null {
+  if (!cloud.active) return null
+  return cloud.workspaces.find((ws) => ws.id === cloud.activeWorkspaceId) ?? cloud.workspaces[0] ?? null
+}
+
+export function workspaceSettingsHeading(
+  cloud: { active: boolean; activeWorkspaceId: string; workspaces: CloudWorkspaceSummary[] },
+  localBackend: boolean,
+): string {
+  const activeCloud = activeCloudWorkspace(cloud)
+  if (activeCloud) return workspaceDisplayName(activeCloud)
+  if (localBackend && cloud.workspaces.length > 0) return 'Local'
+  return 'Workspace'
+}
+
 export function workspaceInitials(name: string): string {
   const parts = name
     .trim()

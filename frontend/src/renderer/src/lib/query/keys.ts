@@ -2,12 +2,14 @@ import type { UsageWindow } from '@/lib/usageWindow'
 
 export const keys = {
   health: ['health'] as const,
+  sessions: ['sessions'] as const,
   sidebarSessions: ['sessions', 'sidebar'] as const,
   session: (id: string) => ['sessions', id] as const,
   usage: ['usage'] as const,
   usageDaily: (window: UsageWindow, timezone: string) => ['usage', 'daily', window, timezone] as const,
   archivedSessions: ['sessions', 'archived'] as const,
   feed: ['feed'] as const,
+  search: ['search'] as const,
   threadSearch: (query: string, includeArchived = false) =>
     ['search', 'threads', query, includeArchived] as const,
   connectionSearch: (query: string) => ['search', 'connections', query] as const,
@@ -52,6 +54,7 @@ export const keys = {
   projects: ['projects'] as const,
   filesystemDirs: (path: string) => ['filesystem', 'dirs', path] as const,
   workspaceFiles: (root: string) => ['workspace', 'files', root] as const,
+  skillsRoot: ['skills'] as const,
   skills: (root?: string) => ['skills', root ?? null] as const,
   plugins: ['plugins'] as const,
   pluginPage: (name: string) => ['plugins', name, 'page'] as const,
@@ -65,6 +68,7 @@ export const keys = {
   botFiles: (botId: string) => ['bots', botId, 'files'] as const,
   boards: ['boards'] as const,
   boardDetail: (id: string) => ['boards', id] as const,
+  cloud: ['cloud'] as const,
   cloudSpaces: ['cloud', 'spaces'] as const,
   cloudMachines: ['cloud', 'machines'] as const,
   cloudModelProfiles: ['cloud', 'model-profiles'] as const,
@@ -72,3 +76,18 @@ export const keys = {
   cloudInstruction: (scope: string, scopeId: string, kind: string) =>
     ['cloud', 'instructions', scope, scopeId, kind] as const,
 }
+
+export const WORKSPACE_QUERY_ROOTS = [
+  keys.sessions,
+  keys.usage,
+  keys.agentFiles,
+  keys.projects,
+  keys.bots,
+  keys.boards,
+  keys.loops,
+  keys.plugins,
+  keys.mcp,
+  keys.feed,
+  keys.search,
+  keys.skillsRoot,
+] as const

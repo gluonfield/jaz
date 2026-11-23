@@ -2,7 +2,7 @@
 SELECT *
 FROM threads
 WHERE archived = sqlc.arg(filter_archived)
-  AND (sqlc.arg(filter_workspace_id) = '' OR workspace_id = sqlc.arg(filter_workspace_id))
+  AND (CAST(sqlc.arg(filter_workspace_id) AS TEXT) = '' OR workspace_id = sqlc.arg(filter_workspace_id))
   AND (sqlc.arg(filter_include_children) OR parent_id IS NULL OR parent_id = '')
   AND (NOT sqlc.arg(filter_root_only) OR parent_id IS NULL OR parent_id = '')
   AND (NOT sqlc.arg(filter_parent_only) OR COALESCE(parent_id, '') = sqlc.arg(filter_parent_id))
@@ -28,6 +28,7 @@ SELECT *
 FROM threads
 WHERE parent_id = sqlc.arg(filter_parent_id)
   AND archived = sqlc.arg(filter_archived)
+  AND (CAST(sqlc.arg(filter_workspace_id) AS TEXT) = '' OR workspace_id = sqlc.arg(filter_workspace_id))
   AND (sqlc.arg(filter_runtime) = '' OR runtime = sqlc.arg(filter_runtime))
   AND (sqlc.arg(filter_source_type) = '' OR COALESCE(source_type, '') = sqlc.arg(filter_source_type))
   AND (sqlc.arg(filter_source_id) = '' OR COALESCE(source_id, '') = sqlc.arg(filter_source_id))

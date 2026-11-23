@@ -227,8 +227,16 @@ func (s *Server) resolveWorkspaceFileRoot(path string) (string, error) {
 	return cleanExistingDir(abs)
 }
 
+func (s *Server) projectSettingKey() string {
+	ws := s.activeWorkspaceID()
+	if ws != storage.LocalWorkspaceID {
+		return projectSettingKey + ":" + ws
+	}
+	return projectSettingKey
+}
+
 func (s *Server) loadProjectPaths() ([]string, error) {
-	setting, err := s.Store.LoadSetting(projectSettingNamespace, projectSettingKey)
+	setting, err := s.Store.LoadSetting(projectSettingNamespace, s.projectSettingKey())
 	if err != nil {
 		if errors.Is(err, storage.ErrSettingNotFound) {
 			return nil, nil
@@ -247,7 +255,7 @@ func (s *Server) saveProjectPaths(paths []string) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.Store.SaveSetting(projectSettingNamespace, projectSettingKey, data)
+	_, err = s.Store.SaveSetting(projectSettingNamespace, s.projectSettingKey(), data)
 	return err
 }
 

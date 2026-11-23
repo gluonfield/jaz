@@ -9,6 +9,7 @@ import type { SettingsSection } from '@/components/settings/sections'
 import { botsQuery } from '@/lib/api/bots'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { pluginsQuery } from '@/lib/api/plugins'
+import { useCloudSession } from '@/lib/cloudSession'
 import { useIsCloud } from '@/lib/connection'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
@@ -83,6 +84,7 @@ export function NavRail({
 }) {
   const rail = useRef<HTMLElement>(null)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const { activeWorkspaceId } = useCloudSession()
   const sections = useRailSections()
   const botsUnread = useQuery({
     ...botsQuery,
@@ -90,11 +92,17 @@ export function NavRail({
   }).data
 
   // The Chat tab returns to the thread the user left, the way switching apps
-  // does; a fresh /new clears it so the tab lands back on the composer.
-  const [lastSession, setLastSession] = useState<string>()
+  // does; a fresh /new or workspace switch clears it so the tab lands back on
+  // the composer instead of a previous workspace's thread.
+  const [lastSession, setLastSession] = useState<{ workspaceId: string; id?: string }>({
+    workspaceId: activeWorkspaceId,
+  })
   const session = /^\/sessions\/([^/]+)/.exec(pathname)?.[1]
-  const current = session ?? (pathname === '/new' ? undefined : lastSession)
-  if (current !== lastSession) setLastSession(current)
+  const activeLastSession = lastSession.workspaceId === activeWorkspaceId ? lastSession.id : undefined
+  const current = session ?? (pathname === '/new' ? undefined : activeLastSession)
+  if (lastSession.workspaceId !== activeWorkspaceId || current !== lastSession.id) {
+    setLastSession({ workspaceId: activeWorkspaceId, id: current })
+  }
 
   useWindowEvent('keydown', (event) => {
     if (!event.metaKey || event.defaultPrevented || event.altKey || event.ctrlKey || event.shiftKey || event.repeat) return
@@ -126,8 +134,8 @@ export function NavRail({
   return (
     <nav ref={rail} aria-label="Sections" style={{ width: RAIL_WIDTH }} className="flex shrink-0 flex-col items-center gap-2 pb-2 pt-[5px] max-sm:hidden">
       <Link
-        to={lastSession ? '/sessions/$sessionId' : '/new'}
-        params={lastSession ? { sessionId: lastSession } : {}}
+        to={current ? '/sessions/$sessionId' : '/new'}
+        params={current ? { sessionId: current } : {}}
         data-rail-tab=""
         aria-label="Chat"
         onClick={onOpenSidebar}

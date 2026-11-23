@@ -18,7 +18,7 @@ import {
 import type { CloudUser, ServerCapabilities } from '@/lib/api/serverTypes'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { fetchServerDiscovery } from '@/lib/connectionProbe'
-import { keys } from '@/lib/query/keys'
+import { keys, WORKSPACE_QUERY_ROOTS } from '@/lib/query/keys'
 import { queryClient } from '@/lib/query/queryClient'
 
 export const LOCAL_WORKSPACE_ID = 'local'
@@ -79,15 +79,28 @@ const EMPTY_STATE: CloudAccountState = {
 }
 
 let state: CloudAccountState = { ...EMPTY_STATE }
+let statusHydrated = false
 let attemptSeq = 0
 let activeController: AbortController | null = null
 const listeners = new Set<() => void>()
+const workspaceChangeListeners = new Set<(workspaceId: string) => void>()
 
 function setState(next: Partial<CloudAccountState>): void {
   state = { ...state, ...next }
   for (const listener of listeners) {
     listener()
   }
+}
+
+function notifyWorkspaceChange(workspaceId: string): void {
+  for (const listener of workspaceChangeListeners) {
+    listener(workspaceId)
+  }
+}
+
+export function onWorkspaceChange(listener: (workspaceId: string) => void): () => void {
+  workspaceChangeListeners.add(listener)
+  return () => workspaceChangeListeners.delete(listener)
 }
 
 export function useCloudAccount(): CloudAccountState {
@@ -133,13 +146,19 @@ function applyBackendStatus(res: BackendCloudStatus): void {
   })
 }
 
-function refreshWorkspaceQueries({ clearCloud = false, refetchCloud = true } = {}): void {
-  if (clearCloud) queryClient.removeQueries({ queryKey: ['cloud'] })
-  if (refetchCloud) void queryClient.invalidateQueries({ queryKey: ['cloud'] })
-  void queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-  void queryClient.invalidateQueries({ queryKey: keys.usage })
-  void queryClient.invalidateQueries({ queryKey: keys.agentFiles })
-  void queryClient.invalidateQueries({ queryKey: keys.projects })
+function refreshWorkspaceQueries({ reset = false, clearCloud = false, refetchCloud = true } = {}): void {
+  if (clearCloud || reset) {
+    void queryClient.cancelQueries({ queryKey: keys.cloud })
+    queryClient.removeQueries({ queryKey: keys.cloud })
+  }
+  if (refetchCloud) void queryClient.invalidateQueries({ queryKey: keys.cloud })
+  for (const queryKey of WORKSPACE_QUERY_ROOTS) {
+    if (reset) {
+      void queryClient.cancelQueries({ queryKey })
+      queryClient.removeQueries({ queryKey })
+    }
+    void queryClient.invalidateQueries({ queryKey })
+  }
 }
 
 function beginAttempt(): { seq: number; controller: AbortController } {
@@ -160,11 +179,21 @@ export async function refreshCloudAccountStatus(): Promise<void> {
   try {
     const res = await get<BackendCloudStatus>('/v1/cloud/status', { signal: controller.signal })
     if (!isCurrent(seq, controller)) return
+    const wasHydrated = statusHydrated
     const prevConnected = state.status === 'connected'
     const prevWorkspaceId = state.activeWorkspaceId
+    statusHydrated = true
     applyBackendStatus(res)
-    if (res.connected && (!prevConnected || prevWorkspaceId !== state.activeWorkspaceId)) {
-      refreshWorkspaceQueries()
+    const workspaceChanged = prevWorkspaceId !== state.activeWorkspaceId
+    if (workspaceChanged || res.connected !== prevConnected) {
+      refreshWorkspaceQueries({
+        reset: workspaceChanged,
+        clearCloud: !res.connected || workspaceChanged,
+        refetchCloud: res.connected,
+      })
+    }
+    if (wasHydrated && workspaceChanged) {
+      notifyWorkspaceChange(state.activeWorkspaceId)
     }
   } catch {
     if (!isCurrent(seq, controller)) return
@@ -234,8 +263,15 @@ export async function completeAttachedOidcCallback(
       controller.signal,
     )
     if (!isCurrent(seq, controller)) return null
+    statusHydrated = true
     applyBackendStatus(res)
-    refreshWorkspaceQueries({ clearCloud: prevWorkspaceId !== state.activeWorkspaceId })
+    const workspaceChanged = prevWorkspaceId !== state.activeWorkspaceId
+    refreshWorkspaceQueries({
+      reset: workspaceChanged,
+      clearCloud: workspaceChanged,
+      refetchCloud: res.connected,
+    })
+    if (workspaceChanged) notifyWorkspaceChange(state.activeWorkspaceId)
     return null
   } catch (error) {
     if (!isCurrent(seq, controller)) return null
@@ -261,11 +297,15 @@ export async function switchWorkspace(workspaceId: string): Promise<string | nul
       controller.signal,
     )
     if (!isCurrent(seq, controller)) return null
+    statusHydrated = true
     applyBackendStatus(res)
+    const workspaceChanged = prevWorkspaceId !== state.activeWorkspaceId
     refreshWorkspaceQueries({
-      clearCloud: !res.connected || prevWorkspaceId !== state.activeWorkspaceId,
-      refetchCloud: true,
+      reset: workspaceChanged,
+      clearCloud: !res.connected || workspaceChanged,
+      refetchCloud: res.connected,
     })
+    if (workspaceChanged) notifyWorkspaceChange(state.activeWorkspaceId)
     return null
   } catch (error) {
     if (!isCurrent(seq, controller)) return null
@@ -278,8 +318,9 @@ export async function switchWorkspace(workspaceId: string): Promise<string | nul
 export async function syncCloudAccount(): Promise<string | null> {
   try {
     const res = await post<BackendCloudStatus>('/v1/cloud/sync')
+    statusHydrated = true
     applyBackendStatus(res)
-    refreshWorkspaceQueries()
+    refreshWorkspaceQueries({ refetchCloud: res.connected })
     return null
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Cloud sync failed'
@@ -289,10 +330,12 @@ export async function syncCloudAccount(): Promise<string | null> {
 }
 
 export async function signOutCloudAccount(workspaceId?: string): Promise<void> {
+  const prevWorkspaceId = state.activeWorkspaceId
   const { seq, controller } = beginAttempt()
   if (!clientRuntime.capabilities.localBackend || isCloudApiSession() || !apiBaseUrl()) {
     setState({ ...EMPTY_STATE })
-    refreshWorkspaceQueries({ clearCloud: true, refetchCloud: false })
+    refreshWorkspaceQueries({ reset: true, clearCloud: true, refetchCloud: false })
+    if (prevWorkspaceId !== state.activeWorkspaceId) notifyWorkspaceChange(state.activeWorkspaceId)
     return
   }
   try {
@@ -302,14 +345,20 @@ export async function signOutCloudAccount(workspaceId?: string): Promise<void> {
       controller.signal,
     )
     if (!isCurrent(seq, controller)) return
+    statusHydrated = true
     applyBackendStatus(res)
-    refreshWorkspaceQueries({ clearCloud: true, refetchCloud: res.connected })
+    const workspaceChanged = prevWorkspaceId !== state.activeWorkspaceId
+    if (workspaceChanged || !res.connected) {
+      refreshWorkspaceQueries({ reset: workspaceChanged, clearCloud: true, refetchCloud: res.connected })
+    }
+    if (workspaceChanged) notifyWorkspaceChange(state.activeWorkspaceId)
   } catch {
     if (!isCurrent(seq, controller)) return
     const remaining = workspaceId ? state.workspaces.filter((ws) => ws.id !== workspaceId) : []
     if (!workspaceId || workspaceId === state.activeWorkspaceId) {
       setState({ ...EMPTY_STATE, workspaces: remaining })
-      refreshWorkspaceQueries({ clearCloud: true, refetchCloud: false })
+      refreshWorkspaceQueries({ reset: true, clearCloud: true, refetchCloud: false })
+      if (prevWorkspaceId !== state.activeWorkspaceId) notifyWorkspaceChange(state.activeWorkspaceId)
     } else {
       setState({ workspaces: remaining })
     }
@@ -317,6 +366,7 @@ export async function signOutCloudAccount(workspaceId?: string): Promise<void> {
 }
 
 onApiSessionChange(() => {
+  statusHydrated = false
   if (!clientRuntime.capabilities.localBackend || isCloudApiSession()) {
     setState({ ...EMPTY_STATE })
     return

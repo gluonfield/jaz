@@ -214,6 +214,11 @@ func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort 
 			workspaceID = parent.WorkspaceID
 		}
 	}
+	if workspaceID == "" && req.SourceID != "" {
+		if source, err := m.store.LoadSession(req.SourceID); err == nil {
+			workspaceID = source.WorkspaceID
+		}
+	}
 	return m.store.CreateSession(storage.CreateSession{
 		Slug:            req.Slug,
 		Title:           req.Title,

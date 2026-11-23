@@ -15,7 +15,8 @@ import (
 
 // resolveBoardsLocked validates every board ID up front (deduplicated, in
 // order) so callers can fail before any write happens.
-func (s *Service) resolveBoardsLocked(boardIDs []string) ([]Board, error) {
+func (s *Service) resolveBoardsLocked(boardIDs []string, workspaceID string) ([]Board, error) {
+	ws := normalizeWorkspaceID(workspaceID)
 	seen := make(map[string]bool, len(boardIDs))
 	boards := make([]Board, 0, len(boardIDs))
 	for _, boardID := range boardIDs {
@@ -24,7 +25,7 @@ func (s *Service) resolveBoardsLocked(boardIDs []string) ([]Board, error) {
 			continue
 		}
 		board, err := s.Repo.LoadBoard(boardID)
-		if err != nil {
+		if err != nil || normalizeWorkspaceID(board.WorkspaceID) != ws {
 			return nil, fmt.Errorf("unknown board %s", boardID)
 		}
 		seen[board.ID] = true
@@ -38,7 +39,7 @@ func (s *Service) resolveBoardsLocked(boardIDs []string) ([]Board, error) {
 func (s *Service) ValidateBoardIDs(boardIDs []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.resolveBoardsLocked(boardIDs)
+	_, err := s.resolveBoardsLocked(boardIDs, s.ActiveWorkspaceID())
 	return err
 }
 
@@ -50,7 +51,11 @@ func (s *Service) AssignLoopBoards(loop loops.Loop, boardIDs []string) (Widget, 
 	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	boards, err := s.resolveBoardsLocked(boardIDs)
+	ws := loop.WorkspaceID
+	if ws == "" {
+		ws = s.ActiveWorkspaceID()
+	}
+	boards, err := s.resolveBoardsLocked(boardIDs, ws)
 	if err != nil {
 		return Widget{}, err
 	}
@@ -60,11 +65,12 @@ func (s *Service) AssignLoopBoards(loop loops.Loop, boardIDs []string) (Widget, 
 	}
 	if !found {
 		widget = Widget{
-			ID:        s.Repo.NewWidgetID(),
-			LoopID:    loop.ID,
-			Title:     loop.Name,
-			CreatedAt: now,
-			UpdatedAt: now,
+			ID:          s.Repo.NewWidgetID(),
+			WorkspaceID: ws,
+			LoopID:      loop.ID,
+			Title:       loop.Name,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		}
 		if err := s.Repo.SaveWidget(widget); err != nil {
 			return Widget{}, err
@@ -155,13 +161,14 @@ func (s *Service) CreateBoard(name string) (Board, error) {
 	}
 	now := s.now()
 	board := Board{
-		ID:        s.Repo.NewBoardID(),
-		Name:      name,
-		GridCols:  DefaultGridCols,
-		RowHeight: DefaultRowHeight,
-		FontScale: 1,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:          s.Repo.NewBoardID(),
+		WorkspaceID: s.ActiveWorkspaceID(),
+		Name:        name,
+		GridCols:    DefaultGridCols,
+		RowHeight:   DefaultRowHeight,
+		FontScale:   1,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 	return board, s.Repo.SaveBoard(board)
 }
@@ -188,6 +195,9 @@ func (s *Service) PatchBoard(id string, input UpdateBoard) (Board, error) {
 	board, err := s.Repo.LoadBoard(id)
 	if err != nil {
 		return Board{}, err
+	}
+	if normalizeWorkspaceID(board.WorkspaceID) != s.ActiveWorkspaceID() {
+		return Board{}, ErrNotFound
 	}
 	// Validate the whole request before writing anything: a rejected patch
 	// must not leave half its changes applied.
@@ -276,6 +286,9 @@ func (s *Service) purgeOrphansLocked() {
 }
 
 func (s *Service) RemoveFromBoard(boardID, widgetID string) error {
+	if _, err := s.LoadBoard(boardID); err != nil {
+		return err
+	}
 	return s.Repo.DeletePlacement(boardID, widgetID)
 }
 
@@ -285,8 +298,12 @@ func (s *Service) RemoveFromBoard(boardID, widgetID string) error {
 func (s *Service) DeleteBoard(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := s.Repo.LoadBoard(id); err != nil {
+	board, err := s.Repo.LoadBoard(id)
+	if err != nil {
 		return err
+	}
+	if normalizeWorkspaceID(board.WorkspaceID) != s.ActiveWorkspaceID() {
+		return ErrNotFound
 	}
 	return s.Repo.DeleteBoard(id)
 }

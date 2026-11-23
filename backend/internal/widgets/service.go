@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,18 +11,22 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/visualize"
 )
+
+var ErrNotFound = errors.New("not found")
 
 const (
 	WidgetFileName = "index.html"
 )
 
 type Service struct {
-	Repo Repository
-	Log  *log.Logger
-	Now  func() time.Time
-	mu   sync.Mutex
+	Repo      Repository
+	Log       *log.Logger
+	Now       func() time.Time
+	workspace func() string
+	mu        sync.Mutex
 }
 
 func NewService(repo Repository, logger *log.Logger) *Service {
@@ -29,6 +34,96 @@ func NewService(repo Repository, logger *log.Logger) *Service {
 		logger = log.Default()
 	}
 	return &Service{Repo: repo, Log: logger.WithPrefix("widgets")}
+}
+
+func (s *Service) WithWorkspace(fn func() string) *Service {
+	s.workspace = fn
+	return s
+}
+
+func (s *Service) ActiveWorkspaceID() string {
+	if s.workspace != nil {
+		if ws := s.workspace(); ws != "" {
+			return ws
+		}
+	}
+	return storage.LocalWorkspaceID
+}
+
+func normalizeWorkspaceID(workspaceID string) string {
+	if workspaceID == "" {
+		return storage.LocalWorkspaceID
+	}
+	return workspaceID
+}
+
+func (s *Service) ListBoards() ([]Board, error) {
+	ws := s.ActiveWorkspaceID()
+	if wsRepo, ok := s.Repo.(interface {
+		ListBoardsForWorkspace(string) ([]Board, error)
+	}); ok {
+		return wsRepo.ListBoardsForWorkspace(ws)
+	}
+	boards, err := s.Repo.ListBoards()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Board, 0, len(boards))
+	for _, board := range boards {
+		if normalizeWorkspaceID(board.WorkspaceID) == ws {
+			out = append(out, board)
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) ListWidgets() ([]Widget, error) {
+	ws := s.ActiveWorkspaceID()
+	if wsRepo, ok := s.Repo.(interface {
+		ListWidgetsForWorkspace(string) ([]Widget, error)
+	}); ok {
+		return wsRepo.ListWidgetsForWorkspace(ws)
+	}
+	items, err := s.Repo.ListWidgets()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Widget, 0, len(items))
+	for _, item := range items {
+		if normalizeWorkspaceID(item.WorkspaceID) == ws {
+			out = append(out, item)
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) LoadBoard(id string) (Board, error) {
+	board, err := s.Repo.LoadBoard(id)
+	if err != nil {
+		return Board{}, err
+	}
+	if normalizeWorkspaceID(board.WorkspaceID) != s.ActiveWorkspaceID() {
+		return Board{}, ErrNotFound
+	}
+	return board, nil
+}
+
+func (s *Service) LoadWidget(id string) (Widget, error) {
+	widget, err := s.Repo.LoadWidget(id)
+	if err != nil {
+		return Widget{}, err
+	}
+	if normalizeWorkspaceID(widget.WorkspaceID) != s.ActiveWorkspaceID() {
+		return Widget{}, ErrNotFound
+	}
+	return widget, nil
+}
+
+func (s *Service) ListBoardItems(boardID string) ([]BoardItem, error) {
+	if _, err := s.LoadBoard(boardID); err != nil {
+		return nil, err
+	}
+	return s.Repo.ListBoardItems(boardID)
 }
 
 type PublishInput struct {

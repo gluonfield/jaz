@@ -87,6 +87,7 @@ func loopRunSpawn(loop loops.Loop) acp.SpawnRequest {
 	return acp.SpawnRequest{
 		ACPAgent:        strings.TrimSpace(loop.ACPAgent),
 		ParentID:        loop.BotID,
+		WorkspaceID:     loop.WorkspaceID,
 		ModelProvider:   loop.ModelProvider,
 		Model:           loop.Model,
 		ReasoningEffort: loop.ReasoningEffort,

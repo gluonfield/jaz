@@ -30,6 +30,7 @@ WHERE archived = 0
   AND unread = 1
   AND status = 'idle'
   AND COALESCE(source_type, '') = ''
+  AND workspace_id = ?1
 ORDER BY last_attention_at_ms DESC
 `
 
@@ -41,8 +42,8 @@ type ListFeedRow struct {
 	LastAttentionAtMs int64          `json:"last_attention_at_ms"`
 }
 
-func (q *Queries) ListFeed(ctx context.Context) ([]ListFeedRow, error) {
-	rows, err := q.db.QueryContext(ctx, listFeed)
+func (q *Queries) ListFeed(ctx context.Context, workspaceID string) ([]ListFeedRow, error) {
+	rows, err := q.db.QueryContext(ctx, listFeed, workspaceID)
 	if err != nil {
 		return nil, err
 	}

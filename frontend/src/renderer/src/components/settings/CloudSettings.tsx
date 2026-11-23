@@ -1,4 +1,3 @@
-import { useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   ArrowLeftRight,
   ChartNoAxesColumn,
@@ -19,43 +18,55 @@ import { useToast } from '@/components/ui/toast'
 import { clientRuntime } from '@/lib/clientRuntime'
 import {
   attachCloudSignIn,
+  LOCAL_WORKSPACE_ID,
   signOutCloudAccount,
   switchWorkspace,
   syncCloudAccount,
   type CloudWorkspaceSummary,
 } from '@/lib/cloudAccount'
 import { DEFAULT_CLOUD_URL, useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
-import { workspaceDisplayName, workspaceInitials } from '@/lib/cloudWorkspaceDisplay'
+import { activeCloudWorkspace, workspaceDisplayName, workspaceInitials } from '@/lib/cloudWorkspaceDisplay'
 import { disconnectBackend, startCloudSignIn } from '@/lib/connection'
 import type { SettingsSection } from './sections'
 
+function defaultAddFormUrl(workspaces: CloudWorkspaceSummary[]): string {
+  const candidate = clientRuntime.cloudUrl || DEFAULT_CLOUD_URL
+  return workspaces.some((ws) => ws.url === candidate) ? '' : candidate
+}
+
 export function CloudSettings({
-  autoOpenAddForm = false,
+  addCloudRequestId = 0,
   onNavigate,
 }: {
-  autoOpenAddForm?: boolean
+  addCloudRequestId?: number
   onNavigate: (section: SettingsSection) => void
 }) {
   const cloud = useCloudSession()
   const isPrimaryOnly = useIsCloudOnly()
-  const navigate = useNavigate()
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
   const toast = useToast()
 
   const workspaces = cloud.workspaces
+  const activeCloud = activeCloudWorkspace(cloud)
+  const isLocalActive = !isPrimaryOnly && !activeCloud
 
-  const defaultFormUrl = () => {
-    const candidate = clientRuntime.cloudUrl || DEFAULT_CLOUD_URL
-    return workspaces.some((ws) => ws.url === candidate) ? '' : candidate
-  }
-
-  const [showAddForm, setShowAddForm] = useState(autoOpenAddForm)
-  const [url, setUrl] = useState(defaultFormUrl)
+  const [showAddForm, setShowAddForm] = useState(addCloudRequestId > 0)
+  const [url, setUrl] = useState(() => defaultAddFormUrl(workspaces))
   const [busyTarget, setBusyTarget] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [awaitingBrowser, setAwaitingBrowser] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const prevWorkspaceCount = useRef(workspaces.length)
+  const lastAddRequestId = useRef(addCloudRequestId)
+
+  useEffect(() => {
+    if (addCloudRequestId > 0 && addCloudRequestId !== lastAddRequestId.current) {
+      lastAddRequestId.current = addCloudRequestId
+      setShowAddForm(true)
+      setUrl(defaultAddFormUrl(workspaces))
+      setFormError(null)
+      setAwaitingBrowser(false)
+    }
+  }, [addCloudRequestId, workspaces])
 
   useEffect(() => {
     if (workspaces.length > prevWorkspaceCount.current) {
@@ -72,12 +83,6 @@ export function CloudSettings({
       setFormError(null)
     }
   }, [awaitingBrowser, cloud.active, isPrimaryOnly])
-
-  const leaveStaleSessionRoute = () => {
-    if (pathname.startsWith('/sessions/')) {
-      void navigate({ to: '/new', search: { settings: 'cloud' }, replace: true })
-    }
-  }
 
   const startSignIn = async (targetUrl: string, loginPath?: string, targetKey = 'add') => {
     const trimmed = targetUrl.trim()
@@ -102,17 +107,16 @@ export function CloudSettings({
     }
   }
 
-  const handleSwitch = async (workspace: CloudWorkspaceSummary) => {
-    setBusyTarget(`switch:${workspace.id}`)
+  const handleSwitch = async (workspaceId: string, label: string) => {
+    setBusyTarget(`switch:${workspaceId}`)
     setFormError(null)
     try {
-      const err = await switchWorkspace(workspace.id)
+      const err = await switchWorkspace(workspaceId)
       if (err) {
         setFormError(err)
         return
       }
-      leaveStaleSessionRoute()
-      toast(`Switched to ${workspaceDisplayName(workspace)}`)
+      toast(`Switched to ${label}`)
     } finally {
       setBusyTarget(null)
     }
@@ -140,11 +144,9 @@ export function CloudSettings({
       disconnectBackend()
       return
     }
-    const wasActive = cloud.active && cloud.activeWorkspaceId === workspace.id
     setBusyTarget(`signout:${workspace.id}`)
     try {
       await signOutCloudAccount(workspace.id)
-      if (wasActive) leaveStaleSessionRoute()
       toast(`Signed out of ${workspaceDisplayName(workspace)}`)
     } finally {
       setBusyTarget(null)
@@ -153,11 +155,14 @@ export function CloudSettings({
 
   const openAddForm = () => {
     setShowAddForm(true)
-    setUrl(defaultFormUrl())
+    setUrl(defaultAddFormUrl(workspaces))
     setFormError(null)
     setAwaitingBrowser(false)
   }
 
+  const orderedCloudWorkspaces = activeCloud
+    ? [activeCloud, ...workspaces.filter((ws) => ws.id !== activeCloud.id)]
+    : workspaces
   const showConnectCard = workspaces.length === 0 || (!isPrimaryOnly && showAddForm)
   const busy = busyTarget !== null
 
@@ -165,11 +170,13 @@ export function CloudSettings({
     <section className="flex flex-col gap-5 py-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-ink">Cloud</h1>
+          <h1 className="text-lg font-semibold text-ink">Workspace</h1>
           <p className="mt-0.5 text-[13px] text-ink-2">
             {isPrimaryOnly
               ? 'Your active Jaz Cloud workspace and organization identity.'
-              : 'Connect Jaz Cloud workspaces and switch between them from the sidebar.'}
+              : activeCloud
+                ? 'Manage your active workspace, sync, and connected Jaz Cloud workspaces.'
+                : 'Manage your workspace or connect Jaz Cloud workspaces.'}
           </p>
         </div>
         {!isPrimaryOnly && workspaces.length > 0 && !showAddForm ? (
@@ -179,6 +186,21 @@ export function CloudSettings({
           </Button>
         ) : null}
       </div>
+
+      {isLocalActive ? (
+        <SettingsCard className="overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3">
+            <LocalWorkspaceIdentity />
+            <ActiveBadge label="Active" />
+          </div>
+          <SettingsRow
+            title="Storage"
+            description="Threads, bots, boards, loops, AGENTS, plugins, and MCP servers live on this computer."
+          >
+            <span className="text-[12px] text-ink-3">On device</span>
+          </SettingsRow>
+        </SettingsCard>
+      ) : null}
 
       {showConnectCard ? (
         <SettingsCard className="p-4">
@@ -214,7 +236,7 @@ export function CloudSettings({
             <p className="text-[12.5px] text-ink-2">
               {isPrimaryOnly
                 ? 'Enter your Jaz Cloud HTTPS address and sign in with SSO.'
-                : 'Enter a Jaz Cloud HTTPS address and sign in with SSO. Each workspace keeps its own threads, Spaces, and settings.'}
+                : 'Enter a Jaz Cloud HTTPS address and sign in with SSO. Each workspace keeps its own threads, bots, boards, Spaces, and settings.'}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Input
@@ -253,9 +275,12 @@ export function CloudSettings({
         </SettingsCard>
       ) : null}
 
-      {workspaces.length > 0 ? (
+      {orderedCloudWorkspaces.length > 0 ? (
         <div className="flex flex-col gap-3">
-          {workspaces.map((ws) => {
+          {!isPrimaryOnly && isLocalActive ? (
+            <p className="text-[12px] font-medium text-ink-3">Cloud workspaces</p>
+          ) : null}
+          {orderedCloudWorkspaces.map((ws) => {
             const isActive = isPrimaryOnly
               ? cloud.active
               : cloud.active && ws.id === cloud.activeWorkspaceId
@@ -270,16 +295,13 @@ export function CloudSettings({
                 <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3">
                   <WorkspaceIdentity workspace={ws} name={name} />
                   {isActive ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-2.5 py-0.5 text-[11px] font-medium text-primary">
-                      <span className="size-1.5 rounded-full bg-ok" />
-                      {isPrimaryOnly ? 'Connected' : 'Active'}
-                    </span>
+                    <ActiveBadge label={isPrimaryOnly ? 'Connected' : 'Active'} />
                   ) : (
                     <Button
                       size="sm"
                       variant="secondary"
                       disabled={busy}
-                      onClick={() => void handleSwitch(ws)}
+                      onClick={() => void handleSwitch(ws.id, name)}
                     >
                       {busyTarget === switchKey ? (
                         <LoaderCircle size={13} className="animate-spin" />
@@ -361,6 +383,27 @@ export function CloudSettings({
             )
           })}
 
+          {!isPrimaryOnly && !isLocalActive ? (
+            <SettingsCard className="overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3">
+                <LocalWorkspaceIdentity />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => void handleSwitch(LOCAL_WORKSPACE_ID, 'Local')}
+                >
+                  {busyTarget === `switch:${LOCAL_WORKSPACE_ID}` ? (
+                    <LoaderCircle size={13} className="animate-spin" />
+                  ) : (
+                    <ArrowLeftRight size={13} />
+                  )}
+                  Switch
+                </Button>
+              </div>
+            </SettingsCard>
+          ) : null}
+
           {!showConnectCard && formError ? (
             <p role="alert" className="text-[12px] text-danger">
               {formError}
@@ -369,9 +412,9 @@ export function CloudSettings({
         </div>
       ) : null}
 
-      {cloud.active ? (
+      {cloud.active && activeCloud ? (
         <div>
-          <p className="mb-2 text-[12px] font-medium text-ink-3">Cloud workspace</p>
+          <p className="mb-2 text-[12px] font-medium text-ink-3">{workspaceDisplayName(activeCloud)}</p>
           <SettingsCard className="overflow-hidden">
             <SettingsRow
               title="Connected Machines"
@@ -384,7 +427,7 @@ export function CloudSettings({
             </SettingsRow>
             <SettingsRow
               title="Personalization"
-              description="Edit your standing AGENTS instructions synced to Jaz Cloud."
+              description="Edit your standing AGENTS instructions for this workspace."
             >
               <Button size="sm" variant="secondary" onClick={() => onNavigate('personalization')}>
                 <Sparkles size={13} />
@@ -392,7 +435,7 @@ export function CloudSettings({
               </Button>
             </SettingsRow>
             <SettingsRow
-              title="Cloud Usage"
+              title="Usage"
               description="View monthly organization and personal cloud spend caps."
             >
               <Button size="sm" variant="secondary" onClick={() => onNavigate('usage')}>
@@ -404,6 +447,29 @@ export function CloudSettings({
         </div>
       ) : null}
     </section>
+  )
+}
+
+function ActiveBadge({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-2.5 py-0.5 text-[11px] font-medium text-primary">
+      <span className="size-1.5 rounded-full bg-ok" />
+      {label}
+    </span>
+  )
+}
+
+function LocalWorkspaceIdentity() {
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1 py-0.5">
+      <span className="grid size-7 shrink-0 place-items-center rounded-[7px] bg-surface-2 text-ink-2">
+        <Laptop size={14} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-medium text-ink">Local</span>
+        <p className="truncate text-[11.5px] text-ink-3">This computer</p>
+      </div>
+    </div>
   )
 }
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,7 +17,7 @@ func (s *Server) handleListBoards(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("widgets are not configured"))
 		return
 	}
-	boards, err := s.Widgets.Repo.ListBoards()
+	boards, err := s.Widgets.ListBoards()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -58,7 +59,11 @@ func (s *Server) handleBoardAction(w http.ResponseWriter, r *http.Request) {
 	if hasSub {
 		if widgetID, ok := strings.CutPrefix(sub, "widgets/"); ok && r.Method == http.MethodDelete {
 			if err := s.Widgets.RemoveFromBoard(boardID, widgetID); err != nil {
-				writeError(w, http.StatusInternalServerError, err)
+				status := http.StatusInternalServerError
+				if errors.Is(err, widgets.ErrNotFound) {
+					status = http.StatusNotFound
+				}
+				writeError(w, status, err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -78,7 +83,11 @@ func (s *Server) handleBoardAction(w http.ResponseWriter, r *http.Request) {
 		s.handlePatchBoard(w, r, boardID)
 	case http.MethodDelete:
 		if err := s.Widgets.DeleteBoard(boardID); err != nil {
-			writeError(w, http.StatusBadRequest, err)
+			status := http.StatusBadRequest
+			if errors.Is(err, widgets.ErrNotFound) {
+				status = http.StatusNotFound
+			}
+			writeError(w, status, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -94,6 +103,10 @@ func (s *Server) handleAssignLoopsToBoard(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("loops are not configured"))
 		return
 	}
+	if _, err := s.Widgets.LoadBoard(boardID); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
 	var req struct {
 		LoopIDs []string `json:"loop_ids"`
 	}
@@ -102,7 +115,7 @@ func (s *Server) handleAssignLoopsToBoard(w http.ResponseWriter, r *http.Request
 		return
 	}
 	for _, loopID := range req.LoopIDs {
-		loop, err := s.Loops.Load(loopID)
+		loop, err := s.Loops.LoadForActiveWorkspace(loopID)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("unknown loop %s", loopID))
 			return
@@ -116,12 +129,12 @@ func (s *Server) handleAssignLoopsToBoard(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleGetBoard(w http.ResponseWriter, boardID string) {
-	board, err := s.Widgets.Repo.LoadBoard(boardID)
+	board, err := s.Widgets.LoadBoard(boardID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return
 	}
-	items, err := s.Widgets.Repo.ListBoardItems(boardID)
+	items, err := s.Widgets.ListBoardItems(boardID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -147,7 +160,11 @@ func (s *Server) handlePatchBoard(w http.ResponseWriter, r *http.Request, boardI
 		Layout:       req.Layout,
 	})
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		status := http.StatusBadRequest
+		if errors.Is(err, widgets.ErrNotFound) {
+			status = http.StatusNotFound
+		}
+		writeError(w, status, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, board)
@@ -158,7 +175,7 @@ func (s *Server) handleListWidgets(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("widgets are not configured"))
 		return
 	}
-	items, err := s.Widgets.Repo.ListWidgets()
+	items, err := s.Widgets.ListWidgets()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -181,6 +198,10 @@ func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
 	case action == "content" && r.Method == http.MethodGet:
 		s.handleWidgetContent(w, r, widgetID)
 	case action == "errors" && r.Method == http.MethodPost:
+		if _, err := s.Widgets.LoadWidget(widgetID); err != nil {
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
 		var req struct {
 			Message string `json:"message"`
 		}
@@ -194,6 +215,10 @@ func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case action == "layout" && r.Method == http.MethodPost:
+		if _, err := s.Widgets.LoadWidget(widgetID); err != nil {
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
 		// Board-measured layout telemetry (dead space, overflow, clipping);
 		// stored raw and surfaced in the loop's next-run prompt.
 		payload, err := io.ReadAll(io.LimitReader(r.Body, 4096))
@@ -212,7 +237,7 @@ func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWidgetContent(w http.ResponseWriter, r *http.Request, widgetID string) {
-	widget, err := s.Widgets.Repo.LoadWidget(widgetID)
+	widget, err := s.Widgets.LoadWidget(widgetID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return

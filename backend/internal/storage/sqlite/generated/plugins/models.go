@@ -5,6 +5,7 @@
 package plugins
 
 type PluginSource struct {
+	WorkspaceID   string `json:"workspace_id"`
 	ID            string `json:"id"`
 	Repository    string `json:"repository"`
 	Url           string `json:"url"`
@@ -19,6 +20,7 @@ type PluginSource struct {
 }
 
 type PluginState struct {
+	WorkspaceID      string `json:"workspace_id"`
 	PluginID         string `json:"plugin_id"`
 	Enabled          int64  `json:"enabled"`
 	SourceID         string `json:"source_id"`

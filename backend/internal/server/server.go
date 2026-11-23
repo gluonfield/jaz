@@ -128,8 +128,9 @@ type Server struct {
 	Instructions instructions.Store
 	// Prompts derives the system prompt fresh per turn from disk, so skill
 	// and prompt-file edits apply without a restart.
-	Prompts *coordinator.Builder
-	Root    string
+	Prompts    *coordinator.Builder
+	PluginsDir func() string
+	Root       string
 	// Workspace is the directory sessions run within; the new-thread directory
 	// picker browses it (confined by pathsafe).
 	Workspace string
@@ -239,6 +240,22 @@ func (s *Server) handleListWorkspaceFiles(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"root": abs, "entries": entries, "truncated": truncated})
 }
 
+func (s *Server) activeWorkspaceID() string {
+	if s.Cloud != nil {
+		if ws := s.Cloud.ActiveWorkspaceID(); ws != "" {
+			return ws
+		}
+	}
+	return storage.LocalWorkspaceID
+}
+
+func (s *Server) activePluginsDir() string {
+	if s.PluginsDir != nil {
+		return s.PluginsDir()
+	}
+	return ""
+}
+
 // handleListSkills lists the skill catalog for the composer's $-mention picker.
 func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -251,9 +268,9 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, resolveErr)
 			return
 		}
-		catalog, err = skills.LoadForWorkspace(s.Root, cwd)
+		catalog, err = skills.LoadForWorkspaceWithPluginsDir(s.Root, cwd, s.activePluginsDir(), nil)
 	} else {
-		catalog, err = skills.Load(s.Root)
+		catalog, err = skills.LoadFromPluginsDir(s.Root, s.activePluginsDir(), nil)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)

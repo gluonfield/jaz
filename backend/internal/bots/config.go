@@ -9,6 +9,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type Config struct {
@@ -41,25 +42,33 @@ func (s *Service) Declare(ctx context.Context, declared []Config) error {
 	if len(declared) == 0 {
 		return nil
 	}
-	bots, err := s.List()
+	bots, err := s.ListForWorkspace(storage.LocalWorkspaceID)
 	if err != nil {
 		return err
 	}
-	routines, err := s.routines.List()
+	allRoutines, err := s.allRoutines()
 	if err != nil {
 		return err
+	}
+	routines := make([]loops.Loop, 0, len(allRoutines))
+	for _, routine := range allRoutines {
+		if normalizeWorkspaceID(routine.WorkspaceID) == storage.LocalWorkspaceID {
+			routines = append(routines, routine)
+		}
 	}
 	plan, err := planDeclarations(declared, bots, routines)
 	if err != nil {
 		return err
 	}
 	for _, item := range plan {
+		item.input.WorkspaceID = storage.LocalWorkspaceID
 		bot, err := s.declareBot(ctx, item.bot, item.input)
 		if err != nil {
 			return fmt.Errorf("configured bot %q: %w", item.input.Name, err)
 		}
 		for _, schedule := range item.schedules {
 			schedule.input.BotID = bot.ID
+			schedule.input.WorkspaceID = storage.LocalWorkspaceID
 			if err := s.declareSchedule(schedule.routine, schedule.input); err != nil {
 				return fmt.Errorf("configured bot %q, schedule %q: %w", item.input.Name, schedule.input.Name, err)
 			}

@@ -18,7 +18,12 @@ type saveFileRequest struct {
 }
 
 func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
-	files, err := h.bots.Files(r.PathValue("bot"))
+	id := r.PathValue("bot")
+	if _, err := h.bots.LoadForActiveWorkspace(id); err != nil {
+		httpapi.WriteError(w, errorStatus(err), err)
+		return
+	}
+	files, err := h.bots.Files(id)
 	if err != nil {
 		httpapi.WriteError(w, errorStatus(err), err)
 		return
@@ -33,7 +38,12 @@ func (h *Handler) SaveFile(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	file, err := h.bots.SaveFile(r.PathValue("bot"), r.PathValue("name"), input.Content, input.Version)
+	id := r.PathValue("bot")
+	if _, err := h.bots.LoadForActiveWorkspace(id); err != nil {
+		httpapi.WriteError(w, errorStatus(err), err)
+		return
+	}
+	file, err := h.bots.SaveFile(id, r.PathValue("name"), input.Content, input.Version)
 	switch {
 	case errors.Is(err, botcore.ErrFileChanged):
 		httpapi.WriteJSON(w, http.StatusConflict, file)
@@ -45,7 +55,12 @@ func (h *Handler) SaveFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Activity(w http.ResponseWriter, r *http.Request) {
-	view, err := h.bots.Activity(r.PathValue("bot"))
+	id := r.PathValue("bot")
+	if _, err := h.bots.LoadForActiveWorkspace(id); err != nil {
+		httpapi.WriteError(w, errorStatus(err), err)
+		return
+	}
+	view, err := h.bots.Activity(id)
 	if err != nil {
 		httpapi.WriteError(w, errorStatus(err), err)
 		return

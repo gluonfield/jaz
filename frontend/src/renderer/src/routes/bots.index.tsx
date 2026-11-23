@@ -6,6 +6,7 @@ import { NewBotDialog } from '@/components/bots/NewBotDialog'
 import { Button } from '@/components/ui/Button'
 import { botsQuery } from '@/lib/api/bots'
 import { dragSections, lastBotId, pinOrder } from '@/lib/bots'
+import { useCloudSession } from '@/lib/cloudSession'
 
 export const Route = createFileRoute('/bots/')({
   component: BotsIndex,
@@ -13,8 +14,9 @@ export const Route = createFileRoute('/bots/')({
 
 function BotsIndex() {
   const [creating, setCreating] = useState(false)
+  const { activeWorkspaceId } = useCloudSession()
   const bots = useQuery(botsQuery)
-  const last = lastBotId()
+  const last = lastBotId(activeWorkspaceId)
   if (bots.isPending) return null
   const list = bots.data ?? []
   const { tiles, rows } = dragSections(list, pinOrder(list))

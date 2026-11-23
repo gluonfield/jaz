@@ -9,6 +9,7 @@ import { ThreadView } from '@/components/session/ThreadView'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { botsQuery } from '@/lib/api/bots'
 import { rememberBot } from '@/lib/bots'
+import { useCloudSession } from '@/lib/cloudSession'
 
 declare module '@tanstack/history' {
   interface HistoryState {
@@ -28,9 +29,12 @@ function BotRoute() {
   const { botId } = Route.useParams()
   const { message } = Route.useSearch()
   const newBot = useLocation({ select: (location) => Boolean(location.state.newBot) })
+  const { activeWorkspaceId } = useCloudSession()
   const bots = useQuery(botsQuery)
   const bot = bots.data?.find((item) => item.id === botId)
-  useEffect(() => rememberBot(botId), [botId])
+  useEffect(() => {
+    if (bot) rememberBot(bot.id, activeWorkspaceId)
+  }, [activeWorkspaceId, bot])
   if (!bot) return bots.isPending ? null : <EmptyState title="This bot is gone" />
   if (bot.kind === 'group') return <GroupChat key={bot.id} group={bot} bots={bots.data ?? []} />
   // A bot is a thread with a face: the thread view shown as a chat, its

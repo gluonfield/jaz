@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/wins/jaz/backend/internal/codexcompat"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/search"
 )
 
@@ -20,6 +21,7 @@ const (
 
 type SearchQuery struct {
 	Query           string
+	WorkspaceID     string
 	IncludeArchived bool
 	IncludeSourced  bool
 	Limit           int
@@ -42,12 +44,28 @@ type SearchResult struct {
 }
 
 type Service struct {
-	store   search.Querier
-	context ContextStore
+	store     search.Querier
+	context   ContextStore
+	workspace func() string
 }
 
 func NewService(store search.Querier, context ContextStore) *Service {
 	return &Service{store: store, context: context}
+}
+
+func (s *Service) WithWorkspace(fn func() string) *Service {
+	s.workspace = fn
+	return s
+}
+
+func (s *Service) activeWorkspaceID() string {
+	if s.workspace != nil {
+		if ws := s.workspace(); ws != "" {
+			return ws
+		}
+		return storage.LocalWorkspaceID
+	}
+	return ""
 }
 
 type searchAccumulator struct {
@@ -66,9 +84,14 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) ([]SearchResult
 	limit := clampSearchLimit(query.Limit)
 	candidateLimit := min(maxSearchCandidates, max(limit*8, 80))
 
+	workspaceID := query.WorkspaceID
+	if workspaceID == "" {
+		workspaceID = s.activeWorkspaceID()
+	}
 	byThread := map[string]*searchAccumulator{}
 	metadataRows, err := s.store.SearchThreadMetadata(ctx, search.SearchThreadMetadataParams{
 		Match:           match,
+		WorkspaceID:     workspaceID,
 		IncludeArchived: boolInt(query.IncludeArchived),
 		IncludeSourced:  boolInt(query.IncludeSourced),
 		Limit:           int64(candidateLimit),
@@ -86,6 +109,7 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) ([]SearchResult
 	messageRows, err := s.store.SearchThreadMessages(ctx, search.SearchThreadMessagesParams{
 		Match:           match,
 		HiddenPrefixes:  string(hiddenPrefixes),
+		WorkspaceID:     workspaceID,
 		IncludeArchived: boolInt(query.IncludeArchived),
 		IncludeSourced:  boolInt(query.IncludeSourced),
 		Limit:           int64(candidateLimit),

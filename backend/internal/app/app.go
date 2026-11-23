@@ -229,7 +229,8 @@ func NewPromptBuilder(store *sqlitestore.Store, inst instructions.Store, cloud *
 		WithConnections(connections).
 		WithAgents(agents).
 		WithBrowserEnabled(func() bool { return agentsettings.BrowserEnabled(store) }).
-		WithPluginFilter(func(id string) bool { return installed.IsEnabled(context.Background(), id) })
+		WithPluginFilter(func(id string) bool { return installed.IsEnabled(context.Background(), id) }).
+		WithPluginsDir(installed.ActivePluginsDir)
 }
 
 type cloudSyncDeps struct {
@@ -438,16 +439,16 @@ func agentDefaultsSeed(catalog acp.AgentCatalog) agentsettings.AgentDefaults {
 	return agentsettings.AgentDefaultsFromCatalog(catalog)
 }
 
-func NewWidgetService(store *sqlitestore.Store, logger *log.Logger) *widgets.Service {
-	return widgets.NewService(store, logger)
+func NewWidgetService(store *sqlitestore.Store, cloud *cloudsync.Service, logger *log.Logger) *widgets.Service {
+	return widgets.NewService(store, logger).WithWorkspace(cloud.ActiveWorkspaceID)
 }
 
 func NewWidgetSessionPublisher(service *widgets.Service, store *sqlitestore.Store) *widgets.SessionPublisher {
 	return &widgets.SessionPublisher{Service: service, Sessions: store, Loops: store}
 }
 
-func NewThreadService(store *sqlitestore.Store) *threads.Service {
-	return threads.NewService(sqlitestore.NewSearchQueries(store), store)
+func NewThreadService(store *sqlitestore.Store, cloud *cloudsync.Service) *threads.Service {
+	return threads.NewService(sqlitestore.NewSearchQueries(store), store).WithWorkspace(cloud.ActiveWorkspaceID)
 }
 
 func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher, visualizations *visualize.Service) *tools.Registry {

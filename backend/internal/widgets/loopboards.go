@@ -15,7 +15,7 @@ func (s *Service) LoopBoards() loops.BoardService {
 }
 
 func (b loopBoards) ListBoards() ([]loops.BoardSummary, error) {
-	boards, err := b.svc.Repo.ListBoards()
+	boards, err := b.svc.ListBoards()
 	if err != nil {
 		return nil, err
 	}

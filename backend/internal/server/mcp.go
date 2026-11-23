@@ -64,6 +64,7 @@ func (s *Server) handleCreateMCPServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	input.WorkspaceID = s.activeWorkspaceID()
 	server, err := store.CreateMCPServer(input)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -93,7 +94,10 @@ func (s *Server) handleMCPServerAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		current, err := store.LoadMCPServer(id)
-		if err != nil {
+		if err != nil || firstNonEmpty(current.WorkspaceID, storage.LocalWorkspaceID) != s.activeWorkspaceID() {
+			if err == nil {
+				err = fmt.Errorf("mcp server not found: %s", id)
+			}
 			writeError(w, http.StatusNotFound, err)
 			return
 		}
@@ -112,6 +116,14 @@ func (s *Server) handleMCPServerAction(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		if hasAction {
 			writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
+			return
+		}
+		current, err := store.LoadMCPServer(id)
+		if err != nil || firstNonEmpty(current.WorkspaceID, storage.LocalWorkspaceID) != s.activeWorkspaceID() {
+			if err == nil {
+				err = fmt.Errorf("mcp server not found: %s", id)
+			}
+			writeError(w, http.StatusNotFound, err)
 			return
 		}
 		if err := store.DeleteMCPServer(id); err != nil {
@@ -134,6 +146,14 @@ func (s *Server) handleMCPServerAction(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Request, store mcpStore, id, action string) {
 	switch action {
 	case "enable", "disable":
+		current, err := store.LoadMCPServer(id)
+		if err != nil || firstNonEmpty(current.WorkspaceID, storage.LocalWorkspaceID) != s.activeWorkspaceID() {
+			if err == nil {
+				err = fmt.Errorf("mcp server not found: %s", id)
+			}
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
 		server, err := store.SetMCPServerEnabled(id, action == "enable")
 		if err != nil {
 			writeError(w, http.StatusNotFound, err)

@@ -2,14 +2,18 @@ package sqlite
 
 import (
 	"database/sql"
+	"encoding/json"
 	"io/fs"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/pressly/goose/v3"
+	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/widgets"
 	_ "modernc.org/sqlite"
 )
 
@@ -643,5 +647,145 @@ func TestClearUnappliedGrokModelMigration(t *testing.T) {
 		if got != check.want {
 			t.Fatalf("%s = %s, want %s", check.query, got, check.want)
 		}
+	}
+}
+
+func TestWorkspaceEntitiesMigrationUpDown(t *testing.T) {
+	root := t.TempDir()
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	ctx := t.Context()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	// Populate data across local, cloudA, and cloudB including duplicate
+	// plugin_sources/plugin_state IDs and two main=1 bots across workspaces.
+	localBot, err := store.CreateSession(storage.CreateSession{Slug: "local-prime", Title: "Prime", SourceType: storage.SourceBot, WorkspaceID: storage.LocalWorkspaceID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloudABot, err := store.CreateSession(storage.CreateSession{Slug: "cloud-a-prime", Title: "Prime", SourceType: storage.SourceBot, WorkspaceID: "cloudA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveBot(storage.BotRecord{ThreadID: localBot.ID, WorkspaceID: storage.LocalWorkspaceID, Kind: "bot", Shape: "circle", Color: "blue", Main: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveBot(storage.BotRecord{ThreadID: cloudABot.ID, WorkspaceID: "cloudA", Kind: "bot", Shape: "hex", Color: "green", Main: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.SaveBoard(widgets.Board{ID: "board-local-1", WorkspaceID: storage.LocalWorkspaceID, Name: "Local Board", GridCols: 6, RowHeight: 120, FontScale: 1, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveBoard(widgets.Board{ID: "board-cloud-a", WorkspaceID: "cloudA", Name: "Cloud A Board", GridCols: 6, RowHeight: 120, FontScale: 1, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveLoop(loops.Loop{ID: "loop-local-1", WorkspaceID: storage.LocalWorkspaceID, Name: "Local Loop", Prompt: "p", Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 * * * *", Timezone: "UTC"}, Status: loops.StatusActive, Runtime: loops.RuntimeACP, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveLoop(loops.Loop{ID: "loop-cloud-a", WorkspaceID: "cloudA", Name: "Cloud A Loop", Prompt: "p", Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 * * * *", Timezone: "UTC"}, Status: loops.StatusActive, Runtime: loops.RuntimeACP, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveWidget(widgets.Widget{ID: "widget-local-1", WorkspaceID: storage.LocalWorkspaceID, LoopID: "loop-local-1", Title: "Local W", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveWidget(widgets.Widget{ID: "widget-cloud-a", WorkspaceID: "cloudA", LoopID: "loop-cloud-a", Title: "Cloud A W", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	localMCP, err := store.CreateMCPServer(mcpconfig.ServerInput{WorkspaceID: storage.LocalWorkspaceID, Name: "local-srv", URL: "https://local.example.com/mcp", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateMCPServer(mcpconfig.ServerInput{WorkspaceID: "cloudA", Name: "cloud-srv", URL: "https://cloud.example.com/mcp", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ws := range []string{storage.LocalWorkspaceID, "cloudA", "cloudB"} {
+		if err := store.SavePluginSource(ctx, storage.PluginSourceRecord{
+			WorkspaceID: ws, ID: "shared/source", Repository: "shared/source", URL: "https://example.com/shared.git", CatalogJSON: json.RawMessage(`[]`), UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("save plugin source in %s: %v", ws, err)
+		}
+		if err := store.SavePluginState(ctx, storage.PluginStateRecord{
+			WorkspaceID: ws, PluginID: "shared-plugin", Enabled: ws == storage.LocalWorkspaceID, UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("save plugin state in %s: %v", ws, err)
+		}
+	}
+
+	migrations, err := fs.Sub(sqliteMigrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, store.db, migrations, goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.DownTo(ctx, 95); err != nil {
+		t.Fatalf("downgrade 0096 failed: %v", err)
+	}
+
+	// Verify downgraded tables dropped workspace_id and kept local plugin rows.
+	for _, table := range []string{"bots", "boards", "widgets", "loops", "mcp_servers", "plugin_sources", "plugin_state"} {
+		cols, err := tableColumns(store.db, table)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cols["workspace_id"] {
+			t.Fatalf("%s still has workspace_id after downgrade to 95", table)
+		}
+	}
+	var srcCount, stateCount int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM plugin_sources WHERE id = 'shared/source'`).Scan(&srcCount); err != nil || srcCount != 1 {
+		t.Fatalf("downgraded plugin_sources count = %d, err = %v; want 1", srcCount, err)
+	}
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM plugin_state WHERE plugin_id = 'shared-plugin' AND enabled = 1`).Scan(&stateCount); err != nil || stateCount != 1 {
+		t.Fatalf("downgraded plugin_state count = %d, err = %v; want 1", stateCount, err)
+	}
+
+	// Re-open to re-apply 0096 and verify columns, indexes, and preserved local data.
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = New(root)
+	if err != nil {
+		t.Fatalf("re-upgrade 0096 failed: %v", err)
+	}
+	for table, wantIdx := range map[string]string{
+		"bots":        "idx_bots_workspace",
+		"boards":      "idx_boards_workspace",
+		"widgets":     "idx_widgets_workspace",
+		"loops":       "idx_loops_workspace",
+		"mcp_servers": "idx_mcp_servers_workspace",
+	} {
+		cols, err := tableColumns(store.db, table)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !cols["workspace_id"] {
+			t.Fatalf("%s missing workspace_id after re-upgrade", table)
+		}
+		indexes, err := indexNames(store.db, table)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !indexes[wantIdx] {
+			t.Fatalf("%s missing index %s after re-upgrade", table, wantIdx)
+		}
+	}
+	reloadedBot, err := store.LoadBot(localBot.ID)
+	if err != nil || reloadedBot.WorkspaceID != storage.LocalWorkspaceID || !reloadedBot.Main {
+		t.Fatalf("reloaded local bot = %+v, %v", reloadedBot, err)
+	}
+	reloadedMCP, err := store.LoadMCPServer(localMCP.ID)
+	if err != nil || reloadedMCP.WorkspaceID != storage.LocalWorkspaceID {
+		t.Fatalf("reloaded local mcp = %+v, %v", reloadedMCP, err)
+	}
+	reloadedState, ok, err := store.GetPluginState(ctx, storage.LocalWorkspaceID, "shared-plugin")
+	if err != nil || !ok || !reloadedState.Enabled {
+		t.Fatalf("reloaded local plugin state = %+v, ok=%v, err=%v", reloadedState, ok, err)
 	}
 }

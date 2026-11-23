@@ -151,7 +151,7 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 	for _, started := range view.Started {
 		slices.SortStableFunc(started, func(a, b Activity) int { return a.At.Compare(b.At) })
 	}
-	routines, err := s.routines.List()
+	routines, err := s.allRoutines()
 	if err != nil {
 		return ActivityView{}, err
 	}

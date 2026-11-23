@@ -29,6 +29,7 @@ type Avatar struct {
 
 type Bot struct {
 	ID              string    `json:"id"`
+	WorkspaceID     string    `json:"workspace_id,omitempty"`
 	Kind            string    `json:"kind"`
 	Name            string    `json:"name"`
 	Prompt          string    `json:"prompt,omitempty"`
@@ -72,8 +73,9 @@ type CreateBot struct {
 	Agent      string    `json:"agent,omitempty"`
 	Model      string    `json:"model,omitempty"`
 	// StoredModel marks Model as saved earlier, as an adopted routine's is.
-	StoredModel bool `json:"-"`
-	Main        bool `json:"-"`
+	StoredModel bool   `json:"-"`
+	Main        bool   `json:"-"`
+	WorkspaceID string `json:"-"`
 }
 
 type UpdateBot struct {

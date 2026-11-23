@@ -76,8 +76,14 @@ type MCPListOutput struct {
 	Bots []MCPBot `json:"bots"`
 }
 
-func (t *MCPTools) List(context.Context, *mcp.CallToolRequest, MCPListInput) (*mcp.CallToolResult, MCPListOutput, error) {
-	bots, err := t.service.List()
+func (t *MCPTools) List(_ context.Context, req *mcp.CallToolRequest, _ MCPListInput) (*mcp.CallToolResult, MCPListOutput, error) {
+	ws := t.service.ActiveWorkspaceID()
+	if sessionID := mcpsession.SessionID(req); sessionID != "" {
+		if session, err := t.service.store.LoadSession(sessionID); err == nil {
+			ws = normalizeWorkspaceID(session.WorkspaceID)
+		}
+	}
+	bots, err := t.service.ListForWorkspace(ws)
 	if err != nil {
 		return nil, MCPListOutput{}, err
 	}

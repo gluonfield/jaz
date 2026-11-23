@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/plugins/manifest"
 	"github.com/wins/jaz/backend/internal/skills"
@@ -37,7 +38,8 @@ func (s *Store) ClaudePlugins() ([]NativePlugin, error) {
 func (s *Store) ClaudePluginsFiltered(allow func(string) bool) ([]NativePlugin, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	directory, err := filepath.Abs(s.dir)
+	dir, _ := s.workspaceDirs()
+	directory, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +52,7 @@ func (s *Store) ClaudePluginsFiltered(allow func(string) bool) ([]NativePlugin, 
 	}
 	var out []NativePlugin
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		root := filepath.Join(directory, entry.Name())

@@ -38,6 +38,7 @@ import (
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeauth"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
@@ -256,6 +257,7 @@ func startServer(
 	events *sessionevents.Bus,
 	inst instructions.Store,
 	prompts *coordinator.Builder,
+	installed *plugins.Store,
 	mcpManager *mcpruntime.Manager,
 	workspace app.Workspace,
 	stt voice.STT,
@@ -306,6 +308,7 @@ func startServer(
 		ServerConfig:          serverConfig,
 		Instructions:          inst,
 		Prompts:               prompts,
+		PluginsDir:            installed.ActivePluginsDir,
 		Root:                  store.RootDir(),
 		Workspace:             string(workspace),
 		Log:                   logger.WithPrefix("server"),
@@ -331,8 +334,9 @@ func startServer(
 		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
 		loops.WithRunCheck(widgetService.RequireRunPublished),
 		loops.WithModelCheck(loopRunner.CheckModel),
+		loops.WithWorkspace(cloud.ActiveWorkspaceID),
 	)
-	botService := bots.NewService(store, layout.Bots, inst, manager, handler, handler, loopService, events, logger)
+	botService := bots.NewService(store, layout.Bots, inst, manager, handler, handler, loopService, events, logger).WithWorkspace(cloud.ActiveWorkspaceID)
 	loopService.Notice = botService.Notice
 	mcpManager.AppVisible = botService.AppVisible
 	jazTools.SetLoops(loopService,

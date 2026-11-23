@@ -13,6 +13,7 @@ var (
 )
 
 type PluginSourceRecord struct {
+	WorkspaceID   string          `json:"workspace_id,omitempty"`
 	ID            string          `json:"id"`
 	Repository    string          `json:"repository"`
 	URL           string          `json:"url"`
@@ -27,6 +28,7 @@ type PluginSourceRecord struct {
 }
 
 type PluginStateRecord struct {
+	WorkspaceID      string            `json:"workspace_id,omitempty"`
 	PluginID         string            `json:"plugin_id"`
 	Enabled          bool              `json:"enabled"`
 	SourceID         string            `json:"source_id,omitempty"`
@@ -55,18 +57,18 @@ type ThreadPluginStateRecord struct {
 }
 
 type PluginStore interface {
-	ListPluginSources(context.Context) ([]PluginSourceRecord, error)
-	GetPluginSource(context.Context, string) (PluginSourceRecord, bool, error)
+	ListPluginSources(ctx context.Context, workspaceID string) ([]PluginSourceRecord, error)
+	GetPluginSource(ctx context.Context, workspaceID, id string) (PluginSourceRecord, bool, error)
 	SavePluginSource(context.Context, PluginSourceRecord) error
-	DeletePluginSource(context.Context, string) (bool, error)
+	DeletePluginSource(ctx context.Context, workspaceID, id string) (bool, error)
 
-	ListPluginStates(context.Context) ([]PluginStateRecord, error)
-	GetPluginState(context.Context, string) (PluginStateRecord, bool, error)
+	ListPluginStates(ctx context.Context, workspaceID string) ([]PluginStateRecord, error)
+	GetPluginState(ctx context.Context, workspaceID, pluginID string) (PluginStateRecord, bool, error)
 	SavePluginState(context.Context, PluginStateRecord) error
-	DeletePluginState(context.Context, string) error
+	DeletePluginState(ctx context.Context, workspaceID, pluginID string) error
 
 	GetThreadPluginState(ctx context.Context, threadID, pluginID, view, stateKey string) (ThreadPluginStateRecord, bool, error)
-	ListThreadPluginStatesByPlugin(ctx context.Context, pluginID string) ([]ThreadPluginStateRecord, error)
+	ListThreadPluginStatesByPlugin(ctx context.Context, workspaceID, pluginID string) ([]ThreadPluginStateRecord, error)
 	SaveThreadPluginData(ctx context.Context, threadID, pluginID, view, stateKey string, data json.RawMessage) error
 	SaveThreadPluginUIState(ctx context.Context, threadID, pluginID, view, stateKey string, state json.RawMessage, expectedRevision *int64) error
 }

@@ -26,6 +26,7 @@ type Builder struct {
 	memoryEnabled      func() bool
 	browserEnabled     func() bool
 	pluginFilter       func(string) bool
+	pluginsDir         func() string
 	connections        ConnectionSource
 	agents             AgentNameSource
 	instructions       instructions.Store
@@ -55,6 +56,18 @@ func (b *Builder) WithBrowserEnabled(enabled func() bool) *Builder {
 func (b *Builder) WithPluginFilter(allow func(string) bool) *Builder {
 	b.pluginFilter = allow
 	return b
+}
+
+func (b *Builder) WithPluginsDir(dir func() string) *Builder {
+	b.pluginsDir = dir
+	return b
+}
+
+func (b *Builder) activePluginsDir() string {
+	if b.pluginsDir != nil {
+		return b.pluginsDir()
+	}
+	return ""
 }
 
 func (b *Builder) WithInstructions(store instructions.Store) *Builder {
@@ -125,7 +138,7 @@ func (b *Builder) ACPPromptForContext(ctx context.Context, cwd, surface string) 
 	if cwd == "" && cloud == nil {
 		cwd = defaultWorkspace(b.root)
 	}
-	catalog, err := skills.LoadForWorkspaceFiltered(b.root, cwd, b.pluginFilter)
+	catalog, err := skills.LoadForWorkspaceWithPluginsDir(b.root, cwd, b.activePluginsDir(), b.pluginFilter)
 	if err != nil {
 		return "", err
 	}
@@ -151,7 +164,7 @@ func (b *Builder) build(ctx context.Context, workspace string, surface visualize
 	if strings.TrimSpace(workspace) == "" {
 		workspace = b.workspace
 	}
-	catalog, err := skills.LoadForWorkspaceFiltered(b.root, workspace, b.pluginFilter)
+	catalog, err := skills.LoadForWorkspaceWithPluginsDir(b.root, workspace, b.activePluginsDir(), b.pluginFilter)
 	if err != nil {
 		return "", "", err
 	}

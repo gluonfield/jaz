@@ -7,24 +7,31 @@ import { clientRuntime } from '@/lib/clientRuntime'
 import { LOCAL_WORKSPACE_ID, switchWorkspace } from '@/lib/cloudAccount'
 import { useCloudSession } from '@/lib/cloudSession'
 import {
+  activeCloudWorkspace,
   workspaceDisplayName,
   workspaceInitials,
   workspaceSubtitle,
 } from '@/lib/cloudWorkspaceDisplay'
+import { workspaceSwitchNavigation } from '@/lib/workspaceNavigation'
+
+const DEFAULT_CLASS_NAME = 'shrink-0 pl-1.5 pr-3 pt-1.5 pb-0.5 max-sm:px-4 max-sm:pt-2'
 
 export function SidebarWorkspaceSwitcher({
   onAddWorkspace,
+  className = DEFAULT_CLASS_NAME,
 }: {
   onAddWorkspace: () => void
+  className?: string
 }) {
   const cloud = useCloudSession()
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const search = useRouterState({ select: (s) => s.location.search })
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [switchingTo, setSwitchingTo] = useState<string | null>(null)
 
-  const localAllowed = clientRuntime.capabilities.localBackend
+  const localAllowed = clientRuntime.capabilities.localBackend && cloud.source !== 'primary'
   const workspaces = cloud.workspaces
 
   // Pure Local mode: zero extra chrome.
@@ -32,9 +39,7 @@ export function SidebarWorkspaceSwitcher({
     return null
   }
 
-  const activeCloud = cloud.active
-    ? workspaces.find((ws) => ws.id === cloud.activeWorkspaceId) ?? workspaces[0]
-    : null
+  const activeCloud = activeCloudWorkspace(cloud)
   const isLocalActive = localAllowed && !activeCloud
 
   const activeName = activeCloud ? workspaceDisplayName(activeCloud) : 'Local'
@@ -51,7 +56,7 @@ export function SidebarWorkspaceSwitcher({
   // Cloud-only packaging with a single primary workspace: clean static header, no Local escape hatch.
   if (!localAllowed && workspaces.length === 1) {
     return (
-      <div className="shrink-0 pl-1.5 pr-3 pt-1.5 pb-0.5 max-sm:px-4 max-sm:pt-2">
+      <div className={className}>
         <div
           className="flex h-[30px] items-center gap-2 rounded-lg px-2.5 text-[13px] font-semibold text-ink max-sm:h-11 max-sm:px-3 max-sm:text-[15px]"
           title={activeCloud?.url || activeName}
@@ -74,8 +79,9 @@ export function SidebarWorkspaceSwitcher({
         toast(err, 'danger')
         return
       }
-      if (pathname.startsWith('/sessions/')) {
-        void navigate({ to: '/new' })
+      const nextRoute = workspaceSwitchNavigation({ pathname, search })
+      if (nextRoute) {
+        void navigate(nextRoute)
       }
     } finally {
       setSwitchingTo(null)
@@ -83,7 +89,7 @@ export function SidebarWorkspaceSwitcher({
   }
 
   return (
-    <div className="shrink-0 pl-1.5 pr-3 pt-1.5 pb-0.5 max-sm:px-4 max-sm:pt-2">
+    <div className={className}>
       <Popover
         open={open}
         onClose={() => setOpen(false)}

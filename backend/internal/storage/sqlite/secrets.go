@@ -31,7 +31,7 @@ func (s *Store) protectSecrets() error {
 		return err
 	}
 	mcpq := mcpdb.New(s.db).WithTx(tx)
-	mcpRows, err := mcpq.ListMCPServers(ctx)
+	mcpRows, err := mcpq.ListMCPServers(ctx, "")
 	if err != nil {
 		return err
 	}

@@ -334,6 +334,11 @@ func (t *MCPTools) load(req *mcp.CallToolRequest, value string) (Loop, error) {
 	if err != nil {
 		return Loop{}, err
 	}
+	if wsSvc, ok := t.service.(interface{ ActiveWorkspaceID() string }); ok {
+		if normalizeWorkspaceID(loop.WorkspaceID) != wsSvc.ActiveWorkspaceID() {
+			return Loop{}, ErrNotFound
+		}
+	}
 	if bot := t.bot(req); bot != "" && loop.BotID != bot {
 		return Loop{}, fmt.Errorf("loop %s is not one of your routines", id)
 	}

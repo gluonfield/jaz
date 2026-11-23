@@ -89,6 +89,10 @@ func (s *Server) handleLoopAction(w http.ResponseWriter, r *http.Request) {
 		case http.MethodPatch:
 			s.handlePatchLoop(w, r, loopID)
 		case http.MethodDelete:
+			if _, err := s.Loops.LoadForActiveWorkspace(loopID); err != nil {
+				writeError(w, http.StatusNotFound, err)
+				return
+			}
 			if err := s.Loops.Delete(loopID); err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
@@ -108,6 +112,10 @@ func (s *Server) handleLoopAction(w http.ResponseWriter, r *http.Request) {
 	case action == "runs" && r.Method == http.MethodGet:
 		s.handleListLoopRuns(w, r, loopID)
 	case action == "run" && r.Method == http.MethodPost:
+		if _, err := s.Loops.LoadForActiveWorkspace(loopID); err != nil {
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
 		run, err := s.Loops.RunNow(r.Context(), loopID)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
@@ -120,7 +128,7 @@ func (s *Server) handleLoopAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetLoop(w http.ResponseWriter, _ *http.Request, loopID string) {
-	loop, err := s.Loops.Load(loopID)
+	loop, err := s.Loops.LoadForActiveWorkspace(loopID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return
@@ -140,6 +148,10 @@ func (s *Server) handleGetLoop(w http.ResponseWriter, _ *http.Request, loopID st
 }
 
 func (s *Server) handlePatchLoop(w http.ResponseWriter, r *http.Request, loopID string) {
+	if _, err := s.Loops.LoadForActiveWorkspace(loopID); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
 	var req patchLoopRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -167,6 +179,10 @@ func (s *Server) handlePatchLoop(w http.ResponseWriter, r *http.Request, loopID 
 }
 
 func (s *Server) handleListLoopRuns(w http.ResponseWriter, r *http.Request, loopID string) {
+	if _, err := s.Loops.LoadForActiveWorkspace(loopID); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
 	limit := 20
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		_, _ = fmt.Sscanf(raw, "%d", &limit)

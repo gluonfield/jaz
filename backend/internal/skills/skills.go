@@ -40,6 +40,10 @@ func Load(root string) (Catalog, error) {
 }
 
 func LoadFiltered(root string, allowPlugin func(string) bool) (Catalog, error) {
+	return LoadFromPluginsDir(root, "", allowPlugin)
+}
+
+func LoadFromPluginsDir(root, customPluginsDir string, allowPlugin func(string) bool) (Catalog, error) {
 	if root == "" {
 		return Catalog{}, nil
 	}
@@ -48,19 +52,23 @@ func LoadFiltered(root string, allowPlugin func(string) bool) (Catalog, error) {
 	if err != nil {
 		return Catalog{}, err
 	}
-	entries, err := os.ReadDir(filepath.Join(root, pluginsDir))
+	pluginBase := customPluginsDir
+	if pluginBase == "" {
+		pluginBase = filepath.Join(root, pluginsDir)
+	}
+	entries, err := os.ReadDir(pluginBase)
 	if err != nil && !os.IsNotExist(err) {
 		return Catalog{}, err
 	}
 	var packaged []Skill
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		if allowPlugin != nil && !allowPlugin(entry.Name()) {
 			continue
 		}
-		pluginRoot := filepath.Join(root, pluginsDir, entry.Name())
+		pluginRoot := filepath.Join(pluginBase, entry.Name())
 		plugin, err := manifest.Read(pluginRoot)
 		if err != nil {
 			if !errors.Is(err, manifest.ErrNotPlugin) {
@@ -84,7 +92,11 @@ func LoadForWorkspace(root, workspace string) (Catalog, error) {
 }
 
 func LoadForWorkspaceFiltered(root, workspace string, allowPlugin func(string) bool) (Catalog, error) {
-	catalog, err := LoadFiltered(root, allowPlugin)
+	return LoadForWorkspaceWithPluginsDir(root, workspace, "", allowPlugin)
+}
+
+func LoadForWorkspaceWithPluginsDir(root, workspace, customPluginsDir string, allowPlugin func(string) bool) (Catalog, error) {
+	catalog, err := LoadFromPluginsDir(root, customPluginsDir, allowPlugin)
 	if err != nil {
 		return Catalog{}, err
 	}

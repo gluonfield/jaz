@@ -339,6 +339,9 @@ export function SidebarSessions({ open }: { open: boolean }) {
   useEffect(() => storeCollapsedProjects(collapsedProjects), [collapsedProjects])
   useEffect(() => {
     setSelectedSpaceId(null)
+    setDragOrder(null)
+    setVisibleRecentCount(SESSION_PAGE_SIZE)
+    setShowAllUngrouped(false)
   }, [cloud.activeWorkspaceId, hasCloud])
 
   const filteredSessions = useMemo(() => {
@@ -426,6 +429,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
       <section className="flex shrink-0 flex-col gap-3">
         {hasCloud ? (
           <SidebarSpaces
+            key={cloud.activeWorkspaceId}
             selectedSpaceId={selectedSpaceId}
             onSelectSpace={setSelectedSpaceId}
           />

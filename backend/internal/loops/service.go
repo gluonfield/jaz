@@ -1,7 +1,9 @@
 package loops
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -10,8 +12,11 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/promptmodule"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/templates/looprun"
 )
+
+var ErrNotFound = errors.New("loop not found")
 
 type Service struct {
 	Repo        Repository
@@ -19,6 +24,7 @@ type Service struct {
 	Log         *log.Logger
 	Now         func() time.Time
 	MemoryPaths *MemoryPaths
+	workspace   func() string
 	// PromptExtras append sections, such as widget instructions or the
 	// owning bot's saved prompt, to the metadata prompt of each run.
 	PromptExtras    []func(Loop, Run) string
@@ -105,6 +111,28 @@ func WithModelCheck(check func(Loop) error) Option {
 	}
 }
 
+func WithWorkspace(fn func() string) Option {
+	return func(s *Service) {
+		s.workspace = fn
+	}
+}
+
+func (s *Service) ActiveWorkspaceID() string {
+	if s.workspace != nil {
+		if ws := s.workspace(); ws != "" {
+			return ws
+		}
+	}
+	return storage.LocalWorkspaceID
+}
+
+func normalizeWorkspaceID(workspaceID string) string {
+	if workspaceID == "" {
+		return storage.LocalWorkspaceID
+	}
+	return workspaceID
+}
+
 func NewService(repo Repository, executor Executor, logger *log.Logger, opts ...Option) *Service {
 	if logger == nil {
 		logger = log.Default()
@@ -128,6 +156,7 @@ func (s *Service) Create(input CreateLoop) (Loop, error) {
 	}
 	loop := Loop{
 		ID:              s.Repo.NewLoopID(),
+		WorkspaceID:     normalizeWorkspaceID(cmp.Or(input.WorkspaceID, s.ActiveWorkspaceID())),
 		Name:            input.Name,
 		Prompt:          input.Prompt,
 		Schedule:        input.Schedule,
@@ -167,9 +196,45 @@ func (s *Service) Load(id string) (Loop, error) {
 	return s.blocked([]Loop{loop})[0], nil
 }
 
+func (s *Service) LoadForActiveWorkspace(id string) (Loop, error) {
+	loop, err := s.Load(id)
+	if err != nil {
+		return Loop{}, err
+	}
+	if normalizeWorkspaceID(loop.WorkspaceID) != s.ActiveWorkspaceID() {
+		return Loop{}, ErrNotFound
+	}
+	return loop, nil
+}
+
 func (s *Service) List() ([]Loop, error) {
+	return s.ListForWorkspace(s.ActiveWorkspaceID())
+}
+
+func (s *Service) ListAll() ([]Loop, error) {
 	items, err := s.Repo.ListLoops()
 	return s.blocked(items), err
+}
+
+func (s *Service) ListForWorkspace(workspaceID string) ([]Loop, error) {
+	ws := normalizeWorkspaceID(workspaceID)
+	if wsRepo, ok := s.Repo.(interface {
+		ListLoopsForWorkspace(string) ([]Loop, error)
+	}); ok {
+		items, err := wsRepo.ListLoopsForWorkspace(ws)
+		return s.blocked(items), err
+	}
+	items, err := s.Repo.ListLoops()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Loop, 0, len(items))
+	for _, item := range items {
+		if normalizeWorkspaceID(item.WorkspaceID) == ws {
+			out = append(out, item)
+		}
+	}
+	return s.blocked(out), nil
 }
 
 // blocked tells each active scheduled loop why its runs wait, if they do.

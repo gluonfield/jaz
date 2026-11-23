@@ -73,10 +73,12 @@ type routeDeps struct {
 func NewRoutes(deps routeDeps) server.Routes {
 	listHandler := sessionsapi.NewListHandler(deps.Store)
 	usageService := deps.Usage
+	feedService := deps.Feed
 	if deps.Cloud != nil {
 		listHandler.WithCloud(deps.Cloud)
 		deps.SessionMessages.WithCloud(deps.Cloud)
 		usageService = usageService.WithWorkspace(deps.Cloud.ActiveWorkspaceID)
+		feedService = feedService.WithWorkspace(deps.Cloud.ActiveWorkspaceID)
 	}
 	routes := server.Routes{
 		{Pattern: "GET /v1/acp/agents/{agent}/models", Handler: modelcapabilitiesapi.NewAgentModelsHandler(deps.ACP)},
@@ -117,7 +119,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "GET /v1/notifications/stream", Handler: http.HandlerFunc(push.Stream)},
 	)
 	routes = appendPluginRoutes(routes, deps.Plugins, deps.PluginSessions, deps.MCP, deps.Config)
-	routes = append(routes, feedRoutes(deps.Feed)...)
+	routes = append(routes, feedRoutes(feedService)...)
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
 	if deps.Computer != nil && deps.ComputerSettings != nil {
 		routes = append(routes,

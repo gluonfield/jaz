@@ -14,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
 	"github.com/wins/jaz/backend/pkg/integrations"
@@ -45,7 +46,7 @@ func DeclareMCPServers(cfg Config, store *sqlitestore.Store) error {
 }
 
 func NewMCPManager(installed *plugins.Store, store *sqlitestore.Store, catalog *connections.Catalog, registry *tools.Registry, jaz *jaztools.Service, events *sessionevents.Bus, broker oauthbroker.Broker, cloud *cloudsync.Service, logger *log.Logger) *mcpruntime.Manager {
-	reader := connectionMCPServerReader{store: store, catalog: catalog, plugins: installed, enabled: installed.IsEnabled, cloudMCP: cloud.MCPServer}
+	reader := connectionMCPServerReader{store: store, catalog: catalog, plugins: installed, enabled: installed.IsEnabled, cloudMCP: cloud.MCPServer, workspace: cloud.ActiveWorkspaceID}
 	return mcpruntime.NewManager(reader, store, registry, logger,
 		mcpruntime.WithBuiltinServerProvider(jaztools.ServerConfig(jaz.URL()), jaz.Server),
 		mcpruntime.WithSessionEvents(store, events),
@@ -59,30 +60,58 @@ type connectionTokenStore interface {
 }
 
 type connectionMCPServerReader struct {
-	plugins  mcpconfig.ServerReader
-	enabled  func(context.Context, string) bool
-	store    connectionTokenStore
-	catalog  *connections.Catalog
-	cloudMCP func(context.Context) (mcpconfig.Server, bool)
+	plugins   mcpconfig.ServerReader
+	enabled   func(context.Context, string) bool
+	store     connectionTokenStore
+	catalog   *connections.Catalog
+	cloudMCP  func(context.Context) (mcpconfig.Server, bool)
+	workspace func() string
 }
 
 func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) {
 	ctx := context.Background()
+	ws := ""
+	if r.workspace != nil {
+		ws = r.workspace()
+	}
+	var servers []mcpconfig.Server
+	hasCloud := false
 	if r.cloudMCP != nil {
 		if cloudServer, ok := r.cloudMCP(ctx); ok {
-			return []mcpconfig.Server{cloudServer}, nil
+			hasCloud = true
+			if ws == "" {
+				return []mcpconfig.Server{cloudServer}, nil
+			}
+			servers = append(servers, cloudServer)
 		}
 	}
-	servers, err := r.store.ListMCPServers()
+	if ws == "" {
+		ws = storage.LocalWorkspaceID
+	}
+	var (
+		custom []mcpconfig.Server
+		err    error
+	)
+	if wsStore, ok := r.store.(interface {
+		ListMCPServersForWorkspace(string) ([]mcpconfig.Server, error)
+	}); ok {
+		custom, err = wsStore.ListMCPServersForWorkspace(ws)
+	} else if ws == storage.LocalWorkspaceID {
+		custom, err = r.store.ListMCPServers()
+	}
 	if err != nil {
 		return nil, err
 	}
+	servers = append(servers, custom...)
 	if r.plugins != nil {
 		derived, err := r.plugins.ListMCPServers()
 		if err != nil {
 			return nil, err
 		}
 		servers = append(servers, derived...)
+	}
+	if ws != storage.LocalWorkspaceID || hasCloud {
+		return servers, nil
 	}
 	for _, plugin := range r.catalog.ListPlugins() {
 		if r.enabled != nil && !r.enabled(ctx, plugin.ID) {

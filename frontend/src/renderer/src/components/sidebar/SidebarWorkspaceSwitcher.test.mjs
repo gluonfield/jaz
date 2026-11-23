@@ -34,6 +34,7 @@ function loadSwitcher(
     localBackend = true,
     forcePopoverOpen = false,
     pathname = '/new',
+    search = {},
     onSwitchWorkspace = async () => null,
     onNavigate = () => {},
   } = {},
@@ -55,7 +56,7 @@ function loadSwitcher(
       if (name === '@tanstack/react-router') {
         return {
           useNavigate: () => onNavigate,
-          useRouterState: ({ select }) => select({ location: { pathname } }),
+          useRouterState: ({ select }) => select({ location: { pathname, search } }),
         }
       }
       if (name === '@/components/ui/Popover') {
@@ -308,4 +309,74 @@ test('SidebarWorkspaceSwitcher switches workspace and navigates to /new when vie
   await buttons[2].props.onClick()
   expect(switched).toEqual(['ws_personal', 'local'])
   expect(navigated).toEqual([{ to: '/new' }, { to: '/new' }])
+})
+
+test('SidebarWorkspaceSwitcher leaves workspace-specific bot, board, loop, plugin, app, and space routes cleanly and preserves Settings', async () => {
+  const cloudState = {
+    active: true,
+    source: 'attached',
+    status: 'connected',
+    activeWorkspaceId: 'ws_cas',
+    workspaces: [casWorkspace, personalWorkspace],
+    url: casWorkspace.url,
+    user: { id: 'u1', org_id: 'org_cas', org_name: 'Cambridge Advanced Systems', email: 'august@cas.example', display_name: 'August', role: 'admin' },
+    error: null,
+    oidcLoginUrl: '/v1/auth/login',
+    capabilities: { spaces: true },
+    lastSyncAt: '',
+  }
+
+  const findMenuRadioButtons = (tree) => {
+    const buttons = []
+    const walk = (node) => {
+      if (!node || typeof node !== 'object') return
+      if (Array.isArray(node)) {
+        for (const child of node) walk(child)
+        return
+      }
+      if (node.type === 'button' && node.props?.role === 'menuitemradio') {
+        buttons.push(node)
+      }
+      if (node.props?.trigger) walk(node.props.trigger)
+      if (node.props?.children) walk(node.props.children)
+    }
+    walk(tree)
+    return buttons
+  }
+
+  const cases = [
+    { pathname: '/bots/bot_42', search: {}, expected: [{ to: '/bots' }] },
+    { pathname: '/boards/brd_9', search: {}, expected: [{ to: '/boards' }] },
+    { pathname: '/loops/lp_3', search: {}, expected: [{ to: '/loops' }] },
+    { pathname: '/plugins/tenders', search: {}, expected: [{ to: '/new' }] },
+    { pathname: '/apps/crm/show_crm', search: {}, expected: [{ to: '/new' }] },
+    { pathname: '/new', search: { space: 'spc_old' }, expected: [{ to: '/new', search: {}, replace: true }] },
+    {
+      pathname: '/bots/bot_42',
+      search: { settings: 'plugins' },
+      expected: [{ to: '/bots', search: { settings: 'plugins' }, replace: true }],
+    },
+    {
+      pathname: '/boards/brd_9',
+      search: { settings: 'cloud' },
+      expected: [{ to: '/boards', search: { settings: 'cloud' }, replace: true }],
+    },
+    { pathname: '/boards', search: {}, expected: [] },
+    { pathname: '/bots', search: {}, expected: [] },
+  ]
+
+  for (const tc of cases) {
+    const navigated = []
+    const Switcher = loadSwitcher(cloudState, {
+      localBackend: true,
+      forcePopoverOpen: true,
+      pathname: tc.pathname,
+      search: tc.search,
+      onSwitchWorkspace: async () => null,
+      onNavigate: (target) => navigated.push(target),
+    })
+    const buttons = findMenuRadioButtons(Switcher({ onAddWorkspace: () => {} }))
+    await buttons[1].props.onClick()
+    expect(navigated).toEqual(tc.expected)
+  }
 })

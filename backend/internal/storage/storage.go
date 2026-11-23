@@ -467,14 +467,15 @@ type SessionFilter struct {
 }
 
 type SessionPluginView struct {
-	ID        string
-	Title     string
-	Status    string
-	UpdatedAt time.Time
-	Folder    string
-	Seq       int64
-	Reference string
-	File      string
+	ID          string
+	WorkspaceID string
+	Title       string
+	Status      string
+	UpdatedAt   time.Time
+	Folder      string
+	Seq         int64
+	Reference   string
+	File        string
 }
 
 type SessionPosition struct {

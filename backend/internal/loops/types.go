@@ -69,13 +69,14 @@ type Schedule struct {
 }
 
 type Loop struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Prompt   string   `json:"prompt"`
-	Schedule Schedule `json:"schedule"`
-	Status   string   `json:"status"`
-	Runtime  string   `json:"runtime"`
-	ACPAgent string   `json:"acp_agent,omitempty"`
+	ID          string   `json:"id"`
+	WorkspaceID string   `json:"workspace_id,omitempty"`
+	Name        string   `json:"name"`
+	Prompt      string   `json:"prompt"`
+	Schedule    Schedule `json:"schedule"`
+	Status      string   `json:"status"`
+	Runtime     string   `json:"runtime"`
+	ACPAgent    string   `json:"acp_agent,omitempty"`
 	// ModelProvider/Model override the Settings > Agents defaults for runs.
 	// Empty ReasoningEffort follows settings; "none" explicitly clears it.
 	ModelProvider   string    `json:"model_provider,omitempty"`
@@ -132,6 +133,7 @@ type SeenEvent struct {
 }
 
 type CreateLoop struct {
+	WorkspaceID     string
 	Name            string
 	Prompt          string
 	Schedule        Schedule

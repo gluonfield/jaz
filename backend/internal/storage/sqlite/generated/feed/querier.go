@@ -10,7 +10,7 @@ import (
 
 type Querier interface {
 	LastUserPromptAt(ctx context.Context, threadID string) (int64, error)
-	ListFeed(ctx context.Context) ([]ListFeedRow, error)
+	ListFeed(ctx context.Context, workspaceID string) ([]ListFeedRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

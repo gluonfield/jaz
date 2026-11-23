@@ -12,8 +12,10 @@ SELECT
   oauth_json,
   stdio_json,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  workspace_id
 FROM mcp_servers
+WHERE (CAST(sqlc.arg(filter_workspace_id) AS TEXT) = '' OR workspace_id = sqlc.arg(filter_workspace_id))
 ORDER BY updated_at_ms DESC;
 
 -- name: GetMCPServer :one
@@ -30,7 +32,8 @@ SELECT
   oauth_json,
   stdio_json,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  workspace_id
 FROM mcp_servers
 WHERE id = sqlc.arg(id)
 LIMIT 1;
@@ -49,7 +52,8 @@ INSERT INTO mcp_servers (
   oauth_json,
   stdio_json,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  workspace_id
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(name),
@@ -63,7 +67,8 @@ INSERT INTO mcp_servers (
   sqlc.arg(oauth_json),
   sqlc.arg(stdio_json),
   sqlc.arg(created_at_ms),
-  sqlc.arg(updated_at_ms)
+  sqlc.arg(updated_at_ms),
+  sqlc.arg(workspace_id)
 );
 
 -- name: UpdateMCPServer :execrows

@@ -75,7 +75,7 @@ func (q *Queries) DeleteOrphanWidgets(ctx context.Context, deletedStatus string)
 }
 
 const getBoard = `-- name: GetBoard :one
-SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale
+SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale, workspace_id
 FROM boards
 WHERE id = ?1
 LIMIT 1
@@ -94,6 +94,7 @@ func (q *Queries) GetBoard(ctx context.Context, id string) (Board, error) {
 		&i.CreatedAtMs,
 		&i.UpdatedAtMs,
 		&i.FontScale,
+		&i.WorkspaceID,
 	)
 	return i, err
 }
@@ -128,15 +129,16 @@ func (q *Queries) GetBoardWidget(ctx context.Context, arg GetBoardWidgetParams) 
 }
 
 const getDefaultBoard = `-- name: GetDefaultBoard :one
-SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale
+SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale, workspace_id
 FROM boards
 WHERE is_default = 1
+  AND workspace_id = ?1
 ORDER BY created_at_ms ASC
 LIMIT 1
 `
 
-func (q *Queries) GetDefaultBoard(ctx context.Context) (Board, error) {
-	row := q.db.QueryRowContext(ctx, getDefaultBoard)
+func (q *Queries) GetDefaultBoard(ctx context.Context, workspaceID string) (Board, error) {
+	row := q.db.QueryRowContext(ctx, getDefaultBoard, workspaceID)
 	var i Board
 	err := row.Scan(
 		&i.ID,
@@ -148,12 +150,13 @@ func (q *Queries) GetDefaultBoard(ctx context.Context) (Board, error) {
 		&i.CreatedAtMs,
 		&i.UpdatedAtMs,
 		&i.FontScale,
+		&i.WorkspaceID,
 	)
 	return i, err
 }
 
 const getWidget = `-- name: GetWidget :one
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout
+SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
 FROM widgets
 WHERE id = ?1
 LIMIT 1
@@ -172,12 +175,13 @@ func (q *Queries) GetWidget(ctx context.Context, id string) (Widget, error) {
 		&i.CreatedAtMs,
 		&i.UpdatedAtMs,
 		&i.LastLayout,
+		&i.WorkspaceID,
 	)
 	return i, err
 }
 
 const getWidgetByLoop = `-- name: GetWidgetByLoop :one
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout
+SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
 FROM widgets
 WHERE loop_id = ?1
 LIMIT 1
@@ -196,6 +200,7 @@ func (q *Queries) GetWidgetByLoop(ctx context.Context, loopID string) (Widget, e
 		&i.CreatedAtMs,
 		&i.UpdatedAtMs,
 		&i.LastLayout,
+		&i.WorkspaceID,
 	)
 	return i, err
 }
@@ -393,13 +398,14 @@ func (q *Queries) ListBoardItems(ctx context.Context, arg ListBoardItemsParams) 
 }
 
 const listBoards = `-- name: ListBoards :many
-SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale
+SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale, workspace_id
 FROM boards
+WHERE (CAST(?1 AS TEXT) = '' OR workspace_id = ?1)
 ORDER BY created_at_ms ASC
 `
 
-func (q *Queries) ListBoards(ctx context.Context) ([]Board, error) {
-	rows, err := q.db.QueryContext(ctx, listBoards)
+func (q *Queries) ListBoards(ctx context.Context, filterWorkspaceID string) ([]Board, error) {
+	rows, err := q.db.QueryContext(ctx, listBoards, filterWorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -417,6 +423,7 @@ func (q *Queries) ListBoards(ctx context.Context) ([]Board, error) {
 			&i.CreatedAtMs,
 			&i.UpdatedAtMs,
 			&i.FontScale,
+			&i.WorkspaceID,
 		); err != nil {
 			return nil, err
 		}
@@ -461,13 +468,14 @@ func (q *Queries) ListBoardsForWidget(ctx context.Context, widgetID string) ([]s
 }
 
 const listWidgets = `-- name: ListWidgets :many
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout
+SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
 FROM widgets
+WHERE (CAST(?1 AS TEXT) = '' OR workspace_id = ?1)
 ORDER BY updated_at_ms DESC
 `
 
-func (q *Queries) ListWidgets(ctx context.Context) ([]Widget, error) {
-	rows, err := q.db.QueryContext(ctx, listWidgets)
+func (q *Queries) ListWidgets(ctx context.Context, filterWorkspaceID string) ([]Widget, error) {
+	rows, err := q.db.QueryContext(ctx, listWidgets, filterWorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -485,6 +493,7 @@ func (q *Queries) ListWidgets(ctx context.Context) ([]Widget, error) {
 			&i.CreatedAtMs,
 			&i.UpdatedAtMs,
 			&i.LastLayout,
+			&i.WorkspaceID,
 		); err != nil {
 			return nil, err
 		}
@@ -525,7 +534,8 @@ INSERT INTO boards (
   window_bounds,
   is_default,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  workspace_id
 ) VALUES (
   ?1,
   ?2,
@@ -535,7 +545,8 @@ INSERT INTO boards (
   ?6,
   ?7,
   ?8,
-  ?9
+  ?9,
+  ?10
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -545,7 +556,8 @@ ON CONFLICT(id) DO UPDATE SET
   window_bounds = excluded.window_bounds,
   is_default = excluded.is_default,
   created_at_ms = excluded.created_at_ms,
-  updated_at_ms = excluded.updated_at_ms
+  updated_at_ms = excluded.updated_at_ms,
+  workspace_id = excluded.workspace_id
 `
 
 type UpsertBoardParams struct {
@@ -558,6 +570,7 @@ type UpsertBoardParams struct {
 	IsDefault    int64          `json:"is_default"`
 	CreatedAtMs  int64          `json:"created_at_ms"`
 	UpdatedAtMs  int64          `json:"updated_at_ms"`
+	WorkspaceID  string         `json:"workspace_id"`
 }
 
 func (q *Queries) UpsertBoard(ctx context.Context, arg UpsertBoardParams) error {
@@ -571,6 +584,7 @@ func (q *Queries) UpsertBoard(ctx context.Context, arg UpsertBoardParams) error 
 		arg.IsDefault,
 		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
+		arg.WorkspaceID,
 	)
 	return err
 }
@@ -643,7 +657,8 @@ INSERT INTO widgets (
   last_error,
   last_layout,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  workspace_id
 ) VALUES (
   ?1,
   ?2,
@@ -653,7 +668,8 @@ INSERT INTO widgets (
   ?6,
   ?7,
   ?8,
-  ?9
+  ?9,
+  ?10
 )
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
@@ -663,7 +679,8 @@ ON CONFLICT(id) DO UPDATE SET
   last_error = excluded.last_error,
   last_layout = excluded.last_layout,
   created_at_ms = excluded.created_at_ms,
-  updated_at_ms = excluded.updated_at_ms
+  updated_at_ms = excluded.updated_at_ms,
+  workspace_id = excluded.workspace_id
 `
 
 type UpsertWidgetParams struct {
@@ -676,6 +693,7 @@ type UpsertWidgetParams struct {
 	LastLayout     string         `json:"last_layout"`
 	CreatedAtMs    int64          `json:"created_at_ms"`
 	UpdatedAtMs    int64          `json:"updated_at_ms"`
+	WorkspaceID    string         `json:"workspace_id"`
 }
 
 func (q *Queries) UpsertWidget(ctx context.Context, arg UpsertWidgetParams) error {
@@ -689,6 +707,7 @@ func (q *Queries) UpsertWidget(ctx context.Context, arg UpsertWidgetParams) erro
 		arg.LastLayout,
 		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
+		arg.WorkspaceID,
 	)
 	return err
 }

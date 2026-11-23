@@ -6,11 +6,26 @@ import (
 )
 
 type Service struct {
-	store storage.FeedStore
+	store     storage.FeedStore
+	workspace func() string
 }
 
 func NewService(store storage.FeedStore) Service {
 	return Service{store: store}
+}
+
+func (s Service) WithWorkspace(fn func() string) Service {
+	s.workspace = fn
+	return s
+}
+
+func (s Service) activeWorkspaceID() string {
+	if s.workspace != nil {
+		if ws := s.workspace(); ws != "" {
+			return ws
+		}
+	}
+	return storage.LocalWorkspaceID
 }
 
 type Item struct {
@@ -22,7 +37,15 @@ type Item struct {
 }
 
 func (s Service) Feed() ([]Item, error) {
-	entries, err := s.store.LoadFeed()
+	var (
+		entries []storage.FeedItem
+		err     error
+	)
+	if wsStore, ok := s.store.(storage.WorkspaceFeedStore); ok {
+		entries, err = wsStore.LoadFeedForWorkspace(s.activeWorkspaceID())
+	} else {
+		entries, err = s.store.LoadFeed()
+	}
 	if err != nil {
 		return nil, err
 	}

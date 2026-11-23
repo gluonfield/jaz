@@ -38,7 +38,7 @@ func (s *Service) ListSources(ctx context.Context) ([]SourceView, error) {
 	if s.state == nil {
 		return []SourceView{}, nil
 	}
-	records, err := s.state.ListPluginSources(ctx)
+	records, err := s.state.ListPluginSources(ctx, s.activeWorkspaceID())
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +59,7 @@ func (s *Service) AddSource(ctx context.Context, input RepositoryInput) (SourceV
 	if err != nil {
 		return SourceView{}, err
 	}
+	record.WorkspaceID = s.activeWorkspaceID()
 	if err := s.state.SavePluginSource(ctx, record); err != nil {
 		return SourceView{}, err
 	}
@@ -66,12 +67,12 @@ func (s *Service) AddSource(ctx context.Context, input RepositoryInput) (SourceV
 }
 
 // EnsureDefaultSource seeds the official Jaz plugin marketplace when it is not
-// already registered.
+// already registered in the local workspace.
 func (s *Service) EnsureDefaultSource(ctx context.Context) (bool, error) {
-	if s.store == nil || s.state == nil {
+	if s.store == nil || s.state == nil || !s.isLocalWorkspace() {
 		return false, nil
 	}
-	sources, err := s.state.ListPluginSources(ctx)
+	sources, err := s.state.ListPluginSources(ctx, s.activeWorkspaceID())
 	if err != nil {
 		return false, err
 	}
@@ -110,7 +111,7 @@ func (s *Service) RemoveSource(ctx context.Context, id string) error {
 	if id == DefaultMarketplaceSourceID() {
 		return fmt.Errorf("%w: the official Jaz marketplace cannot be removed", ErrInvalid)
 	}
-	deleted, err := s.state.DeletePluginSource(ctx, id)
+	deleted, err := s.state.DeletePluginSource(ctx, s.activeWorkspaceID(), id)
 	if err != nil {
 		return err
 	}
@@ -131,11 +132,12 @@ func (s *Service) refreshSources(ctx context.Context, skipSourceID string) error
 	if s.store == nil || s.state == nil {
 		return nil
 	}
-	sources, err := s.state.ListPluginSources(ctx)
+	ws := s.activeWorkspaceID()
+	sources, err := s.state.ListPluginSources(ctx, ws)
 	if err != nil {
 		return err
 	}
-	states, err := s.state.ListPluginStates(ctx)
+	states, err := s.state.ListPluginStates(ctx, ws)
 	if err != nil {
 		return err
 	}
@@ -205,6 +207,7 @@ func (s *Service) refreshSources(ctx context.Context, skipSourceID string) error
 		} else {
 			src.CheckedAt = time.Now().UTC()
 		}
+		src.WorkspaceID = ws
 		if err := s.state.SavePluginSource(ctx, src); err != nil {
 			errs = append(errs, err)
 		}
@@ -225,6 +228,7 @@ func (s *Service) refreshSources(ctx context.Context, skipSourceID string) error
 			continue
 		}
 		if res.sha != st.RemoteSHA {
+			st.WorkspaceID = ws
 			st.RemoteSHA = res.sha
 			if saveErr := s.state.SavePluginState(ctx, st); saveErr != nil {
 				errs = append(errs, saveErr)

@@ -172,10 +172,11 @@ func (s *Service) join(groupID, member string) (storage.BotMembership, error) {
 		return storage.BotMembership{}, err
 	}
 	thread, err := s.threads.CreateSession(context.Background(), acp.SpawnRequest{
-		Slug:       bot.Title + " in " + group.Title,
-		Title:      bot.Title + " in " + group.Title,
-		SourceType: storage.SourceBotMember,
-		SourceID:   member,
+		Slug:        bot.Title + " in " + group.Title,
+		Title:       bot.Title + " in " + group.Title,
+		SourceType:  storage.SourceBotMember,
+		SourceID:    member,
+		WorkspaceID: bot.WorkspaceID,
 	})
 	if err != nil {
 		return storage.BotMembership{}, err

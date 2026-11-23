@@ -10,6 +10,7 @@ import (
 	"time"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/storage"
 	oauthdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationoauth"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/mcpdb"
 )
@@ -17,7 +18,11 @@ import (
 const emptyMCPEnvHeadersJSON = "[]"
 
 func (s *Store) ListMCPServers() ([]mcpconfig.Server, error) {
-	rows, err := mcpdb.New(s.db).ListMCPServers(context.Background())
+	return s.ListMCPServersForWorkspace(storage.LocalWorkspaceID)
+}
+
+func (s *Store) ListMCPServersForWorkspace(workspaceID string) ([]mcpconfig.Server, error) {
+	rows, err := mcpdb.New(s.db).ListMCPServers(context.Background(), firstNonEmpty(workspaceID, storage.LocalWorkspaceID))
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +56,7 @@ func (s *Store) CreateMCPServer(input mcpconfig.ServerInput) (mcpconfig.Server, 
 		return mcpconfig.Server{}, err
 	}
 	now := time.Now().UTC()
+	input.WorkspaceID = firstNonEmpty(input.WorkspaceID, storage.LocalWorkspaceID)
 	server := input.Server(id, now, now)
 	s.writeMu.Lock()
 	err = mcpdb.New(s.db).CreateMCPServer(context.Background(), mcpdb.CreateMCPServerParams{
@@ -67,6 +73,7 @@ func (s *Store) CreateMCPServer(input mcpconfig.ServerInput) (mcpconfig.Server, 
 		StdioJson:         config.stdio,
 		CreatedAtMs:       timeToMs(server.CreatedAt),
 		UpdatedAtMs:       timeToMs(server.UpdatedAt),
+		WorkspaceID:       server.WorkspaceID,
 	})
 	s.writeMu.Unlock()
 	if err != nil {
@@ -129,6 +136,7 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 	if err := tx.Commit(); err != nil {
 		return mcpconfig.Server{}, err
 	}
+	input.WorkspaceID = firstNonEmpty(current.WorkspaceID, storage.LocalWorkspaceID)
 	return input.Server(id, msToTime(current.CreatedAtMs), now), nil
 }
 
@@ -184,6 +192,7 @@ func (s *Store) decodeMCPServer(row mcpdb.GetMCPServerRow) (mcpconfig.Server, er
 		return mcpconfig.Server{}, err
 	}
 	server := mcpconfig.Server{
+		WorkspaceID:       firstNonEmpty(row.WorkspaceID, storage.LocalWorkspaceID),
 		ID:                row.ID,
 		Name:              row.Name,
 		Transport:         row.Transport,

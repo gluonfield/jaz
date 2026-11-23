@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { botChat, dragSections, placePin, taskStateLabel } from './bots'
+import { botChat, dragSections, lastBotId, placePin, rememberBot, taskStateLabel } from './bots'
 import { optimisticTranscriptMessages } from './optimisticUserMessage'
 import { mergeEarlierHistory } from './sessionHistory'
 
@@ -185,4 +185,31 @@ test('task state distinguishes active work and blockers from worker completion',
 test('a closed task says how it closed, whatever its threads did', () => {
   expect(taskStateLabel({ status: 'completed', threads: [{ state: 'finished' }] })).toBe('Done')
   expect(taskStateLabel({ status: 'cancelled', threads: [{ state: 'failed' }] })).toBe('Dropped')
+})
+
+test('remembered bot selection stays isolated per workspace', () => {
+  const prev = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  const stored = new Map()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    writable: true,
+    value: {
+      getItem: (key) => stored.get(key) ?? null,
+      setItem: (key, value) => stored.set(key, value),
+      removeItem: (key) => stored.delete(key),
+    },
+  })
+  try {
+    rememberBot('bot_local', 'local')
+    rememberBot('bot_cas', 'ws_cas')
+    rememberBot('bot_personal', 'ws_personal')
+    expect(lastBotId('local')).toBe('bot_local')
+    expect(lastBotId()).toBe('bot_local')
+    expect(lastBotId('ws_cas')).toBe('bot_cas')
+    expect(lastBotId('ws_personal')).toBe('bot_personal')
+    expect(lastBotId('ws_empty')).toBeUndefined()
+  } finally {
+    if (prev) Object.defineProperty(globalThis, 'localStorage', prev)
+    else delete globalThis.localStorage
+  }
 })

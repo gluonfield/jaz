@@ -28,8 +28,10 @@ import { SidebarWorkspaceSwitcher } from '@/components/sidebar/SidebarWorkspaceS
 import { TitlebarNavigation } from '@/components/sidebar/TitlebarNavigation'
 import { ToastProvider } from '@/components/ui/toast'
 import { clientRuntime, isMacDesktop } from '@/lib/clientRuntime'
+import { onWorkspaceChange } from '@/lib/cloudAccount'
 import { SidebarVisibility } from '@/lib/sidebar'
 import { SidePanelSlot } from '@/lib/sidePanelSlot'
+import { workspaceSwitchNavigation } from '@/lib/workspaceNavigation'
 import { VoiceProvider } from '@/lib/voice/VoiceProvider'
 import { GlobalVoice } from '@/components/session/FloatingVoice'
 import { VoiceDesktopBridge } from '@/lib/voice/VoiceDesktopBridge'
@@ -125,16 +127,25 @@ function RootLayout() {
   const [resizing, setResizing] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
-  const [openAddCloudWorkspace, setOpenAddCloudWorkspace] = useState(false)
+  const [addCloudRequestId, setAddCloudRequestId] = useState(0)
   const [panelRow, setPanelRow] = useState<HTMLDivElement | null>(null)
   const [panelSlot, setPanelSlot] = useState<HTMLDivElement | null>(null)
   const sidePanelSlot = useMemo(() => ({ slot: panelSlot, row: panelRow }), [panelSlot, panelRow])
+
+  useEffect(
+    () =>
+      onWorkspaceChange(() => {
+        const nextRoute = workspaceSwitchNavigation(router.state.location)
+        if (nextRoute) void navigate(nextRoute)
+      }),
+    [navigate, router],
+  )
 
   // Settings open-state is derived from the URL, not local state. lastSection
   // lets the sidebar button reopen the pane the user last viewed.
   const settingsSection = Route.useSearch().settings
   const settingsOpen = settingsSection !== undefined
-  const lastSection = useRef<SettingsSection>('general')
+  const lastSection = useRef<SettingsSection>('cloud')
   useEffect(() => {
     if (settingsSection) lastSection.current = settingsSection
   }, [settingsSection])
@@ -148,12 +159,12 @@ function RootLayout() {
     [navigate],
   )
   const openAddCloud = useCallback(() => {
-    setOpenAddCloudWorkspace(true)
+    setAddCloudRequestId((id) => id + 1)
     openSettings('cloud')
   }, [openSettings])
   const goToSettingsSection = useCallback(
     (section: SettingsSection, options?: SettingsSectionNavigation) => {
-      if (section !== 'cloud') setOpenAddCloudWorkspace(false)
+      if (section !== 'cloud') setAddCloudRequestId(0)
       if (section === settingsSection) return
       void navigate({
         to: '.',
@@ -164,7 +175,7 @@ function RootLayout() {
     [navigate, settingsSection],
   )
   const closeSettings = useCallback(() => {
-    setOpenAddCloudWorkspace(false)
+    setAddCloudRequestId(0)
     void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined }) })
   }, [navigate])
 
@@ -356,6 +367,7 @@ function RootLayout() {
                         <SettingsNav
                           section={settingsSection}
                           onSectionChange={goToSettingsSection}
+                          onAddWorkspace={openAddCloud}
                           onClose={closeSettings}
                         />
                       ) : (
@@ -400,8 +412,9 @@ function RootLayout() {
                 <SettingsOverlay
                   open={settingsOpen}
                   section={settingsSection}
-                  openAddCloudWorkspace={openAddCloudWorkspace}
+                  addCloudRequestId={addCloudRequestId}
                   onSectionChange={goToSettingsSection}
+                  onAddWorkspace={openAddCloud}
                   onClose={closeSettings}
                 />
               </div>

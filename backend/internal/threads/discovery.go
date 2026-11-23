@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -29,12 +30,24 @@ type DiscoveryResponse struct {
 	Threads []ThreadSummary `json:"threads"`
 }
 
-func (s *Service) ListMCP(ctx context.Context, _ *mcp.CallToolRequest, input ListRequest) (*mcp.CallToolResult, DiscoveryResponse, error) {
+func (s *Service) workspaceForRequest(req *mcp.CallToolRequest) string {
+	if sessionID := mcpsession.SessionID(req); sessionID != "" && s.context != nil {
+		if session, err := s.context.LoadSession(sessionID); err == nil {
+			if session.WorkspaceID != "" {
+				return session.WorkspaceID
+			}
+			return storage.LocalWorkspaceID
+		}
+	}
+	return s.activeWorkspaceID()
+}
+
+func (s *Service) ListMCP(ctx context.Context, req *mcp.CallToolRequest, input ListRequest) (*mcp.CallToolResult, DiscoveryResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, DiscoveryResponse{}, err
 	}
 	sessions, err := s.context.ListSessions(storage.SessionFilter{
-		IncludeChildren: true, IncludeSourced: true, Archived: input.Archived, Limit: clampSearchLimit(input.Limit),
+		WorkspaceID: s.workspaceForRequest(req), IncludeChildren: true, IncludeSourced: true, Archived: input.Archived, Limit: clampSearchLimit(input.Limit),
 	})
 	out := DiscoveryResponse{Threads: make([]ThreadSummary, 0, len(sessions))}
 	for _, session := range sessions {
@@ -56,11 +69,11 @@ type SearchRequest struct {
 	IncludeArchived bool   `json:"includeArchived,omitempty"`
 }
 
-func (s *Service) SearchMCP(ctx context.Context, _ *mcp.CallToolRequest, input SearchRequest) (*mcp.CallToolResult, DiscoveryResponse, error) {
+func (s *Service) SearchMCP(ctx context.Context, req *mcp.CallToolRequest, input SearchRequest) (*mcp.CallToolResult, DiscoveryResponse, error) {
 	if strings.TrimSpace(input.Query) == "" {
 		return nil, DiscoveryResponse{}, fmt.Errorf("query is required")
 	}
-	results, err := s.Search(ctx, SearchQuery{Query: input.Query, IncludeArchived: input.IncludeArchived, IncludeSourced: true, Limit: input.Limit})
+	results, err := s.Search(ctx, SearchQuery{Query: input.Query, WorkspaceID: s.workspaceForRequest(req), IncludeArchived: input.IncludeArchived, IncludeSourced: true, Limit: input.Limit})
 	out := DiscoveryResponse{Threads: make([]ThreadSummary, 0, len(results))}
 	for _, result := range results {
 		out.Threads = append(out.Threads, ThreadSummary{

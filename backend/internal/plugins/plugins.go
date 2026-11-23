@@ -4,6 +4,8 @@ package plugins
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -115,6 +117,7 @@ type Store struct {
 	stateStore   storage.PluginStore
 	reservedIDs  func(string) bool
 	oauthClients func(string) mcpconfig.OAuthConfig
+	workspace    func() string
 	mu           sync.RWMutex
 }
 
@@ -144,13 +147,43 @@ func (s *Store) WithReservedIDs(fn func(string) bool) *Store {
 	return s
 }
 
-func (s *Store) IsEnabled(ctx context.Context, pluginID string) bool {
-	if s == nil || s.stateStore == nil {
-		return true
+func (s *Store) WithWorkspace(fn func() string) *Store {
+	s.workspace = fn
+	return s
+}
+
+func (s *Store) ActiveWorkspaceID() string {
+	if s != nil && s.workspace != nil {
+		if ws := s.workspace(); ws != "" {
+			return ws
+		}
 	}
-	record, ok, err := s.stateStore.GetPluginState(ctx, pluginID)
+	return storage.LocalWorkspaceID
+}
+
+func (s *Store) workspaceDirs() (string, string) {
+	ws := s.ActiveWorkspaceID()
+	if ws == storage.LocalWorkspaceID {
+		return s.dir, s.dataDir
+	}
+	sum := sha256.Sum256([]byte(ws))
+	key := "ws-" + hex.EncodeToString(sum[:8])
+	return filepath.Join(s.dir, ".workspaces", key), filepath.Join(s.dataDir, ".workspaces", key)
+}
+
+func (s *Store) ActivePluginsDir() string {
+	dir, _ := s.workspaceDirs()
+	return dir
+}
+
+func (s *Store) IsEnabled(ctx context.Context, pluginID string) bool {
+	ws := s.ActiveWorkspaceID()
+	if s == nil || s.stateStore == nil {
+		return ws == storage.LocalWorkspaceID
+	}
+	record, ok, err := s.stateStore.GetPluginState(ctx, ws, pluginID)
 	if err != nil || !ok {
-		return true
+		return ws == storage.LocalWorkspaceID
 	}
 	return record.Enabled
 }
@@ -166,7 +199,8 @@ func (s *Store) List() ([]Plugin, error) {
 func (s *Store) ListWithContext(ctx context.Context) ([]Plugin, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	entries, err := os.ReadDir(s.dir)
+	dir, dataDir := s.workspaceDirs()
+	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return []Plugin{}, nil
 	}
@@ -180,7 +214,7 @@ func (s *Store) ListWithContext(ctx context.Context) ([]Plugin, error) {
 			continue
 		}
 		state := states[entry.Name()]
-		plugin, err := readPackage(filepath.Join(s.dir, entry.Name()), s.dataDir, state.Config)
+		plugin, err := readPackage(filepath.Join(dir, entry.Name()), dataDir, state.Config)
 		if err != nil || plugin.ID != entry.Name() {
 			continue
 		}
@@ -199,9 +233,10 @@ func (s *Store) Read(ctx context.Context, id string) (Plugin, error) {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	dir, dataDir := s.workspaceDirs()
 	states := s.loadStates(ctx)
 	state := states[id]
-	plugin, err := readPackage(filepath.Join(s.dir, id), s.dataDir, state.Config)
+	plugin, err := readPackage(filepath.Join(dir, id), dataDir, state.Config)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, manifest.ErrNotPlugin) {
 		return Plugin{}, ErrNotFound
 	}
@@ -225,7 +260,8 @@ func (s *Store) view(ref string) (string, error) {
 	if !ok || !manifest.SafeName(plugin) || !name.MatchString(view) {
 		return "", fmt.Errorf("%w: view %q is not <plugin>/<view>", ErrInvalid, ref)
 	}
-	root, err := os.OpenRoot(filepath.Join(s.dir, plugin))
+	dir, _ := s.workspaceDirs()
+	root, err := os.OpenRoot(filepath.Join(dir, plugin))
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrNotFound, err)
 	}
@@ -253,7 +289,7 @@ func (s *Store) loadStates(ctx context.Context) map[string]storage.PluginStateRe
 	if s.stateStore == nil {
 		return out
 	}
-	records, err := s.stateStore.ListPluginStates(ctx)
+	records, err := s.stateStore.ListPluginStates(ctx, s.ActiveWorkspaceID())
 	if err != nil {
 		return out
 	}
