@@ -160,6 +160,8 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service) server.Ro
 		server.Route{Pattern: "PUT /v1/instructions/{scope}/{scope_id}/{kind}", Handler: httpHandlerFunc(h.PutInstruction)},
 		server.Route{Pattern: "GET /v1/usage/summary", Handler: httpHandlerFunc(h.UsageSummary)},
 		server.Route{Pattern: "POST /v1/threads/{id}/turns", Handler: httpHandlerFunc(h.CreateTurn)},
+		server.Route{Pattern: "POST /v1/threads/{id}/cancel", Handler: httpHandlerFunc(h.CancelThread)},
+		server.Route{Pattern: "POST /v1/threads/{id}/steer", Handler: httpHandlerFunc(h.SteerThread)},
 		server.Route{Pattern: "PUT /v1/threads/{id}/user-state", Handler: httpHandlerFunc(h.UpdateThreadUserState)},
 		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/presign", Handler: httpHandlerFunc(h.PresignUpload)},
 		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/commit", Handler: httpHandlerFunc(h.CommitUpload)},

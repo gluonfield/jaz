@@ -48,6 +48,14 @@ func (s *Server) handleCloudSessionAction(w http.ResponseWriter, r *http.Request
 	case "seen":
 		v := false
 		patch.Unread = &v
+	case "cancel":
+		raw, status, err := s.Cloud.CancelThread(r.Context(), session.ID)
+		if err != nil {
+			cloudapi.WriteError(w, err)
+			return
+		}
+		cloudapi.WriteRawJSON(w, status, raw)
+		return
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("action %q is not supported for cloud threads", action))
 		return

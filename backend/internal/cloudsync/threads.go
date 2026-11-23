@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -186,7 +187,7 @@ func (s *Service) StreamEvents(ctx context.Context, threadID string, afterSeq in
 				}
 				_ = s.store.UpdateCloudThreadStatus(ctx, acc.ID, threadID, status, ev.CreatedAt)
 				s.TriggerSync()
-			} else if isCloudUserEvent(ev.Type) || isCloudAssistantDelta(ev.Type) {
+			} else if isCloudUserEvent(ev.Type) || isCloudAssistantDelta(ev.Type) || isCloudThinkingDelta(ev.Type) || isCloudToolEvent(ev.Type) {
 				_ = s.store.UpdateCloudThreadStatus(ctx, acc.ID, threadID, storage.StatusRunning, ev.CreatedAt)
 			}
 		}
@@ -204,6 +205,49 @@ func (s *Service) CreateTurn(ctx context.Context, threadID string, body json.Raw
 		return nil, 0, ErrNotConnected
 	}
 	raw, code, err := s.client.doJSON(ctx, http.MethodPost, acc.BaseURL, "/v1/threads/"+url.PathEscape(threadID)+"/turns", acc.Token, body)
+	if err != nil {
+		return nil, code, err
+	}
+	if s.isGeneration(gen) {
+		_ = s.store.UpdateCloudThreadStatus(ctx, acc.ID, threadID, storage.StatusRunning, time.Now().UTC())
+	}
+	return raw, code, nil
+}
+
+func (s *Service) CancelThread(ctx context.Context, threadID string) (json.RawMessage, int, error) {
+	if err := validatePathSegment(threadID); err != nil {
+		return nil, 0, err
+	}
+	acc, gen, ok := s.activeAccountWithGen()
+	if !ok || acc.Token == "" {
+		return nil, 0, ErrNotConnected
+	}
+	raw, code, err := s.client.doJSON(ctx, http.MethodPost, acc.BaseURL, "/v1/threads/"+url.PathEscape(threadID)+"/cancel", acc.Token, nil)
+	if err != nil {
+		return nil, code, err
+	}
+	if s.isGeneration(gen) {
+		_ = s.store.UpdateCloudThreadStatus(ctx, acc.ID, threadID, storage.StatusIdle, time.Now().UTC())
+		s.TriggerSync()
+	}
+	return raw, code, nil
+}
+
+func (s *Service) SteerThread(ctx context.Context, threadID, text, mode string) (json.RawMessage, int, error) {
+	if err := validatePathSegment(threadID); err != nil {
+		return nil, 0, err
+	}
+	acc, gen, ok := s.activeAccountWithGen()
+	if !ok || acc.Token == "" {
+		return nil, 0, ErrNotConnected
+	}
+	payload := map[string]any{
+		"text": text,
+	}
+	if trimmedMode := strings.TrimSpace(mode); trimmedMode != "" {
+		payload["mode"] = trimmedMode
+	}
+	raw, code, err := s.client.doJSON(ctx, http.MethodPost, acc.BaseURL, "/v1/threads/"+url.PathEscape(threadID)+"/steer", acc.Token, payload)
 	if err != nil {
 		return nil, code, err
 	}

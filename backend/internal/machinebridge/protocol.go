@@ -17,14 +17,23 @@ const (
 )
 
 const (
-	MethodHello       = "machine.hello"
-	MethodListDir     = "device_list_dir"
-	MethodSearch      = "device_search"
-	MethodStageFiles  = "device_stage_files"
-	MethodCommitFiles = "device_commit_files"
-	MethodExecStart   = "device_exec_start"
-	MethodExecStop    = "device_exec_stop"
-	MethodMCPCall     = "device_mcp_call"
+	MethodHello           = "machine.hello"
+	MethodListDir         = "device_list_dir"
+	MethodSearch          = "device_search"
+	MethodStageFiles      = "device_stage_files"
+	MethodCommitFiles     = "device_commit_files"
+	MethodExecStart       = "device_exec_start"
+	MethodExecStop        = "device_exec_stop"
+	MethodMCPCall         = "device_mcp_call"
+	MethodExecTunnelOpen  = "exec_tunnel_open"
+	MethodExecTunnelFrame = "exec_tunnel_frame"
+	MethodExecTunnelClose = "exec_tunnel_close"
+)
+
+const (
+	ExecTunnelMessageText   = "text"
+	ExecTunnelMessageBinary = "binary"
+	MaxExecTunnelFrameBytes = 2 << 20
 )
 
 type ErrorCode string
@@ -275,4 +284,24 @@ type ExecStopRequest struct {
 
 type ExecStopResponse struct {
 	Stopped bool `json:"stopped"`
+}
+
+type ExecTunnelOpenRequest struct {
+	TunnelID  string `json:"tunnel_id"`
+	SessionID string `json:"session_id"`
+}
+
+type ExecTunnelOpenResponse struct {
+	OK bool `json:"ok"`
+}
+
+type ExecTunnelFrameParams struct {
+	TunnelID    string `json:"tunnel_id"`
+	MessageType string `json:"message_type"`
+	Data        string `json:"data"`
+}
+
+type ExecTunnelCloseParams struct {
+	TunnelID string `json:"tunnel_id"`
+	Reason   string `json:"reason,omitempty"`
 }

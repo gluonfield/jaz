@@ -323,6 +323,7 @@ func (c *Client) connectAndServe(ctx context.Context) (bool, error) {
 		}
 	}()
 
+	tunnels := newExecTunnelManager(sessionCtx, writeFrame, cancelSession)
 	sem := make(chan struct{}, c.cfg.MaxConcurrency)
 	var wg sync.WaitGroup
 	var readErr error
@@ -337,6 +338,14 @@ readLoop:
 		if frame.Method == "" {
 			continue
 		}
+		switch frame.Method {
+		case MethodExecTunnelFrame:
+			tunnels.HandleFrame(frame.Params)
+			continue
+		case MethodExecTunnelClose:
+			tunnels.HandleClose(frame.Params)
+			continue
+		}
 		select {
 		case sem <- struct{}{}:
 		case <-sessionCtx.Done():
@@ -347,7 +356,21 @@ readLoop:
 		go func(req Frame) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			reply := c.handleFrame(sessionCtx, negotiated, req)
+			if req.Method == MethodExecTunnelOpen {
+				tun, reply := tunnels.HandleOpen(sessionCtx, negotiated, req)
+				if err := writeFrame(reply); err != nil {
+					if tun != nil {
+						tunnels.CloseTunnel(tun.id, "hub write failed", false)
+					}
+					cancelSession()
+					return
+				}
+				if tun != nil {
+					tun.start()
+				}
+				return
+			}
+			reply := c.handleFrame(sessionCtx, negotiated, tunnels, req)
 			if err := writeFrame(reply); err != nil {
 				cancelSession()
 			}
@@ -355,8 +378,10 @@ readLoop:
 	}
 
 	cancelSession()
+	tunnels.CloseAll()
 	close(pingDone)
 	wg.Wait()
+	tunnels.Wait()
 	c.stopExecSessions()
 	return true, readErr
 }
@@ -407,10 +432,21 @@ func (c *Client) handshake(ws *websocket.Conn, writeFrame func(Frame) error) (Ca
 	return NegotiateCapabilities(c.cfg.Capabilities, resp.Capabilities), nil
 }
 
-func (c *Client) handleFrame(ctx context.Context, caps Capabilities, req Frame) Frame {
+func (c *Client) handleFrame(ctx context.Context, caps Capabilities, tunnels *execTunnelManager, req Frame) Frame {
 	result, err := c.handler.Dispatch(ctx, caps, req.Method, req.Params)
+	if req.Method == MethodExecStop && (err == nil || errors.Is(err, ErrNotFound)) {
+		var stopReq ExecStopRequest
+		if json.Unmarshal(req.Params, &stopReq) == nil {
+			tunnels.RemoveSession(stopReq.SessionID, "exec session stopped")
+		}
+	}
 	if err != nil {
 		return Frame{ID: req.ID, Error: toRPCError(err)}
+	}
+	if req.Method == MethodExecStart {
+		if resp, ok := result.(ExecStartResponse); ok {
+			tunnels.RegisterSession(resp.SessionID, resp.Endpoint, resp.AuthToken)
+		}
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil {

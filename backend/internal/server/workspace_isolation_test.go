@@ -57,6 +57,10 @@ func (c *switchableCloudBridge) UpdateUserState(context.Context, string, storage
 	return storage.Session{}, nil, nil
 }
 
+func (c *switchableCloudBridge) CancelThread(context.Context, string) (json.RawMessage, int, error) {
+	return json.RawMessage(`{"canceled":true}`), 200, nil
+}
+
 func (c *switchableCloudBridge) ListSessions(context.Context, bool) ([]storage.Session, error) {
 	return nil, nil
 }

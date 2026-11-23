@@ -96,6 +96,7 @@ type CloudBridge interface {
 	CreateThread(context.Context, cloudsync.CreateThreadRequest) (storage.Session, error)
 	StreamEvents(context.Context, string, int64, func(sessionevents.Event)) error
 	UpdateUserState(context.Context, string, storage.CloudThreadUserStatePatch) (storage.Session, json.RawMessage, error)
+	CancelThread(context.Context, string) (json.RawMessage, int, error)
 }
 
 type Server struct {

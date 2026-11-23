@@ -237,6 +237,32 @@ func (h *Handler) CreateTurn(w http.ResponseWriter, r *http.Request) {
 	h.proxyJSON(w, r, r.PathValue("id"), h.service.CreateTurn)
 }
 
+func (h *Handler) CancelThread(w http.ResponseWriter, r *http.Request) {
+	raw, status, err := h.service.CancelThread(r.Context(), r.PathValue("id"))
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteRawJSON(w, status, raw)
+}
+
+func (h *Handler) SteerThread(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+		Mode string `json:"mode"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCloudJSONBodyBytes)).Decode(&body); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	raw, status, err := h.service.SteerThread(r.Context(), r.PathValue("id"), body.Text, body.Mode)
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteRawJSON(w, status, raw)
+}
+
 func (h *Handler) UpdateThreadUserState(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Pinned                 *bool `json:"pinned"`
