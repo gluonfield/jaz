@@ -218,3 +218,38 @@ test('parseBackendConnectUrl reads credentials only from fragment and ignores qu
     key: 'frag-secret',
   })
 })
+
+test('cookie-authenticated Cloud Web sessions attach credentials: include without overriding explicit omit', async () => {
+  const origin = 'https://jaz-cloud-staging.camadvanced.com'
+  const { api } = fixture(origin)
+  api.setApiServerMode('cloud')
+  api.setApiAuthToken(origin, null)
+  const calls = []
+  let rejections = 0
+  const unsub = api.onApiAuthRejected(() => {
+    rejections += 1
+  })
+  replace('fetch', async (url, init) => {
+    calls.push({
+      url: String(url),
+      credentials: init.credentials,
+      auth: init.headers.get('Authorization'),
+    })
+    if (String(url).endsWith('/v1/expired')) {
+      return Response.json({ error: 'invalid session token', code: 'unauthorized' }, { status: 401 })
+    }
+    return Response.json({ ok: true })
+  })
+
+  await api.apiFetch('/v1/threads')
+  await api.apiFetch('/v1/public', { credentials: 'omit' })
+  await api.apiFetch('/v1/expired')
+  unsub()
+
+  expect(calls).toEqual([
+    { url: `${origin}/v1/threads`, credentials: 'include', auth: null },
+    { url: `${origin}/v1/public`, credentials: 'omit', auth: null },
+    { url: `${origin}/v1/expired`, credentials: 'include', auth: null },
+  ])
+  expect(rejections).toBe(1)
+})

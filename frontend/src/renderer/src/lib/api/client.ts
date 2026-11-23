@@ -215,7 +215,10 @@ function withAPIHeaders(init: RequestInit = {}, url = apiBaseUrl()): RequestInit
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`)
   }
-  return { ...init, headers }
+  const credentials =
+    init.credentials ??
+    (!token && clientRuntime.kind === 'web' && isCloudApiSession() ? 'include' : undefined)
+  return credentials === undefined ? { ...init, headers } : { ...init, headers, credentials }
 }
 
 function appendAuthQuery(rawUrl: string, url = apiBaseUrl()): string {
@@ -238,8 +241,12 @@ export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): 
   const revision = credentialRevision
   const options = withAPIHeaders({ ...init, signal }, origin)
   const bearer = new Headers(options.headers).get('Authorization')
+  const cookieAuthed = !bearer && !cachedApiAuthToken(origin) && options.credentials === 'include'
   return backendFetch(targetUrl, options).then(async (response) => {
-    if ((response.status === 401 || response.status === 403) && bearer === `Bearer ${cachedApiAuthToken(origin)}`) {
+    const authMatchesSession = bearer
+      ? bearer === `Bearer ${cachedApiAuthToken(origin)}`
+      : cookieAuthed
+    if ((response.status === 401 || response.status === 403) && authMatchesSession) {
       const body = await response.clone().json().catch(() => null) as { code?: string } | null
       if (revision === credentialRevision && origin === apiBaseUrl() && body?.code === 'unauthorized') {
         for (const handler of rejectionListeners) {

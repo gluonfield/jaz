@@ -22,6 +22,7 @@ import (
 	"github.com/wins/jaz/backend/internal/jazagent"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/m365copilot"
+	"github.com/wins/jaz/backend/internal/machinebridge"
 	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
@@ -233,26 +234,49 @@ func NewPromptBuilder(store *sqlitestore.Store, inst instructions.Store, cloud *
 		WithPluginsDir(installed.ActivePluginsDir)
 }
 
+type machineBridgeDeps struct {
+	fx.In
+
+	Config    Config
+	Store     *sqlitestore.Store
+	Workspace Workspace          `optional:"true"`
+	Cloud     *cloudsync.Service `optional:"true"`
+	Logger    *log.Logger        `optional:"true"`
+}
+
+type machineBridgeOut struct {
+	fx.Out
+
+	Supervisor *MachineBridgeSupervisor
+	Controller machinebridge.Controller
+}
+
+func NewMachineBridge(deps machineBridgeDeps) machineBridgeOut {
+	if deps.Config.Cloud.DisableMachineBridge || deps.Cloud == nil {
+		return machineBridgeOut{}
+	}
+	sup := NewMachineBridgeSupervisor(deps.Cloud, deps.Store, string(deps.Workspace), deps.Logger)
+	return machineBridgeOut{
+		Supervisor: sup,
+		Controller: sup,
+	}
+}
+
 type cloudSyncDeps struct {
 	fx.In
 
 	Lifecycle fx.Lifecycle
-	Config    Config
-	Store     *sqlitestore.Store
-	Workspace Workspace
 	Cloud     *cloudsync.Service
 	MCP       *mcpruntime.Manager
-	Logger    *log.Logger
+	Bridge    *MachineBridgeSupervisor `optional:"true"`
 }
 
 func StartCloudSync(deps cloudSyncDeps) {
 	deps.Cloud.AddOnAccountChanged(func(ctx context.Context) {
 		deps.MCP.Refresh(ctx)
 	})
-	var bridge *MachineBridgeSupervisor
-	if !deps.Config.Cloud.DisableMachineBridge {
-		bridge = NewMachineBridgeSupervisor(deps.Cloud, deps.Store, string(deps.Workspace), deps.Logger)
-		deps.Cloud.AddOnAccountChanged(bridge.Reconcile)
+	if deps.Bridge != nil {
+		deps.Cloud.AddOnAccountChanged(deps.Bridge.Reconcile)
 	}
 	var cancel context.CancelFunc
 	deps.Lifecycle.Append(fx.Hook{
@@ -260,8 +284,8 @@ func StartCloudSync(deps cloudSyncDeps) {
 			ctx, stop := context.WithCancel(context.Background())
 			cancel = stop
 			go deps.Cloud.Run(ctx)
-			if bridge != nil {
-				bridge.Start(ctx)
+			if deps.Bridge != nil {
+				deps.Bridge.Start(ctx)
 			}
 			return nil
 		},
@@ -269,8 +293,8 @@ func StartCloudSync(deps cloudSyncDeps) {
 			if cancel != nil {
 				cancel()
 			}
-			if bridge != nil {
-				bridge.Stop(stopCtx)
+			if deps.Bridge != nil {
+				deps.Bridge.Stop(stopCtx)
 			}
 			return nil
 		},

@@ -37,7 +37,7 @@ import { rememberBackend, removeKnownBackend, updateBackendMetadata } from '@/li
 import { clientRuntime } from '@/lib/clientRuntime'
 import { loadBrowserCredential, saveBrowserCredential, forgetBrowserCredential } from '@/lib/browserCredentials'
 import { queryClient } from '@/lib/query/queryClient'
-import { fetchServerDiscovery, readAccess, readCloudAccess, type ServerDiscovery } from '@/lib/connectionProbe'
+import { fetchHostedCloudConfig, fetchServerDiscovery, readAccess, readCloudAccess, type ServerDiscovery } from '@/lib/connectionProbe'
 import type { ResourceTicket, SessionSnapshot, VerifiedSession } from '@shared/connectionSession'
 import { LOCAL_BACKEND_URL as LOCAL_URL } from '@shared/localBackend'
 
@@ -753,25 +753,36 @@ async function init(): Promise<void> {
     return
   }
   const preference = connectionPreference()
-  if (preference?.mode === 'remote' && preference.remoteUrl) {
+  if (
+    preference?.mode === 'remote' &&
+    preference.remoteUrl &&
+    (clientRuntime.capabilities.localBackend || !isLocalBackendUrl(preference.remoteUrl))
+  ) {
     await restore(preference.remoteUrl)
   } else if (clientRuntime.capabilities.localBackend) {
     await startLocal()
-  } else if (clientRuntime.cloudUrl) {
-    await connectRemote(clientRuntime.cloudUrl)
-  } else if (clientRuntime.kind === 'electron') {
-    block(null)
   } else {
-    const url = normalizeBaseUrl(localBaseUrl())
-    const value = begin(url)
-    const discovery = await discoverServer(url, value.controller.signal)
-    if (!current(value)) {
+    const hostedConfig = clientRuntime.kind === 'web' ? await fetchHostedCloudConfig() : null
+    if (attempt || state.status !== 'checking') {
       return
     }
-    if (discovery.ok && !discovery.authRequired) {
-      activate(value, { url, token: '', remembered: false, meta: discoveryMeta(discovery) })
+    const hostedUrl = hostedConfig?.cloudUrl || clientRuntime.cloudUrl
+    if (hostedUrl) {
+      await connectRemote(hostedUrl)
+    } else if (clientRuntime.kind === 'electron') {
+      block(null)
     } else {
-      block(null, false, discovery.ok ? discoveryMeta(discovery) : undefined)
+      const url = normalizeBaseUrl(localBaseUrl())
+      const value = begin(url)
+      const discovery = await discoverServer(url, value.controller.signal)
+      if (!current(value)) {
+        return
+      }
+      if (discovery.ok && !discovery.authRequired) {
+        activate(value, { url, token: '', remembered: false, meta: discoveryMeta(discovery) })
+      } else {
+        block(null, false, discovery.ok ? discoveryMeta(discovery) : undefined)
+      }
     }
   }
   if (deferredAttachedCallback && state.status === 'connected' && state.mode === 'local') {
@@ -813,5 +824,16 @@ if (clientRuntime.kind === 'electron' && ownsConnection && clientRuntime.onOidcC
 bridge?.subscribe((snapshot) => {
   void hydrate(snapshot)
 })
-onApiAuthRejected(() => block('Backend authentication was rejected'))
+onApiAuthRejected(() => {
+  if (state.mode === 'cloud' && state.auth === 'oidc') {
+    block('Session expired. Sign in again.', false, {
+      mode: state.mode,
+      auth: state.auth,
+      oidcLoginUrl: state.oidcLoginUrl,
+      capabilities: state.capabilities,
+    })
+    return
+  }
+  block('Backend authentication was rejected')
+})
 void init().catch((error: unknown) => block(error instanceof Error ? error.message : 'Could not open the connection'))

@@ -4,7 +4,7 @@ import type { UpdateStatus } from '../../../shared/update'
 import type { VoiceOverlayAPI } from '@shared/voice'
 import type { WindowKind } from '@shared/windowKind'
 import type { ConnectionSessionAPI } from '@shared/connectionSession'
-import { normalizeCloudUrl } from '@shared/cloudConfig'
+import { normalizeCloudUrl, parseBoolFlag } from '@shared/cloudConfig'
 import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
 export { LOCAL_BACKEND_URL as DEFAULT_API_BASE_URL } from '@shared/localBackend'
@@ -54,12 +54,31 @@ export interface ClientRuntime {
   onPreviewFindShortcut?: (handler: () => void) => () => void
 }
 
+function isHostedCloudWebBuild(): boolean {
+  return parseBoolFlag(import.meta.env.VITE_JAZ_LOCAL_ENABLED, true) === false
+}
+
+function webOriginCloudUrl(): string {
+  const origin = normalizeCloudUrl(window.location?.origin)
+  return origin && origin !== LOCAL_BACKEND_URL ? origin : ''
+}
+
+function webCloudUrl(): string {
+  const configured = normalizeCloudUrl(import.meta.env.VITE_JAZ_CLOUD_URL)
+  if (configured) {
+    return configured
+  }
+  return isHostedCloudWebBuild() ? webOriginCloudUrl() : ''
+}
+
 function webDefaultApiBaseUrl(): string {
   const configured = import.meta.env.VITE_JAZ_API_URL?.trim()
   // "origin" targets the origin the app is served from, so one build works
   // behind a reverse proxy at any domain (app and API share an origin).
   if (configured === 'origin') return window.location.origin
   if (configured) return configured
+  const cloudUrl = webCloudUrl()
+  if (cloudUrl) return cloudUrl
   return LOCAL_BACKEND_URL
 }
 
@@ -114,7 +133,7 @@ function createRuntime(): ClientRuntime {
     platform: 'browser',
     deviceKind: 'browser',
     windowKind: 'main',
-    cloudUrl: normalizeCloudUrl(import.meta.env.VITE_JAZ_CLOUD_URL),
+    cloudUrl: webCloudUrl(),
     capabilities: {
       localBackend: false,
       updates: false,

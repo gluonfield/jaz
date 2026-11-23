@@ -1,6 +1,6 @@
 import { Cloud, Laptop, LoaderCircle, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
 import { useKnownBackends } from '@/lib/backends'
@@ -84,16 +84,6 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   const visibleBackends = cloudOnly ? backends.filter((backend) => !describeBackend(backend.url).local) : backends
   const managedCloud = visibleBackends.find((backend) => backend.managed || backend.mode === 'cloud')
 
-  useEffect(() => {
-    if (!manual && currentAuth === 'oidc' && currentUrl && status === 'disconnected') {
-      setSsoTarget({
-        url: currentUrl,
-        label: describeBackend(currentUrl).title,
-        oidcLoginUrl: currentOidcUrl || '/v1/auth/login',
-      })
-    }
-  }, [currentAuth, currentOidcUrl, currentUrl, manual, status])
-
   const run = async (target: string, action: () => Promise<string | null>, closeOnSuccess = true) => {
     setBusy(target)
     setActionError(null)
@@ -175,8 +165,18 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
         ? 'Welcome to Jaz Cloud'
         : 'Welcome to jaz'
 
+  const discoveredSso: SsoTarget | null =
+    !manual && currentAuth === 'oidc' && currentUrl && status === 'disconnected'
+      ? {
+          url: currentUrl,
+          label: describeBackend(currentUrl).title,
+          oidcLoginUrl: currentOidcUrl || '/v1/auth/login',
+        }
+      : null
+
   const activeSso =
     ssoTarget ??
+    discoveredSso ??
     (cloudOnly && (clientRuntime.cloudUrl || managedCloud)
       ? {
           url: clientRuntime.cloudUrl || managedCloud!.url,
@@ -184,6 +184,8 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
           oidcLoginUrl: managedCloud?.oidcLoginUrl || currentOidcUrl || '/v1/auth/login',
         }
       : null)
+
+  const signInBusyLabel = clientRuntime.kind === 'web' ? 'Signing in…' : 'Opening browser…'
 
   return (
     <div className="relative flex h-full flex-col bg-bg">
@@ -271,7 +273,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                       <ChoiceButton
                         primary
                         label="Sign in"
-                        busyLabel="Opening browser…"
+                        busyLabel={signInBusyLabel}
                         busy={busy === `sso:${activeSso.url}`}
                         disabled={busy !== null}
                         onClick={() => launchSso(activeSso)}
@@ -301,7 +303,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                         <ChoiceButton
                           primary
                           label="Sign in"
-                          busyLabel="Opening browser…"
+                          busyLabel={signInBusyLabel}
                           busy={busy === `sso:${activeSso.url}`}
                           disabled={busy !== null}
                           onClick={() => launchSso(activeSso)}

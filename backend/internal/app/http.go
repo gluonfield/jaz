@@ -73,6 +73,7 @@ func HTTPModule() fx.Option {
 		pluginsapi.NewViewHandler,
 		fx.Annotate(canvasapi.NewHandler, fx.From(new(*sqlitestore.Store))),
 		m365copilotapi.NewHandler,
+		NewMachineBridge,
 		NewRoutes,
 		NewPublicRoutes,
 	)

@@ -55,7 +55,7 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, authMe, authExchange, authLogout, discovery, storedValues = [], sessionStoredValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
+async function fixture({ auth, authMe, authExchange, authLogout, cloudConfig, discovery, storedValues = [], sessionStoredValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
   const stored = new Map(storedValues)
   const sessionStored = new Map(sessionStoredValues)
   const configured = []
@@ -157,6 +157,9 @@ async function fixture({ auth, authMe, authExchange, authLogout, discovery, stor
   replace('clearTimeout', (id) => timers.delete(id))
   replace('fetch', async (url, init) => {
     const target = new URL(url)
+    if (target.pathname === '/cloud-config.json' && cloudConfig) {
+      return cloudConfig(target, init)
+    }
     if (target.pathname === '/.well-known/jaz-server' && discovery) {
       return discovery(target)
     }
@@ -946,4 +949,124 @@ test('web Cloud sign-in uses root client_redirect with PKCE from nested routes a
   f.connection.disconnectBackend()
   await settle()
   expect(logoutAuthHeaders).toEqual(['Bearer oidc-live-tok'])
+})
+
+test('hosted Cloud Web auto-targets same origin via /cloud-config.json, uses cookie auth, and redirects cleanly to /v1/auth/login', async () => {
+  const origin = 'https://jaz-cloud-staging.camadvanced.com'
+  let cookieAuthed = false
+  const apiCalls = []
+  const makeOptions = () => ({
+    web: true,
+    locationHref: `${origin}/`,
+    cloudConfig: () => Response.json({ cloud_url: origin, local_enabled: false }),
+    discovery: () => Response.json({
+      ok: true,
+      mode: 'cloud',
+      auth: 'oidc',
+      oidc_login_url: '/v1/auth/login',
+      capabilities: { spaces: true, boards: true, bots: true, loops: true, widgets: true },
+    }),
+    authMe: (init) => {
+      if (init?.credentials !== 'include') {
+        return Response.json({ error: 'missing credentials', code: 'unauthorized' }, { status: 401 })
+      }
+      if (!cookieAuthed) {
+        return Response.json({ error: 'authentication required', code: 'unauthorized' }, { status: 401 })
+      }
+      return Response.json({
+        user_id: 'usr_hosted',
+        org_id: 'org-default',
+        org_name: 'CAS',
+        email: 'user@cas.example',
+        display_name: 'Hosted User',
+        role: 'admin',
+        resource_ticket: { token: 'rt_cookie_1', expires_at: '2099-01-01T00:00:00Z' },
+      })
+    },
+    feature: (init) => {
+      apiCalls.push({
+        credentials: init?.credentials,
+        auth: new Headers(init?.headers).get('Authorization'),
+      })
+      if (!cookieAuthed) {
+        return Response.json({ error: 'session revoked', code: 'unauthorized' }, { status: 401 })
+      }
+      return Response.json({ threads: [] })
+    },
+  })
+
+  // Unauthenticated visit lands on OIDC sign-in state for the hosted origin (never local).
+  const unauthed = await fixture(makeOptions())
+  expect(unauthed.connection.useConnection()).toMatchObject({
+    status: 'disconnected',
+    url: origin,
+    mode: 'cloud',
+    auth: 'oidc',
+    oidcLoginUrl: '/v1/auth/login',
+    error: 'Sign in to connect to this server',
+  })
+  expect(await unauthed.connection.startLocal()).toContain('disabled')
+
+  // Clicking Sign in on same-origin hosted web navigates straight to /v1/auth/login without client_redirect.
+  expect(await unauthed.connection.startCloudSignIn(origin, '/v1/auth/login')).toBeNull()
+  expect(unauthed.openedExternal).toEqual([`${origin}/v1/auth/login`])
+  expect(unauthed.sessionStored.has('jaz.oidc.pending')).toBe(false)
+
+  // After OIDC callback sets __Host-jaz_session and redirects to /, reloading auto-connects via cookie.
+  cookieAuthed = true
+  const authed = await fixture(makeOptions())
+  expect(authed.connection.useConnection()).toMatchObject({
+    status: 'connected',
+    url: origin,
+    mode: 'cloud',
+    auth: 'oidc',
+    user: { id: 'usr_hosted', org_id: 'org-default', org_name: 'CAS' },
+  })
+  expect(authed.connection.cachedApiAuthToken(origin)).toBe('')
+  expect(authed.connection.apiEmbeddedGetUrl('/v1/runs/r1/files/report.pdf')).toContain('ticket=rt_cookie_1')
+
+  // Same-origin Cloud API requests carry credentials: 'include' and no Authorization header.
+  const res = await authed.connection.apiFetch('/v1/threads')
+  expect(res.ok).toBe(true)
+  expect(apiCalls).toEqual([{ credentials: 'include', auth: null }])
+
+  // Revoking the cookie drops back to OIDC sign-in while preserving cloud metadata.
+  cookieAuthed = false
+  await authed.connection.apiFetch('/v1/threads').catch(() => null)
+  expect(authed.connection.useConnection()).toMatchObject({
+    status: 'disconnected',
+    url: origin,
+    mode: 'cloud',
+    auth: 'oidc',
+    oidcLoginUrl: '/v1/auth/login',
+    error: 'Session expired. Sign in again.',
+  })
+})
+
+test('hosted cloud web build (VITE_JAZ_LOCAL_ENABLED=false, empty cloudUrl) defaults cloudUrl and apiBaseUrl to window.location.origin', async () => {
+  const hostedBundle = await build({
+    entrypoints: [new URL('./clientRuntime.ts', import.meta.url).pathname],
+    target: 'browser',
+    format: 'cjs',
+    define: {
+      'import.meta.env': JSON.stringify({
+        VITE_JAZ_LOCAL_ENABLED: 'false',
+        VITE_JAZ_CLOUD_URL: '',
+      }),
+    },
+  })
+  if (!hostedBundle.success) {
+    throw new AggregateError(hostedBundle.logs)
+  }
+  replace('window', {
+    location: { origin: 'https://jaz-cloud-staging.camadvanced.com' },
+    jaz: undefined,
+  })
+  replace('navigator', { platform: 'MacIntel' })
+  const mod = { exports: {} }
+  new Function('module', 'exports', await hostedBundle.outputs[0].text())(mod, mod.exports)
+  expect(mod.exports.clientRuntime.kind).toBe('web')
+  expect(mod.exports.clientRuntime.capabilities.localBackend).toBe(false)
+  expect(mod.exports.clientRuntime.cloudUrl).toBe('https://jaz-cloud-staging.camadvanced.com')
+  expect(mod.exports.clientRuntime.defaultApiBaseUrl()).toBe('https://jaz-cloud-staging.camadvanced.com')
 })

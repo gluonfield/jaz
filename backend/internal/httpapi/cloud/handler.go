@@ -11,17 +11,24 @@ import (
 
 	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/httpapi"
+	"github.com/wins/jaz/backend/internal/machinebridge"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 const maxCloudJSONBodyBytes int64 = 4 << 20
 
 type Handler struct {
-	service *cloudsync.Service
+	service       *cloudsync.Service
+	machineBridge machinebridge.Controller
 }
 
 func NewHandler(service *cloudsync.Service) *Handler {
 	return &Handler{service: service}
+}
+
+func (h *Handler) WithMachineBridge(bridge machinebridge.Controller) *Handler {
+	h.machineBridge = bridge
+	return h
 }
 
 func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {

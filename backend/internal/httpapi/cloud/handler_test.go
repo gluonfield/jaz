@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +20,7 @@ import (
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/machinebridge"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -688,5 +691,105 @@ func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/loops", nil))
 	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "loop_c1") {
 		t.Fatalf("local /v1/loops leaked cloud loop: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCloudMachineBridgeEndpoints(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	cloudSvc := cloudsync.New(store, nil)
+
+	// 1. Nil bridge controller returns 501 Not Implemented.
+	disabledHandler := cloudapi.NewHandler(cloudSvc)
+	disabledSrv := &server.Server{
+		Store: store,
+		Cloud: cloudSvc,
+		Routes: server.Routes{
+			{Pattern: "GET /v1/cloud/machine-bridge", Handler: http.HandlerFunc(disabledHandler.MachineBridgeStatus)},
+			{Pattern: "PUT /v1/cloud/machine-bridge", Handler: http.HandlerFunc(disabledHandler.UpdateMachineBridge)},
+		},
+	}
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		rec := httptest.NewRecorder()
+		disabledSrv.Handler().ServeHTTP(rec, httptest.NewRequest(method, "/v1/cloud/machine-bridge", bytes.NewBufferString(`{}`)))
+		if rec.Code != http.StatusNotImplemented {
+			t.Fatalf("%s with nil bridge status=%d want 501 body=%s", method, rec.Code, rec.Body.String())
+		}
+	}
+
+	// 2. Live bridge controller serves GET/PUT and validates payloads strictly.
+	workspace := t.TempDir()
+	sharedDir := filepath.Join(t.TempDir(), "Work Repo")
+	if err := os.MkdirAll(sharedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bridge := app.NewMachineBridgeSupervisor(cloudSvc, store, workspace, nil)
+	cloudHandler := cloudapi.NewHandler(cloudSvc).WithMachineBridge(bridge)
+	srv := &server.Server{
+		Store: store,
+		Cloud: cloudSvc,
+		Routes: server.Routes{
+			{Pattern: "GET /v1/cloud/machine-bridge", Handler: http.HandlerFunc(cloudHandler.MachineBridgeStatus)},
+			{Pattern: "PUT /v1/cloud/machine-bridge", Handler: http.HandlerFunc(cloudHandler.UpdateMachineBridge)},
+		},
+	}
+	h := srv.Handler()
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/cloud/machine-bridge", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET machine-bridge status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var initial machinebridge.BridgeStatus
+	if err := json.Unmarshal(rec.Body.Bytes(), &initial); err != nil {
+		t.Fatal(err)
+	}
+	if initial.DeviceID == "" || !initial.Config.Enabled || initial.Config.AllowExec || len(initial.Config.Grants) != 1 {
+		t.Fatalf("unexpected initial GET status: %+v", initial)
+	}
+
+	payload, err := json.Marshal(machinebridge.ShareConfig{
+		Enabled:     true,
+		DisplayName: "Office Mac",
+		AllowExec:   true,
+		Grants: []machinebridge.FolderGrant{
+			{RootPath: sharedDir, Mode: machinebridge.AccessReadWrite},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/v1/cloud/machine-bridge", bytes.NewReader(payload)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT machine-bridge status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var saved machinebridge.BridgeStatus
+	if err := json.Unmarshal(rec.Body.Bytes(), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.DeviceID != initial.DeviceID || saved.Config.DisplayName != "Office Mac" || !saved.Config.AllowExec || len(saved.Config.Grants) != 1 || saved.Config.Grants[0].ID != "work-repo" {
+		t.Fatalf("unexpected saved PUT status: %+v", saved)
+	}
+
+	// Invalid payloads return 400.
+	badBodies := []string{
+		`{not-json`,
+		`{"enabled":true}{"extra":1}`,
+		fmt.Sprintf(`{"enabled":true,"grants":[{"id":"x","root_path":%q,"mode":"ro"}]}`, filepath.Join(workspace, "missing")),
+		fmt.Sprintf(`{"enabled":true,"grants":[{"id":"x","root_path":%q,"mode":"admin"}]}`, sharedDir),
+		fmt.Sprintf(`{"enabled":true,"grants":[{"id":"bad=id","root_path":%q,"mode":"ro"}]}`, sharedDir),
+		`{"enabled":true,"display_name":"Bad\nName","grants":[]}`,
+	}
+	for _, body := range badBodies {
+		rec = httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/v1/cloud/machine-bridge", bytes.NewBufferString(body)))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("PUT invalid body %s status=%d want 400 resp=%s", body, rec.Code, rec.Body.String())
+		}
 	}
 }

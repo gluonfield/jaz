@@ -29,6 +29,7 @@ import (
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
 	voiceapi "github.com/wins/jaz/backend/internal/httpapi/voice"
 	"github.com/wins/jaz/backend/internal/m365copilot"
+	"github.com/wins/jaz/backend/internal/machinebridge"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/mobilepush"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
@@ -67,7 +68,8 @@ type routeDeps struct {
 	VoiceRelay       *voiceapi.RelayHandler
 	Push             *mobilepush.Service
 	MicrosoftCopilot *m365copilotapi.Handler
-	Cloud            *cloudsync.Service `optional:"true"`
+	Cloud            *cloudsync.Service       `optional:"true"`
+	MachineBridge    machinebridge.Controller `optional:"true"`
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
@@ -131,17 +133,19 @@ func NewRoutes(deps routeDeps) server.Routes {
 	}
 	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser, deps.Store)
 	routes = appendMCPRoutes(routes, deps.MCP)
-	routes = appendCloudRoutes(routes, deps.Cloud)
+	routes = appendCloudRoutes(routes, deps.Cloud, deps.MachineBridge)
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
 }
 
-func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service) server.Routes {
+func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge machinebridge.Controller) server.Routes {
 	if cloud == nil {
 		return routes
 	}
-	h := cloudapi.NewHandler(cloud)
+	h := cloudapi.NewHandler(cloud).WithMachineBridge(bridge)
 	return append(routes,
 		server.Route{Pattern: "GET /v1/cloud/status", Handler: httpHandlerFunc(h.Status)},
+		server.Route{Pattern: "GET /v1/cloud/machine-bridge", Handler: httpHandlerFunc(h.MachineBridgeStatus)},
+		server.Route{Pattern: "PUT /v1/cloud/machine-bridge", Handler: httpHandlerFunc(h.UpdateMachineBridge)},
 		server.Route{Pattern: "POST /v1/cloud/connect", Handler: httpHandlerFunc(h.Connect)},
 		server.Route{Pattern: "POST /v1/cloud/switch", Handler: httpHandlerFunc(h.Switch)},
 		server.Route{Pattern: "POST /v1/cloud/disconnect", Handler: httpHandlerFunc(h.Disconnect)},

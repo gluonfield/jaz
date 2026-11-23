@@ -345,9 +345,12 @@ export async function launchOidcBrowserFlow(
     const clientRedirect = sameOrigin ? undefined : `${window.location.origin}/`
     const target = buildOidcLoginUrl(origin, loginPath, {
       clientRedirect,
-      state: pending.state,
+      ...(clientRedirect ? { state: pending.state } : {}),
       ...(clientRedirect && codeChallenge ? { codeChallenge } : {}),
     })
+    if (sameOrigin) {
+      clearPendingOidcLogin()
+    }
     if (typeof window.location.assign === 'function') {
       window.location.assign(target)
     } else {

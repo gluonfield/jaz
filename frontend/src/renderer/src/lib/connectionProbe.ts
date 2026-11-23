@@ -5,7 +5,7 @@ import type {
   ServerCapabilities,
   ServerMode,
 } from '@/lib/api/serverTypes'
-import { CLIENT_PLATFORM, CLIENT_PLATFORM_HEADER, normalizeBaseUrl, secureBackendConnection } from '@/lib/api/client'
+import { CLIENT_PLATFORM, CLIENT_PLATFORM_HEADER, isLocalBackendUrl, normalizeBaseUrl, secureBackendConnection } from '@/lib/api/client'
 import { ApiError } from '@/lib/api/response'
 import { backendFetch, clientRuntime } from '@/lib/clientRuntime'
 import { verifiedAccess, type AuthKind, type ResourceTicket } from '@shared/connectionSession'
@@ -96,6 +96,42 @@ function parseDiscoveryPayload(body: RawDiscoveryPayload | null): Extract<Server
     oidcIssuer: typeof body.oidc_issuer === 'string' ? body.oidc_issuer.trim() : '',
     publicUrl: typeof body.public_url === 'string' ? body.public_url.trim() : '',
     capabilities: body.capabilities ?? {},
+  }
+}
+
+export type HostedCloudConfig = {
+  cloudUrl: string
+  localEnabled: boolean
+}
+
+export async function fetchHostedCloudConfig(signal?: AbortSignal): Promise<HostedCloudConfig | null> {
+  if (clientRuntime.kind !== 'web') {
+    return null
+  }
+  const origin = normalizeBaseUrl(window.location?.origin ?? '')
+  if (!origin || !secureBackendConnection(origin)) {
+    return null
+  }
+  try {
+    const response = await backendFetch(`${origin}/cloud-config.json`, {
+      cache: 'no-store',
+      signal: probeSignal(signal),
+    })
+    const contentType = response.headers.get('content-type') || ''
+    if (!response.ok || !contentType.includes('json')) {
+      return null
+    }
+    const body = await readJSON<{ cloud_url?: unknown; local_enabled?: unknown }>(response)
+    if (!body || typeof body !== 'object') {
+      return null
+    }
+    const localEnabled = typeof body.local_enabled === 'boolean' ? body.local_enabled : true
+    const rawCloudUrl = typeof body.cloud_url === 'string' ? normalizeBaseUrl(body.cloud_url) : ''
+    const configuredUrl = rawCloudUrl && secureBackendConnection(rawCloudUrl) ? rawCloudUrl : ''
+    const cloudUrl = configuredUrl || (!localEnabled && !isLocalBackendUrl(origin) ? origin : '')
+    return { cloudUrl, localEnabled }
+  } catch {
+    return null
   }
 }
 
