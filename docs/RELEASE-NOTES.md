@@ -1,4 +1,6 @@
-Changes since v0.0.301:
+Changes since v0.0.302:
 
-- Recognizes a new agent-picker swipe while the previous gesture is still coasting.
-- Keeps keyboard and swipe navigation on the same selected agent tab.
+- Dropping a folder into the desktop composer adds a local folder reference and lets the session start.
+- Markdown Reader preserves link destinations when saving edits.
+- Popovers stay visible above modal backdrops.
+- Saved plugin views refresh after updates and respect access denials and dismissals.
