@@ -1,21 +1,22 @@
 package acp
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestIsolatedCloudLoginCapturesFreshCredentialsWithoutTouchingLocal(t *testing.T) {
 	bin := t.TempDir()
-	claudeBin := filepath.Join(bin, "claude")
-	if err := os.WriteFile(claudeBin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	kimiBin := filepath.Join(bin, "kimi")
-	if err := os.WriteFile(kimiBin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"claude", "kimi"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	root := t.TempDir()
@@ -67,4 +68,66 @@ func TestIsolatedCloudLoginCapturesFreshCredentialsWithoutTouchingLocal(t *testi
 	if _, err := PrepareIsolatedCloudLogin(AgentCodex, AgentConfig{}, root); !errors.Is(err, ErrUnsupportedCloudLoginAgent) {
 		t.Fatalf("expected ErrUnsupportedCloudLoginAgent for codex, got %v", err)
 	}
+}
+
+func TestCloudLoginRunnerCancelsPreviousAttemptForSameAgent(t *testing.T) {
+	slowBin := filepath.Join(t.TempDir(), "slow-claude")
+	if err := os.WriteFile(slowBin, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fastBin := filepath.Join(t.TempDir(), "fast-claude")
+	fastScript := `#!/bin/sh
+echo "Visit https://claude.ai/oauth/test"
+printf '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-second","refreshToken":"rt-2","expiresAt":1893456000000}}' > "$CLAUDE_CONFIG_DIR/.credentials.json"
+`
+	if err := os.WriteFile(fastBin, []byte(fastScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var calls atomic.Int32
+	runner := NewCloudLoginRunner(func(agent string) (IsolatedCloudLogin, error) {
+		dir, err := os.MkdirTemp("", "jaz-runner-test-*")
+		if err != nil {
+			return IsolatedCloudLogin{}, err
+		}
+		bin := slowBin
+		if calls.Add(1) > 1 {
+			bin = fastBin
+		}
+		return IsolatedCloudLogin{
+			Agent: agent,
+			Dir:   dir,
+			Invocation: AgentLoginInvocation{
+				Executable: bin,
+				Env:        map[string]string{"CLAUDE_CONFIG_DIR": dir},
+				Available:  true,
+			},
+			Cleanup: func() { _ = os.RemoveAll(dir) },
+		}, nil
+	})
+
+	first, err := runner.Start(AgentClaude, func(context.Context, string, map[string][]byte) error { return nil })
+	if err != nil {
+		t.Fatalf("first Start: %v", err)
+	}
+	second, err := runner.Start(AgentClaude, func(context.Context, string, map[string][]byte) error { return nil })
+	if err != nil {
+		t.Fatalf("second Start: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		s1, _ := runner.Get(AgentClaude, first.ID)
+		s2, _ := runner.Get(AgentClaude, second.ID)
+		if s1.Status == "failed" && s2.Status == "completed" {
+			if !strings.Contains(s1.Error, "replaced") {
+				t.Fatalf("expected first login error to explain replacement, got %q", s1.Error)
+			}
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	s1, _ := runner.Get(AgentClaude, first.ID)
+	s2, _ := runner.Get(AgentClaude, second.ID)
+	t.Fatalf("expected first=failed and second=completed, got s1=%+v s2=%+v", s1, s2)
 }

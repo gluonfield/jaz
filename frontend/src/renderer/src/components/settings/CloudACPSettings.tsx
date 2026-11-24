@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, CircleAlert, LoaderCircle, LogIn } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useRef, useState } from 'react'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -17,13 +17,12 @@ import {
   supportsDesktopCloudLogin,
   toACPAuthLogin,
   type CloudACPAgentSpec,
-  type CloudACPLoginSession,
   type CloudACPProfile,
 } from '@/lib/api/cloudACP'
+import type { ACPAuthLogin } from '@/lib/api/types'
 import { useIsCloudOnly } from '@/lib/cloudSession'
+import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { keys } from '@/lib/query/keys'
-
-const LOGIN_POLL_MS = 1_500
 
 export function CloudACPSettings() {
   const cloudOnly = useIsCloudOnly()
@@ -34,53 +33,30 @@ export function CloudACPSettings() {
     refetchInterval: (query) =>
       query.state.data?.profiles.some((p) => p.status === 'refreshing') ? 2_000 : false,
   })
-  const [activeLogins, setActiveLogins] = useState<Record<string, CloudACPLoginSession>>({})
 
-  const activeEntries = Object.values(activeLogins).filter(
-    (s) => s.status === 'pending' || s.status === 'awaiting_user',
-  )
-  const activeKey = activeEntries.map((s) => `${s.agent}:${s.id}:${s.viaDesktop ? '1' : '0'}`).join(',')
-
-  useEffect(() => {
-    if (!activeKey) return
-    let cancelled = false
-    const entries = activeKey.split(',').map((item) => {
-      const [agent, id, desktop] = item.split(':')
-      return { agent, id, viaDesktop: desktop === '1' }
-    })
-
-    const poll = async () => {
-      for (const { agent, id, viaDesktop } of entries) {
-        try {
-          const updated = await getCloudACPLogin(agent, id, viaDesktop)
-          if (cancelled) return
-          setActiveLogins((prev) => ({ ...prev, [agent]: updated }))
-          if (updated.status === 'completed') {
-            toast(`Connected ${agentLabel(agent)}`)
-            void queryClient.invalidateQueries({ queryKey: keys.cloudACPProfiles })
-            void queryClient.invalidateQueries({ queryKey: keys.cloudModelProfiles })
-          }
-        } catch {
-          // Transient poll failure; next tick retries.
-        }
+  const viaDesktopByJob = useRef<Record<string, boolean>>({})
+  const { loginJobs, trackLoginJob, forgetLoginJob } = useACPLoginPolling(
+    (job) => {
+      delete viaDesktopByJob.current[job.id]
+      if (job.status === 'succeeded') {
+        toast(`Connected ${agentLabel(job.agent)}`)
+        void queryClient.invalidateQueries({ queryKey: keys.cloudACPProfiles })
+        void queryClient.invalidateQueries({ queryKey: keys.cloudModelProfiles })
       }
-    }
-
-    const timer = window.setInterval(() => {
-      void poll()
-    }, LOGIN_POLL_MS)
-    void poll()
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [activeKey, queryClient, toast])
+    },
+    async (job) => {
+      const updated = await getCloudACPLogin(job.agent, job.id, Boolean(viaDesktopByJob.current[job.id]))
+      return toACPAuthLogin(updated) ?? job
+    },
+  )
 
   const startLogin = useMutation({
     mutationFn: ({ agent, viaDesktop }: { agent: string; viaDesktop: boolean }) =>
       startCloudACPLogin(agent, viaDesktop),
     onSuccess: (session) => {
-      setActiveLogins((prev) => ({ ...prev, [session.agent]: session }))
+      viaDesktopByJob.current[session.id] = Boolean(session.viaDesktop)
+      const job = toACPAuthLogin(session)
+      if (job) trackLoginJob(job)
       toast(`Started ${authProviderLabel(session.agent)} sign-in`)
     },
     onError: (err) => {
@@ -91,11 +67,7 @@ export function CloudACPSettings() {
   const disconnect = useMutation({
     mutationFn: (agent: string) => deleteCloudACPProfile(agent),
     onSuccess: (res) => {
-      setActiveLogins((prev) => {
-        const next = { ...prev }
-        delete next[res.agent]
-        return next
-      })
+      forgetLoginJob(res.agent)
       toast(`Disconnected ${agentLabel(res.agent)}`)
       void queryClient.invalidateQueries({ queryKey: keys.cloudACPProfiles })
       void queryClient.invalidateQueries({ queryKey: keys.cloudModelProfiles })
@@ -140,7 +112,7 @@ export function CloudACPSettings() {
                 key={spec.agent}
                 spec={spec}
                 profile={profilesByAgent.get(spec.agent)}
-                loginSession={activeLogins[spec.agent]}
+                loginJob={loginJobs[spec.agent]}
                 canLogin={canLogin}
                 loginReason={loginReason}
                 loginPending={startLogin.isPending && startLogin.variables?.agent === spec.agent}
@@ -159,7 +131,7 @@ export function CloudACPSettings() {
 function CloudACPAgentRow({
   spec,
   profile,
-  loginSession,
+  loginJob,
   canLogin,
   loginReason,
   loginPending,
@@ -169,7 +141,7 @@ function CloudACPAgentRow({
 }: {
   spec: CloudACPAgentSpec
   profile?: CloudACPProfile
-  loginSession?: CloudACPLoginSession
+  loginJob?: ACPAuthLogin
   canLogin: boolean
   loginReason: string
   loginPending: boolean
@@ -181,7 +153,6 @@ function CloudACPAgentRow({
   const agent = spec.agent
   const connected = profile?.status === 'connected' || profile?.status === 'refreshing'
   const needsAuth = profile?.status === 'needs_auth' || profile?.status === 'error'
-  const loginJob = toACPAuthLogin(loginSession)
   const running = loginPending || loginJob?.status === 'running'
   const hint = needsAuth
     ? (profile?.last_error || `Sign in with ${authProviderLabel(agent)} again.`)
@@ -254,6 +225,7 @@ function CloudACPAgentRow({
                   Disconnect
                 </Button>
               </div>
+              {!canLogin && loginReason ? <p className="text-[12px] text-ink-3">{loginReason}</p> : null}
               <AuthLoginStatus job={loginJob} running={running} allowCodeInput={false} />
             </div>
           ) : (

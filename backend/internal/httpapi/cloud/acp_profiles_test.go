@@ -198,4 +198,13 @@ printf '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-fresh","refreshToken":"rt-
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "acp:claude") {
 		t.Fatalf("expected /v1/models cache invalidation to expose acp:claude, got %d %s", rec.Code, rec.Body.String())
 	}
+
+	// Switching away from the workspace mid-login must block cross-workspace upload.
+	wsID := svc.ActiveWorkspaceID()
+	if _, err := svc.SwitchWorkspace(context.Background(), cloudsync.LocalWorkspaceID); err != nil {
+		t.Fatalf("SwitchWorkspace: %v", err)
+	}
+	if _, _, err := svc.PutACPProfileForWorkspace(context.Background(), wsID, "claude", []byte(`{"files":{}}`)); err != cloudsync.ErrWorkspaceChanged {
+		t.Fatalf("expected ErrWorkspaceChanged after switching workspaces, got %v", err)
+	}
 }
