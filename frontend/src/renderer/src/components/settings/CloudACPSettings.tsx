@@ -58,7 +58,11 @@ export function CloudACPSettings() {
   const cloudOnly = useIsCloudOnly()
   const queryClient = useQueryClient()
   const toast = useToast()
-  const { data, isLoading, error } = useQuery(cloudACPProfilesQuery)
+  const { data, isLoading, error } = useQuery({
+    ...cloudACPProfilesQuery,
+    refetchInterval: (query) =>
+      query.state.data?.profiles.some((p) => p.status === 'refreshing') ? 2_000 : false,
+  })
   const [clearLocalOnSync, setClearLocalOnSync] = useState(false)
   const [activeLogins, setActiveLogins] = useState<Record<string, CloudACPLoginSession>>({})
 
@@ -214,6 +218,13 @@ export function CloudACPSettings() {
                 (disconnect.isPending && disconnect.variables === spec.agent)
               }
               onStartLogin={() => startLogin.mutate(spec.agent)}
+              onCancelLogin={() =>
+                setActiveLogins((prev) => {
+                  const next = { ...prev }
+                  delete next[spec.agent]
+                  return next
+                })
+              }
               onSyncLocal={() => syncLocal.mutate(spec.agent)}
               onRefresh={() => refresh.mutate(spec.agent)}
               onDisconnect={() => disconnect.mutate(spec.agent)}
@@ -232,6 +243,7 @@ function CloudACPAgentCard({
   cloudOnly,
   busy,
   onStartLogin,
+  onCancelLogin,
   onSyncLocal,
   onRefresh,
   onDisconnect,
@@ -242,6 +254,7 @@ function CloudACPAgentCard({
   cloudOnly: boolean
   busy: boolean
   onStartLogin: () => void
+  onCancelLogin: () => void
   onSyncLocal: () => void
   onRefresh: () => void
   onDisconnect: () => void
@@ -322,18 +335,28 @@ function CloudACPAgentCard({
       {loginSession && loginSession.status !== 'completed' ? (
         <div className="border-t border-border bg-surface-1 px-3.5 py-3">
           {loginSession.status === 'failed' || loginSession.status === 'expired' ? (
-            <p role="alert" className="text-[12px] text-danger">
-              {loginSession.error || `Sign-in ${loginSession.status}. Try again.`}
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p role="alert" className="text-[12px] text-danger">
+                {loginSession.error || `Sign-in ${loginSession.status}. Try again.`}
+              </p>
+              <Button size="sm" variant="ghost" onClick={onCancelLogin}>
+                Dismiss
+              </Button>
+            </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2 text-[12.5px] text-ink-2">
-                <LoaderCircle size={13} className="animate-spin text-ink-3" />
-                <span>
-                  {loginSession.user_code
-                    ? loginSession.instructions || 'Open the verification link and enter this code:'
-                    : 'Starting device sign-in on Jaz Cloud…'}
-                </span>
+              <div className="flex items-center justify-between gap-2 text-[12.5px] text-ink-2">
+                <div className="flex items-center gap-2">
+                  <LoaderCircle size={13} className="animate-spin text-ink-3" />
+                  <span>
+                    {loginSession.user_code
+                      ? loginSession.instructions || 'Open the verification link and enter this code:'
+                      : 'Starting device sign-in on Jaz Cloud…'}
+                  </span>
+                </div>
+                <Button size="sm" variant="ghost" onClick={onCancelLogin}>
+                  Cancel
+                </Button>
               </div>
               {loginSession.user_code || loginSession.verification_url ? (
                 <div className="flex flex-wrap items-center gap-2">

@@ -56,10 +56,10 @@ func (s *Server) handleSessionTerminal(w http.ResponseWriter, r *http.Request, s
 		_ = writeTerminalMessage(conn, terminal.Message{Type: "error", Err: err.Error()})
 		return
 	}
-	serveTerminal(conn, term, func() { s.terminalManager().Kill(session.ID) }, nil)
+	serveTerminal(conn, term, func() { s.terminalManager().Kill(session.ID) })
 }
 
-func serveTerminal(conn *websocket.Conn, term *terminal.Session, terminate func(), finalize func(terminal.Message) terminal.Message) {
+func serveTerminal(conn *websocket.Conn, term *terminal.Session, terminate func()) {
 	events, unsubscribe := term.Subscribe()
 	if err := writeTerminalMessage(conn, terminal.Message{Type: "ready", Cwd: term.Cwd()}); err != nil {
 		unsubscribe()
@@ -70,9 +70,6 @@ func serveTerminal(conn *websocket.Conn, term *terminal.Session, terminate func(
 		defer close(done)
 		defer conn.Close()
 		for msg := range events {
-			if msg.Type == "exit" && finalize != nil {
-				msg = finalize(msg)
-			}
 			if err := writeTerminalMessage(conn, msg); err != nil {
 				return
 			}

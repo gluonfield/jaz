@@ -34,8 +34,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/prepare", s.handlePrepareACPAgent)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/auth/login", s.handleStartACPAuthLogin)
-	mux.HandleFunc("GET /v1/acp/agents/antigravity/auth/methods", s.handleAntigravityAuthMethods)
-	mux.HandleFunc("GET /v1/acp/agents/antigravity/auth/cloud-terminal", s.handleAntigravityCloudLogin)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/auth/disconnect", s.handleDisconnectACPAuth)
 	mux.HandleFunc("GET /v1/acp/auth-logins/", s.handleGetACPAuthLogin)
 	mux.HandleFunc("POST /v1/acp/auth-logins/{id}/input", s.handleACPAuthLoginInput)

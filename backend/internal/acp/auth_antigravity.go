@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"runtime"
-	"slices"
 	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
@@ -16,47 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/subprocess"
 )
 
-const (
-	AntigravityGoogleAccount = "oauth-personal"
-	AntigravityCloudProject  = "oauth-business"
-	antigravityAccountGrace  = 250 * time.Millisecond
-)
-
-func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) ([]string, error) {
-	if runtime.GOOS == "windows" {
-		return nil, nil
-	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	invocation := AgentLoginInvocationFor(AgentAntigravity, root, cfg.Auth, loginBinDirs(cfg), cfg.Env)
-	if !invocation.Available {
-		return nil, nil
-	}
-	if err := PrepareAgentLoginInvocation(AgentAntigravity, cfg.Auth, root, invocation); err != nil {
-		return nil, err
-	}
-	cfg.useCommandLaunch(invocation.Executable, []string{"acp", "--disable-telemetry"})
-	var methods []string
-	err := withAntigravityAccountPeer(ctx, cfg, root, invocation.Cwd, func(_ *jsonrpc.Peer, init acpschema.InitializeResponse) error {
-		var advertised []agentAuthMethod
-		for _, raw := range init.AuthMethods {
-			var method agentAuthMethod
-			if err := json.Unmarshal(raw, &method); err != nil {
-				return err
-			}
-			advertised = append(advertised, method)
-		}
-		for _, id := range []string{AntigravityGoogleAccount, AntigravityCloudProject} {
-			if slices.ContainsFunc(advertised, func(method agentAuthMethod) bool {
-				return string(method.ID) == id && method.Type != "terminal"
-			}) {
-				methods = append(methods, id)
-			}
-		}
-		return nil
-	})
-	return methods, err
-}
+const antigravityAccountGrace = 250 * time.Millisecond
 
 func disconnectAntigravityAuth(ctx context.Context, cfg AgentConfig, root string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

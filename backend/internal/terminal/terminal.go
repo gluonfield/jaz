@@ -81,14 +81,6 @@ func (m *Manager) Open(id, cwd string, size Size) (*Session, error) {
 	return session, nil
 }
 
-func OpenCommand(cmd *exec.Cmd, size Size) (*Session, error) {
-	session := newSession(cmd.Dir, defaultReplayBytes, nil)
-	if err := session.start(cmd, size); err != nil {
-		return nil, err
-	}
-	return session, nil
-}
-
 func (m *Manager) Kill(id string) {
 	m.mu.Lock()
 	session := m.sessions[id]
