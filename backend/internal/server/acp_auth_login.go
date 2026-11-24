@@ -326,12 +326,13 @@ func (s *Server) verifyACPAuthLogin(agent string, auth acp.AgentAuthConfig) erro
 	cfg, _ := s.acpAgentCatalog().Agent(agent)
 	cfg.Auth = auth
 	cfg = s.attachACPRuntimeConfig(agent, cfg)
-	status := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
+	status, readiness := acp.ProbeAuthAndReadinessWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
+	if status.Authenticated && readiness.Available {
+		s.recordACPAuthProbe(agent, cfg, status, readiness)
+		return nil
+	}
+	s.invalidateACPAuthProbe(agent)
 	if status.Authenticated {
-		readiness := acp.ProbeReadinessWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
-		if readiness.Available {
-			return nil
-		}
 		if strings.TrimSpace(readiness.Reason) != "" {
 			return fmt.Errorf("%s", readiness.Reason)
 		}

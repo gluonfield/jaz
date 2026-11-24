@@ -417,6 +417,7 @@ func startServer(
 					fmt.Fprintln(os.Stderr, "serve:", err)
 				}
 			}()
+			handler.WarmSlowACPAuth()
 			if err := botService.Declare(ctx, cfg.Bots); err != nil {
 				_ = listener.Close()
 				_ = srv.Close()

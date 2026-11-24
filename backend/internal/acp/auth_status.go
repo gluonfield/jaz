@@ -48,6 +48,50 @@ func ProbeAgentAuth(name string, cfg AgentConfig, root string, env map[string]st
 	return ProbeAgentAuthWithProviders(name, cfg, root, env, nil)
 }
 
+// IsSlowAuthProbe reports whether probing authentication for name spawns an
+// external CLI or network check rather than inspecting local files/env.
+func IsSlowAuthProbe(name string, cfg AgentConfig) bool {
+	if cfg.Local || strings.TrimSpace(cfg.URL) != "" {
+		return false
+	}
+	switch CanonicalAgentName(name) {
+	case AgentAntigravity, AgentCopilot, AgentMuse:
+		return true
+	default:
+		return false
+	}
+}
+
+// PendingAgentAuthStatus returns local auth metadata (login command, profile
+// paths, API key flags) without invoking slow external CLI auth checks.
+func PendingAgentAuthStatus(name string, cfg AgentConfig, root string, env map[string]string) AgentAuthStatus {
+	name = CanonicalAgentName(name)
+	probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, cfg)
+	auth, err := NormalizeAgentAuthConfig(name, cfg.Auth)
+	if err != nil {
+		auth = AgentAuthConfig{Mode: AuthModeAuto}
+	}
+	var resolved resolvedAgentAuth
+	switch name {
+	case AgentAntigravity:
+		resolved = antigravityAuthStatus(auth, false)
+	case AgentMuse:
+		resolved = resolvedAgentAuth{
+			Config: AgentAuthConfig{Mode: AuthModeExistingCLI},
+			Source: AuthModeExistingCLI,
+		}
+		resolved.resolveAPIKey(AgentMuse, root, probeEnv)
+	case AgentCopilot:
+		resolved = resolvedAgentAuth{
+			Config: AgentAuthConfig{Mode: AuthModeExistingCLI},
+			Source: AuthModeExistingCLI,
+		}
+	default:
+		resolved = resolvedAgentAuth{Config: auth}
+	}
+	return agentAuthStatus(name, cfg, root, probeEnv, resolved)
+}
+
 func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env map[string]string, providers map[string]provider.ModelProviderConfig) AgentAuthStatus {
 	name = CanonicalAgentName(name)
 	if cfg.Local {

@@ -148,6 +148,7 @@ type Server struct {
 	terminalOnce sync.Once
 
 	acpAuthLoginJobs   sync.Map
+	acpAuthProbes      acpAuthProbeCache
 	antigravityLoginMu sync.Mutex
 	worktreePruneMu    sync.Mutex
 }

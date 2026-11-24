@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { ModelSelect } from '@/components/session/ModelSelect'
-import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
+import { acpAgentChecking, enabledACPAgents, enabledACPAgentsChecking, runtimeModelState } from '@/lib/agentRuntimes'
 import { agentLabel } from '@/lib/agentLabel'
 import { cloudModelProfilesQuery, cloudProfileToAgentOption } from '@/lib/api/cloudThreads'
 import type { CreateSessionInput } from '@/lib/api/sessions'
@@ -36,12 +36,23 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
     [cloudProfilesQuery.data, usingCloudProfiles],
   )
 
+  const [localRuntime, setLocalRuntime] = useState(() => localStorage.getItem(NEW_SESSION_AGENT_KEY) || '')
+  const [cloudRuntime, setCloudRuntime] = useState(() => localStorage.getItem(NEW_SESSION_CLOUD_PROFILE_KEY) || '')
+  const [selections, setSelections] = useState(() => parseModelSelections(localStorage.getItem(NEW_SESSION_MODELS_KEY)))
+
+  const runtime = usingCloudProfiles ? cloudRuntime : localRuntime
+  const savedRuntimeChecking = !usingCloudProfiles
+    && Boolean(runtime && agentSettings?.acp[runtime]?.enabled && acpAgentChecking(agentSettings, runtime))
+  const runtimeChecking = !usingCloudProfiles && enabledACPAgentsChecking(agentSettings)
+
   const agentItems: PickerAgentOption[] = useMemo(() => {
     if (usingCloudProfiles) {
       return cloudProfiles.map(cloudProfileToAgentOption)
     }
-    return enabledACPAgents(agentSettings).map((id) => ({ id }))
-  }, [agentSettings, cloudProfiles, usingCloudProfiles])
+    const ready = enabledACPAgents(agentSettings)
+    const ids = savedRuntimeChecking && !ready.includes(runtime) ? [...ready, runtime] : ready
+    return ids.map((id) => ({ id }))
+  }, [agentSettings, cloudProfiles, runtime, savedRuntimeChecking, usingCloudProfiles])
 
   const agents = useMemo(() => agentItems.map((item) => item.id), [agentItems])
   const runtimeError = usingCloudProfiles
@@ -57,11 +68,6 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
   const runtimeReady = usingCloudProfiles ? (!hasCloud || cloudProfilesQuery.isSuccess) : settingsQuery.isSuccess
   const runtimeAvailable = runtimeReady && agents.length > 0
 
-  const [localRuntime, setLocalRuntime] = useState(() => localStorage.getItem(NEW_SESSION_AGENT_KEY) || '')
-  const [cloudRuntime, setCloudRuntime] = useState(() => localStorage.getItem(NEW_SESSION_CLOUD_PROFILE_KEY) || '')
-  const [selections, setSelections] = useState(() => parseModelSelections(localStorage.getItem(NEW_SESSION_MODELS_KEY)))
-
-  const runtime = usingCloudProfiles ? cloudRuntime : localRuntime
   const selectRuntime = (next: string) => {
     if (usingCloudProfiles) {
       setCloudRuntime(next)
@@ -75,7 +81,7 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
   }
 
   useEffect(() => {
-    if (!runtimeReady || agents.includes(runtime)) return
+    if (!runtimeReady || savedRuntimeChecking || agents.includes(runtime)) return
     const next = agents[0] ?? ''
     if (next === runtime) return
     if (usingCloudProfiles) {
@@ -85,7 +91,7 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
       setLocalRuntime(next)
       localStorage.removeItem(NEW_SESSION_AGENT_KEY)
     }
-  }, [agents, runtime, runtimeReady, usingCloudProfiles])
+  }, [agents, runtime, runtimeReady, savedRuntimeChecking, usingCloudProfiles])
 
   const activeCloudProfile = usingCloudProfiles
     ? cloudProfiles.find((profile) => profile.profile_id === runtime) ?? cloudProfiles[0]
@@ -128,11 +134,17 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
     : cloudSelectedSuggestion?.reasoning?.default_effort ?? cloudEffortOptions[0]?.value ?? ''
 
   const modelSuggestions = usingCloudProfiles ? cloudModels : localReasoning.modelSuggestions
-  const modelsLoading = usingCloudProfiles ? cloudProfilesQuery.isPending : localReasoning.modelsLoading
+  const modelsLoading = usingCloudProfiles
+    ? cloudProfilesQuery.isPending
+    : (savedRuntimeChecking || localReasoning.modelsLoading)
   const effortOptions = usingCloudProfiles ? cloudEffortOptions : localReasoning.reasoningOptions
   const effort = usingCloudProfiles ? cloudEffort : localReasoning.effectiveReasoningEffort
-  const reasoningStatus = usingCloudProfiles ? 'ready' as const : localReasoning.reasoningStatus
-  const reasoningBlocked = usingCloudProfiles ? false : localReasoning.reasoningBlocked
+  const reasoningStatus = usingCloudProfiles
+    ? 'ready' as const
+    : (savedRuntimeChecking ? 'pending' as const : localReasoning.reasoningStatus)
+  const reasoningBlocked = usingCloudProfiles
+    ? false
+    : (savedRuntimeChecking || localReasoning.reasoningBlocked)
 
   const composer = composerConfig()
   const fastModeConfigID = !usingCloudProfiles
@@ -160,6 +172,7 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
     isCloudTarget: usingCloudProfiles,
     runtimeReady,
     runtimeAvailable,
+    runtimeChecking,
     runtimeError,
     retryRuntime,
     // Picker visibility lives here so the controls and the mobile summary agree.
@@ -174,7 +187,7 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
     reasoningStatus,
     reasoningBlocked,
     // ready means a start now uses the settled agent and model, or reports why it cannot.
-    ready: runtimeReady && (!runtimeAvailable || agents.includes(runtime)) && !(reasoningBlocked && reasoningStatus === 'pending'),
+    ready: runtimeReady && !savedRuntimeChecking && (!runtimeAvailable || agents.includes(runtime)) && !(reasoningBlocked && reasoningStatus === 'pending'),
     setSelection,
     fastMode,
     effort,
@@ -235,7 +248,11 @@ export function AgentModelControls({
     }
     return controls.runtimeReady ? (
       <span className="px-1.5 text-[13px] text-ink-3">
-        {controls.isCloudTarget ? 'No cloud models configured' : 'Connect an agent in Settings'}
+        {controls.runtimeChecking
+          ? 'Checking agents…'
+          : controls.isCloudTarget
+            ? 'No cloud models configured'
+            : 'Connect an agent in Settings'}
       </span>
     ) : null
   }

@@ -62,6 +62,7 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		writeError(w, status, err)
 		return
 	}
+	s.invalidateACPAuthProbe(agent)
 
 	if current, ok := defaults.ACP[agent]; ok {
 		current.Enabled = false

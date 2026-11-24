@@ -104,7 +104,9 @@ function OnboardingScreen({
   const onboardingProbes = useMemo(() => status.acp.filter((probe) => selectableACPAgent(probe.agent)), [status.acp])
   const adapterPreparing = onboardingProbes.some(
     (probe) =>
-      probe.managed_adapter?.state === 'downloading' || probe.managed_tool?.state === 'downloading',
+      probe.checking === true ||
+      probe.managed_adapter?.state === 'downloading' ||
+      probe.managed_tool?.state === 'downloading',
   )
   // Only for the connections slide's action label; shares the list's cache.
   const plugins = useQuery(pluginsQuery)

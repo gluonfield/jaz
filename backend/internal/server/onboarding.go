@@ -172,6 +172,7 @@ func (s *Server) handlePrepareACPAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.invalidateACPAuthProbe(agent)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -238,10 +239,11 @@ func (s *Server) onboardingStatus(store storage.SettingsStorage) (onboardingResp
 	if err != nil {
 		return onboardingResponse{}, err
 	}
+	probes := s.probeAllACPAuth(defaults)
 	return onboardingResponse{
 		Completed: state.Completed,
-		ACP:       s.probeACPAgents(defaults),
-		Settings:  s.agentSettingsResponse(defaults),
+		ACP:       s.probeACPAgentsFrom(probes),
+		Settings:  s.agentSettingsResponseWithProbes(defaults, probes),
 		Memory:    memory,
 	}, nil
 }
@@ -250,27 +252,24 @@ func (s *Server) onboardingStatePath() string {
 	return onboardingstate.Path(s.runtimeRoot())
 }
 
-func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardingACPProbe {
-	out := []onboardingACPProbe{}
-	for _, name := range s.allACPAgentNames() {
-		name = acp.CanonicalAgentName(name)
-		cfg, command, err := s.acpProbeConfig(name, defaults)
-		if err != nil {
+func (s *Server) probeACPAgentsFrom(probes []acpAgentProbeSnapshot) []onboardingACPProbe {
+	out := make([]onboardingACPProbe, 0, len(probes))
+	for _, probe := range probes {
+		if probe.err != nil {
 			out = append(out, onboardingACPProbe{
-				acpAuthStatusResponse: acpAuthStatusResponse{Reason: err.Error()},
-				Agent:                 name,
-				Command:               command,
+				acpAuthStatusResponse: acpAuthStatusResponse{Reason: probe.err.Error()},
+				Agent:                 probe.name,
+				Command:               probe.command,
 			})
 			continue
 		}
+		name, cfg, auth, readiness := probe.name, probe.cfg, probe.auth, probe.readiness
 		adapterInstalled := acpCommandInstalled(cfg)
-		auth := acp.ProbeAgentAuthWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		if strings.TrimSpace(cfg.URL) != "" {
 			auth.Authenticated = true
 			auth.Reason = ""
 		}
 		appName, appInstalled := agentAppInstall(name)
-		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		adapter := s.managedAdapterStatus(cfg)
 		adapterReady := adapter == nil || adapter.State == acpadapter.StateReady
 		tool := s.managedToolStatus(cfg.ManagedTool, cfg.Env)
@@ -285,17 +284,18 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			reason = firstMessage(commandMissingReason(cfg), auth.LoginCommandReason)
 		} else if !adapterInstalled {
 			reason = commandMissingReason(cfg)
-		} else if !readiness.Available {
+		} else if !readiness.Available && !probe.checking {
 			reason = firstMessage(readiness.Reason, auth.LoginCommandReason, auth.Reason)
 		}
 		authResponse := newACPAuthStatusResponse(auth, readiness)
+		authResponse.Checking = probe.checking
 		authResponse.Reason = reason
 		authResponse.ManagedAdapter = adapter
 		authResponse.ManagedTool = tool
 		out = append(out, onboardingACPProbe{
 			acpAuthStatusResponse: authResponse,
 			Agent:                 name,
-			Command:               command,
+			Command:               probe.command,
 			Installed:             installed,
 			AppInstalled:          appInstalled,
 			AppName:               appName,

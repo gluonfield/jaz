@@ -37,6 +37,12 @@ func antigravityExecutable(dirs string) (string, error) {
 }
 
 func antigravityModels(ctx context.Context, env map[string]string) (AgentModelCatalog, error) {
+	if err := ctx.Err(); err != nil {
+		return AgentModelCatalog{}, err
+	}
+	if catalog, ok := cachedAntigravityCatalog(env); ok {
+		return catalog, nil
+	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cmd, err := antigravityModelsCommand(ctx, env)

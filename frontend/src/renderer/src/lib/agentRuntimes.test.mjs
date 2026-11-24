@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'bun:test'
-import { acpAgentEnableable, acpAgentModelsReady, normalizeACPAgentsEnabled, selectableACPModelProviders } from './agentRuntimes'
+import {
+  acpAgentChecking,
+  acpAgentEnableable,
+  acpAgentModelsReady,
+  enabledACPAgents,
+  enabledACPAgentsChecking,
+  hasCheckingACPAgent,
+  normalizeACPAgentsEnabled,
+  selectableACPModelProviders,
+} from './agentRuntimes'
 
 describe('selectableACPModelProviders', () => {
   test('surfaces supported local providers', () => {
@@ -93,4 +102,30 @@ test('saving a newly entered key can still enable the agent before server discov
   }
   expect(normalizeACPAgentsEnabled(settings).acp.claude.enabled).toBe(true)
   expect(acpAgentModelsReady(settings, 'claude')).toBe(false)
+})
+
+test('a slow checking agent does not block fast ready agents from appearing', () => {
+  const settings = {
+    agents: ['codex', 'claude', 'antigravity'],
+    acp: {
+      codex: { enabled: true },
+      claude: { enabled: true },
+      antigravity: { enabled: true },
+    },
+    acp_auth: {
+      codex: { authenticated: true, ready: true },
+      claude: { authenticated: true, ready: true },
+      antigravity: { authenticated: false, ready: false, checking: true },
+    },
+  }
+  expect(enabledACPAgents(settings)).toEqual(['codex', 'claude'])
+  expect(acpAgentChecking(settings, 'antigravity')).toBe(true)
+  expect(acpAgentChecking(settings, 'codex')).toBe(false)
+  expect(enabledACPAgentsChecking(settings)).toBe(true)
+  expect(hasCheckingACPAgent(settings)).toBe(true)
+
+  settings.acp_auth.antigravity = { authenticated: true, ready: true }
+  expect(enabledACPAgents(settings)).toEqual(['codex', 'claude', 'antigravity'])
+  expect(enabledACPAgentsChecking(settings)).toBe(false)
+  expect(hasCheckingACPAgent(settings)).toBe(false)
 })

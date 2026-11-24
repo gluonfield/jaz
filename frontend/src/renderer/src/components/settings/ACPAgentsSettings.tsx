@@ -97,6 +97,7 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
     }
     queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+    queryClient.invalidateQueries({ queryKey: keys.acpAgentModels(agent) })
   }
 
   // A finished sign-in connects the agent: turn it on and persist so it works
@@ -128,9 +129,10 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
       await applyDisconnect(agent, result)
       toast(`Disconnected ${authProviderLabel(agent)}`)
     },
-    onSettled: () => {
+    onSettled: (_, __, agent) => {
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
       queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+      queryClient.invalidateQueries({ queryKey: keys.acpAgentModels(agent) })
     },
     onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
   })
@@ -245,7 +247,9 @@ function ACPAgentRow({
   const checked = acpAgentEnabled(settings, agent)
   const enableDescription = providerReady
     ? 'Show this ACP client in agent pickers.'
-    : installation
+    : authStatus?.checking
+      ? 'Checking connection…'
+      : installation
       ? installation.message || 'Installation required.'
       : authStatus?.authenticated && authStatus.ready === false
       ? (authStatus.reason ?? `Sign in with ${authProviderLabel(agent)} again.`)
@@ -315,7 +319,9 @@ function ACPAgentRow({
                 actionable hint when it can't be enabled yet. */}
             {providerReady ? null : (
               <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[12px] text-ink-3">
-                <CircleAlert size={12} className="shrink-0 text-accent" />
+                {authStatus?.checking
+                  ? <LoaderCircle size={12} className="shrink-0 animate-spin" />
+                  : <CircleAlert size={12} className="shrink-0 text-accent" />}
                 <span className="truncate">{enableDescription}</span>
               </span>
             )}

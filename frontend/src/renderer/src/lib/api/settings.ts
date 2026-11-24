@@ -1,4 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
+import { hasCheckingACPAgent } from '@/lib/agentRuntimes'
 import { inputFromSettings, normalizeAgentSettings } from '@/lib/agentSettings'
 import { keys } from '../query/keys'
 import { get, post, put } from './client'
@@ -7,6 +8,7 @@ import type { ACPAgentAuth, ACPAuthLogin, ACPDisconnectResult, AgentSettings, Br
 export const agentSettingsQuery = queryOptions({
   queryKey: keys.agentSettings,
   queryFn: async ({ signal }) => normalizeAgentSettings(await get<AgentSettings>('/v1/settings/agents', { signal })),
+  refetchInterval: (query) => (hasCheckingACPAgent(query.state.data) ? 500 : false),
 })
 
 export const computerSettingsQuery = queryOptions({
