@@ -13,7 +13,9 @@ export interface CloudACPAgentSpec {
   provider: string
   default_model: string
   models: string[]
+  efforts?: string[]
   default_effort: string
+  executable?: boolean
   supports_web_auth: boolean
   web_auth_kind?: string
 }

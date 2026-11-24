@@ -97,20 +97,8 @@ func TestProjectTranscriptAndStreamProjectorRichEvents(t *testing.T) {
 	if assistant.Content != "All tests passed." {
 		t.Fatalf("assistant content = %q, want %q", assistant.Content, "All tests passed.")
 	}
-	if assistant.Reasoning != "Let me run tests." {
-		t.Fatalf("assistant reasoning = %q, want %q", assistant.Reasoning, "Let me run tests.")
-	}
-	if len(assistant.Blocks) != 3 {
-		t.Fatalf("expected 3 ordered blocks (reasoning, tool, text), got %d: %+v", len(assistant.Blocks), assistant.Blocks)
-	}
-	if assistant.Blocks[0].Type != storage.BlockTypeReasoning || assistant.Blocks[0].Text != "Let me run tests." {
-		t.Fatalf("unexpected block[0]: %+v", assistant.Blocks[0])
-	}
-	if assistant.Blocks[1].Type != storage.BlockTypeTool || assistant.Blocks[1].ID != "call_1" || assistant.Blocks[1].Name != "commandExecution" || assistant.Blocks[1].Result != "PASS\nok pkg 0.1s" {
-		t.Fatalf("unexpected block[1]: %+v", assistant.Blocks[1])
-	}
-	if assistant.Blocks[2].Type != storage.BlockTypeText || assistant.Blocks[2].Text != "All tests passed." {
-		t.Fatalf("unexpected block[2]: %+v", assistant.Blocks[2])
+	if len(assistant.Blocks) != 1 || assistant.Blocks[0].Type != storage.BlockTypeText || assistant.Blocks[0].Text != "All tests passed." {
+		t.Fatalf("expected assistant message to keep only final text block (activity lives in events[]), got %+v", assistant.Blocks)
 	}
 
 	var foundThought, foundTool bool
@@ -271,5 +259,67 @@ func TestProjectTranscriptReconcilesStaleRunningStatusAndInfersAgent(t *testing.
 	codexThread := storage.CloudThread{ID: "ct_codex", ModelProfileID: "acp:codex", Model: "gpt-6.1-sol"}
 	if gotAgent := codexThread.ToSession().RuntimeRef.Agent; gotAgent != "codex" {
 		t.Fatalf("expected inferred codex agent for acp:codex, got %q", gotAgent)
+	}
+}
+
+func TestUpdateDeleteThreadAndDeleteSpaceMirrorSync(t *testing.T) {
+	ctx := context.Background()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/.well-known/jaz-server":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "mode": "cloud", "auth": "oidc"})
+		case r.URL.Path == "/v1/auth/me":
+			_ = json.NewEncoder(w).Encode(map[string]any{"user_id": "u1", "org_id": "org1", "email": "u@cas.dev", "display_name": "Dev", "role": "member"})
+		case r.URL.Path == "/v1/spaces" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"spaces": []map[string]any{{"id": "sp_1", "org_id": "org1", "name": "Q4", "visibility": "private"}}})
+		case r.URL.Path == "/v1/spaces/sp_1" && r.Method == http.MethodDelete:
+			_ = json.NewEncoder(w).Encode(map[string]any{"deleted": true, "id": "sp_1"})
+		case r.URL.Path == "/v1/threads" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"threads": []map[string]any{
+					{"id": "th_1", "org_id": "org1", "owner_user_id": "u1", "run_id": "th_1", "visibility": "private", "title": "Old", "status": "idle", "updated_at": time.Now().UTC().Format(time.RFC3339)},
+				},
+			})
+		case r.URL.Path == "/v1/threads/th_1" && r.Method == http.MethodPatch:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "th_1", "org_id": "org1", "owner_user_id": "u1", "run_id": "th_1", "space_id": "sp_1", "visibility": "private", "title": "Renamed", "status": "idle", "updated_at": time.Now().UTC().Format(time.RFC3339),
+			})
+		case r.URL.Path == "/v1/threads/th_1" && r.Method == http.MethodDelete:
+			_ = json.NewEncoder(w).Encode(map[string]any{"deleted": true, "id": "th_1"})
+		case r.URL.Path == "/v1/usage/events":
+			_ = json.NewEncoder(w).Encode(map[string]any{"events": []any{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("sqlite.New: %v", err)
+	}
+	defer store.Close()
+	svc := cloudsync.New(store, nil)
+	if _, err := svc.Connect(ctx, cloudsync.ConnectRequest{URL: srv.URL, Token: "tok-1"}); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	if _, code, err := svc.UpdateThread(ctx, "th_1", json.RawMessage(`{"title":"Renamed","space_id":"sp_1"}`)); err != nil || code != http.StatusOK {
+		t.Fatalf("UpdateThread: code=%d err=%v", code, err)
+	}
+	sess, found, err := svc.GetSession(ctx, "th_1")
+	if err != nil || !found || sess.Title != "Renamed" || sess.SpaceID != "sp_1" {
+		t.Fatalf("expected mirrored renamed/moved session, got found=%v sess=%+v err=%v", found, sess, err)
+	}
+
+	if _, code, err := svc.DeleteThread(ctx, "th_1"); err != nil || code != http.StatusOK {
+		t.Fatalf("DeleteThread: code=%d err=%v", code, err)
+	}
+	if _, found, err := svc.GetSession(ctx, "th_1"); err != nil || found {
+		t.Fatalf("expected deleted thread removed from mirror, got found=%v err=%v", found, err)
+	}
+
+	if _, code, err := svc.DeleteSpace(ctx, "sp_1"); err != nil || code != http.StatusOK {
+		t.Fatalf("DeleteSpace: code=%d err=%v", code, err)
 	}
 }

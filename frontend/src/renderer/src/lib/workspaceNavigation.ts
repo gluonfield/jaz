@@ -8,6 +8,7 @@ export interface WorkspaceSwitchNavigation {
 
 export function workspaceSwitchDestination(pathname: string): WorkspaceSwitchRoute | null {
   if (pathname.startsWith('/sessions/')) return '/new'
+  if (pathname.startsWith('/spaces/')) return '/new'
   if (pathname.startsWith('/bots/') && pathname !== '/bots/') return '/bots'
   if (pathname.startsWith('/boards/') && pathname !== '/boards/') return '/boards'
   if (pathname.startsWith('/loops/') && pathname !== '/loops/') return '/loops'

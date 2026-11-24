@@ -297,3 +297,41 @@ func (s *Service) UpdateUserState(ctx context.Context, threadID string, patch st
 	}
 	return updated.ToSession(), raw, nil
 }
+
+func (s *Service) UpdateThread(ctx context.Context, threadID string, body json.RawMessage) (json.RawMessage, int, error) {
+	if err := validatePathSegment(threadID); err != nil {
+		return nil, 0, err
+	}
+	acc, gen, ok := s.activeAccountWithGen()
+	if !ok || acc.Token == "" {
+		return nil, 0, ErrNotConnected
+	}
+	raw, status, err := s.client.doJSON(ctx, http.MethodPatch, acc.BaseURL, "/v1/threads/"+url.PathEscape(threadID), acc.Token, body)
+	if err != nil {
+		return nil, status, err
+	}
+	var updated storage.CloudThread
+	if json.Unmarshal(raw, &updated) == nil && updated.ID != "" && s.isGeneration(gen) {
+		updated.AccountID = acc.ID
+		_ = s.store.UpsertCloudThread(ctx, acc.ID, updated)
+	}
+	return raw, status, nil
+}
+
+func (s *Service) DeleteThread(ctx context.Context, threadID string) (json.RawMessage, int, error) {
+	if err := validatePathSegment(threadID); err != nil {
+		return nil, 0, err
+	}
+	acc, gen, ok := s.activeAccountWithGen()
+	if !ok || acc.Token == "" {
+		return nil, 0, ErrNotConnected
+	}
+	raw, status, err := s.client.doJSON(ctx, http.MethodDelete, acc.BaseURL, "/v1/threads/"+url.PathEscape(threadID), acc.Token, nil)
+	if err != nil {
+		return nil, status, err
+	}
+	if s.isGeneration(gen) {
+		_ = s.store.DeleteCloudThread(ctx, acc.ID, threadID)
+	}
+	return raw, status, nil
+}

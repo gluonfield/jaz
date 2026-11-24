@@ -46,6 +46,7 @@ import { FileDropScope } from '@/components/ui/FileDrop'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
 import { isCloudApiSession } from '@/lib/api/client'
+import { updateThreadUserState } from '@/lib/api/cloudSpaces'
 import { uploadCloudFile } from '@/lib/api/cloudUploads'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
@@ -309,18 +310,12 @@ export function ThreadView({
   const stopSession = useCallback(() => {
     // The turn runs detached server-side; clear local optimistic state now.
     abortLiveMessage()
-    if (isCloudThreadView) {
-      queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
-      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-      queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
-      return
-    }
-    void cancelSession(sessionId)
+    void cancelSession(sessionId, isCloudThreadView)
       .catch(() => {})
       .finally(() => {
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        queryClient.invalidateQueries({ queryKey: keys.usage })
+        queryClient.invalidateQueries({ queryKey: isCloudThreadView ? keys.cloudUsageSummary : keys.usage })
       })
   }, [abortLiveMessage, isCloudThreadView, queryClient, sessionId])
 
@@ -417,10 +412,20 @@ export function ThreadView({
 
 
   useEffect(() => {
-    if (seenRequestedRef.current || isCloudThreadView || !detail.isSuccess) return
+    if (seenRequestedRef.current || !detail.isSuccess) return
     seenRequestedRef.current = true
+    if (isCloudThreadView) {
+      if (!detail.data.session.unread) return
+      void updateThreadUserState(sessionId, {
+        last_read_seq: detail.data.latest_event_seq || 1,
+        unread: false,
+      })
+        .catch(() => {})
+        .finally(() => invalidateSessionLists(queryClient))
+      return
+    }
     void markThreadSeen(sessionId).finally(() => invalidateSessionLists(queryClient))
-  }, [detail.isSuccess, isCloudThreadView, sessionId, queryClient])
+  }, [detail.data, detail.isSuccess, isCloudThreadView, sessionId, queryClient])
 
   // A deep link jumps once. Without this the effect re-fires on every streamed
   // update and drags the reader back to the linked message after they have

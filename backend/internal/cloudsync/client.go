@@ -564,6 +564,21 @@ func (c *cloudClient) openRunFile(ctx context.Context, baseURL, token, runID, re
 		return nil, err
 	}
 	path := fmt.Sprintf("/v1/runs/%s/files/%s", url.PathEscape(runID), strings.Join(segments, "/"))
+	return c.openCloudFilePath(ctx, baseURL, token, path)
+}
+
+func (c *cloudClient) openSpaceSourceContent(ctx context.Context, baseURL, token, spaceID, sourceID string) (*http.Response, error) {
+	if err := validatePathSegment(spaceID); err != nil {
+		return nil, err
+	}
+	if err := validatePathSegment(sourceID); err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/v1/spaces/%s/sources/%s/content", url.PathEscape(spaceID), url.PathEscape(sourceID))
+	return c.openCloudFilePath(ctx, baseURL, token, path)
+}
+
+func (c *cloudClient) openCloudFilePath(ctx context.Context, baseURL, token, path string) (*http.Response, error) {
 	baseParsed, _ := url.Parse(baseURL)
 	baseIsLoopback := IsLoopbackURL(baseURL)
 	reqCtx := ctx

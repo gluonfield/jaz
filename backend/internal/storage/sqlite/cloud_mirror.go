@@ -367,6 +367,15 @@ func (s *Store) UpdateCloudThreadStatus(ctx context.Context, accountID, id, stat
 	})
 }
 
+func (s *Store) DeleteCloudThread(ctx context.Context, accountID, id string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return cloudmirror.New(s.db).DeleteCloudThread(ctx, cloudmirror.DeleteCloudThreadParams{
+		AccountID: accountID,
+		ID:        id,
+	})
+}
+
 func (s *Store) AppendCloudThreadEvents(ctx context.Context, accountID, threadID string, events []storage.CloudThreadEvent) error {
 	if len(events) == 0 {
 		return nil

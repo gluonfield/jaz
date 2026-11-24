@@ -888,3 +888,129 @@ test('projectCloudThreadMessages reconciles stale running status after turn_comp
   })
   expect(codexSess.runtime_ref?.agent).toBe('codex')
 })
+
+test('projectCloudThreadMessages projects thinking and tool events into events[] for Worked-for parity', () => {
+  const { api } = fixture()
+  const projected = api.projectCloudThreadMessages(
+    {
+      id: 'thr_work',
+      run_id: 'thr_work',
+      visibility: 'private',
+      title: 'Work',
+      status: 'idle',
+      model_profile_id: 'vertex-default',
+      model: 'google/gemini-4-hydrogen',
+      updated_at: '2026-11-24T15:00:08Z',
+    },
+    [
+      { thread_id: 'thr_work', seq: 1, type: 'user_message', payload: { text: 'Run checks' }, created_at: '2026-11-24T15:00:00Z' },
+      { thread_id: 'thr_work', seq: 2, type: 'thinking_delta', payload: { delta: 'Checking ' }, created_at: '2026-11-24T15:00:01Z' },
+      { thread_id: 'thr_work', seq: 3, type: 'thinking_delta', payload: { delta: 'tests.' }, created_at: '2026-11-24T15:00:02Z' },
+      { thread_id: 'thr_work', seq: 4, type: 'tool_call', payload: { call_id: 'c1', tool: 'commandExecution', title: 'go test', status: 'running' }, created_at: '2026-11-24T15:00:03Z' },
+      { thread_id: 'thr_work', seq: 5, type: 'tool_delta', payload: { call_id: 'c1', delta: 'PASS\n' }, created_at: '2026-11-24T15:00:04Z' },
+      { thread_id: 'thr_work', seq: 6, type: 'tool_result', payload: { call_id: 'c1', tool: 'commandExecution', status: 'completed', output: 'PASS' }, created_at: '2026-11-24T15:00:05Z' },
+      { thread_id: 'thr_work', seq: 7, type: 'assistant_delta', payload: { delta: 'All green.' }, created_at: '2026-11-24T15:00:06Z' },
+      { thread_id: 'thr_work', seq: 8, type: 'turn_completed', payload: { status: 'completed' }, created_at: '2026-11-24T15:00:07Z' },
+    ],
+  )
+  expect(projected.messages).toHaveLength(2)
+  expect(projected.messages[1].blocks).toEqual([{ type: 'text', text: 'All green.' }])
+  const thought = projected.events.find((ev) => ev.type === 'acp_thought')
+  const tool = projected.events.find((ev) => ev.type === 'acp_tool')
+  expect(thought?.acp?.thought).toBe('Checking tests.')
+  expect(tool?.acp?.tool_calls?.[0]).toMatchObject({
+    id: 'c1',
+    title: 'go test',
+    status: 'completed',
+    runtime: { terminal_output: 'PASS' },
+  })
+})
+
+test('listCloudModelProfiles preserves reasoning efforts and Cloud thread/project controls call real endpoints', async () => {
+  const { api } = fixture()
+  const calls = []
+  replace('fetch', async (url, init = {}) => {
+    const parsed = new URL(String(url))
+    const body = typeof init.body === 'string' && init.body ? JSON.parse(init.body) : undefined
+    calls.push({ method: init.method ?? 'GET', path: parsed.pathname, body })
+    if (parsed.pathname === '/v1/models') {
+      return Response.json({
+        models: [
+          {
+            profile_id: 'vertex-default',
+            provider: 'vertex',
+            default_model: 'google/gemini-4-hydrogen',
+            default_effort: 'high',
+            models: [
+              {
+                value: 'google/gemini-4-hydrogen',
+                label: 'gemini-4-hydrogen',
+                reasoning: { efforts: ['low', 'medium', 'high'], default_effort: 'high', status: 'ready' },
+              },
+            ],
+          },
+        ],
+      })
+    }
+    if (parsed.pathname === '/v1/threads/thr_1' && init.method === 'PATCH') {
+      return Response.json({ id: 'thr_1', run_id: 'thr_1', visibility: 'private', title: body.title ?? 'Moved', space_id: body.space_id ?? null, status: 'idle', updated_at: '2026-11-24T15:00:00Z' })
+    }
+    if (parsed.pathname === '/v1/threads/thr_1' && init.method === 'DELETE') {
+      return Response.json({ deleted: true, id: 'thr_1' })
+    }
+    if (parsed.pathname === '/v1/threads/thr_1' && (init.method ?? 'GET') === 'GET') {
+      return Response.json({ id: 'thr_1', run_id: 'thr_1', visibility: 'private', title: 'Hi', status: 'running', updated_at: '2026-11-24T15:00:00Z' })
+    }
+    if (parsed.pathname === '/v1/threads/thr_1/cancel' || parsed.pathname === '/v1/threads/thr_1/steer') {
+      return Response.json({ ok: true })
+    }
+    if (parsed.pathname === '/v1/spaces' && init.method === 'POST') {
+      return Response.json({ id: 'sp_priv', name: body.name, visibility: body.visibility, can_edit: true })
+    }
+    if (parsed.pathname === '/v1/spaces/sp_priv/sources' && (init.method ?? 'GET') === 'GET') {
+      return Response.json({ sources: [{ id: 'src_1', space_id: 'sp_priv', filename: 'spec.md', size_bytes: 120, content_type: 'text/markdown', created_at: '2026-11-24T15:00:00Z' }] })
+    }
+    if (parsed.pathname === '/v1/spaces/sp_priv/sources/src_1' && init.method === 'DELETE') {
+      return Response.json({ deleted: true, id: 'src_1' })
+    }
+    if (parsed.pathname === '/v1/spaces/sp_priv' && init.method === 'DELETE') {
+      return Response.json({ deleted: true, id: 'sp_priv' })
+    }
+    return Response.json({}, { status: 404 })
+  })
+
+  const profiles = await api.listCloudModelProfiles()
+  expect(profiles[0].models?.[0].reasoning).toEqual({
+    efforts: ['low', 'medium', 'high'],
+    default_effort: 'high',
+    status: 'ready',
+  })
+
+  await api.cancelSession('thr_1', true)
+  await api.setSessionTitle('thr_1', 'Renamed', true)
+  await api.moveSessionToSpace('thr_1', 'sp_priv')
+  await api.mutateSessionQueue('thr_1', { op: 'append', message: { id: 'q1', text: 'Next step' } }, true)
+  await api.deleteSession('thr_1')
+
+  const proj = await api.createSpace({ name: 'Private Folder', visibility: 'private' })
+  expect(proj.visibility).toBe('private')
+  const srcs = await api.listSpaceSources('sp_priv')
+  expect(srcs).toHaveLength(1)
+  expect(srcs[0].filename).toBe('spec.md')
+  await api.deleteSpaceSource('sp_priv', 'src_1')
+  await api.deleteSpace('sp_priv')
+
+  expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+    'GET /v1/models',
+    'POST /v1/threads/thr_1/cancel',
+    'PATCH /v1/threads/thr_1',
+    'PATCH /v1/threads/thr_1',
+    'POST /v1/threads/thr_1/steer',
+    'GET /v1/threads/thr_1',
+    'DELETE /v1/threads/thr_1',
+    'POST /v1/spaces',
+    'GET /v1/spaces/sp_priv/sources',
+    'DELETE /v1/spaces/sp_priv/sources/src_1',
+    'DELETE /v1/spaces/sp_priv',
+  ])
+})

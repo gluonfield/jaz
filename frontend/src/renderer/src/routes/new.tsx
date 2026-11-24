@@ -1,6 +1,6 @@
 import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
-import { ExecutionLocationPicker, type ExecutionLocation } from '@/components/home/ExecutionLocationPicker'
+import type { ExecutionLocation } from '@/components/home/ExecutionLocationPicker'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { NewThreadOptions } from '@/components/home/NewThreadOptions'
 import { ThreadModeSwitch } from '@/components/home/ThreadModeSwitch'
@@ -27,7 +27,6 @@ import { modelSuggestionLabel } from '@/lib/models'
 import {
   NEW_SESSION_DIRECTORY_KEY,
   NEW_SESSION_DRAFT_KEY,
-  NEW_SESSION_LOCATION_KEY,
   type NewThreadPrompt,
 } from '@/lib/newSessionConfig'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
@@ -51,10 +50,6 @@ function storedString(key: string): string {
   return localStorage.getItem(key) ?? ''
 }
 
-function storedLocation(): ExecutionLocation {
-  return localStorage.getItem(NEW_SESSION_LOCATION_KEY) === 'cloud' ? 'cloud' : 'local'
-}
-
 export const Route = createFileRoute('/new')({
   validateSearch: (search): NewSearch => ({
     ...(typeof search.project === 'string' ? { project: search.project } : {}),
@@ -76,25 +71,12 @@ function NewSessionPage() {
   const toast = useToast()
   const [creating, setCreating] = useState(false)
   const [spendCapError, setSpendCapError] = useState<string | null>(null)
-  const [location, setLocation] = useState<ExecutionLocation>(() => {
-    if (cloudOnly) return 'cloud'
-    if (search.space) return 'cloud'
-    if (search.project !== undefined) return 'local'
-    return storedLocation()
-  })
   const [spaceId, setSpaceId] = useState(() => search.space ?? '')
 
-  const effectiveLocation: ExecutionLocation = cloudOnly
-    ? 'cloud'
-    : location === 'cloud' && cloud.active
-      ? 'cloud'
-      : 'local'
-  const targetIsCloud = effectiveLocation === 'cloud'
-
-  const selectLocation = (next: ExecutionLocation) => {
-    setLocation(next)
-    localStorage.setItem(NEW_SESSION_LOCATION_KEY, next)
-  }
+  // The active workspace in the sidebar switcher is the single source of truth
+  // for whether new threads run on Local or Cloud.
+  const targetIsCloud = cloudOnly || cloud.active
+  const effectiveLocation: ExecutionLocation = targetIsCloud ? 'cloud' : 'local'
 
   const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !cloudOnly && !targetIsCloud }).data
   const spaces = useQuery({ ...spacesQuery, enabled: targetIsCloud && cloud.active })
@@ -116,14 +98,12 @@ function NewSessionPage() {
   useEffect(() => {
     if (search.project === undefined) return
     setDirectory(search.project)
-    if (!cloudOnly) selectLocation('local')
-  }, [cloudOnly, search.project])
+  }, [search.project])
 
   useEffect(() => {
     if (search.space === undefined) return
     setSpaceId(search.space)
-    if (cloud.active) selectLocation('cloud')
-  }, [cloud.active, search.space])
+  }, [search.space])
 
   useEffect(() => {
     localStorage.setItem(NEW_SESSION_DIRECTORY_KEY, directory)
@@ -179,7 +159,7 @@ function NewSessionPage() {
       const input = targetIsCloud
         ? {
             ...baseInput,
-            ...(spaceId ? { space_id: spaceId, visibility: 'space' as const } : { visibility: 'private' as const }),
+            ...(spaceId ? { space_id: spaceId } : {}),
           }
         : baseInput
       if (text === undefined) {
@@ -265,13 +245,6 @@ function NewSessionPage() {
   // whether it is a chat or a canvas.
   const setupControls = (
     <>
-      <ExecutionLocationPicker
-        location={effectiveLocation}
-        lockedCloud={cloudOnly}
-        placement={controlPlacement}
-        disabled={creating}
-        onChange={selectLocation}
-      />
       {targetIsCloud ? (
         <>
           <ThreadVisibilityPicker

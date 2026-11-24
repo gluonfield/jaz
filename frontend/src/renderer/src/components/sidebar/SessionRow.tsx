@@ -1,6 +1,6 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import { Archive, Cloud, CornerDownRight, Pencil, Pin } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useLocation, useNavigate } from '@tanstack/react-router'
+import { Archive, Cloud, CornerDownRight, Folder, FolderMinus, Pencil, Pin, Trash2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { SessionHoverDetails } from '@/components/sidebar/SessionHoverDetails'
 import { ActiveRowHighlight } from '@/components/sidebar/SidebarScroll'
@@ -10,7 +10,15 @@ import { Input } from '@/components/ui/Input'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { Modal } from '@/components/ui/Modal'
 import { ContextMenu, MenuRow } from '@/components/ui/Popover'
-import { setSessionArchived, setSessionPinned, setSessionTitle } from '@/lib/api/sessions'
+import { useToast } from '@/components/ui/toast'
+import { spacesQuery } from '@/lib/api/cloudSpaces'
+import {
+  deleteSession,
+  moveSessionToSpace,
+  setSessionArchived,
+  setSessionPinned,
+  setSessionTitle,
+} from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
@@ -153,7 +161,7 @@ export function SessionRow({
 function useRenameSession(session: Session) {
   const queryClient = useQueryClient()
   const mutation = useMutation({
-    mutationFn: (title: string) => setSessionTitle(session.id, title),
+    mutationFn: (title: string) => setSessionTitle(session.id, title, session.backend === 'cloud'),
     onSettled: () => invalidateSessionLists(queryClient, { session: session.id }),
   })
   return (title: string) => {
@@ -319,24 +327,55 @@ function RowActionsMenu({
   onClose: () => void
   onRename: () => void
 }) {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const pathname = useLocation({ select: (loc) => loc.pathname })
+  const toast = useToast()
+  const isCloud = session.backend === 'cloud'
+  const spaces = useQuery({ ...spacesQuery, enabled: isCloud })
   const { pinned, toggle: togglePin } = usePinToggle(session)
   const archive = useArchive(session)
+
+  const move = useMutation({
+    mutationFn: (spaceId: string) => moveSessionToSpace(session.id, spaceId),
+    onSuccess: (_updated, spaceId) => {
+      invalidateSessionLists(queryClient, { session: session.id })
+      toast(spaceId ? 'Moved chat to project' : 'Removed chat from project')
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : 'Could not move chat', 'danger')
+    },
+  })
+
+  const remove = useMutation({
+    mutationFn: () => deleteSession(session.id),
+    onSuccess: () => {
+      invalidateSessionLists(queryClient)
+      toast('Deleted chat')
+      if (pathname === `/sessions/${session.id}`) {
+        void navigate({ to: '/new' })
+      }
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : 'Could not delete chat', 'danger')
+    },
+  })
 
   const run = (fn: () => void) => {
     onClose()
     fn()
   }
 
+  const targetSpaces = (spaces.data ?? []).filter((space) => space.id !== session.space_id)
+
   return (
     <ContextMenu point={point} onClose={onClose}>
-      {session.backend !== 'cloud' ? (
-        <MenuRow onClick={() => run(onRename)}>
-          <span className="flex items-center gap-2">
-            <Pencil size={13} />
-            Rename
-          </span>
-        </MenuRow>
-      ) : null}
+      <MenuRow onClick={() => run(onRename)}>
+        <span className="flex items-center gap-2">
+          <Pencil size={13} />
+          Rename
+        </span>
+      </MenuRow>
       <MenuRow onClick={() => run(togglePin)}>
         <span className="flex items-center gap-2">
           <Pin size={13} className={pinned ? 'fill-current' : ''} />
@@ -349,6 +388,37 @@ function RowActionsMenu({
           Archive
         </span>
       </MenuRow>
+      {isCloud && (targetSpaces.length > 0 || session.space_id) ? (
+        <div className="my-1 border-t border-border/60 pt-1">
+          <p className="px-2.5 py-1 text-[11px] font-medium text-ink-3">Move to project</p>
+          {session.space_id ? (
+            <MenuRow onClick={() => run(() => move.mutate(''))}>
+              <span className="flex items-center gap-2">
+                <FolderMinus size={13} />
+                Remove from project
+              </span>
+            </MenuRow>
+          ) : null}
+          {targetSpaces.map((space) => (
+            <MenuRow key={space.id} onClick={() => run(() => move.mutate(space.id))}>
+              <span className="flex items-center gap-2 truncate">
+                <Folder size={13} className="shrink-0" />
+                <span className="truncate">{space.name}</span>
+              </span>
+            </MenuRow>
+          ))}
+        </div>
+      ) : null}
+      {isCloud ? (
+        <div className="mt-1 border-t border-border/60 pt-1">
+          <MenuRow onClick={() => run(() => remove.mutate())}>
+            <span className="flex items-center gap-2 text-danger">
+              <Trash2 size={13} />
+              Delete
+            </span>
+          </MenuRow>
+        </div>
+      ) : null}
     </ContextMenu>
   )
 }

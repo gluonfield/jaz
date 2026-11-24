@@ -4,13 +4,21 @@ import type { ModelPickerOption, PickerAgentOption } from '@/lib/modelPicker'
 import { keys } from '@/lib/query/keys'
 import {
   apiFetch as cloudFetch,
-  apiSessionRevision,
+  del as cloudDel,
   get as cloudGet,
-  onApiSessionChange as onCloudSessionChange,
+  patch as cloudPatch,
   post as cloudPost,
 } from './client'
+import {
+  cloudEventToSessionEvent,
+  openCloudThreadEvents,
+  parseCloudSseText,
+  projectCloudEventsForSession,
+} from './cloudThreadEvents'
 import type { ConnectedMachine } from './serverTypes'
-import type { Attachment, ChatMessage, MessageBlock, Session, SessionEvent, SessionMessages } from './types'
+import type { Attachment, Session, SessionMessages } from './types'
+
+export { cloudEventToSessionEvent, openCloudThreadEvents, parseCloudSseText }
 
 export type RawCloudModelOption = string | ModelPickerOption
 
@@ -293,6 +301,31 @@ export async function getCloudThread(threadId: string, signal?: AbortSignal): Pr
   return cloudGet<CloudThread>(`/v1/threads/${encodeURIComponent(threadId)}`, { signal })
 }
 
+export async function patchCloudThread(
+  threadId: string,
+  patch: { title?: string; space_id?: string },
+): Promise<CloudThread> {
+  return cloudPatch<CloudThread>(`/v1/threads/${encodeURIComponent(threadId)}`, patch)
+}
+
+export async function deleteCloudThread(threadId: string): Promise<{ deleted: boolean; id: string }> {
+  return cloudDel<{ deleted: boolean; id: string }>(`/v1/threads/${encodeURIComponent(threadId)}`)
+}
+
+export async function cancelCloudThread(threadId: string): Promise<{ ok: boolean }> {
+  await cloudPost<unknown>(`/v1/threads/${encodeURIComponent(threadId)}/cancel`, {})
+  return { ok: true }
+}
+
+export async function steerCloudThread(
+  threadId: string,
+  text: string,
+  mode: 'queue' | 'steer' = 'queue',
+): Promise<{ ok: boolean }> {
+  await cloudPost<unknown>(`/v1/threads/${encodeURIComponent(threadId)}/steer`, { text, mode })
+  return { ok: true }
+}
+
 export function createCloudTurn(
   threadId: string,
   input: CreateCloudTurnInput,
@@ -317,236 +350,8 @@ export function createCloudTurn(
   )
 }
 
-export function parseCloudSseText(rawText: string): CloudSessionEvent[] {
-  const events: CloudSessionEvent[] = []
-  const normalized = rawText.replace(/\r\n/g, '\n')
-  for (const block of normalized.split('\n\n')) {
-    const parsed = parseSseFrame(block)
-    if (parsed) events.push(parsed)
-  }
-  return events
-}
-
-function parseSseFrame(frame: string): CloudSessionEvent | null {
-  let eventName = ''
-  let eventId = ''
-  const dataLines: string[] = []
-  for (const line of frame.split('\n')) {
-    if (!line || line.startsWith(':')) continue
-    if (line.startsWith('event:')) {
-      eventName = line.slice(6).trim()
-    } else if (line.startsWith('id:')) {
-      eventId = line.slice(3).trim()
-    } else if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trimStart())
-    }
-  }
-  if (dataLines.length === 0) return null
-  try {
-    const parsed = JSON.parse(dataLines.join('\n')) as Partial<CloudSessionEvent>
-    const seq = typeof parsed.seq === 'number' ? parsed.seq : Number.parseInt(eventId, 10) || 0
-    return {
-      thread_id: parsed.thread_id ?? '',
-      seq,
-      org_id: parsed.org_id,
-      turn_epoch: parsed.turn_epoch,
-      actor_user_id: parsed.actor_user_id,
-      type: parsed.type || eventName || 'message',
-      payload: parsed.payload ?? null,
-      created_at: parsed.created_at || new Date().toISOString(),
-    }
-  } catch {
-    return null
-  }
-}
-
-function isCloudUserEvent(type: string): boolean {
-  return type === 'user_message' || type === 'turn.user' || type === 'turn_user' || type === 'turn.started' || type === 'turn_started'
-}
-
-function isCloudAssistantDeltaEvent(type: string): boolean {
-  return type === 'assistant_delta' || type === 'assistant.delta' || type === 'agent_message_chunk'
-}
-
-function isCloudAssistantMessageEvent(type: string): boolean {
-  return type === 'assistant_message' || type === 'assistant.message' || type === 'turn.assistant' || type === 'turn_assistant'
-}
-
-function cloudTerminalEventState(type: string): 'idle' | 'failed' | 'cancelled' | null {
-  if (type === 'turn_completed' || type === 'turn.completed') return 'idle'
-  if (type === 'turn_failed' || type === 'turn.failed') return 'failed'
-  if (type === 'turn_interrupted' || type === 'turn.interrupted') return 'cancelled'
-  return null
-}
-
-export function cloudEventToSessionEvent(threadId: string, ev: CloudSessionEvent): SessionEvent {
-  const payload = ev.payload && typeof ev.payload === 'object' ? ev.payload : {}
-  const base: SessionEvent = {
-    seq: ev.seq,
-    session_id: ev.thread_id || threadId,
-    type: ev.type,
-    at: ev.created_at,
-  }
-  if (ev.type === 'acp' && payload.acp && typeof payload.acp === 'object') {
-    return { ...base, ...(payload as Partial<SessionEvent>) }
-  }
-  if (isCloudAssistantDeltaEvent(ev.type) || isCloudAssistantMessageEvent(ev.type)) {
-    const text = typeof payload.text === 'string'
-      ? payload.text
-      : typeof payload.delta === 'string'
-        ? payload.delta
-        : ''
-    return {
-      ...base,
-      type: 'acp',
-      acp: {
-        id: threadId,
-        slug: threadId,
-        agent: typeof payload.agent === 'string' ? payload.agent : '',
-        session_id: threadId,
-        state: 'running',
-        assistant: text,
-        last_event_at: ev.created_at,
-      },
-    }
-  }
-  const terminalState = cloudTerminalEventState(ev.type)
-  if (terminalState) {
-    const error = typeof payload.error === 'string' ? payload.error : undefined
-    return {
-      ...base,
-      type: 'acp',
-      acp: {
-        id: threadId,
-        slug: threadId,
-        agent: typeof payload.agent === 'string' ? payload.agent : '',
-        session_id: threadId,
-        state: terminalState,
-        ...(error ? { error } : {}),
-        last_event_at: ev.created_at,
-      },
-    }
-  }
-  return { ...base, ...(payload as Partial<SessionEvent>), seq: ev.seq, session_id: ev.thread_id || threadId, at: ev.created_at }
-}
-
 export function projectCloudThreadMessages(thread: CloudThread, rawEvents: CloudSessionEvent[]): SessionMessages {
-  const session = cloudThreadToSession(thread)
-  const messages: ChatMessage[] = []
-  const events: SessionEvent[] = []
-  let latestSeq = 0
-  let acpState = session.status === 'running' ? 'running' : 'idle'
-  let lastTurnTerminal: 'idle' | 'failed' | 'cancelled' | null = null
-  let acpError: string | undefined
-  let pendingAssistantText = ''
-  let pendingAssistantSeq = 0
-  let pendingAssistantAt = ''
-
-  const flushPendingAssistant = () => {
-    if (!pendingAssistantText) return
-    messages.push({
-      seq: pendingAssistantSeq,
-      role: 'assistant',
-      content: pendingAssistantText,
-      blocks: [{ type: 'text', text: pendingAssistantText }],
-      created_at: pendingAssistantAt,
-    })
-    pendingAssistantText = ''
-    pendingAssistantSeq = 0
-    pendingAssistantAt = ''
-  }
-
-  for (const ev of rawEvents) {
-    if (ev.seq > latestSeq) latestSeq = ev.seq
-    const payload = ev.payload && typeof ev.payload === 'object' ? ev.payload : {}
-    const text = typeof payload.text === 'string'
-      ? payload.text
-      : typeof payload.prompt === 'string'
-        ? payload.prompt
-        : typeof payload.content === 'string'
-          ? payload.content
-          : typeof payload.delta === 'string'
-            ? payload.delta
-            : ''
-
-    if (isCloudUserEvent(ev.type) && text) {
-      flushPendingAssistant()
-      lastTurnTerminal = null
-      acpError = undefined
-      const blocks: MessageBlock[] = [{ type: 'text', text }]
-      messages.push({
-        seq: ev.seq,
-        role: 'user',
-        from_user: true,
-        actor_user_id: ev.actor_user_id ?? undefined,
-        actor_display_name: typeof payload.actor_display_name === 'string' ? payload.actor_display_name : undefined,
-        actor_email: typeof payload.actor_email === 'string' ? payload.actor_email : undefined,
-        content: text,
-        blocks,
-        created_at: ev.created_at,
-      })
-      continue
-    }
-
-    if (isCloudAssistantDeltaEvent(ev.type)) {
-      if (text) {
-        lastTurnTerminal = null
-        pendingAssistantText += text
-        pendingAssistantSeq = ev.seq
-        pendingAssistantAt = ev.created_at
-      }
-      continue
-    }
-
-    if (isCloudAssistantMessageEvent(ev.type) && text) {
-      lastTurnTerminal = null
-      pendingAssistantText = ''
-      messages.push({
-        seq: ev.seq,
-        role: 'assistant',
-        content: text,
-        blocks: [{ type: 'text', text }],
-        created_at: ev.created_at,
-      })
-      continue
-    }
-
-    const terminalState = cloudTerminalEventState(ev.type)
-    if (terminalState) {
-      flushPendingAssistant()
-      lastTurnTerminal = terminalState
-      acpState = terminalState
-      acpError = typeof payload.error === 'string' && payload.error.trim() ? payload.error.trim() : undefined
-    }
-
-    events.push(cloudEventToSessionEvent(thread.id, ev))
-  }
-
-  if (lastTurnTerminal) {
-    acpState = lastTurnTerminal
-    if (session.status === 'running') {
-      session.status = lastTurnTerminal === 'failed' ? 'error' : lastTurnTerminal === 'cancelled' ? 'interrupted' : 'idle'
-    }
-  }
-
-  let acpAssistant: string | undefined
-  if (acpState === 'running' && pendingAssistantText) {
-    acpAssistant = pendingAssistantText
-  } else {
-    flushPendingAssistant()
-  }
-
-  return {
-    session,
-    messages,
-    events,
-    has_earlier: false,
-    history_revision: Math.max(1, latestSeq),
-    latest_event_seq: latestSeq,
-    acp_state: acpState,
-    ...(acpAssistant ? { acp_assistant: acpAssistant } : {}),
-    ...(acpError ? { acp_error: acpError } : {}),
-  }
+  return projectCloudEventsForSession(thread, cloudThreadToSession(thread), rawEvents)
 }
 
 export async function fetchCloudThreadMessages(threadId: string, signal?: AbortSignal): Promise<SessionMessages> {
@@ -559,99 +364,4 @@ export async function fetchCloudThreadMessages(threadId: string, signal?: AbortS
   ])
   const rawEvents = eventsRes.ok ? parseCloudSseText(await eventsRes.text()) : []
   return projectCloudThreadMessages(thread, rawEvents)
-}
-
-export function openCloudThreadEvents(
-  threadId: string,
-  afterSeq: number,
-  onEvent: (event: SessionEvent) => void,
-  onConnection?: (connected: boolean) => void,
-): () => void {
-  let closed = false
-  let lastSeq = afterSeq
-  let retryTimer: ReturnType<typeof setTimeout> | undefined
-  let activeController: AbortController | null = null
-  let streamedAssistant = ''
-  const revision = apiSessionRevision()
-
-  function emitCloudEvent(parsed: CloudSessionEvent): void {
-    if (isCloudUserEvent(parsed.type)) {
-      streamedAssistant = ''
-    } else if (isCloudAssistantDeltaEvent(parsed.type)) {
-      const payload = parsed.payload && typeof parsed.payload === 'object' ? parsed.payload : {}
-      const chunk = typeof payload.text === 'string'
-        ? payload.text
-        : typeof payload.delta === 'string'
-          ? payload.delta
-          : ''
-      streamedAssistant += chunk
-      onEvent(cloudEventToSessionEvent(threadId, {
-        ...parsed,
-        payload: { ...payload, text: streamedAssistant },
-      }))
-      return
-    } else if (cloudTerminalEventState(parsed.type)) {
-      streamedAssistant = ''
-    }
-    onEvent(cloudEventToSessionEvent(threadId, parsed))
-  }
-
-  async function connect(): Promise<void> {
-    if (closed || apiSessionRevision() !== revision) return
-    const controller = new AbortController()
-    activeController = controller
-    const suffix = lastSeq > 0 ? `?after_seq=${lastSeq}` : ''
-    try {
-      const response = await cloudFetch(`/v1/threads/${encodeURIComponent(threadId)}/events${suffix}`, {
-        headers: { Accept: 'text/event-stream' },
-        signal: controller.signal,
-      })
-      if (!response.ok || !response.body) {
-        if (response.status === 401 || response.status === 403 || response.status === 404) {
-          onConnection?.(false)
-          return
-        }
-        throw new Error(`Cloud event stream failed (${response.status})`)
-      }
-      if (closed || apiSessionRevision() !== revision) return
-      onConnection?.(true)
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        if (closed || apiSessionRevision() !== revision) return
-        buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, '\n')
-        let sep = buffer.indexOf('\n\n')
-        while (sep !== -1) {
-          const parsed = parseSseFrame(buffer.slice(0, sep).replace(/\r/g, ''))
-          buffer = buffer.slice(sep + 2)
-          if (parsed) {
-            if (parsed.seq > lastSeq) lastSeq = parsed.seq
-            emitCloudEvent(parsed)
-          }
-          sep = buffer.indexOf('\n\n')
-        }
-      }
-    } catch {
-      // Reconnect below unless closed.
-    }
-    if (!closed && apiSessionRevision() === revision) {
-      onConnection?.(false)
-      retryTimer = setTimeout(() => void connect(), 2_000)
-    }
-  }
-
-  const unsubscribe = onCloudSessionChange(close)
-  function close(): void {
-    closed = true
-    clearTimeout(retryTimer)
-    activeController?.abort()
-    activeController = null
-    unsubscribe()
-  }
-
-  void connect()
-  return close
 }

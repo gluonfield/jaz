@@ -142,6 +142,7 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge ma
 		return routes
 	}
 	h := cloudapi.NewHandler(cloud).WithMachineBridge(bridge)
+	projects := cloudapi.NewProjectsHandler(cloud)
 	var cloudLogins *acp.CloudLoginRunner
 	if acpMgr != nil {
 		cloudLogins = acpMgr.CloudLogins()
@@ -171,15 +172,24 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge ma
 		server.Route{Pattern: "DELETE /v1/members/{id}", Handler: httpHandlerFunc(h.DeleteMember)},
 		server.Route{Pattern: "GET /v1/spaces", Handler: httpHandlerFunc(h.ListSpaces)},
 		server.Route{Pattern: "POST /v1/spaces", Handler: httpHandlerFunc(h.CreateSpace)},
+		server.Route{Pattern: "GET /v1/spaces/{id}", Handler: httpHandlerFunc(projects.GetSpace)},
 		server.Route{Pattern: "PATCH /v1/spaces/{id}", Handler: httpHandlerFunc(h.PatchSpace)},
+		server.Route{Pattern: "DELETE /v1/spaces/{id}", Handler: httpHandlerFunc(projects.DeleteSpace)},
 		server.Route{Pattern: "POST /v1/spaces/{id}/members", Handler: httpHandlerFunc(h.AddSpaceMember)},
+		server.Route{Pattern: "GET /v1/spaces/{id}/sources", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/spaces/{id}/sources/presign", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/spaces/{id}/sources/commit", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "DELETE /v1/spaces/{id}/sources/{source_id}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/spaces/{id}/sources/{source_id}/content", Handler: httpHandlerFunc(projects.ProxySpaceSourceContent)},
 		server.Route{Pattern: "GET /v1/instructions/{scope}/{scope_id}/{kind}", Handler: httpHandlerFunc(h.GetInstruction)},
 		server.Route{Pattern: "PUT /v1/instructions/{scope}/{scope_id}/{kind}", Handler: httpHandlerFunc(h.PutInstruction)},
 		server.Route{Pattern: "GET /v1/usage/summary", Handler: httpHandlerFunc(h.UsageSummary)},
+		server.Route{Pattern: "PATCH /v1/threads/{id}", Handler: httpHandlerFunc(projects.PatchThread)},
+		server.Route{Pattern: "DELETE /v1/threads/{id}", Handler: httpHandlerFunc(projects.DeleteThread)},
 		server.Route{Pattern: "POST /v1/threads/{id}/turns", Handler: httpHandlerFunc(h.CreateTurn)},
 		server.Route{Pattern: "POST /v1/threads/{id}/cancel", Handler: httpHandlerFunc(h.CancelThread)},
 		server.Route{Pattern: "POST /v1/threads/{id}/steer", Handler: httpHandlerFunc(h.SteerThread)},
-		server.Route{Pattern: "PUT /v1/threads/{id}/user-state", Handler: httpHandlerFunc(h.UpdateThreadUserState)},
+		server.Route{Pattern: "PUT /v1/threads/{id}/user-state", Handler: httpHandlerFunc(projects.UpdateThreadUserState)},
 		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/presign", Handler: httpHandlerFunc(h.PresignUpload)},
 		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/commit", Handler: httpHandlerFunc(h.CommitUpload)},
 		server.Route{Pattern: "GET /v1/runs/{run_id}/files/{path...}", Handler: httpHandlerFunc(h.ProxyRunFile)},

@@ -78,7 +78,7 @@ export function CloudACPSettings() {
   })
 
   const profilesByAgent = new Map((data?.profiles ?? []).map((p) => [p.agent, p]))
-  const specs = data?.supported_agents ?? []
+  const specs = (data?.supported_agents ?? []).filter((spec) => spec.executable !== false)
 
   return (
     <section className="flex flex-col gap-5 py-4">

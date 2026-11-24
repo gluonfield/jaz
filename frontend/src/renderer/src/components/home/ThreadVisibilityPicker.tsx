@@ -1,9 +1,9 @@
-import { ChevronDown, Lock, Users } from 'lucide-react'
+import { ChevronDown, Folder, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import type { CloudSpace } from '@/lib/api/cloudSpaces'
 
-// Who can see a new Cloud thread: only its author, or one Space.
+// Which Project (if any) a new Cloud thread belongs to.
 export function ThreadVisibilityPicker({
   spaceId,
   spaces,
@@ -18,8 +18,9 @@ export function ThreadVisibilityPicker({
   onChange: (spaceId: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  const Icon = spaceId ? Users : Lock
-  const label = spaceId ? (spaces.find((space) => space.id === spaceId)?.name ?? 'Space') : 'Private'
+  const selected = spaceId ? spaces.find((space) => space.id === spaceId) : undefined
+  const Icon = spaceId ? Folder : Lock
+  const label = spaceId ? (selected?.name ?? 'Project') : 'No project'
   const select = (next: string) => {
     setOpen(false)
     onChange(next)
@@ -37,7 +38,7 @@ export function ThreadVisibilityPicker({
           disabled={disabled}
           aria-haspopup="menu"
           aria-expanded={open && !disabled}
-          aria-label={`Thread visibility: ${label}`}
+          aria-label={`Project: ${label}`}
           onClick={() => setOpen((value) => !value)}
           className="inline-flex h-7 max-w-[13rem] cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-ink-2 transition-[background-color,color,scale] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96] disabled:cursor-default disabled:opacity-50"
         >
@@ -47,9 +48,9 @@ export function ThreadVisibilityPicker({
         </button>
       }
     >
-      <div role="menu" aria-label="Thread visibility" className="max-h-[280px] max-w-[280px] overflow-y-auto">
+      <div role="menu" aria-label="Project" className="max-h-[280px] max-w-[280px] overflow-y-auto">
         <MenuRow role="menuitemradio" selected={spaceId === ''} onClick={() => select('')}>
-          Private
+          No project (Private)
         </MenuRow>
         {spaces.map((space) => (
           <MenuRow

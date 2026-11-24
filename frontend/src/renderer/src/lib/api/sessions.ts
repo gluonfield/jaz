@@ -7,11 +7,15 @@ import { keys } from '../query/keys'
 import { apiEmbeddedGetUrl, apiFetch, del, get, isCloudApiSession, post, put } from './client'
 import { updateThreadUserState } from './cloudSpaces'
 import {
+  cancelCloudThread,
   cloudThreadToSession,
   createCloudThread,
+  deleteCloudThread,
   fetchCloudThreadMessages,
   getCloudThread,
   listCloudThreads,
+  patchCloudThread,
+  steerCloudThread,
 } from './cloudThreads'
 import {
   fileKey,
@@ -410,12 +414,26 @@ export async function setSessionPinned(id: string, pinned: boolean): Promise<Ses
   return post<Session>(`/v1/sessions/${id}/${pinned ? 'pin' : 'unpin'}`)
 }
 
-export function setSessionTitle(id: string, title: string): Promise<Session> {
+export async function setSessionTitle(id: string, title: string, isCloud = false): Promise<Session> {
+  if (isCloud || isCloudApiSession()) {
+    return cloudThreadToSession(await patchCloudThread(id, { title }))
+  }
   return post<Session>(`/v1/sessions/${id}/rename`, { title })
 }
 
+export async function moveSessionToSpace(id: string, spaceId: string): Promise<Session> {
+  return cloudThreadToSession(await patchCloudThread(id, { space_id: spaceId }))
+}
+
+export async function deleteSession(id: string): Promise<{ deleted: boolean; id: string }> {
+  return deleteCloudThread(id)
+}
+
 // Stops the in-flight turn server-side (turns survive closed streams).
-export function cancelSession(id: string): Promise<{ ok: boolean }> {
+export function cancelSession(id: string, isCloud = false): Promise<{ ok: boolean }> {
+  if (isCloud || isCloudApiSession()) {
+    return cancelCloudThread(id)
+  }
   return post<{ ok: boolean }>(`/v1/sessions/${id}/cancel`)
 }
 
@@ -434,7 +452,14 @@ export type QueueMutation =
   | { op: 'reorder'; ids: string[] }
   | { op: 'steer'; id: string }
 
-export function mutateSessionQueue(id: string, mutation: QueueMutation): Promise<Session> {
+export async function mutateSessionQueue(id: string, mutation: QueueMutation, isCloud = false): Promise<Session> {
+  if (isCloud || isCloudApiSession()) {
+    if (mutation.op === 'append') {
+      await steerCloudThread(id, mutation.message.text, 'queue')
+      return getSession(id)
+    }
+    throw new Error('Cloud threads only support queueing new messages while running')
+  }
   return post<Session>(`/v1/sessions/${id}/queue`, mutation)
 }
 

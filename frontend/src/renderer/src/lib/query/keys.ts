@@ -72,6 +72,8 @@ export const keys = {
   cloudMembersRoot: ['cloud', 'members'] as const,
   cloudMembers: (query = '') => ['cloud', 'members', query] as const,
   cloudSpaces: ['cloud', 'spaces'] as const,
+  cloudSpace: (id: string) => ['cloud', 'spaces', id] as const,
+  cloudSpaceSources: (id: string) => ['cloud', 'spaces', id, 'sources'] as const,
   cloudMachines: ['cloud', 'machines'] as const,
   cloudModelProfiles: ['cloud', 'model-profiles'] as const,
   cloudACPProfiles: ['cloud', 'acp-profiles'] as const,

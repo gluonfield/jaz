@@ -57,7 +57,7 @@ export type SettingsNavItem = {
 export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'cloud', label: 'Workspace', icon: Layers, group: 'workspace' },
   { id: 'personalization', label: 'Personalization', icon: Sparkles, group: 'workspace', fullHeight: true },
-  { id: 'memory', label: 'Memory', icon: Brain, group: 'workspace' },
+  { id: 'memory', label: 'Memory', icon: Brain, group: 'workspace', requiresLocal: true },
   { id: 'plugins', label: 'Plugins', icon: Puzzle, group: 'workspace', wide: true },
   { id: 'mcp', label: 'MCP servers', icon: Plug, group: 'workspace' },
   { id: 'machines', label: 'Connected Machines', icon: Laptop, group: 'workspace', requiresCloud: true },
@@ -67,7 +67,7 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette, group: 'app' },
   { id: 'notifications', label: 'Notifications', icon: Bell, group: 'app' },
   { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard, group: 'app' },
-  { id: 'voice', label: 'Voice', icon: AudioLines, group: 'app' },
+  { id: 'voice', label: 'Voice', icon: AudioLines, group: 'app', requiresLocal: true },
   { id: 'agents', label: 'Agents (ACP)', icon: Bot, group: 'app', requiresLocalOrCloud: true },
   { id: 'providers', label: 'Model Providers', icon: Boxes, group: 'app', requiresLocal: true },
   { id: 'browser', label: 'Browser', icon: Globe, group: 'app', requiresLocal: true },
@@ -98,6 +98,7 @@ export function visibleSettingsSections(
   return SETTINGS_SECTIONS.filter((item) => {
     if (item.requiresCloud && !hasCloud) return false
     if (item.requiresLocal && !localBackend) return false
+    if (item.id === 'memory' && hasCloud) return false
     if (item.requiresLocalOrCloud && !localBackend && !hasCloud) return false
     if (!import.meta.env?.DEV && !experimentalEnabled && item.experimental) return false
     return true

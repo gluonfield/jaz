@@ -12,6 +12,7 @@ import {
   reorderProjects,
   sidebarSessionsQuery,
 } from '@/lib/api/sessions'
+import { spacesQuery } from '@/lib/api/cloudSpaces'
 import { useShowModelIcons } from '@/lib/appearance'
 import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
 import { modalDialogOpen } from '@/lib/dom/modal'
@@ -327,9 +328,9 @@ export function SidebarSessions({ open }: { open: boolean }) {
   const cloud = useCloudSession()
   const hasCloud = cloud.active
   const cloudOnly = useIsCloudOnly()
-  const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null)
   const sessions = useQuery(sidebarSessionsQuery)
-  const projects = useQuery({ ...projectsQuery, enabled: !cloudOnly })
+  const cloudSpaces = useQuery({ ...spacesQuery, enabled: hasCloud })
+  const projects = useQuery({ ...projectsQuery, enabled: !cloudOnly && !hasCloud })
   const [organization, setOrganization] = useSidebarOrganization()
   const [visibleRecentCount, setVisibleRecentCount] = useState(SESSION_PAGE_SIZE)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
@@ -338,21 +339,25 @@ export function SidebarSessions({ open }: { open: boolean }) {
   const [dragOrder, setDragOrder] = useState<SessionBlockKey[] | null>(null)
   useEffect(() => storeCollapsedProjects(collapsedProjects), [collapsedProjects])
   useEffect(() => {
-    setSelectedSpaceId(null)
     setDragOrder(null)
     setVisibleRecentCount(SESSION_PAGE_SIZE)
     setShowAllUngrouped(false)
   }, [cloud.activeWorkspaceId, hasCloud])
 
+  const knownSpaceIds = useMemo(
+    () => new Set((cloudSpaces.data ?? []).map((space) => space.id)),
+    [cloudSpaces.data],
+  )
   const filteredSessions = useMemo(() => {
     const all = sessions.data ?? []
-    if (!hasCloud || !selectedSpaceId) return all
-    return all.filter((session) => session.space_id === selectedSpaceId)
-  }, [hasCloud, selectedSpaceId, sessions.data])
+    if (!hasCloud) return all
+    // Chats belonging to a visible Project folder render under that folder; keep pinned + unfiled chats here.
+    return all.filter((session) => session.pinned || !session.space_id || !knownSpaceIds.has(session.space_id))
+  }, [hasCloud, knownSpaceIds, sessions.data])
 
   const sections = useMemo(
-    () => sidebarSessionSections(filteredSessions, projects.data ?? []),
-    [filteredSessions, projects.data],
+    () => sidebarSessionSections(filteredSessions, hasCloud ? [] : (projects.data ?? [])),
+    [filteredSessions, hasCloud, projects.data],
   )
   const groups = useMemo(
     () => applySessionDragOrder(sections.groups, dragOrder),
@@ -376,11 +381,11 @@ export function SidebarSessions({ open }: { open: boolean }) {
   const shortcutItems = useMemo(
     () => [
       ...sections.pinnedItems,
-      ...(organization === 'project'
+      ...(!hasCloud && organization === 'project'
         ? blocks.flatMap((block) => block.kind === 'project' && block.collapsed ? [] : block.items)
         : recentPage.items),
     ].slice(0, 9),
-    [blocks, organization, recentPage.items, sections.pinnedItems],
+    [blocks, hasCloud, organization, recentPage.items, sections.pinnedItems],
   )
   const shortcutByID = useMemo(
     () => new Map(shortcutItems.map((item, index) => [item.session.id, index + 1])),
@@ -417,7 +422,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
     reorder.mutate(next.map((project) => project.path))
   }
 
-  if (sessions.isPending || (!cloudOnly && organization === 'project' && projects.isPending)) {
+  if (sessions.isPending || (!cloudOnly && !hasCloud && organization === 'project' && projects.isPending)) {
     return <SkeletonRows count={4} />
   }
   if (sessions.isError && !sessions.data) {
@@ -428,11 +433,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
     <HoverCardGroup>
       <section className="flex shrink-0 flex-col gap-3">
         {hasCloud ? (
-          <SidebarSpaces
-            key={cloud.activeWorkspaceId}
-            selectedSpaceId={selectedSpaceId}
-            onSelectSpace={setSelectedSpaceId}
-          />
+          <SidebarSpaces key={cloud.activeWorkspaceId} sessions={sessions.data ?? []} />
         ) : null}
         <PinnedSessions
           items={sections.pinnedItems}
@@ -440,28 +441,46 @@ export function SidebarSessions({ open }: { open: boolean }) {
           shortcutMode={shortcutMode}
         />
         <div>
-          <SidebarOrganizationMenu organization={organization} onChange={changeOrganization} />
-          {organization === 'project' ? (
-            <ProjectSessionList
-              blocks={blocks}
-              onReorder={setDragOrder}
-              onReorderEnd={commitReorder}
-              onToggle={toggleProject}
-              onExpand={expandProject}
-              onExpandUngrouped={() => setShowAllUngrouped(true)}
-              shortcutByID={shortcutByID}
-              shortcutMode={shortcutMode}
-            />
+          {hasCloud ? (
+            <>
+              <p
+                className={`flex h-[30px] items-center px-2.5 max-sm:h-11 max-sm:px-3 ${SECTION_LABEL_CLASS}`}
+              >
+                Chats
+              </p>
+              <RecentSessionList
+                {...recentPage}
+                onShowMore={() => setVisibleRecentCount((count) => count + SESSION_PAGE_SIZE)}
+                shortcutByID={shortcutByID}
+                shortcutMode={shortcutMode}
+              />
+            </>
           ) : (
-            <RecentSessionList
-              {...recentPage}
-              onShowMore={() => setVisibleRecentCount((count) => count + SESSION_PAGE_SIZE)}
-              shortcutByID={shortcutByID}
-              shortcutMode={shortcutMode}
-            />
+            <>
+              <SidebarOrganizationMenu organization={organization} onChange={changeOrganization} />
+              {organization === 'project' ? (
+                <ProjectSessionList
+                  blocks={blocks}
+                  onReorder={setDragOrder}
+                  onReorderEnd={commitReorder}
+                  onToggle={toggleProject}
+                  onExpand={expandProject}
+                  onExpandUngrouped={() => setShowAllUngrouped(true)}
+                  shortcutByID={shortcutByID}
+                  shortcutMode={shortcutMode}
+                />
+              ) : (
+                <RecentSessionList
+                  {...recentPage}
+                  onShowMore={() => setVisibleRecentCount((count) => count + SESSION_PAGE_SIZE)}
+                  shortcutByID={shortcutByID}
+                  shortcutMode={shortcutMode}
+                />
+              )}
+            </>
           )}
           {!hasSessions ? (
-            <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
+            <p className="px-2.5 py-1 text-[13px] text-ink-3">No chats yet</p>
           ) : null}
         </div>
       </section>

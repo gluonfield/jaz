@@ -121,6 +121,45 @@ func (s *Service) AddSpaceMember(ctx context.Context, spaceID string, body json.
 	return s.authedSegmentJSON(ctx, http.MethodPost, "/v1/spaces/", spaceID, "/members", body)
 }
 
+func (s *Service) GetSpace(ctx context.Context, spaceID string) (json.RawMessage, int, error) {
+	return s.authedSegmentJSON(ctx, http.MethodGet, "/v1/spaces/", spaceID, "", nil)
+}
+
+func (s *Service) DeleteSpace(ctx context.Context, spaceID string) (json.RawMessage, int, error) {
+	if err := validatePathSegment(spaceID); err != nil {
+		return nil, 0, err
+	}
+	acc, gen, ok := s.activeAccountWithGen()
+	if !ok || acc.Token == "" {
+		return nil, 0, ErrNotConnected
+	}
+	raw, status, err := s.client.doJSON(ctx, http.MethodDelete, acc.BaseURL, "/v1/spaces/"+url.PathEscape(spaceID), acc.Token, nil)
+	if err != nil {
+		return nil, status, err
+	}
+	if s.isGeneration(gen) {
+		if spaces, listErr := s.store.ListCloudSpaces(ctx, acc.ID); listErr == nil {
+			filtered := make([]storage.CloudSpace, 0, len(spaces))
+			for _, sp := range spaces {
+				if sp.ID != spaceID {
+					filtered = append(filtered, sp)
+				}
+			}
+			_ = s.store.ReplaceCloudSpaces(ctx, acc.ID, filtered)
+		}
+		s.TriggerSync()
+	}
+	return raw, status, nil
+}
+
+func (s *Service) OpenSpaceSourceContent(ctx context.Context, spaceID, sourceID string) (*http.Response, error) {
+	acc, err := s.activeAuthedAccount()
+	if err != nil {
+		return nil, err
+	}
+	return s.client.openSpaceSourceContent(ctx, acc.BaseURL, acc.Token, spaceID, sourceID)
+}
+
 func (s *Service) GetInstruction(ctx context.Context, scope, scopeID, kind string) (storage.CloudInstruction, error) {
 	acc, gen, ok := s.activeAccountWithGen()
 	if !ok || acc.Token == "" {

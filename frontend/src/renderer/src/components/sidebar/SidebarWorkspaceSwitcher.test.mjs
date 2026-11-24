@@ -342,6 +342,7 @@ test('workspaceSwitchNavigation leaves workspace-specific routes cleanly and pre
   const { workspaceSwitchNavigation } = await import('../../lib/workspaceNavigation.ts')
   const cases = [
     { pathname: '/sessions/thr_123', search: {}, expected: { to: '/new' } },
+    { pathname: '/spaces/sp_123', search: {}, expected: { to: '/new' } },
     { pathname: '/bots/bot_42', search: {}, expected: { to: '/bots' } },
     { pathname: '/boards/brd_9', search: {}, expected: { to: '/boards' } },
     { pathname: '/loops/lp_3', search: {}, expected: { to: '/loops' } },

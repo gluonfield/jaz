@@ -16,6 +16,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoopsIndexRouteImport } from './routes/loops.index'
 import { Route as BotsIndexRouteImport } from './routes/bots.index'
 import { Route as BoardsIndexRouteImport } from './routes/boards.index'
+import { Route as SpacesSpaceIdRouteImport } from './routes/spaces.$spaceId'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions.$sessionId'
 import { Route as PluginsPluginRouteImport } from './routes/plugins.$plugin'
 import { Route as LoopsLoopIdRouteImport } from './routes/loops.$loopId'
@@ -56,6 +57,11 @@ const BotsIndexRoute = BotsIndexRouteImport.update({
 const BoardsIndexRoute = BoardsIndexRouteImport.update({
   id: '/boards/',
   path: '/boards/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SpacesSpaceIdRoute = SpacesSpaceIdRouteImport.update({
+  id: '/spaces/$spaceId',
+  path: '/spaces/$spaceId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/loops/$loopId': typeof LoopsLoopIdRoute
   '/plugins/$plugin': typeof PluginsPluginRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/spaces/$spaceId': typeof SpacesSpaceIdRoute
   '/boards/': typeof BoardsIndexRoute
   '/bots/': typeof BotsIndexRoute
   '/loops/': typeof LoopsIndexRoute
@@ -114,6 +121,7 @@ export interface FileRoutesByTo {
   '/loops/$loopId': typeof LoopsLoopIdRoute
   '/plugins/$plugin': typeof PluginsPluginRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/spaces/$spaceId': typeof SpacesSpaceIdRoute
   '/boards': typeof BoardsIndexRoute
   '/bots': typeof BotsIndexRoute
   '/loops': typeof LoopsIndexRoute
@@ -130,6 +138,7 @@ export interface FileRoutesById {
   '/loops/$loopId': typeof LoopsLoopIdRoute
   '/plugins/$plugin': typeof PluginsPluginRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/spaces/$spaceId': typeof SpacesSpaceIdRoute
   '/boards/': typeof BoardsIndexRoute
   '/bots/': typeof BotsIndexRoute
   '/loops/': typeof LoopsIndexRoute
@@ -147,6 +156,7 @@ export interface FileRouteTypes {
     | '/loops/$loopId'
     | '/plugins/$plugin'
     | '/sessions/$sessionId'
+    | '/spaces/$spaceId'
     | '/boards/'
     | '/bots/'
     | '/loops/'
@@ -162,6 +172,7 @@ export interface FileRouteTypes {
     | '/loops/$loopId'
     | '/plugins/$plugin'
     | '/sessions/$sessionId'
+    | '/spaces/$spaceId'
     | '/boards'
     | '/bots'
     | '/loops'
@@ -177,6 +188,7 @@ export interface FileRouteTypes {
     | '/loops/$loopId'
     | '/plugins/$plugin'
     | '/sessions/$sessionId'
+    | '/spaces/$spaceId'
     | '/boards/'
     | '/bots/'
     | '/loops/'
@@ -193,6 +205,7 @@ export interface RootRouteChildren {
   LoopsLoopIdRoute: typeof LoopsLoopIdRoute
   PluginsPluginRoute: typeof PluginsPluginRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
+  SpacesSpaceIdRoute: typeof SpacesSpaceIdRoute
   BoardsIndexRoute: typeof BoardsIndexRoute
   BotsIndexRoute: typeof BotsIndexRoute
   LoopsIndexRoute: typeof LoopsIndexRoute
@@ -250,6 +263,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BoardsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/spaces/$spaceId': {
+      id: '/spaces/$spaceId'
+      path: '/spaces/$spaceId'
+      fullPath: '/spaces/$spaceId'
+      preLoaderRoute: typeof SpacesSpaceIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sessions/$sessionId': {
       id: '/sessions/$sessionId'
       path: '/sessions/$sessionId'
@@ -305,6 +325,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoopsLoopIdRoute: LoopsLoopIdRoute,
   PluginsPluginRoute: PluginsPluginRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
+  SpacesSpaceIdRoute: SpacesSpaceIdRoute,
   BoardsIndexRoute: BoardsIndexRoute,
   BotsIndexRoute: BotsIndexRoute,
   LoopsIndexRoute: LoopsIndexRoute,

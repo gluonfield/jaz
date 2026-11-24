@@ -335,9 +335,6 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 
 	var (
 		pendingText      strings.Builder
-		pendingReasoning strings.Builder
-		pendingBlocks    []storage.Block
-		toolBlockIdx     = map[string]int{}
 		toolStates       = map[string]*cloudToolState{}
 		pendingSeq       int64
 		pendingAt        time.Time
@@ -347,44 +344,25 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 	)
 
 	flushPending := func() {
-		if len(pendingBlocks) == 0 && pendingText.Len() == 0 && pendingReasoning.Len() == 0 {
+		if pendingText.Len() == 0 {
+			toolStates = map[string]*cloudToolState{}
+			inThought = false
 			return
 		}
-		blocks := make([]storage.Block, len(pendingBlocks))
-		copy(blocks, pendingBlocks)
+		text := pendingText.String()
 		messages = append(messages, storage.Message{
 			ThreadID:  thread.ID,
 			Seq:       pendingSeq,
 			Role:      "assistant",
-			Content:   pendingText.String(),
-			Reasoning: pendingReasoning.String(),
-			Blocks:    blocks,
+			Content:   text,
+			Blocks:    []storage.Block{{Type: storage.BlockTypeText, Text: text}},
 			CreatedAt: pendingAt,
 		})
 		pendingText.Reset()
-		pendingReasoning.Reset()
-		pendingBlocks = nil
-		toolBlockIdx = map[string]int{}
 		toolStates = map[string]*cloudToolState{}
 		pendingSeq = 0
 		pendingAt = time.Time{}
 		inThought = false
-	}
-
-	upsertToolBlock := func(ts *cloudToolState) {
-		block := storage.Block{
-			Type:      storage.BlockTypeTool,
-			ID:        ts.id,
-			Name:      ts.tool,
-			InputJSON: ts.inputJSON,
-			Result:    ts.resultText(),
-		}
-		if idx, ok := toolBlockIdx[ts.id]; ok {
-			pendingBlocks[idx] = block
-			return
-		}
-		toolBlockIdx[ts.id] = len(pendingBlocks)
-		pendingBlocks = append(pendingBlocks, block)
 	}
 
 	for _, ev := range rawEvents {
@@ -420,17 +398,6 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 					thoughtRun++
 					inThought = true
 				}
-				pendingReasoning.WriteString(text)
-				if n := len(pendingBlocks); n > 0 && pendingBlocks[n-1].Type == storage.BlockTypeReasoning {
-					pendingBlocks[n-1].Text += text
-				} else {
-					pendingBlocks = append(pendingBlocks, storage.Block{
-						Type: storage.BlockTypeReasoning,
-						Text: text,
-					})
-				}
-				pendingSeq = ev.Seq
-				pendingAt = ev.CreatedAt
 				projector.Apply(makeACPThoughtEvent(thread.ID, ev, p, thoughtRun, text))
 			}
 			continue
@@ -440,9 +407,6 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 			inThought = false
 			lastTurnTerminal = ""
 			if ts, ok := applyCloudToolEvent(toolStates, ev, p); ok {
-				upsertToolBlock(ts)
-				pendingSeq = ev.Seq
-				pendingAt = ev.CreatedAt
 				projector.Apply(makeACPToolEvent(thread.ID, ev, p, ts))
 			}
 			continue
@@ -453,14 +417,6 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 			if text != "" {
 				lastTurnTerminal = ""
 				pendingText.WriteString(text)
-				if n := len(pendingBlocks); n > 0 && pendingBlocks[n-1].Type == storage.BlockTypeText {
-					pendingBlocks[n-1].Text += text
-				} else {
-					pendingBlocks = append(pendingBlocks, storage.Block{
-						Type: storage.BlockTypeText,
-						Text: text,
-					})
-				}
 				pendingSeq = ev.Seq
 				pendingAt = ev.CreatedAt
 			}
@@ -471,9 +427,6 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 			inThought = false
 			lastTurnTerminal = ""
 			pendingText.Reset()
-			pendingReasoning.Reset()
-			pendingBlocks = nil
-			toolBlockIdx = map[string]int{}
 			toolStates = map[string]*cloudToolState{}
 			messages = append(messages, storage.Message{
 				ThreadID:  thread.ID,

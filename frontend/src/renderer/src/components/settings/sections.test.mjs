@@ -107,13 +107,16 @@ test('visibleSettingsSections enforces requiresCloud and requiresLocal boundarie
 
   const desktopCloudIds = visibleSettingsSections(true, true, true).map((item) => item.id)
   expect(desktopCloudIds).toContain('machines')
+  expect(desktopCloudIds).not.toContain('memory')
   expect(desktopCloudIds).toEqual(expect.arrayContaining(['agents', 'providers', 'browser', 'computer']))
 
   const cloudOnlyIds = visibleSettingsSections(true, true, false).map((item) => item.id)
   expect(cloudOnlyIds).toContain('cloud')
   expect(cloudOnlyIds).toContain('machines')
   expect(cloudOnlyIds).toContain('agents')
-  expect(cloudOnlyIds).toEqual(expect.arrayContaining(['general', 'appearance', 'notifications', 'keyboard', 'voice']))
+  expect(cloudOnlyIds).toEqual(expect.arrayContaining(['general', 'appearance', 'notifications', 'keyboard']))
+  expect(cloudOnlyIds).not.toContain('memory')
+  expect(cloudOnlyIds).not.toContain('voice')
   expect(cloudOnlyIds).not.toContain('providers')
   expect(cloudOnlyIds).not.toContain('browser')
   expect(cloudOnlyIds).not.toContain('computer')

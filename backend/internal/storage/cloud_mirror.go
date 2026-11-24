@@ -41,6 +41,7 @@ type CloudSpace struct {
 	CreatedBy   string             `json:"created_by,omitempty"`
 	CanEdit     bool               `json:"can_edit,omitempty"`
 	MemberCount int                `json:"member_count,omitempty"`
+	SourceCount int                `json:"source_count,omitempty"`
 	Members     []CloudSpaceMember `json:"members,omitempty"`
 	CreatedAt   time.Time          `json:"created_at,omitzero"`
 	UpdatedAt   time.Time          `json:"updated_at,omitzero"`
@@ -237,6 +238,7 @@ type CloudMirrorStore interface {
 	ListCloudThreads(ctx context.Context, accountID string, archived bool) ([]CloudThread, error)
 	UpdateCloudThreadUserState(ctx context.Context, accountID, id string, patch CloudThreadUserStatePatch) (CloudThread, error)
 	UpdateCloudThreadStatus(ctx context.Context, accountID, id, status string, updatedAt time.Time) error
+	DeleteCloudThread(ctx context.Context, accountID, id string) error
 
 	AppendCloudThreadEvents(ctx context.Context, accountID, threadID string, events []CloudThreadEvent) error
 	ListCloudThreadEvents(ctx context.Context, accountID, threadID string, afterSeq int64) ([]CloudThreadEvent, error)
