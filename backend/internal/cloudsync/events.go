@@ -157,17 +157,51 @@ func normalizeCloudToolStatus(raw string) string {
 }
 
 type cloudToolState struct {
-	id         string
-	tool       string
-	title      string
-	status     string
-	inputJSON  string
-	rawInput   map[string]any
-	streamOut  strings.Builder
-	finalOut   string
-	errMsg     string
-	startedAt  time.Time
-	updatedAt  time.Time
+	id        string
+	tool      string
+	kind      string
+	title     string
+	status    string
+	cwd       string
+	exitCode  *int
+	inputJSON string
+	rawInput  map[string]any
+	locations []sessionevents.ACPToolLocation
+	diffs     []sessionevents.ACPToolContent
+	streamOut strings.Builder
+	finalOut  string
+	errMsg    string
+	startedAt time.Time
+	updatedAt time.Time
+}
+
+func (ts *cloudToolState) inferKind() string {
+	if ts.kind != "" {
+		return ts.kind
+	}
+	switch strings.ToLower(strings.TrimSpace(ts.tool)) {
+	case "commandexecution", "bash", "exec_command":
+		return "execute"
+	case "filechange", "apply_patch", "edit", "write":
+		return "edit"
+	case "websearch", "web_search":
+		return "search"
+	}
+	norm := strings.ToLower(ts.tool)
+	switch {
+	case strings.Contains(norm, "read") || strings.Contains(norm, "list_dir"):
+		return "read"
+	case strings.Contains(norm, "search") || strings.Contains(norm, "grep") || strings.Contains(norm, "find"):
+		return "search"
+	case strings.Contains(norm, "edit") || strings.Contains(norm, "write"):
+		return "edit"
+	case strings.Contains(norm, "exec") || strings.Contains(norm, "command"):
+		return "execute"
+	case strings.Contains(norm, "fetch"):
+		return "fetch"
+	default:
+		return ""
+	}
 }
 
 func (ts *cloudToolState) resultText() string {
@@ -193,16 +227,20 @@ func (ts *cloudToolState) toACPToolCall() sessionevents.ACPToolCall {
 		ID:        ts.id,
 		Title:     title,
 		Status:    ts.status,
+		Kind:      ts.inferKind(),
 		ToolName:  ts.tool,
+		Locations: ts.locations,
 		RawInput:  ts.rawInput,
 		StartedAt: ts.startedAt,
 		UpdatedAt: ts.updatedAt,
 	}
+	if len(ts.diffs) > 0 {
+		call.Content = append(call.Content, ts.diffs...)
+	}
 	text := ts.resultText()
 	if text != "" {
-		call.Content = []sessionevents.ACPToolContent{{Type: "text", Text: text}}
-		if ts.tool == "commandExecution" {
-			call.Runtime.TerminalOutput = text
+		if len(ts.diffs) == 0 {
+			call.Content = append(call.Content, sessionevents.ACPToolContent{Type: "text", Text: text})
 		}
 		if ts.status == "completed" || ts.status == "failed" {
 			rawOut, _ := json.Marshal(map[string]any{
@@ -212,7 +250,60 @@ func (ts *cloudToolState) toACPToolCall() sessionevents.ACPToolCall {
 			call.RawOutput = rawOut
 		}
 	}
+	if ts.tool == "commandExecution" || ts.cwd != "" || ts.exitCode != nil {
+		call.Runtime.TerminalCwd = ts.cwd
+		call.Runtime.TerminalOutput = text
+		call.Runtime.TerminalExitCode = ts.exitCode
+	}
 	return call
+}
+
+func payloadLocations(p map[string]any) []sessionevents.ACPToolLocation {
+	raw, ok := p["locations"].([]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	out := make([]sessionevents.ACPToolLocation, 0, len(raw))
+	for _, item := range raw {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if pth, _ := m["path"].(string); strings.TrimSpace(pth) != "" {
+			loc := sessionevents.ACPToolLocation{Path: strings.TrimSpace(pth)}
+			if ln, ok := m["line"].(float64); ok && ln > 0 {
+				loc.Line = int(ln)
+			}
+			out = append(out, loc)
+		}
+	}
+	return out
+}
+
+func payloadDiffs(p map[string]any) []sessionevents.ACPToolContent {
+	raw, ok := p["diffs"].([]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	out := make([]sessionevents.ACPToolContent, 0, len(raw))
+	for _, item := range raw {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		pth, _ := m["path"].(string)
+		newText, _ := m["new_text"].(string)
+		oldText, _ := m["old_text"].(string)
+		if pth != "" || newText != "" {
+			out = append(out, sessionevents.ACPToolContent{
+				Type:    "diff",
+				Path:    pth,
+				OldText: oldText,
+				NewText: newText,
+			})
+		}
+	}
+	return out
 }
 
 func applyCloudToolEvent(tools map[string]*cloudToolState, ev storage.CloudThreadEvent, p map[string]any) (*cloudToolState, bool) {
@@ -230,6 +321,22 @@ func applyCloudToolEvent(tools map[string]*cloudToolState, ev storage.CloudThrea
 		tools[callID] = ts
 	}
 	ts.updatedAt = ev.CreatedAt
+	if kind := payloadString(p, "kind"); kind != "" {
+		ts.kind = kind
+	}
+	if cwd := payloadString(p, "cwd"); cwd != "" {
+		ts.cwd = cwd
+	}
+	if locs := payloadLocations(p); len(locs) > 0 {
+		ts.locations = locs
+	}
+	if diffs := payloadDiffs(p); len(diffs) > 0 {
+		ts.diffs = diffs
+	}
+	if ec, ok := p["exit_code"].(float64); ok {
+		v := int(ec)
+		ts.exitCode = &v
+	}
 
 	switch {
 	case isCloudToolCall(ev.Type):

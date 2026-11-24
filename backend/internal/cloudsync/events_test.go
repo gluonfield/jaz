@@ -49,7 +49,7 @@ func TestProjectTranscriptAndStreamProjectorRichEvents(t *testing.T) {
 			ThreadID:    "ct_rich",
 			Seq:         4,
 			Type:        "tool_call",
-			PayloadJSON: json.RawMessage(`{"call_id":"call_1","tool":"commandExecution","title":"go test ./...","status":"running","arguments":{"command":"go test ./..."}}`),
+			PayloadJSON: json.RawMessage(`{"call_id":"call_1","tool":"commandExecution","kind":"execute","title":"go test ./...","status":"running","cwd":"/workspace","arguments":{"command":"go test ./..."}}`),
 			CreatedAt:   now.Add(3 * time.Second),
 		},
 		{
@@ -63,26 +63,47 @@ func TestProjectTranscriptAndStreamProjectorRichEvents(t *testing.T) {
 			ThreadID:    "ct_rich",
 			Seq:         6,
 			Type:        "tool_result",
-			PayloadJSON: json.RawMessage(`{"call_id":"call_1","tool":"commandExecution","status":"completed","output":"PASS\nok pkg 0.1s","error":""}`),
+			PayloadJSON: json.RawMessage(`{"call_id":"call_1","tool":"commandExecution","kind":"execute","status":"completed","cwd":"/workspace","exit_code":0,"output":"PASS\nok pkg 0.1s","error":""}`),
 			CreatedAt:   now.Add(5 * time.Second),
 		},
 		{
 			ThreadID:    "ct_rich",
 			Seq:         7,
+			Type:        "tool_call",
+			PayloadJSON: json.RawMessage(`{"call_id":"call_2","tool":"commandExecution","kind":"read","title":"Read app.go","status":"running","locations":[{"path":"app.go"}]}`),
+			CreatedAt:   now.Add(5500 * time.Millisecond),
+		},
+		{
+			ThreadID:    "ct_rich",
+			Seq:         8,
+			Type:        "tool_result",
+			PayloadJSON: json.RawMessage(`{"call_id":"call_2","tool":"commandExecution","kind":"read","status":"completed","locations":[{"path":"app.go"}],"output":"package app\n"}`),
+			CreatedAt:   now.Add(5600 * time.Millisecond),
+		},
+		{
+			ThreadID:    "ct_rich",
+			Seq:         9,
+			Type:        "tool_call",
+			PayloadJSON: json.RawMessage(`{"call_id":"call_3","tool":"fileChange","kind":"edit","title":"app.go","status":"completed","locations":[{"path":"app.go"}],"diffs":[{"path":"app.go","old_text":"old","new_text":"new"}]}`),
+			CreatedAt:   now.Add(5700 * time.Millisecond),
+		},
+		{
+			ThreadID:    "ct_rich",
+			Seq:         10,
 			Type:        "assistant_delta",
 			PayloadJSON: json.RawMessage(`{"delta":"All tests "}`),
 			CreatedAt:   now.Add(6 * time.Second),
 		},
 		{
 			ThreadID:    "ct_rich",
-			Seq:         8,
+			Seq:         11,
 			Type:        "assistant_delta",
 			PayloadJSON: json.RawMessage(`{"delta":"passed."}`),
 			CreatedAt:   now.Add(7 * time.Second),
 		},
 		{
 			ThreadID:    "ct_rich",
-			Seq:         9,
+			Seq:         12,
 			Type:        "turn_completed",
 			PayloadJSON: json.RawMessage(`{"status":"completed"}`),
 			CreatedAt:   now.Add(8 * time.Second),
@@ -101,20 +122,33 @@ func TestProjectTranscriptAndStreamProjectorRichEvents(t *testing.T) {
 		t.Fatalf("expected assistant message to keep only final text block (activity lives in events[]), got %+v", assistant.Blocks)
 	}
 
-	var foundThought, foundTool bool
+	var foundThought, foundExecTool, foundReadTool, foundEditTool bool
 	for _, ev := range transcript.Events {
 		if ev.Type == sessionevents.TypeACPThought && ev.ACP != nil && ev.ACP.Thought == "Let me run tests." {
 			foundThought = true
 		}
 		if ev.Type == "acp_tool" && ev.ACP != nil && len(ev.ACP.ToolCalls) == 1 {
 			tc := ev.ACP.ToolCalls[0]
-			if tc.ID == "call_1" && tc.Status == "completed" && tc.Title == "go test ./..." && tc.Runtime.TerminalOutput == "PASS\nok pkg 0.1s" {
-				foundTool = true
+			switch tc.ID {
+			case "call_1":
+				if tc.Kind == "execute" && tc.Status == "completed" && tc.Title == "go test ./..." &&
+					tc.Runtime.TerminalOutput == "PASS\nok pkg 0.1s" &&
+					tc.Runtime.TerminalCwd == "/workspace" && tc.Runtime.TerminalExitCode != nil && *tc.Runtime.TerminalExitCode == 0 {
+					foundExecTool = true
+				}
+			case "call_2":
+				if tc.Kind == "read" && len(tc.Locations) == 1 && tc.Locations[0].Path == "app.go" {
+					foundReadTool = true
+				}
+			case "call_3":
+				if tc.Kind == "edit" && len(tc.Content) == 1 && tc.Content[0].Type == "diff" && tc.Content[0].Path == "app.go" && tc.Content[0].NewText == "new" {
+					foundEditTool = true
+				}
 			}
 		}
 	}
-	if !foundThought || !foundTool {
-		t.Fatalf("expected compacted acp_thought and acp_tool events in transcript.Events, got %+v", transcript.Events)
+	if !foundThought || !foundExecTool || !foundReadTool || !foundEditTool {
+		t.Fatalf("expected compacted acp_thought and execute/read/edit acp_tool events in transcript.Events, got %+v", transcript.Events)
 	}
 
 	// Verify live StreamProjector emits incremental acp_thought + coalesced acp_tool updates.

@@ -4,21 +4,15 @@ import type { ModelPickerOption, PickerAgentOption } from '@/lib/modelPicker'
 import { keys } from '@/lib/query/keys'
 import {
   apiFetch as cloudFetch,
+  apiSessionRevision,
   del as cloudDel,
   get as cloudGet,
+  onApiSessionChange as onCloudSessionChange,
   patch as cloudPatch,
   post as cloudPost,
 } from './client'
-import {
-  cloudEventToSessionEvent,
-  openCloudThreadEvents,
-  parseCloudSseText,
-  projectCloudEventsForSession,
-} from './cloudThreadEvents'
 import type { ConnectedMachine } from './serverTypes'
-import type { Attachment, Session, SessionMessages } from './types'
-
-export { cloudEventToSessionEvent, openCloudThreadEvents, parseCloudSseText }
+import type { Attachment, Session, SessionEvent, SessionMessages } from './types'
 
 export type RawCloudModelOption = string | ModelPickerOption
 
@@ -356,18 +350,105 @@ export function createCloudTurn(
   )
 }
 
-export function projectCloudThreadMessages(thread: CloudThread, rawEvents: CloudSessionEvent[]): SessionMessages {
-  return projectCloudEventsForSession(thread, cloudThreadToSession(thread), rawEvents)
+export async function fetchCloudThreadMessages(threadId: string, signal?: AbortSignal): Promise<SessionMessages> {
+  const data = await cloudGet<SessionMessages>(`/v1/threads/${encodeURIComponent(threadId)}/messages`, { signal })
+  return {
+    ...data,
+    messages: data.messages ?? [],
+    events: data.events ?? [],
+  }
 }
 
-export async function fetchCloudThreadMessages(threadId: string, signal?: AbortSignal): Promise<SessionMessages> {
-  const [thread, eventsRes] = await Promise.all([
-    getCloudThread(threadId, signal),
-    cloudFetch(`/v1/threads/${encodeURIComponent(threadId)}/events?once=1`, {
-      headers: { Accept: 'text/event-stream' },
-      signal,
-    }),
-  ])
-  const rawEvents = eventsRes.ok ? parseCloudSseText(await eventsRes.text()) : []
-  return projectCloudThreadMessages(thread, rawEvents)
+function parseSessionEventFrame(frame: string): SessionEvent | null {
+  const dataLines: string[] = []
+  for (const line of frame.split('\n')) {
+    if (!line || line.startsWith(':')) continue
+    if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trimStart())
+    }
+  }
+  if (dataLines.length === 0) return null
+  try {
+    const parsed = JSON.parse(dataLines.join('\n')) as Partial<SessionEvent>
+    if (typeof parsed.type !== 'string') return null
+    return parsed as SessionEvent
+  } catch {
+    return null
+  }
+}
+
+export function openCloudThreadEvents(
+  threadId: string,
+  afterSeq: number,
+  onEvent: (event: SessionEvent) => void,
+  onConnection?: (connected: boolean) => void,
+): () => void {
+  let closed = false
+  let lastSeq = afterSeq
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let activeController: AbortController | null = null
+  const revision = apiSessionRevision()
+
+  async function connect(): Promise<void> {
+    if (closed || apiSessionRevision() !== revision) return
+    const controller = new AbortController()
+    activeController = controller
+    const params = new URLSearchParams({ format: 'session' })
+    if (lastSeq > 0) params.set('after_seq', String(lastSeq))
+    try {
+      const response = await cloudFetch(
+        `/v1/threads/${encodeURIComponent(threadId)}/events?${params.toString()}`,
+        {
+          headers: { Accept: 'text/event-stream' },
+          signal: controller.signal,
+        },
+      )
+      if (!response.ok || !response.body) {
+        if (response.status === 401 || response.status === 403 || response.status === 404) {
+          onConnection?.(false)
+          return
+        }
+        throw new Error(`Cloud event stream failed (${response.status})`)
+      }
+      if (closed || apiSessionRevision() !== revision) return
+      onConnection?.(true)
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (closed || apiSessionRevision() !== revision) return
+        buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, '\n')
+        let sep = buffer.indexOf('\n\n')
+        while (sep !== -1) {
+          const parsed = parseSessionEventFrame(buffer.slice(0, sep).replace(/\r/g, ''))
+          buffer = buffer.slice(sep + 2)
+          if (parsed) {
+            if (typeof parsed.seq === 'number' && parsed.seq > lastSeq) lastSeq = parsed.seq
+            onEvent(parsed)
+          }
+          sep = buffer.indexOf('\n\n')
+        }
+      }
+    } catch {
+      // Reconnect below unless closed.
+    }
+    if (!closed && apiSessionRevision() === revision) {
+      onConnection?.(false)
+      retryTimer = setTimeout(() => void connect(), 2_000)
+    }
+  }
+
+  const unsubscribe = onCloudSessionChange(close)
+  function close(): void {
+    closed = true
+    clearTimeout(retryTimer)
+    activeController?.abort()
+    activeController = null
+    unsubscribe()
+  }
+
+  void connect()
+  return close
 }

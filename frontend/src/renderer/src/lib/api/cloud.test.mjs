@@ -621,14 +621,31 @@ test('Cloud mode routes session listing, creation, messages, and turns to /v1/th
         updated_at: '2026-11-22T12:05:00Z',
       })
     }
-    if (parsed.pathname === '/v1/threads/thr_2/events') {
-      const sse = [
-        'id: 1\nevent: user_message\ndata: {"seq":1,"thread_id":"thr_2","type":"user_message","payload":{"text":"Hello cloud"},"created_at":"2026-11-22T12:05:01Z"}\n\n',
-        'id: 2\nevent: assistant_delta\ndata: {"seq":2,"thread_id":"thr_2","type":"assistant_delta","payload":{"delta":"Hi "},"created_at":"2026-11-22T12:05:02Z"}\n\n',
-        'id: 3\nevent: assistant_delta\ndata: {"seq":3,"thread_id":"thr_2","type":"assistant_delta","payload":{"delta":"there"},"created_at":"2026-11-22T12:05:03Z"}\n\n',
-        'id: 4\nevent: turn_completed\ndata: {"seq":4,"thread_id":"thr_2","type":"turn_completed","payload":{"status":"completed"},"created_at":"2026-11-22T12:05:04Z"}\n\n',
-      ].join('')
-      return new Response(sse, { headers: { 'content-type': 'text/event-stream' } })
+    if (parsed.pathname === '/v1/threads/thr_2/messages') {
+      return Response.json({
+        session: {
+          id: 'thr_2',
+          slug: 'thr_2',
+          run_id: 'run_2',
+          visibility: 'private',
+          title: 'Cloud Check',
+          status: 'idle',
+          runtime: 'acp',
+          backend: 'cloud',
+          created_at: '2026-11-22T12:05:00Z',
+          updated_at: '2026-11-22T12:05:04Z',
+          last_attention_at: '2026-11-22T12:05:04Z',
+        },
+        messages: [
+          { seq: 1, role: 'user', from_user: true, content: 'Hello cloud', blocks: [{ type: 'text', text: 'Hello cloud' }], created_at: '2026-11-22T12:05:01Z' },
+          { seq: 3, role: 'assistant', content: 'Hi there', blocks: [{ type: 'text', text: 'Hi there' }], created_at: '2026-11-22T12:05:03Z' },
+        ],
+        events: [],
+        has_earlier: false,
+        history_revision: 4,
+        latest_event_seq: 4,
+        acp_state: 'idle',
+      })
     }
     if (parsed.pathname === '/v1/threads/thr_2/turns' && init?.method === 'POST') {
       return Response.json({
@@ -850,31 +867,20 @@ test('Org members API, typeahead filtering, email detection, and Cloud board vis
   })
 })
 
-test('projectCloudThreadMessages reconciles stale running status after turn_completed and infers cloud thread agent', async () => {
+test('cloudThreadToSession infers agent and openCloudThreadEvents streams canonical format=session events directly', async () => {
   const { api } = fixture()
-  const projected = api.projectCloudThreadMessages(
-    {
-      id: 'thr_1',
-      run_id: 'thr_1',
-      visibility: 'private',
-      title: 'Hi',
-      status: 'running',
-      model_profile_id: 'vertex-default',
-      model: 'google/gemini-4-hydrogen',
-      reasoning_effort: 'high',
-      updated_at: '2026-11-24T14:51:22Z',
-    },
-    [
-      { thread_id: 'thr_1', seq: 1, type: 'user_message', payload: { text: 'hi' }, created_at: '2026-11-24T14:51:19Z' },
-      { thread_id: 'thr_1', seq: 2, type: 'assistant_delta', payload: { delta: 'Hey! How can I help?' }, created_at: '2026-11-24T14:51:20Z' },
-      { thread_id: 'thr_1', seq: 3, type: 'turn_completed', payload: { status: 'completed' }, created_at: '2026-11-24T14:51:21Z' },
-    ],
-  )
-  expect(projected.session.status).toBe('idle')
-  expect(projected.acp_state).toBe('idle')
-  expect(projected.session.runtime_ref?.agent).toBe('gemini')
-  expect(projected.messages).toHaveLength(2)
-  expect(projected.messages[1].content).toBe('Hey! How can I help?')
+  const geminiSess = api.cloudThreadToSession({
+    id: 'thr_1',
+    run_id: 'thr_1',
+    visibility: 'private',
+    title: 'Hi',
+    status: 'idle',
+    model_profile_id: 'vertex-default',
+    model: 'google/gemini-4-hydrogen',
+    reasoning_effort: 'high',
+    updated_at: '2026-11-24T14:51:22Z',
+  })
+  expect(geminiSess.runtime_ref?.agent).toBe('gemini')
 
   const codexSess = api.cloudThreadToSession({
     id: 'thr_2',
@@ -887,42 +893,38 @@ test('projectCloudThreadMessages reconciles stale running status after turn_comp
     updated_at: '2026-11-24T14:51:22Z',
   })
   expect(codexSess.runtime_ref?.agent).toBe('codex')
-})
 
-test('projectCloudThreadMessages projects thinking and tool events into events[] for Worked-for parity', () => {
-  const { api } = fixture()
-  const projected = api.projectCloudThreadMessages(
-    {
-      id: 'thr_work',
-      run_id: 'thr_work',
-      visibility: 'private',
-      title: 'Work',
-      status: 'idle',
-      model_profile_id: 'vertex-default',
-      model: 'google/gemini-4-hydrogen',
-      updated_at: '2026-11-24T15:00:08Z',
-    },
-    [
-      { thread_id: 'thr_work', seq: 1, type: 'user_message', payload: { text: 'Run checks' }, created_at: '2026-11-24T15:00:00Z' },
-      { thread_id: 'thr_work', seq: 2, type: 'thinking_delta', payload: { delta: 'Checking ' }, created_at: '2026-11-24T15:00:01Z' },
-      { thread_id: 'thr_work', seq: 3, type: 'thinking_delta', payload: { delta: 'tests.' }, created_at: '2026-11-24T15:00:02Z' },
-      { thread_id: 'thr_work', seq: 4, type: 'tool_call', payload: { call_id: 'c1', tool: 'commandExecution', title: 'go test', status: 'running' }, created_at: '2026-11-24T15:00:03Z' },
-      { thread_id: 'thr_work', seq: 5, type: 'tool_delta', payload: { call_id: 'c1', delta: 'PASS\n' }, created_at: '2026-11-24T15:00:04Z' },
-      { thread_id: 'thr_work', seq: 6, type: 'tool_result', payload: { call_id: 'c1', tool: 'commandExecution', status: 'completed', output: 'PASS' }, created_at: '2026-11-24T15:00:05Z' },
-      { thread_id: 'thr_work', seq: 7, type: 'assistant_delta', payload: { delta: 'All green.' }, created_at: '2026-11-24T15:00:06Z' },
-      { thread_id: 'thr_work', seq: 8, type: 'turn_completed', payload: { status: 'completed' }, created_at: '2026-11-24T15:00:07Z' },
-    ],
-  )
-  expect(projected.messages).toHaveLength(2)
-  expect(projected.messages[1].blocks).toEqual([{ type: 'text', text: 'All green.' }])
-  const thought = projected.events.find((ev) => ev.type === 'acp_thought')
-  const tool = projected.events.find((ev) => ev.type === 'acp_tool')
-  expect(thought?.acp?.thought).toBe('Checking tests.')
-  expect(tool?.acp?.tool_calls?.[0]).toMatchObject({
+  let requestedUrl = ''
+  const sseBody = [
+    'id: 5\nevent: acp_thought\ndata: {"seq":5,"session_id":"thr_work","type":"acp_thought","projection_key":"acp_thought:thr_work:1","projection_op":"append","acp":{"id":"thr_work","slug":"thr_work","session_id":"thr_work","state":"running","thought":"Checking files."},"at":"2026-11-24T15:00:01Z"}\n\n',
+    'id: 6\nevent: acp_tool\ndata: {"seq":6,"session_id":"thr_work","type":"acp_tool","projection_key":"acp_tool:thr_work:c1","projection_op":"replace","acp":{"id":"thr_work","slug":"thr_work","session_id":"thr_work","state":"running","tool_calls":[{"id":"c1","kind":"read","title":"Read app.go","status":"completed","locations":[{"path":"app.go"}]}]},"at":"2026-11-24T15:00:02Z"}\n\n',
+  ].join('')
+  replace('fetch', async (url) => {
+    requestedUrl = String(url)
+    return new Response(sseBody, { headers: { 'content-type': 'text/event-stream' } })
+  })
+
+  const received = []
+  let stop
+  await new Promise((resolve) => {
+    stop = api.openCloudThreadEvents('thr_work', 4, (ev) => {
+      received.push(ev)
+      if (received.length === 2) resolve()
+    })
+  })
+  stop()
+
+  expect(requestedUrl).toBe('https://cloud.jaz.example/v1/threads/thr_work/events?format=session&after_seq=4')
+  expect(received).toHaveLength(2)
+  expect(received[0].type).toBe('acp_thought')
+  expect(received[0].acp?.thought).toBe('Checking files.')
+  expect(received[1].type).toBe('acp_tool')
+  expect(received[1].acp?.tool_calls?.[0]).toMatchObject({
     id: 'c1',
-    title: 'go test',
+    kind: 'read',
+    title: 'Read app.go',
     status: 'completed',
-    runtime: { terminal_output: 'PASS' },
+    locations: [{ path: 'app.go' }],
   })
 })
 
