@@ -20,6 +20,8 @@ export interface CloudModelProfile {
   base_url?: string
   display_name?: string
   agent?: string
+  scope?: 'org' | 'user'
+  account_label?: string
   default_model?: string
   default_effort?: string
   models?: ModelPickerOption[]
@@ -95,8 +97,12 @@ export interface CreateCloudTurnInput {
 const CLOUD_PROVIDER_META: Record<string, { label: string; logoAgent: string }> = {
   openai: { label: 'Codex', logoAgent: 'codex' },
   azure_openai: { label: 'Codex Azure', logoAgent: 'codex' },
+  codex_oauth: { label: 'Codex (Personal)', logoAgent: 'codex' },
   anthropic: { label: 'Claude', logoAgent: 'claude' },
   bedrock: { label: 'Claude Bedrock', logoAgent: 'claude' },
+  claude_oauth: { label: 'Claude Code (Personal)', logoAgent: 'claude' },
+  antigravity_oauth: { label: 'Antigravity (Personal)', logoAgent: 'antigravity' },
+  kimi_oauth: { label: 'Kimi (Personal)', logoAgent: 'kimi' },
   xai: { label: 'Grok', logoAgent: 'grok' },
   vertex: { label: 'Vertex AI', logoAgent: 'codex' },
   openrouter: { label: 'OpenRouter', logoAgent: 'codex' },

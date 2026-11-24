@@ -74,6 +74,7 @@ export const keys = {
   cloudSpaces: ['cloud', 'spaces'] as const,
   cloudMachines: ['cloud', 'machines'] as const,
   cloudModelProfiles: ['cloud', 'model-profiles'] as const,
+  cloudACPProfiles: ['cloud', 'acp-profiles'] as const,
   cloudUsageSummary: ['cloud', 'usage', 'summary'] as const,
   cloudInstruction: (scope: string, scopeId: string, kind: string) =>
     ['cloud', 'instructions', scope, scopeId, kind] as const,

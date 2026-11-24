@@ -13,6 +13,7 @@ import { ACPAgentsSettings } from './ACPAgentsSettings'
 import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
+import { CloudACPSettings } from './CloudACPSettings'
 import { ComputerSettings } from '@/components/settings/ComputerSettings'
 import { ConnectedMachinesSettings } from '@/components/settings/ConnectedMachinesSettings'
 import { NotificationsSettings } from '@/components/settings/NotificationsSettings'
@@ -175,6 +176,7 @@ function SectionContent({
   section: SettingsSection
   onNavigate: (section: SettingsSection, options?: SectionNavigationOptions) => void
 }) {
+  const hasCloud = useHasCloud()
   switch (section) {
     case 'voice':
       return <VoiceSettings />
@@ -193,7 +195,7 @@ function SectionContent({
     case 'providers':
       return <AgentProvidersSettings />
     case 'agents':
-      return <ACPAgentsSettings onOpenProviders={() => onNavigate('providers')} />
+      return hasCloud ? <CloudACPSettings /> : <ACPAgentsSettings onOpenProviders={() => onNavigate('providers')} />
     case 'archived':
       return <ArchivedThreadsSettings />
     case 'personalization':

@@ -51,6 +51,7 @@ export type SettingsNavItem = {
   experimental?: boolean
   requiresCloud?: boolean
   requiresLocal?: boolean
+  requiresLocalOrCloud?: boolean
 }
 
 export const SETTINGS_SECTIONS: SettingsNavItem[] = [
@@ -67,7 +68,7 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'notifications', label: 'Notifications', icon: Bell, group: 'app' },
   { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard, group: 'app' },
   { id: 'voice', label: 'Voice', icon: AudioLines, group: 'app' },
-  { id: 'agents', label: 'Agents (ACP)', icon: Bot, group: 'app', requiresLocal: true },
+  { id: 'agents', label: 'Agents (ACP)', icon: Bot, group: 'app', requiresLocalOrCloud: true },
   { id: 'providers', label: 'Model Providers', icon: Boxes, group: 'app', requiresLocal: true },
   { id: 'browser', label: 'Browser', icon: Globe, group: 'app', requiresLocal: true },
   { id: 'computer', label: 'Computer Use', icon: MonitorSmartphone, group: 'app', requiresLocal: true },
@@ -97,6 +98,7 @@ export function visibleSettingsSections(
   return SETTINGS_SECTIONS.filter((item) => {
     if (item.requiresCloud && !hasCloud) return false
     if (item.requiresLocal && !localBackend) return false
+    if (item.requiresLocalOrCloud && !localBackend && !hasCloud) return false
     if (!import.meta.env?.DEV && !experimentalEnabled && item.experimental) return false
     return true
   })
