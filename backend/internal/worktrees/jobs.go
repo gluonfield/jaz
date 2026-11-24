@@ -15,6 +15,13 @@ import (
 	"github.com/wins/jaz/backend/internal/filelock"
 	"github.com/wins/jaz/backend/internal/gitinfo"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/subprocess"
+)
+
+const (
+	pendingJob  = "pending.json"
+	finishedJob = "finished.json"
+	releasedJob = "released.json"
 )
 
 func jobRoot(workspace string) string {
@@ -41,17 +48,16 @@ func writeRegistration(home string, job storage.WorktreeRegistration) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(home, "registration.json"), raw, 0o600)
+	return os.WriteFile(filepath.Join(home, pendingJob), raw, 0o600)
 }
 
-func readRegistration(home string) (storage.WorktreeRegistration, error) {
-	raw, err := os.ReadFile(filepath.Join(home, "registration.json"))
-	if err != nil {
-		return storage.WorktreeRegistration{}, err
+func finishJob(home string) error {
+	pending := filepath.Join(home, pendingJob)
+	now := time.Now()
+	if err := os.Chtimes(pending, now, now); err != nil {
+		return err
 	}
-	var job storage.WorktreeRegistration
-	err = json.Unmarshal(raw, &job)
-	return job, err
+	return os.Rename(pending, filepath.Join(home, finishedJob))
 }
 
 func RunJob(ctx context.Context, workspace, repo, base string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -62,6 +68,10 @@ func RunJob(ctx context.Context, workspace, repo, base string, args []string, st
 	if err != nil {
 		return err
 	}
+	cache := filepath.Join(home, "cache")
+	if err := os.Mkdir(cache, 0o700); err != nil {
+		return err
+	}
 	slug := filepath.Base(home)
 	worktree, _, err := gitinfo.AddRegisteredWorktree(ctx, home, repo, slug, base, func(cwd, project string) error {
 		return writeRegistration(home, storage.WorktreeRegistration{Path: cwd, Project: project, Branch: "jaz/" + slug})
@@ -69,69 +79,103 @@ func RunJob(ctx context.Context, workspace, repo, base string, args []string, st
 	if err != nil {
 		return err
 	}
-	cache := filepath.Join(home, "cache")
-	if err := os.Mkdir(cache, 0o700); err != nil {
-		return err
-	}
 
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = worktree
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
 	cmd.Env = append(cmd.Environ(), "JAZ_WORKTREE_CACHE="+cache)
-	runErr := cmd.Run()
+	process := subprocess.New(cmd)
+	runErr := cmd.Start()
+	if runErr == nil {
+		if err := process.Started(); err != nil {
+			stopErr := process.Terminate()
+			return errors.Join(err, stopErr, cmd.Wait())
+		}
+		runErr = cmd.Wait()
+		if err := process.Terminate(); err != nil {
+			return errors.Join(runErr, err)
+		}
+	}
 	if ctx.Err() != nil {
 		return errors.Join(runErr, ctx.Err())
 	}
-	if err := os.WriteFile(filepath.Join(home, "finished"), nil, 0o600); err != nil {
+	if err := finishJob(home); err != nil {
 		return errors.Join(runErr, err)
 	}
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer cancel()
-	job, err := readRegistration(home)
-	if err == nil {
-		err = removeFinishedJobCheckout(cleanup, workspace, home, job)
-	}
-	if err != nil {
+	if _, err := releaseFinishedJob(cleanup, workspace, home, nil); err != nil {
 		fmt.Fprintf(stderr, "kept job checkout %s: %v\n", worktree, err)
 	}
 	return runErr
 }
 
-func removeFinishedJobCheckout(ctx context.Context, workspace, home string, job storage.WorktreeRegistration) error {
+func releaseFinishedJob(ctx context.Context, workspace, home string, store sessionReader) (time.Time, error) {
+	released := filepath.Join(home, releasedJob)
+	finished := filepath.Join(home, finishedJob)
+	info, err := os.Stat(finished)
+	if os.IsNotExist(err) {
+		info, err = os.Stat(released)
+		if os.IsNotExist(err) {
+			return time.Time{}, nil
+		}
+		if err != nil {
+			return time.Time{}, err
+		}
+		return info.ModTime(), nil
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
 	unlock, err := filelock.Lock(filepath.Join(home, "cleanup.lock"))
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
 	defer unlock()
-	released := filepath.Join(home, "released")
-	if _, err := os.Lstat(released); err == nil {
-		return nil
-	} else if !os.IsNotExist(err) {
-		return err
+	raw, err := os.ReadFile(finished)
+	if os.IsNotExist(err) {
+		info, err := os.Stat(released)
+		if err != nil {
+			return time.Time{}, err
+		}
+		return info.ModTime(), nil
 	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	var job storage.WorktreeRegistration
+	if err := json.Unmarshal(raw, &job); err != nil {
+		return time.Time{}, err
+	}
+	if err := releaseRegisteredCheckout(ctx, workspace, home, job, store); err != nil {
+		return time.Time{}, err
+	}
+	return info.ModTime(), os.Rename(finished, released)
+}
+
+func releaseRegisteredCheckout(ctx context.Context, workspace, home string, job storage.WorktreeRegistration, store sessionReader) error {
 	if _, err := os.Lstat(job.Path); os.IsNotExist(err) {
-		return os.WriteFile(released, nil, 0o600)
+		return nil
 	} else if err != nil {
 		return err
 	}
-	if job.MergedHead != "" {
-		if checkoutPath(workspace, job.Path) != job.Path || IsJobDirectory(workspace, job.Path) {
+	if job.MergedHead == "" {
+		if job.Path != filepath.Join(home, ".worktrees", filepath.Base(home)) {
+			return fmt.Errorf("job checkout path does not match its registration")
+		}
+	} else {
+		if store == nil || checkoutPath(workspace, job.Path) != job.Path || IsJobDirectory(workspace, job.Path) {
 			return fmt.Errorf("adopted checkout is outside the workspace worktrees")
 		}
-		info := gitinfo.Inspect(ctx, job.Path)
-		if info.Head != job.MergedHead || info.Ahead == nil || *info.Ahead != 0 || info.Dirty == nil || *info.Dirty {
-			return fmt.Errorf("adopted checkout changed")
+		defer LockCheckout(workspace, job.Path)()
+		if err := checkAdoption(ctx, workspace, home, job, store); err != nil {
+			return err
 		}
-	} else if job.Path != filepath.Join(home, ".worktrees", filepath.Base(home)) {
-		return fmt.Errorf("job checkout path does not match its registration")
 	}
 	if err := gitinfo.CheckWorktree(ctx, job.Path, job.Project); err != nil {
 		return err
 	}
-	if err := gitinfo.RemoveManagedWorktree(ctx, job.Path, job.Branch, "Save worktree job changes"); err != nil {
-		return err
-	}
-	return os.WriteFile(released, nil, 0o600)
+	return gitinfo.RemoveManagedWorktree(ctx, job.Path, job.Branch, "Save worktree job changes")
 }
 
 func SweepJobs(ctx context.Context, workspace string, store sessionReader, logger *log.Logger) error {
@@ -155,39 +199,14 @@ func SweepJobs(ctx context.Context, workspace string, store sessionReader, logge
 			continue
 		}
 		home := filepath.Join(root, entry.Name())
-		finished, err := os.Lstat(filepath.Join(home, "finished"))
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if !finished.Mode().IsRegular() {
-			continue
-		}
-		job, err := readRegistration(home)
-		if err == nil {
-			err = sweepRegisteredJob(ctx, workspace, home, job, store)
-		}
+		finished, err := releaseFinishedJob(ctx, workspace, home, store)
 		if err != nil {
 			logger.Warn("kept job checkout", "path", home, "error", err)
 			continue
 		}
-		caches = append(caches, jobCache{path: filepath.Join(home, "cache"), finished: finished.ModTime()})
+		if !finished.IsZero() {
+			caches = append(caches, jobCache{path: filepath.Join(home, "cache"), finished: finished})
+		}
 	}
 	return trimJobCaches(ctx, root, caches, jobCacheBudget, minimumFree)
-}
-
-func sweepRegisteredJob(ctx context.Context, workspace, home string, job storage.WorktreeRegistration, store sessionReader) error {
-	if job.MergedHead != "" {
-		defer LockCheckout(workspace, job.Path)()
-		groups, err := managedDirectories(store, workspace)
-		if err != nil {
-			return err
-		}
-		if groups[job.Path] != nil {
-			return fmt.Errorf("adopted checkout has a thread owner")
-		}
-	}
-	return removeFinishedJobCheckout(ctx, workspace, home, job)
 }

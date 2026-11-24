@@ -61,8 +61,7 @@ func (m *Manager) Open(id, cwd string, size Size) (*Session, error) {
 		if session.Cwd() == cwd {
 			return session, nil
 		}
-		delete(m.sessions, id)
-		session.Terminate()
+		session.Close()
 	}
 	session := newSession(cwd, m.replay, func(s *Session) {
 		m.mu.Lock()
@@ -87,16 +86,6 @@ func OpenCommand(cmd *exec.Cmd, size Size) (*Session, error) {
 		return nil, err
 	}
 	return session, nil
-}
-
-func (m *Manager) Kill(id string) {
-	m.mu.Lock()
-	session := m.sessions[id]
-	delete(m.sessions, id)
-	m.mu.Unlock()
-	if session != nil {
-		session.Terminate()
-	}
 }
 
 func (m *Manager) Active(id string) bool {

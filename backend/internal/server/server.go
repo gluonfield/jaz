@@ -279,7 +279,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	case "repo":
 		s.handleSessionRepo(w, r, session)
 	case "repo/merge-branches":
-		repoapi.MergeBranches(w, r, optionalCwd(session), s.pruneManagedWorktreesSoon)
+		repoapi.MergeBranches(w, r, optionalCwd(session))
 	case "repo/changes":
 		s.handleSessionRepoChanges(w, r, session)
 	case "repo/diff":
@@ -406,7 +406,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if action == "repo/merge-branches" {
-		repoapi.MergeBranches(w, r, optionalCwd(session), s.pruneManagedWorktreesSoon)
+		repoapi.MergeBranches(w, r, optionalCwd(session))
 		return
 	}
 	if action == "repo/merge-from-main" {

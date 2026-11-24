@@ -12,7 +12,7 @@ import (
 	"github.com/wins/jaz/backend/internal/httpapi"
 )
 
-func MergeBranches(w http.ResponseWriter, r *http.Request, cwd string, merged func()) {
+func MergeBranches(w http.ResponseWriter, r *http.Request, cwd string) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if r.Method == http.MethodPost {
@@ -34,7 +34,6 @@ func MergeBranches(w http.ResponseWriter, r *http.Request, cwd string, merged fu
 			httpapi.WriteError(w, http.StatusBadRequest, err)
 			return
 		}
-		merged()
 		httpapi.WriteJSON(w, http.StatusOK, gitinfo.Inspect(ctx, cwd))
 		return
 	}

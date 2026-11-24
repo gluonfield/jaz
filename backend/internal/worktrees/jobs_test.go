@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -53,6 +54,31 @@ func TestWorktreeJobCleansUpAfterFailure(t *testing.T) {
 	git("show-ref", "--verify", "refs/heads/jaz/"+name)
 }
 
+func TestWorktreeJobStopsBackgroundChildrenBeforeRelease(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture uses a Unix shell")
+	}
+	repo, _ := jobRepo(t)
+	workspace := t.TempDir()
+	args := []string{"sh", "-c", `(sleep 0.3; printf late > "$JAZ_WORKTREE_CACHE/late") </dev/null >/dev/null 2>&1 &`}
+	var output bytes.Buffer
+	if err := RunJob(t.Context(), workspace, repo, "", args, nil, &output, &output); err != nil {
+		t.Fatalf("run job: %v, %s", err, output.String())
+	}
+	entries, err := os.ReadDir(jobRoot(workspace))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("job entries = %v, %v", entries, err)
+	}
+	home := filepath.Join(jobRoot(workspace), entries[0].Name())
+	if _, err := os.Stat(filepath.Join(home, releasedJob)); err != nil {
+		t.Fatalf("job was not released: %v, %s", err, output.String())
+	}
+	time.Sleep(450 * time.Millisecond)
+	if _, err := os.Stat(filepath.Join(home, "cache", "late")); !os.IsNotExist(err) {
+		t.Fatalf("a background child continued after checkout release: %v", err)
+	}
+}
+
 func TestAdoptedWorktreeIsReleasedOnlyOnce(t *testing.T) {
 	repo, git := jobRepo(t)
 	workspace := t.TempDir()
@@ -92,6 +118,28 @@ func TestAdoptedWorktreeIsReleasedOnlyOnce(t *testing.T) {
 	}
 	if _, err := os.Stat(cwd); err != nil {
 		t.Fatalf("a later checkout at the same path was removed: %v", err)
+	}
+}
+
+func TestAdoptionCannotReleaseAReplacementCheckout(t *testing.T) {
+	repo, git := jobRepo(t)
+	workspace := t.TempDir()
+	cwd := filepath.Join(workspace, ".worktrees", "legacy")
+	git("worktree", "add", "-b", "legacy", cwd)
+	if err := Adopt(t.Context(), workspace, cwd, repo, nil); err != nil {
+		t.Fatal(err)
+	}
+	git("worktree", "remove", cwd)
+	git("worktree", "add", cwd, "legacy")
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SweepJobs(t.Context(), workspace, store, log.New(&bytes.Buffer{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(cwd); err != nil {
+		t.Fatalf("adoption removed a replacement checkout: %v", err)
 	}
 }
 

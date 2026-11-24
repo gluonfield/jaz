@@ -3,7 +3,6 @@ package worktrees
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/wins/jaz/backend/internal/gitinfo"
@@ -41,5 +40,26 @@ func Adopt(ctx context.Context, workspace, cwd, project string, sessions []stora
 	if err := writeRegistration(home, storage.WorktreeRegistration{Path: cwd, Project: project, Branch: info.Branch, MergedHead: info.Head}); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(home, "finished"), nil, 0o600)
+	if err := gitinfo.StampWorktreeAdoption(ctx, cwd, filepath.Base(home)); err != nil {
+		return err
+	}
+	return finishJob(home)
+}
+
+func checkAdoption(ctx context.Context, workspace, home string, job storage.WorktreeRegistration, store sessionReader) error {
+	if err := gitinfo.CheckWorktreeAdoption(ctx, job.Path, filepath.Base(home)); err != nil {
+		return err
+	}
+	groups, err := managedDirectories(store, workspace)
+	if err != nil {
+		return err
+	}
+	if groups[job.Path] != nil {
+		return fmt.Errorf("adopted checkout has a thread owner")
+	}
+	info := gitinfo.Inspect(ctx, job.Path)
+	if info.Head != job.MergedHead || info.Ahead == nil || *info.Ahead != 0 || info.Dirty == nil || *info.Dirty {
+		return fmt.Errorf("adopted checkout changed")
+	}
+	return nil
 }

@@ -225,7 +225,6 @@ func (s *Server) mergeSessionRepo(ctx context.Context, session storage.Session, 
 	if err != nil {
 		return "", gitinfo.Info{}, err
 	}
-	s.pruneManagedWorktreesSoon()
 	return root, gitinfo.Inspect(ctx, cwd), nil
 }
 

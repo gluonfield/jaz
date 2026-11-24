@@ -17,7 +17,7 @@ type Runtime interface {
 }
 
 type Pruner struct {
-	Store     storage.SessionStore
+	Store     sessionReader
 	Workspace string
 	Runtime   Runtime
 	Lock      func(...string) func()
@@ -97,18 +97,13 @@ func (p Pruner) remove(ctx context.Context, item *directory) {
 		if currentItem == nil || len(currentItem.sessions) != len(ids) {
 			return nil
 		}
-		for _, previous := range item.sessions {
-			session, err := p.Store.LoadSession(previous.ID)
-			if err != nil {
-				return err
-			}
-			current, ok := Managed(p.Workspace, session)
-			if !ok || current.Cwd != item.worktree.Cwd || retained(session) || p.Terminal(session.ID) {
+		for _, session := range currentItem.sessions {
+			if !slices.Contains(ids, session.ID) || retained(session) || p.Terminal(session.ID) {
 				return nil
 			}
 		}
 		branch := "jaz/" + filepath.Base(item.worktree.Cwd)
-		for _, session := range item.sessions {
+		for _, session := range currentItem.sessions {
 			if branch != "jaz/"+session.Slug {
 				continue
 			}

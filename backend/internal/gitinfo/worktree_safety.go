@@ -38,6 +38,37 @@ func CheckWorktree(ctx context.Context, dir, project string) error {
 	return nil
 }
 
+func StampWorktreeAdoption(ctx context.Context, dir, ticket string) error {
+	path, err := adoptionStampPath(ctx, dir, ticket)
+	if err != nil {
+		return err
+	}
+	stamp, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	return stamp.Close()
+}
+
+func CheckWorktreeAdoption(ctx context.Context, dir, ticket string) error {
+	path, err := adoptionStampPath(ctx, dir, ticket)
+	if err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("checkout has no matching adoption stamp: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("checkout adoption stamp is not a regular file")
+	}
+	return nil
+}
+
+func adoptionStampPath(ctx context.Context, dir, ticket string) (string, error) {
+	return git(ctx, dir, "rev-parse", "--path-format=absolute", "--git-path", "jaz-adopt-"+ticket)
+}
+
 func checkNestedGit(dir string) error {
 	return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {

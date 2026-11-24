@@ -63,7 +63,7 @@ func (s *Server) handleSessionTerminal(w http.ResponseWriter, r *http.Request, s
 		_ = writeTerminalMessage(conn, terminal.Message{Type: "error", Err: err.Error()})
 		return
 	}
-	serveTerminal(conn, term, func() { s.terminalManager().Kill(session.ID) }, nil)
+	serveTerminal(conn, term, term.Close, nil)
 }
 
 func serveTerminal(conn *websocket.Conn, term *terminal.Session, terminate func(), finalize func(terminal.Message) terminal.Message) {
