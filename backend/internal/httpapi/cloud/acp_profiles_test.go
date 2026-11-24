@@ -110,7 +110,9 @@ printf '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-fresh","refreshToken":"rt-
 	t.Cleanup(func() { _ = svc.Disconnect(context.Background(), "") })
 
 	starter := &fakeDesktopLoginStarter{binPath: fakeCLI}
-	acpHandler := cloudapi.NewACPProfileHandler(svc, starter)
+	runner := acp.NewCloudLoginRunner(starter.StartIsolatedCloudLogin)
+	t.Cleanup(runner.Close)
+	acpHandler := cloudapi.NewACPProfileHandler(svc, runner)
 	cloudHandler := cloudapi.NewHandler(svc)
 
 	mux := http.NewServeMux()

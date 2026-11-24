@@ -214,10 +214,10 @@ function CloudACPAgentRow({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {canLogin ? (
-                  <Button variant="primary" size="md" disabled={running} onClick={onStartLogin}>
-                    {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-                    {running ? 'Waiting for sign-in…' : 'Sign in again'}
+                {canLogin && !running ? (
+                  <Button variant="primary" size="md" onClick={onStartLogin}>
+                    <LogIn size={14} />
+                    Sign in again
                   </Button>
                 ) : null}
                 <Button variant="ghost" size="sm" disabled={disconnecting} onClick={onDisconnect}>
@@ -230,10 +230,12 @@ function CloudACPAgentRow({
             </div>
           ) : (
             <div className="flex flex-col items-start gap-2">
-              <Button variant="primary" size="md" disabled={running || !canLogin} onClick={onStartLogin}>
-                {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-                {running ? 'Waiting for sign-in…' : `Sign in with ${authProviderLabel(agent)}`}
-              </Button>
+              {running ? null : (
+                <Button variant="primary" size="md" disabled={!canLogin} onClick={onStartLogin}>
+                  <LogIn size={14} />
+                  {`Sign in with ${authProviderLabel(agent)}`}
+                </Button>
+              )}
               {!canLogin && loginReason ? <p className="text-[12px] text-ink-3">{loginReason}</p> : null}
               <div className="w-full">
                 <AuthLoginStatus job={loginJob} running={running} allowCodeInput={false} />

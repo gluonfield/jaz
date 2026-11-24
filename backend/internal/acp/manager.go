@@ -127,6 +127,7 @@ type Manager struct {
 	launches     sync.WaitGroup
 	launchCtx    context.Context
 	stopLaunches context.CancelFunc
+	cloudLogins  *CloudLoginRunner
 
 	advertisedModels sync.Map
 }
@@ -244,7 +245,7 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		logger = log.Default()
 	}
 	launchCtx, stopLaunches := context.WithCancel(context.Background())
-	return &Manager{
+	m := &Manager{
 		launchCtx:         launchCtx,
 		stopLaunches:      stopLaunches,
 		cfg:               cfg,
@@ -264,6 +265,12 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		resumeLocks:       sessionlock.New(),
 		inputLocks:        sessionlock.New(),
 	}
+	m.cloudLogins = NewCloudLoginRunner(m.StartIsolatedCloudLogin)
+	return m
+}
+
+func (m *Manager) CloudLogins() *CloudLoginRunner {
+	return m.cloudLogins
 }
 
 // providers returns the current effective provider set. It reads the live

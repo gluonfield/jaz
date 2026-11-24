@@ -70,12 +70,12 @@ export function AuthLoginStatus({
         ? 'Enter the one-time code on the auth page.'
         : details.url
           ? 'Approve the browser prompt to continue.'
-          : 'Waiting for the agent CLI to print its browser login link.'
+          : 'Requesting a browser sign-in link…'
 
   return (
     <div
       className={`grid gap-2 rounded-[10px] px-3 py-2 text-[12px] ${
-        failed ? 'bg-danger-soft text-danger' : 'bg-surface text-ink-2'
+        failed ? 'bg-danger-soft text-danger' : 'bg-bg text-ink-2'
       }`}
     >
       <div className="flex min-w-0 items-start gap-2">

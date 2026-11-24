@@ -142,7 +142,11 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge ma
 		return routes
 	}
 	h := cloudapi.NewHandler(cloud).WithMachineBridge(bridge)
-	acpProfiles := cloudapi.NewACPProfileHandler(cloud, acpMgr)
+	var cloudLogins *acp.CloudLoginRunner
+	if acpMgr != nil {
+		cloudLogins = acpMgr.CloudLogins()
+	}
+	acpProfiles := cloudapi.NewACPProfileHandler(cloud, cloudLogins)
 	return append(routes,
 		server.Route{Pattern: "GET /v1/cloud/status", Handler: httpHandlerFunc(h.Status)},
 		server.Route{Pattern: "GET /v1/cloud/machine-bridge", Handler: httpHandlerFunc(h.MachineBridgeStatus)},

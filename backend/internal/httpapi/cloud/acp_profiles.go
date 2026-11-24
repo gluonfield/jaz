@@ -14,20 +14,12 @@ import (
 	"github.com/wins/jaz/backend/internal/httpapi"
 )
 
-type DesktopCloudLoginStarter interface {
-	StartIsolatedCloudLogin(agent string) (acp.IsolatedCloudLogin, error)
-}
-
 type ACPProfileHandler struct {
 	service *cloudsync.Service
 	runner  *acp.CloudLoginRunner
 }
 
-func NewACPProfileHandler(service *cloudsync.Service, starter DesktopCloudLoginStarter) *ACPProfileHandler {
-	var runner *acp.CloudLoginRunner
-	if starter != nil {
-		runner = acp.NewCloudLoginRunner(starter.StartIsolatedCloudLogin)
-	}
+func NewACPProfileHandler(service *cloudsync.Service, runner *acp.CloudLoginRunner) *ACPProfileHandler {
 	return &ACPProfileHandler{service: service, runner: runner}
 }
 

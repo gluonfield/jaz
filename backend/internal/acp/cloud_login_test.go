@@ -131,3 +131,48 @@ printf '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-second","refreshToken":"rt
 	s2, _ := runner.Get(AgentClaude, second.ID)
 	t.Fatalf("expected first=failed and second=completed, got s1=%+v s2=%+v", s1, s2)
 }
+
+func TestCloudLoginRunnerCloseStopsProcessAndCleansDir(t *testing.T) {
+	slowBin := filepath.Join(t.TempDir(), "sleep-claude")
+	if err := os.WriteFile(slowBin, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var createdDir string
+	runner := NewCloudLoginRunner(func(agent string) (IsolatedCloudLogin, error) {
+		dir, err := os.MkdirTemp("", "jaz-close-test-*")
+		if err != nil {
+			return IsolatedCloudLogin{}, err
+		}
+		createdDir = dir
+		return IsolatedCloudLogin{
+			Agent: agent,
+			Dir:   dir,
+			Invocation: AgentLoginInvocation{
+				Executable: slowBin,
+				Env:        map[string]string{"CLAUDE_CONFIG_DIR": dir},
+				Available:  true,
+			},
+			Cleanup: func() { _ = os.RemoveAll(dir) },
+		}, nil
+	})
+
+	snap, err := runner.Start(AgentClaude, func(context.Context, string, map[string][]byte) error { return nil })
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	runner.Close()
+
+	if _, err := os.Stat(createdDir); !os.IsNotExist(err) {
+		t.Fatalf("expected isolated login dir %q to be removed on Close, stat err=%v", createdDir, err)
+	}
+	after, err := runner.Get(AgentClaude, snap.ID)
+	if err != nil {
+		t.Fatalf("Get after Close: %v", err)
+	}
+	if after.Status != "failed" || !strings.Contains(after.Error, "canceled") {
+		t.Fatalf("expected canceled status after Close, got %+v", after)
+	}
+	if _, err := runner.Start(AgentClaude, func(context.Context, string, map[string][]byte) error { return nil }); err == nil {
+		t.Fatal("expected Start after Close to fail")
+	}
+}

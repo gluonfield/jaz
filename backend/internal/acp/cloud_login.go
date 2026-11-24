@@ -57,6 +57,8 @@ type cloudLoginRecord struct {
 	errMsg          string
 	expiresAt       time.Time
 	cancel          context.CancelFunc
+	replaced        bool
+	done            chan struct{}
 }
 
 func (r *cloudLoginRecord) snapshot() CloudLoginSnapshot {
@@ -81,6 +83,7 @@ type CloudLoginRunner struct {
 	capture func(agent, dir string) (map[string][]byte, error)
 
 	mu         sync.Mutex
+	closed     bool
 	byID       map[string]*cloudLoginRecord
 	activeByAg map[string]*cloudLoginRecord
 }
@@ -91,6 +94,32 @@ func NewCloudLoginRunner(prepare func(agent string) (IsolatedCloudLogin, error))
 		capture:    CaptureIsolatedAuthFiles,
 		byID:       make(map[string]*cloudLoginRecord),
 		activeByAg: make(map[string]*cloudLoginRecord),
+	}
+}
+
+// Close terminates any in-flight login subprocesses and waits for their
+// ephemeral credential directories to be removed.
+func (r *CloudLoginRunner) Close() {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return
+	}
+	r.closed = true
+	active := make([]*cloudLoginRecord, 0, len(r.activeByAg))
+	for _, rec := range r.activeByAg {
+		active = append(active, rec)
+	}
+	clear(r.activeByAg)
+	r.mu.Unlock()
+
+	for _, rec := range active {
+		if rec.cancel != nil {
+			rec.cancel()
+		}
+	}
+	for _, rec := range active {
+		<-rec.done
 	}
 }
 
@@ -106,6 +135,13 @@ func (m *Manager) StartIsolatedCloudLogin(agent string) (IsolatedCloudLogin, err
 }
 
 func (r *CloudLoginRunner) Start(agent string, commit CloudLoginCommitFunc) (CloudLoginSnapshot, error) {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return CloudLoginSnapshot{}, errors.New("cloud login runner is closed")
+	}
+	r.mu.Unlock()
+
 	iso, err := r.prepare(agent)
 	if err != nil {
 		return CloudLoginSnapshot{}, err
@@ -131,17 +167,32 @@ func (r *CloudLoginRunner) Start(agent string, commit CloudLoginCommitFunc) (Clo
 		status:    "pending",
 		expiresAt: time.Now().UTC().Add(isolatedCloudLoginTimeout),
 		cancel:    cancel,
+		done:      make(chan struct{}),
 	}
 
 	// Cancel any previous in-flight login for the same agent so concurrent attempts
 	// never fight over the browser or leak orphan CLI processes.
 	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		cancel()
+		_ = cmd.Wait()
+		_ = pw.Close()
+		_ = pr.Close()
+		iso.Cleanup()
+		return CloudLoginSnapshot{}, errors.New("cloud login runner is closed")
+	}
 	prev := r.activeByAg[iso.Agent]
 	r.activeByAg[iso.Agent] = rec
 	r.byID[rec.id] = rec
 	r.mu.Unlock()
-	if prev != nil && prev.cancel != nil {
-		prev.cancel()
+	if prev != nil {
+		prev.mu.Lock()
+		prev.replaced = true
+		prev.mu.Unlock()
+		if prev.cancel != nil {
+			prev.cancel()
+		}
 	}
 
 	go r.watch(ctx, cancel, cmd, pr, pw, iso, rec, commit)
@@ -169,6 +220,7 @@ func (r *CloudLoginRunner) watch(
 	rec *cloudLoginRecord,
 	commit CloudLoginCommitFunc,
 ) {
+	defer close(rec.done)
 	defer cancel()
 	defer iso.Cleanup()
 	defer func() {
@@ -176,12 +228,15 @@ func (r *CloudLoginRunner) watch(
 		if r.activeByAg[rec.agent] == rec {
 			delete(r.activeByAg, rec.agent)
 		}
+		closed := r.closed
 		r.mu.Unlock()
-		time.AfterFunc(5*time.Minute, func() {
-			r.mu.Lock()
-			delete(r.byID, rec.id)
-			r.mu.Unlock()
-		})
+		if !closed {
+			time.AfterFunc(5*time.Minute, func() {
+				r.mu.Lock()
+				delete(r.byID, rec.id)
+				r.mu.Unlock()
+			})
+		}
 	}()
 
 	var tail strings.Builder
@@ -230,7 +285,11 @@ func (r *CloudLoginRunner) watch(
 			rec.errMsg = "sign-in timed out"
 		case context.Canceled:
 			rec.status = "failed"
-			rec.errMsg = "sign-in was replaced by a newer attempt"
+			if rec.replaced {
+				rec.errMsg = "sign-in was replaced by a newer attempt"
+			} else {
+				rec.errMsg = "sign-in canceled"
+			}
 		default:
 			rec.status = "failed"
 			rec.errMsg = msg

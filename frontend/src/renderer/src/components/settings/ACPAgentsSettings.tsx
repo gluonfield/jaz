@@ -499,10 +499,10 @@ function AgentAuthPanel({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {canLogin ? (
-            <Button variant="primary" size="md" disabled={disabled || running} onClick={onStartLogin}>
-              {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-              {running ? 'Waiting for sign-in…' : 'Sign in again'}
+          {canLogin && !running ? (
+            <Button variant="primary" size="md" disabled={disabled} onClick={onStartLogin}>
+              <LogIn size={14} />
+              Sign in again
             </Button>
           ) : null}
           {!status.manual_disconnect ? (
@@ -531,10 +531,9 @@ function AgentAuthPanel({
               ? keyCopy.connected
               : `Connected with your ${authProviderLabel(agent)} account`}
         </span>
-        {status.manual_disconnect && canLogin ? (
-          <Button variant="ghost" size="sm" disabled={disabled || running} onClick={onStartLogin}>
-            {running ? <LoaderCircle size={13} className="animate-spin" /> : null}
-            {running ? 'Waiting for sign-in…' : 'Sign in again'}
+        {status.manual_disconnect && canLogin && !running ? (
+          <Button variant="ghost" size="sm" disabled={disabled} onClick={onStartLogin}>
+            Sign in again
           </Button>
         ) : null}
         {noKey || status.manual_disconnect ? null : (
@@ -572,10 +571,12 @@ function AgentAuthPanel({
 
       {(method === 'login' && canLogin) || !canKey ? (
         <div className="flex flex-col items-start gap-2">
-          <Button variant="primary" size="md" disabled={disabled || running || !canLogin} onClick={onStartLogin}>
-            {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-            {running ? 'Waiting for sign-in…' : `Sign in with ${authProviderLabel(agent)}`}
-          </Button>
+          {running ? null : (
+            <Button variant="primary" size="md" disabled={disabled || !canLogin} onClick={onStartLogin}>
+              <LogIn size={14} />
+              {`Sign in with ${authProviderLabel(agent)}`}
+            </Button>
+          )}
           {!canLogin && (status?.login_command_reason || status?.reason) ? (
             <p className="text-[12px] text-ink-3">{status.login_command_reason || status.reason}</p>
           ) : null}
