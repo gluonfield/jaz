@@ -6,10 +6,13 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/worktrees"
 )
 
 type botWorkArchiver interface {
 	ArchiveFinishedBotWork(context.Context, time.Time, string) error
+	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 }
 
 func RunWorktreeMaintenance(ctx context.Context, store botWorkArchiver, workspace string, prune func(context.Context), logger *log.Logger) {
@@ -24,9 +27,11 @@ func RunWorktreeMaintenance(ctx context.Context, store botWorkArchiver, workspac
 		sweep, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		if err := store.ArchiveFinishedBotWork(sweep, time.Now().Add(-7*24*time.Hour), root); err != nil {
 			logger.Warn("archive finished bot work failed", "error", err)
-		} else {
-			prune(sweep)
 		}
+		if err := worktrees.SweepJobs(sweep, workspace, store, logger); err != nil {
+			logger.Warn("worktree job cleanup failed", "error", err)
+		}
+		prune(sweep)
 		cancel()
 		select {
 		case <-ctx.Done():

@@ -21,6 +21,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/worktrees"
 )
 
 const (
@@ -105,7 +106,6 @@ type Manager struct {
 	localAgents       map[string]LocalAgentRunner
 	turnReaders       map[string]int
 	pendingDiscard    map[string]*jobState
-	used              map[string]struct{}
 
 	pendingPermission map[string]*pendingPermission
 	permissionMu      sync.Mutex
@@ -257,7 +257,6 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		localAgents:       make(map[string]LocalAgentRunner),
 		turnReaders:       make(map[string]int),
 		pendingDiscard:    make(map[string]*jobState),
-		used:              make(map[string]struct{}),
 		pendingPermission: make(map[string]*pendingPermission),
 		projections:       make(map[string]*eventProjection),
 		resumeLocks:       sessionlock.New(),
@@ -552,14 +551,18 @@ func (m *Manager) createSession(ctx context.Context, req SpawnRequest, queue []s
 		}
 		req.SystemPromptExtensions = req.SystemPromptExtensions.Append(modules...)
 	}
-	absCwd, projectPath, err := m.prepareSessionDir(ctx, req, cfg, session.Slug, session.ID)
+	recordDirectory := func(cwd, project string) error {
+		defer worktrees.LockCheckout(m.cfg.Workspace, cwd)()
+		session.RuntimeRef.Cwd = cwd
+		session.RuntimeRef.ProjectPath = project
+		return m.store.SaveSession(session)
+	}
+	absCwd, projectPath, err := m.prepareSessionDir(ctx, req, cfg, session.Slug, session.ID, recordDirectory)
 	if err != nil {
 		return createdSession{}, m.abandonSession(session, err)
 	}
-	session.RuntimeRef.Cwd = absCwd
-	session.RuntimeRef.ProjectPath = projectPath
 	session.QueuedMessages = queue
-	if err := m.store.SaveSession(session); err != nil {
+	if err := recordDirectory(absCwd, projectPath); err != nil {
 		return createdSession{}, m.abandonSession(session, err)
 	}
 	return createdSession{Request: req, Config: cfg, Session: session}, nil
@@ -571,6 +574,7 @@ func (m *Manager) abandonSession(session storage.Session, err error) error {
 	session.Status = storage.StatusError
 	session.Error = err.Error()
 	session.Archived = true
+	session.QueuedMessages = nil
 	_ = m.store.SaveSession(session)
 	return err
 }

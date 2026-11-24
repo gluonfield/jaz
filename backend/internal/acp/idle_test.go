@@ -38,10 +38,6 @@ func TestIdleProcessStopsAndItsThreadResumesTheNativeSession(t *testing.T) {
 		t.Fatal("process stopped before it had been idle for the timeout")
 	}
 	waitProcessGone(ctx, t, startedPIDs(t, startLog)[0])
-	if !manager.SessionUsed(id) {
-		t.Fatal("a stopped thread no longer counts as in use, so its worktree could be pruned")
-	}
-
 	if err := turn(ctx, manager, id, "after the stop"); err != nil {
 		t.Fatal(err)
 	}

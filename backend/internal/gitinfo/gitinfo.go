@@ -303,27 +303,53 @@ func RemoveManagedWorktree(ctx context.Context, dir, branch, message string) err
 	if current != branch {
 		return fmt.Errorf("worktree branch %q does not match %q", current, branch)
 	}
-	reflog, err := git(ctx, dir, "reflog", "show", "--format=%H", "HEAD")
+	ignored, err := git(ctx, dir, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
 	if err != nil {
 		return err
 	}
-	if revisions := strings.Fields(reflog); len(revisions) > 0 {
-		args := append([]string{"rev-list"}, revisions...)
-		unreferenced, err := git(ctx, dir, append(args, "--not", "--all")...)
-		if err != nil {
-			return err
-		}
-		if unreferenced != "" {
-			return fmt.Errorf("worktree has reflog commits without a durable ref; preserve them before pruning")
-		}
+	if ignored != "" {
+		return fmt.Errorf("worktree contains ignored files; move or remove them before pruning")
+	}
+	if err := checkNestedGit(dir); err != nil {
+		return err
+	}
+	if err := preserveWorktreeReflog(ctx, dir); err != nil {
+		return err
 	}
 	if err := snapshotAll(ctx, dir, message); err != nil {
 		return err
 	}
-	if _, err := git(ctx, root, "worktree", "remove", "--force", dir); err != nil {
+	if _, err := git(ctx, root, "worktree", "remove", dir); err != nil {
 		return fmt.Errorf("remove worktree: %w", err)
 	}
-	_, _ = git(ctx, root, "worktree", "prune")
+	return nil
+}
+
+func preserveWorktreeReflog(ctx context.Context, dir string) error {
+	reflog, err := git(ctx, dir, "reflog", "show", "--format=%H", "HEAD")
+	if err != nil {
+		return err
+	}
+	revisions := strings.Fields(reflog)
+	if len(revisions) == 0 {
+		return nil
+	}
+	tips, err := git(ctx, dir, append([]string{"merge-base", "--independent"}, revisions...)...)
+	if err != nil {
+		return err
+	}
+	for _, oid := range strings.Fields(tips) {
+		unreferenced, err := git(ctx, dir, "rev-list", "--max-count=1", oid, "--not", "--all")
+		if err != nil {
+			return err
+		}
+		if unreferenced == "" {
+			continue
+		}
+		if _, err := git(ctx, dir, "update-ref", "refs/jaz/recovery/"+oid, oid); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -426,6 +452,10 @@ func ParseRemote(remote string) (host, owner, repo string) {
 // dir at workspace/.worktrees/<slug>, on a fresh "jaz/<slug>" branch. baseRef
 // selects the branch point; empty uses dir's current HEAD.
 func AddWorktree(ctx context.Context, workspace, dir, slug, baseRef string) (string, string, error) {
+	return AddRegisteredWorktree(ctx, workspace, dir, slug, baseRef, func(_, _ string) error { return nil })
+}
+
+func AddRegisteredWorktree(ctx context.Context, workspace, dir, slug, baseRef string, register func(cwd, project string) error) (string, string, error) {
 	repo, err := git(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", "", fmt.Errorf("worktree requires a git repository at %s: %w", dir, err)
@@ -435,14 +465,31 @@ func AddWorktree(ctx context.Context, workspace, dir, slug, baseRef string) (str
 		projectPath = root
 	}
 	worktree := filepath.Join(workspace, ".worktrees", slug)
+	branch := "jaz/" + slug
+	if _, err := os.Lstat(worktree); !os.IsNotExist(err) {
+		if err != nil {
+			return "", "", err
+		}
+		return "", "", fmt.Errorf("worktree already exists at %s", worktree)
+	}
+	if BranchExists(ctx, repo, branch) {
+		return "", "", fmt.Errorf("worktree branch %s already exists", branch)
+	}
 	if err := os.MkdirAll(filepath.Dir(worktree), 0o755); err != nil {
 		return "", "", err
 	}
-	args := []string{"worktree", "add", "-b", "jaz/" + slug, worktree}
-	if baseRef = strings.TrimSpace(baseRef); baseRef != "" {
-		args = append(args, baseRef)
+	baseRef = strings.TrimSpace(baseRef)
+	if baseRef == "" {
+		baseRef = "HEAD"
 	}
-	if _, err := git(ctx, repo, args...); err != nil {
+	base, err := git(ctx, repo, "rev-parse", "--verify", "--end-of-options", baseRef+"^{commit}")
+	if err != nil {
+		return "", "", err
+	}
+	if err := register(worktree, projectPath); err != nil {
+		return "", "", err
+	}
+	if _, err := git(ctx, repo, "worktree", "add", "-b", branch, "--", worktree, base); err != nil {
 		return "", "", fmt.Errorf("create worktree: %w", err)
 	}
 	return worktree, projectPath, nil

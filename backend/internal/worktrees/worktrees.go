@@ -9,6 +9,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/gitinfo"
 	"github.com/wins/jaz/backend/internal/pathsafe"
+	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -22,25 +23,46 @@ type sessionReader interface {
 	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 }
 
-func Managed(workspace string, session storage.Session) (Worktree, bool) {
-	if session.RuntimeRef == nil || session.RuntimeRef.Cwd == "" || workspace == "" || session.Slug == "" {
-		return Worktree{}, false
+var checkoutLocks = sessionlock.New()
+
+func LockCheckout(workspace, cwd string) func() {
+	path := checkoutPath(workspace, cwd)
+	if path == "" {
+		return func() {}
+	}
+	return checkoutLocks.Lock(path)
+}
+
+func checkoutPath(workspace, cwd string) string {
+	if workspace == "" || cwd == "" {
+		return ""
 	}
 	root, err := filepath.Abs(filepath.Join(workspace, ".worktrees"))
 	if err != nil {
-		return Worktree{}, false
+		return ""
 	}
-	cwd, err := filepath.Abs(session.RuntimeRef.Cwd)
+	cwd, err = filepath.Abs(cwd)
 	if err != nil || !pathsafe.Within(root, cwd) {
-		return Worktree{}, false
+		return ""
 	}
 	relative, err := filepath.Rel(root, cwd)
 	if err != nil || relative == "." {
-		return Worktree{}, false
+		return ""
 	}
 	directory, _, _ := strings.Cut(relative, string(filepath.Separator))
+	return filepath.Join(root, directory)
+}
+
+func Managed(workspace string, session storage.Session) (Worktree, bool) {
+	if session.RuntimeRef == nil || session.Slug == "" {
+		return Worktree{}, false
+	}
+	cwd := checkoutPath(workspace, session.RuntimeRef.Cwd)
+	if cwd == "" {
+		return Worktree{}, false
+	}
 	return Worktree{
-		Cwd:         filepath.Join(root, directory),
+		Cwd:         cwd,
 		ProjectPath: strings.TrimSpace(session.RuntimeRef.ProjectPath),
 		Branch:      "jaz/" + session.Slug,
 	}, true
@@ -73,6 +95,7 @@ func Ensure(ctx context.Context, store sessionReader, workspace string, session 
 	if !ok {
 		return nil
 	}
+	defer LockCheckout(workspace, worktree.Cwd)()
 	if _, err := os.Stat(worktree.Cwd); err == nil {
 		return nil
 	} else if !os.IsNotExist(err) {

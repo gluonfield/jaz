@@ -56,7 +56,6 @@ type ACPManager interface {
 	Status(string) (acp.Job, error)
 	StreamStatus(string) (acp.StreamView, error)
 	RetainStream(string) func()
-	SessionUsed(string) bool
 	WithStoppedSessions([]string, func() error) error
 	RunUtilityPrompt(context.Context, acp.UtilityPromptRequest) (string, error)
 	Agents() []string
@@ -280,7 +279,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	case "repo":
 		s.handleSessionRepo(w, r, session)
 	case "repo/merge-branches":
-		repoapi.MergeBranches(w, r, optionalCwd(session))
+		repoapi.MergeBranches(w, r, optionalCwd(session), s.pruneManagedWorktreesSoon)
 	case "repo/changes":
 		s.handleSessionRepoChanges(w, r, session)
 	case "repo/diff":
@@ -313,7 +312,9 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 
 	if action == "archive" || action == "unarchive" {
 		archived := action == "archive"
+		unlock := s.lockSession(session.ID)
 		session, err = s.setSessionArchivedState(session.ID, archived)
+		unlock()
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -325,7 +326,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if action == "pin" || action == "unpin" {
-		if err := s.Store.SetPinned(session.ID, action == "pin"); err != nil {
+		unlock := s.lockSession(session.ID)
+		err := s.Store.SetPinned(session.ID, action == "pin")
+		unlock()
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -402,7 +406,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if action == "repo/merge-branches" {
-		repoapi.MergeBranches(w, r, optionalCwd(session))
+		repoapi.MergeBranches(w, r, optionalCwd(session), s.pruneManagedWorktreesSoon)
 		return
 	}
 	if action == "repo/merge-from-main" {
