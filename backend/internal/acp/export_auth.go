@@ -9,23 +9,24 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	modelprovider "github.com/wins/jaz/backend/internal/provider"
 )
 
 var (
-	ErrUnsupportedCloudSyncAgent = errors.New("unsupported agent for cloud profile sync")
-	ErrLocalAuthNotFound         = errors.New("no local login credentials found for agent")
+	ErrUnsupportedCloudLoginAgent = errors.New("isolated desktop OAuth login is not supported for this agent")
+	ErrIsolatedAuthNotCaptured    = errors.New("sign-in finished without saving credentials")
 )
 
-type LocalAuthExport struct {
-	Agent       string
-	Files       map[string][]byte
-	StoragePath string
-	OwnedByJaz  bool
+type IsolatedCloudLogin struct {
+	Agent      string
+	Dir        string
+	Invocation AgentLoginInvocation
+	Cleanup    func()
 }
 
-func (m *Manager) ExportLocalAuth(agent string) (LocalAuthExport, error) {
+// StartIsolatedCloudLogin prepares a fresh 0700 profile directory so Desktop can
+// run an independent browser OAuth sign-in for a Cloud workspace without touching
+// or sharing the user's Local workspace credentials.
+func (m *Manager) StartIsolatedCloudLogin(agent string) (IsolatedCloudLogin, error) {
 	name := CanonicalAgentName(agent)
 	var cfg AgentConfig
 	if m.agents != nil {
@@ -33,67 +34,65 @@ func (m *Manager) ExportLocalAuth(agent string) (LocalAuthExport, error) {
 			cfg = found
 		}
 	}
-	return ExportLocalAuthFiles(name, cfg, m.cfg.Root, nil, m.providers())
+	return PrepareIsolatedCloudLogin(name, cfg, m.cfg.Root)
 }
 
-func (m *Manager) ClearOwnedLocalAuth(agent, storagePath string) error {
-	return RemoveOwnedCredential(agent, storagePath, m.cfg.Root)
-}
-
-func ExportLocalAuthFiles(agent string, cfg AgentConfig, root string, env map[string]string, providers map[string]modelprovider.ModelProviderConfig) (LocalAuthExport, error) {
+func PrepareIsolatedCloudLogin(agent string, cfg AgentConfig, root string) (IsolatedCloudLogin, error) {
 	name := CanonicalAgentName(agent)
 	switch name {
-	case AgentCodex, AgentClaude, AgentAntigravity, AgentKimi:
+	case AgentClaude, AgentKimi:
 	default:
-		return LocalAuthExport{}, fmt.Errorf("%w: %s", ErrUnsupportedCloudSyncAgent, agent)
+		return IsolatedCloudLogin{}, fmt.Errorf("%w: %s", ErrUnsupportedCloudLoginAgent, agent)
 	}
+	dir, err := os.MkdirTemp("", "jaz-cloud-acp-*")
+	if err != nil {
+		return IsolatedCloudLogin{}, err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		_ = os.RemoveAll(dir)
+		return IsolatedCloudLogin{}, err
+	}
+	auth := AgentAuthConfig{Mode: AuthModeJazProfile, Path: dir}
+	inv := AgentLoginInvocationFor(name, root, auth, loginBinDirs(cfg), cfg.Env)
+	if !inv.Available {
+		_ = os.RemoveAll(dir)
+		reason := strings.TrimSpace(inv.Reason)
+		if reason == "" {
+			reason = fmt.Sprintf("%s CLI is not installed locally", name)
+		}
+		return IsolatedCloudLogin{}, errors.New(reason)
+	}
+	cleanup := func() {
+		if name == AgentClaude {
+			_ = removeClaudeProfileKeychainCredential(dir)
+		}
+		_ = os.RemoveAll(dir)
+	}
+	return IsolatedCloudLogin{
+		Agent:      name,
+		Dir:        dir,
+		Invocation: inv,
+		Cleanup:    cleanup,
+	}, nil
+}
 
-	resolved := resolveAgentAuthWithProviders(name, cfg, root, env, providers)
+// CaptureIsolatedAuthFiles reads credential files written inside an isolated
+// login directory (including macOS Keychain fallback for Claude Code).
+func CaptureIsolatedAuthFiles(agent, dir string) (map[string][]byte, error) {
+	name := CanonicalAgentName(agent)
 	files := make(map[string][]byte)
-	var storagePath string
-
 	switch name {
-	case AgentCodex:
-		dir := strings.TrimSpace(resolved.Config.Path)
-		if dir == "" {
-			dir = expandAuthPath(firstNonEmpty(os.Getenv("CODEX_HOME"), defaultHomePath(".codex")))
-		}
-		if data, ok := readRegularNonEmptyFile(filepath.Join(dir, "auth.json")); ok {
-			files["auth.json"] = data
-			storagePath = filepath.Join(dir, "auth.json")
-		}
-		if data, ok := readRegularNonEmptyFile(filepath.Join(dir, "config.toml")); ok {
-			files["config.toml"] = data
-		}
-		if len(files["auth.json"]) == 0 {
-			return LocalAuthExport{}, fmt.Errorf("%w: sign in to Codex locally first (expected auth.json in %s)", ErrLocalAuthNotFound, dir)
-		}
-
 	case AgentClaude:
-		dir := strings.TrimSpace(resolved.Config.Path)
-		if dir == "" {
-			dir = expandAuthPath(firstNonEmpty(os.Getenv("CLAUDE_CONFIG_DIR"), defaultHomePath(".claude")))
-		}
-		if data, ok := readClaudeCredentialsBlob(dir); ok {
+		if data, ok := readIsolatedClaudeCredentials(dir); ok {
 			files[".credentials.json"] = data
-			storagePath = filepath.Join(dir, ".credentials.json")
 		}
 		if data, ok := readRegularNonEmptyFile(filepath.Join(dir, ".claude.json")); ok {
 			files[".claude.json"] = data
-		} else if dir == expandAuthPath(defaultHomePath(".claude")) {
-			if data, ok := readRegularNonEmptyFile(expandAuthPath(defaultHomePath(".claude.json"))); ok {
-				files[".claude.json"] = data
-			}
 		}
 		if len(files[".credentials.json"]) == 0 {
-			return LocalAuthExport{}, fmt.Errorf("%w: sign in to Claude Code locally first", ErrLocalAuthNotFound)
+			return nil, fmt.Errorf("%w for claude", ErrIsolatedAuthNotCaptured)
 		}
-
 	case AgentKimi:
-		dir := strings.TrimSpace(resolved.Config.Path)
-		if dir == "" {
-			dir = expandAuthPath(firstNonEmpty(os.Getenv("KIMI_CODE_HOME"), defaultHomePath(".kimi-code")))
-		}
 		if data, ok := readRegularNonEmptyFile(filepath.Join(dir, "config.toml")); ok {
 			files["config.toml"] = data
 		}
@@ -103,55 +102,18 @@ func ExportLocalAuthFiles(agent string, cfg AgentConfig, root string, env map[st
 				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 					continue
 				}
-				full := filepath.Join(credDir, entry.Name())
-				if data, ok := readRegularNonEmptyFile(full); ok {
+				if data, ok := readRegularNonEmptyFile(filepath.Join(credDir, entry.Name())); ok {
 					files["credentials/"+entry.Name()] = data
-					if storagePath == "" {
-						storagePath = full
-					}
-				}
-			}
-		}
-		if storagePath == "" {
-			return LocalAuthExport{}, fmt.Errorf("%w: sign in to Kimi locally first", ErrLocalAuthNotFound)
-		}
-
-	case AgentAntigravity:
-		searchDirs := []string{}
-		if dir := strings.TrimSpace(resolved.Config.Path); dir != "" {
-			searchDirs = append(searchDirs, dir)
-		}
-		if geminiDir := expandAuthPath(defaultHomePath(".gemini")); geminiDir != "" {
-			searchDirs = append(searchDirs, geminiDir)
-		}
-		for _, dir := range searchDirs {
-			for _, rel := range []string{"oauth_creds.json", "accounts.json", "google_accounts.json"} {
-				if _, exists := files[rel]; exists {
-					continue
-				}
-				full := filepath.Join(dir, rel)
-				if data, ok := readRegularNonEmptyFile(full); ok {
-					files[rel] = data
-					if storagePath == "" {
-						storagePath = full
-					}
 				}
 			}
 		}
 		if len(files) == 0 {
-			return LocalAuthExport{}, fmt.Errorf("%w: Antigravity stores OAuth in the OS keyring and has no portable credential files to sync", ErrLocalAuthNotFound)
+			return nil, fmt.Errorf("%w for kimi", ErrIsolatedAuthNotCaptured)
 		}
+	default:
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedCloudLoginAgent, agent)
 	}
-
-	if storagePath == "" {
-		storagePath = resolved.StoragePath
-	}
-	return LocalAuthExport{
-		Agent:       name,
-		Files:       files,
-		StoragePath: storagePath,
-		OwnedByJaz:  storagePath != "" && pathUnderRoot(storagePath, root),
-	}, nil
+	return files, nil
 }
 
 func readRegularNonEmptyFile(path string) ([]byte, bool) {
@@ -166,7 +128,7 @@ func readRegularNonEmptyFile(path string) ([]byte, bool) {
 	return data, true
 }
 
-func readClaudeCredentialsBlob(configDir string) ([]byte, bool) {
+func readIsolatedClaudeCredentials(configDir string) ([]byte, bool) {
 	if data, ok := readRegularNonEmptyFile(filepath.Join(configDir, ".credentials.json")); ok {
 		if tok, valid := claudeAccessToken(data); valid && tok != "" {
 			return data, true
@@ -175,20 +137,14 @@ func readClaudeCredentialsBlob(configDir string) ([]byte, bool) {
 	if runtime.GOOS != "darwin" {
 		return nil, false
 	}
-	services := []string{claudeKeychainService(configDir)}
-	if configDir == expandAuthPath(defaultHomePath(".claude")) {
-		services = append(services, "Claude Code-credentials")
+	ctx, cancel := context.WithTimeout(context.Background(), claudeCredentialReadLimit)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "/usr/bin/security", "find-generic-password", "-s", claudeKeychainService(configDir), "-w").Output()
+	if err != nil {
+		return nil, false
 	}
-	for _, svc := range services {
-		ctx, cancel := context.WithTimeout(context.Background(), claudeCredentialReadLimit)
-		out, err := exec.CommandContext(ctx, "/usr/bin/security", "find-generic-password", "-s", svc, "-w").Output()
-		cancel()
-		if err != nil {
-			continue
-		}
-		if tok, valid := claudeAccessToken(out); valid && tok != "" {
-			return []byte(strings.TrimSpace(string(out))), true
-		}
+	if tok, valid := claudeAccessToken(out); valid && tok != "" {
+		return []byte(strings.TrimSpace(string(out))), true
 	}
 	return nil, false
 }

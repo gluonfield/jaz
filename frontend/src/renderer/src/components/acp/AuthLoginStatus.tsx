@@ -11,9 +11,11 @@ import { writeClipboard } from '@/lib/clipboard'
 export function AuthLoginStatus({
   job,
   running,
+  allowCodeInput = true,
 }: {
   job?: ACPAuthLogin
   running: boolean
+  allowCodeInput?: boolean
 }) {
   const toast = useToast()
   const opened = useRef('')
@@ -115,7 +117,7 @@ export function AuthLoginStatus({
         </div>
       ) : null}
 
-      {job && showAuthDetails ? (
+      {allowCodeInput && job && showAuthDetails ? (
         <form
           onSubmit={(event) => {
             event.preventDefault()

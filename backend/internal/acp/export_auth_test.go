@@ -5,93 +5,66 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/wins/jaz/backend/internal/runtimefiles"
 )
 
-func TestExportLocalAuthFilesCodexClaudeAndKimi(t *testing.T) {
+func TestIsolatedCloudLoginCapturesFreshCredentialsWithoutTouchingLocal(t *testing.T) {
+	bin := t.TempDir()
+	claudeBin := filepath.Join(bin, "claude")
+	if err := os.WriteFile(claudeBin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	kimiBin := filepath.Join(bin, "kimi")
+	if err := os.WriteFile(kimiBin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
 	root := t.TempDir()
-	layout := runtimefiles.New(root)
-	if err := os.MkdirAll(layout.ACPCodexHome, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	codexAuth := `{"auth_mode":"chatgpt","tokens":{"access_token":"tok","refresh_token":"ref"}}`
-	if err := os.WriteFile(filepath.Join(layout.ACPCodexHome, "auth.json"), []byte(codexAuth), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	gotCodex, err := ExportLocalAuthFiles(AgentCodex, AgentConfig{}, root, nil, nil)
+	claudeLogin, err := PrepareIsolatedCloudLogin(AgentClaude, AgentConfig{LoginBinDir: bin}, root)
 	if err != nil {
-		t.Fatalf("ExportLocalAuthFiles(codex): %v", err)
+		t.Fatalf("PrepareIsolatedCloudLogin(claude): %v", err)
 	}
-	if string(gotCodex.Files["auth.json"]) != codexAuth {
-		t.Fatalf("unexpected codex auth.json: %q", string(gotCodex.Files["auth.json"]))
-	}
-	if !gotCodex.OwnedByJaz {
-		t.Fatal("expected Jaz-profile codex auth to be OwnedByJaz")
+	defer claudeLogin.Cleanup()
+	if claudeLogin.Invocation.Env["CLAUDE_CONFIG_DIR"] != claudeLogin.Dir {
+		t.Fatalf("CLAUDE_CONFIG_DIR = %q, want isolated %q", claudeLogin.Invocation.Env["CLAUDE_CONFIG_DIR"], claudeLogin.Dir)
 	}
 
-	// Clearing owned credential removes it cleanly.
-	if err := RemoveOwnedCredential(AgentCodex, gotCodex.StoragePath, root); err != nil {
-		t.Fatalf("RemoveOwnedCredential: %v", err)
-	}
-	if _, err := os.Stat(gotCodex.StoragePath); !os.IsNotExist(err) {
-		t.Fatalf("expected owned auth.json to be removed, stat err=%v", err)
-	}
-
-	// External CLI auth is exported with OwnedByJaz == false and never deleted.
-	extCodex := t.TempDir()
-	if err := os.WriteFile(filepath.Join(extCodex, "auth.json"), []byte(codexAuth), 0o600); err != nil {
+	creds := `{"claudeAiOauth":{"accessToken":"sk-ant-oat01-fresh","refreshToken":"rt-fresh","expiresAt":1893456000000}}`
+	meta := `{"oauthAccount":{"emailAddress":"dev@example.com"}}`
+	if err := os.WriteFile(filepath.Join(claudeLogin.Dir, ".credentials.json"), []byte(creds), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("CODEX_HOME", extCodex)
-	gotExt, err := ExportLocalAuthFiles(AgentCodex, AgentConfig{}, root, nil, nil)
+	if err := os.WriteFile(filepath.Join(claudeLogin.Dir, ".claude.json"), []byte(meta), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gotClaude, err := CaptureIsolatedAuthFiles(AgentClaude, claudeLogin.Dir)
 	if err != nil {
-		t.Fatalf("ExportLocalAuthFiles(external codex): %v", err)
+		t.Fatalf("CaptureIsolatedAuthFiles(claude): %v", err)
 	}
-	if gotExt.OwnedByJaz {
-		t.Fatal("external CODEX_HOME must not be OwnedByJaz")
+	if string(gotClaude[".credentials.json"]) != creds || string(gotClaude[".claude.json"]) != meta {
+		t.Fatalf("unexpected claude capture: %+v", gotClaude)
 	}
 
-	// Claude file-based credentials + .claude.json export.
-	if err := os.MkdirAll(layout.ACPClaudeConfig, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	claudeCreds := `{"claudeAiOauth":{"accessToken":"sk-ant-oat01-xyz","refreshToken":"rt","expiresAt":1893456000000}}`
-	claudeMeta := `{"oauthAccount":{"emailAddress":"dev@example.com"}}`
-	if err := os.WriteFile(filepath.Join(layout.ACPClaudeConfig, ".credentials.json"), []byte(claudeCreds), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(layout.ACPClaudeConfig, ".claude.json"), []byte(claudeMeta), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	gotClaude, err := ExportLocalAuthFiles(AgentClaude, AgentConfig{}, root, nil, nil)
+	kimiLogin, err := PrepareIsolatedCloudLogin(AgentKimi, AgentConfig{LoginBinDir: bin}, root)
 	if err != nil {
-		t.Fatalf("ExportLocalAuthFiles(claude): %v", err)
+		t.Fatalf("PrepareIsolatedCloudLogin(kimi): %v", err)
 	}
-	if string(gotClaude.Files[".credentials.json"]) != claudeCreds || string(gotClaude.Files[".claude.json"]) != claudeMeta {
-		t.Fatalf("unexpected claude export: %+v", gotClaude.Files)
-	}
-
-	// Kimi credentials export.
-	kimiCredDir := filepath.Join(layout.ACPKimiHome, "credentials")
-	if err := os.MkdirAll(kimiCredDir, 0o700); err != nil {
+	defer kimiLogin.Cleanup()
+	if err := os.MkdirAll(filepath.Join(kimiLogin.Dir, "credentials"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	kimiTok := `{"access_token":"kimi-tok"}`
-	if err := os.WriteFile(filepath.Join(kimiCredDir, "kimi-code.json"), []byte(kimiTok), 0o600); err != nil {
+	kimiTok := `{"access_token":"kimi-fresh"}`
+	if err := os.WriteFile(filepath.Join(kimiLogin.Dir, "credentials", "kimi-code.json"), []byte(kimiTok), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	gotKimi, err := ExportLocalAuthFiles(AgentKimi, AgentConfig{}, root, nil, nil)
+	gotKimi, err := CaptureIsolatedAuthFiles(AgentKimi, kimiLogin.Dir)
 	if err != nil {
-		t.Fatalf("ExportLocalAuthFiles(kimi): %v", err)
+		t.Fatalf("CaptureIsolatedAuthFiles(kimi): %v", err)
 	}
-	if string(gotKimi.Files["credentials/kimi-code.json"]) != kimiTok {
-		t.Fatalf("unexpected kimi export: %+v", gotKimi.Files)
+	if string(gotKimi["credentials/kimi-code.json"]) != kimiTok {
+		t.Fatalf("unexpected kimi capture: %+v", gotKimi)
 	}
 
-	// Unsupported agent returns ErrUnsupportedCloudSyncAgent.
-	if _, err := ExportLocalAuthFiles("unknown", AgentConfig{}, root, nil, nil); !errors.Is(err, ErrUnsupportedCloudSyncAgent) {
-		t.Fatalf("expected ErrUnsupportedCloudSyncAgent, got %v", err)
+	if _, err := PrepareIsolatedCloudLogin(AgentCodex, AgentConfig{}, root); !errors.Is(err, ErrUnsupportedCloudLoginAgent) {
+		t.Fatalf("expected ErrUnsupportedCloudLoginAgent for codex, got %v", err)
 	}
 }

@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
+import type { ACPAuthLogin } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { del, get, post } from './client'
 
@@ -46,12 +47,18 @@ export interface CloudACPLoginSession {
   instructions?: string
   error?: string
   expires_at: string
+  viaDesktop?: boolean
 }
 
-export interface SyncLocalACPProfileResult {
-  profile: CloudACPProfile
-  cleared_local?: boolean
-  owned_by_jaz?: boolean
+const DESKTOP_ISOLATED_LOGIN_AGENTS = new Set(['claude', 'kimi'])
+
+export function supportsDesktopCloudLogin(agent: string): boolean {
+  return DESKTOP_ISOLATED_LOGIN_AGENTS.has(agent.trim().toLowerCase())
+}
+
+function loginBasePath(agent: string, viaDesktop: boolean): string {
+  const prefix = viaDesktop ? '/v1/cloud/acp-profiles' : '/v1/acp/profiles'
+  return `${prefix}/${encodeURIComponent(agent)}/login`
 }
 
 export async function listCloudACPProfiles(signal?: AbortSignal): Promise<CloudACPProfilesResponse> {
@@ -79,39 +86,43 @@ export const cloudACPProfilesQuery = queryOptions({
   retry: false,
 })
 
-export async function refreshCloudACPProfile(agent: string, force = true): Promise<{ queued: boolean; profile: CloudACPProfile }> {
-  return post<{ queued: boolean; profile: CloudACPProfile }>(
-    `/v1/acp/profiles/${encodeURIComponent(agent)}/refresh`,
-    { force },
-  )
-}
-
 export async function deleteCloudACPProfile(agent: string): Promise<{ deleted: boolean; agent: string }> {
   return del<{ deleted: boolean; agent: string }>(`/v1/acp/profiles/${encodeURIComponent(agent)}`)
 }
 
-export async function startCloudACPLogin(agent: string): Promise<CloudACPLoginSession> {
-  const res = await post<{ session: CloudACPLoginSession }>(`/v1/acp/profiles/${encodeURIComponent(agent)}/login`, {})
-  return res.session
+export async function startCloudACPLogin(agent: string, viaDesktop = false): Promise<CloudACPLoginSession> {
+  const res = await post<{ session: CloudACPLoginSession }>(loginBasePath(agent, viaDesktop), {})
+  return { ...res.session, viaDesktop }
 }
 
-export async function getCloudACPLogin(agent: string, sessionId: string, signal?: AbortSignal): Promise<CloudACPLoginSession> {
+export async function getCloudACPLogin(
+  agent: string,
+  sessionId: string,
+  viaDesktop = false,
+  signal?: AbortSignal,
+): Promise<CloudACPLoginSession> {
   const res = await get<{ session: CloudACPLoginSession }>(
-    `/v1/acp/profiles/${encodeURIComponent(agent)}/login/${encodeURIComponent(sessionId)}`,
+    `${loginBasePath(agent, viaDesktop)}/${encodeURIComponent(sessionId)}`,
     { signal },
   )
-  return res.session
+  return { ...res.session, viaDesktop }
 }
 
-export async function syncLocalACPProfileToCloud(
-  agent: string,
-  options: { clearLocal?: boolean; accountLabel?: string } = {},
-): Promise<SyncLocalACPProfileResult> {
-  return post<SyncLocalACPProfileResult>(
-    `/v1/cloud/acp-profiles/${encodeURIComponent(agent)}/sync-local`,
-    {
-      clear_local: Boolean(options.clearLocal),
-      ...(options.accountLabel ? { account_label: options.accountLabel } : {}),
-    },
-  )
+export function toACPAuthLogin(session?: CloudACPLoginSession): ACPAuthLogin | undefined {
+  if (!session) return undefined
+  const status: ACPAuthLogin['status'] =
+    session.status === 'completed'
+      ? 'succeeded'
+      : session.status === 'failed' || session.status === 'expired'
+        ? 'failed'
+        : 'running'
+  return {
+    id: session.id,
+    agent: session.agent,
+    status,
+    auth_url: session.verification_url,
+    auth_code: session.user_code,
+    error: session.error || (session.status === 'expired' ? 'Sign-in timed out. Start sign-in again.' : undefined),
+    started_at: '',
+  }
 }
