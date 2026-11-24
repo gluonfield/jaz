@@ -104,7 +104,7 @@ func (t CloudThread) ToSession() Session {
 		created = updated
 	}
 	visibility := "private"
-	if t.Visibility == "space" || t.SpaceID != "" {
+	if t.Visibility == "space" {
 		visibility = "space"
 	}
 	runID := t.RunID

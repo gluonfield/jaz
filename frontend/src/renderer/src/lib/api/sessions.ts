@@ -481,7 +481,9 @@ export const sidebarSessionsQuery = queryOptions({
   queryKey: keys.sidebarSessions,
   queryFn: async ({ signal }) => {
     if (isCloudApiSession()) {
-      return (await listCloudThreads(undefined, signal)).map(cloudThreadToSession)
+      return (await listCloudThreads(undefined, signal))
+        .map(cloudThreadToSession)
+        .filter((session) => !session.archived)
     }
     const { sessions } = await get<{ sessions: Session[] | null }>('/v1/sessions?include_children=true', { signal })
     return sessions ?? []

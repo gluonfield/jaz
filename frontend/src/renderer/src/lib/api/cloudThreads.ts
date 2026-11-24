@@ -57,6 +57,9 @@ export interface CloudThread {
   reasoning_effort?: string
   runtime_ref_json?: Record<string, unknown> | null
   personal_sources_enabled?: boolean
+  pinned?: boolean
+  archived?: boolean
+  unread?: boolean
   created_at?: string
   updated_at: string
 }
@@ -270,9 +273,12 @@ export function cloudThreadToSession(thread: CloudThread): Session {
     model: thread.model || undefined,
     reasoning_effort: thread.reasoning_effort || undefined,
     space_id: thread.space_id || undefined,
-    visibility: thread.visibility === 'space' || thread.space_id ? 'space' : 'private',
+    visibility: thread.visibility === 'space' ? 'space' : 'private',
     run_id: thread.run_id || thread.id,
     personal_sources_enabled: thread.personal_sources_enabled,
+    pinned: Boolean(thread.pinned),
+    archived: Boolean(thread.archived),
+    unread: Boolean(thread.unread),
     backend: 'cloud',
     created_at: thread.created_at || updatedAt,
     updated_at: updatedAt,

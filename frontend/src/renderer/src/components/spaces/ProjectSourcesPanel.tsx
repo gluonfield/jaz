@@ -1,17 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ExternalLink, FileText, LoaderCircle, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { ExternalLink, FileText, LoaderCircle, Trash2, Upload } from 'lucide-react'
 import { type DragEvent, useRef, useState } from 'react'
-import { MarkdownEditor } from '@/components/agent/MarkdownEditor'
+import { CloudInstructionEditor } from '@/components/cloud/CloudInstructionEditor'
 import { Button } from '@/components/ui/Button'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import {
-  cloudInstructionQuery,
-  extractInstructionConflictCurrent,
-  getInstruction,
-  saveInstruction,
-  type CloudInstructionDocument,
-} from '@/lib/api/cloudInstructions'
 import {
   deleteSpaceSource,
   spaceSourceContentUrl,
@@ -19,7 +12,6 @@ import {
   uploadSpaceSource,
   type SpaceSource,
 } from '@/lib/api/cloudSpaces'
-import { ApiError } from '@/lib/api/response'
 import { keys } from '@/lib/query/keys'
 
 function formatBytes(bytes: number): string {
@@ -190,121 +182,31 @@ export function ProjectSourcesPanel({ spaceId, canEdit }: { spaceId: string; can
 }
 
 export function ProjectInstructionsPanel({ spaceId, canEdit }: { spaceId: string; canEdit: boolean }) {
-  const queryClient = useQueryClient()
-  const toast = useToast()
-  const [draft, setDraft] = useState<string>()
-  const [hasConflict, setHasConflict] = useState(false)
-  const [editorResetSeq, setEditorResetSeq] = useState(0)
-
-  const docQuery = useQuery(cloudInstructionQuery('space', spaceId, 'agents'))
-  const doc = docQuery.data
-  const locked = !canEdit || doc?.read_only === true
-
-  const save = useMutation({
-    mutationFn: ({ body_md, expected_version }: { body_md: string; expected_version: string }) =>
-      saveInstruction('space', spaceId, 'agents', { body_md, expected_version }),
-    onSuccess: (saved: CloudInstructionDocument, vars) => {
-      queryClient.setQueryData(keys.cloudInstruction('space', spaceId, 'agents'), saved)
-      setDraft((prev) => (prev === vars.body_md ? undefined : prev))
-      setHasConflict(false)
-      toast('Saved project instructions')
-    },
-    onError: (error: Error) => {
-      if (error instanceof ApiError && error.status === 409) {
-        const current = extractInstructionConflictCurrent(error, 'space', spaceId, 'agents')
-        if (current) {
-          queryClient.setQueryData(keys.cloudInstruction('space', spaceId, 'agents'), current)
-        }
-        setHasConflict(true)
-        return
-      }
-      toast(`Couldn't save instructions: ${error.message}`, 'danger')
-    },
-  })
-
-  if (docQuery.isPending) return <SkeletonRows count={3} />
-  if (docQuery.isError) {
-    return (
-      <p role="alert" className="text-[13px] text-danger">
-        {(docQuery.error as Error).message || 'Could not load instructions.'}
-      </p>
-    )
-  }
-
-  const savedBody = doc?.body_md ?? ''
-  const value = draft ?? savedBody
-  const dirty = !locked && draft !== undefined && draft !== savedBody
-
-  const handleSave = () => {
-    if (locked || save.isPending || !doc) return
-    save.mutate({ body_md: value, expected_version: doc.version })
-  }
-
-  const reloadLatest = async () => {
-    setHasConflict(false)
-    setDraft(undefined)
-    await queryClient.invalidateQueries({ queryKey: keys.cloudInstruction('space', spaceId, 'agents') })
-    setEditorResetSeq((n) => n + 1)
-  }
-
-  const overwriteWithMine = async () => {
-    if (draft === undefined || save.isPending) return
-    try {
-      const latest = await getInstruction('space', spaceId, 'agents')
-      queryClient.setQueryData(keys.cloudInstruction('space', spaceId, 'agents'), latest)
-      save.mutate({ body_md: draft, expected_version: latest.version })
-    } catch (error) {
-      toast((error as Error).message || 'Could not reload version', 'danger')
-    }
-  }
-
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[12.5px] text-ink-3">
-          Custom instructions applied to every chat in this project.
-        </p>
-        {!locked ? (
-          <Button variant="primary" size="sm" disabled={!dirty || save.isPending} onClick={handleSave}>
-            {save.isPending ? 'Saving…' : 'Save instructions'}
-          </Button>
-        ) : null}
-      </div>
-
-      {hasConflict ? (
-        <div
-          role="alert"
-          className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-border bg-accent-soft px-3.5 py-2 text-[12.5px] text-accent-strong"
-        >
-          <span className="flex items-center gap-2">
-            <AlertTriangle size={14} className="shrink-0" />
-            Instructions were updated elsewhere.
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Button size="sm" variant="secondary" onClick={() => void reloadLatest()}>
-              <RefreshCw size={12} />
-              Reload latest
-            </Button>
-            <Button size="sm" variant="primary" onClick={() => void overwriteWithMine()} disabled={save.isPending}>
-              Overwrite with mine
-            </Button>
-          </span>
+    <CloudInstructionEditor
+      scope="space"
+      scopeId={spaceId}
+      readOnly={!canEdit}
+      placeholder="Add standing rules, tone, formatting requirements, or domain context for chats in this project…"
+      savedToast="Saved project instructions"
+      renderFrame={({ dirty, saving, readOnly, onSave, banner, children }) => (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[12.5px] text-ink-3">
+              Custom instructions applied to every chat in this project.
+            </p>
+            {!readOnly ? (
+              <Button variant="primary" size="sm" disabled={!dirty || saving} onClick={onSave}>
+                {saving ? 'Saving…' : 'Save instructions'}
+              </Button>
+            ) : null}
+          </div>
+          {banner}
+          <div className="min-h-[260px] rounded-card border border-border bg-surface p-3">
+            {children}
+          </div>
         </div>
-      ) : null}
-
-      <div className="min-h-[260px] rounded-card border border-border bg-surface p-3">
-        <MarkdownEditor
-          key={`space:${spaceId}:${editorResetSeq}`}
-          initialValue={value}
-          readOnly={locked}
-          placeholder="Add standing rules, tone, formatting requirements, or domain context for chats in this project…"
-          onChange={(nextDoc) => {
-            if (locked) return
-            setDraft(nextDoc === savedBody ? undefined : nextDoc)
-          }}
-          onSave={handleSave}
-        />
-      </div>
-    </div>
+      )}
+    />
   )
 }

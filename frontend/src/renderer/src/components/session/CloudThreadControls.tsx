@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Lock, ShieldOff, ShieldCheck, Users } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Folder, Lock, ShieldCheck, ShieldOff, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
@@ -9,18 +10,18 @@ import type { Session } from '@/lib/api/types'
 import { useHasCloud } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
-// Compact visibility badge (`Shared in <Space>` vs `Private`) plus an explicit
-// Personal Sources opt-in switch (default OFF) on shared Space threads.
+// Compact visibility/project badge (`Shared in <Project>`, `<Project>`, or `Private`)
+// plus an explicit Personal Sources opt-in switch (default OFF) on shared project threads.
 export function CloudThreadControls({ session }: { session: Session }) {
   const hasCloud = useHasCloud()
   const isCloudSession = session.backend === 'cloud' || isCloudApiSession()
   const queryClient = useQueryClient()
   const toast = useToast()
   const spaces = useQuery({ ...spacesQuery, enabled: isCloudSession && hasCloud })
-  const isShared = Boolean(session.space_id || session.visibility === 'space')
+  const isShared = session.visibility === 'space'
   const spaceName = session.space_id
-    ? spaces.data?.find((space) => space.id === session.space_id)?.name ?? 'Space'
-    : 'Space'
+    ? spaces.data?.find((space) => space.id === session.space_id)?.name ?? 'Project'
+    : 'Project'
 
   const [personalSources, setPersonalSources] = useState(Boolean(session.personal_sources_enabled))
   useEffect(() => {
@@ -47,17 +48,28 @@ export function CloudThreadControls({ session }: { session: Session }) {
 
   if (!isCloudSession) return null
 
+  const pillClass = `inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${
+    isShared ? 'bg-primary-soft text-primary hover:bg-primary-soft/80' : 'bg-surface-2 text-ink-2 hover:text-ink'
+  }`
+
   return (
     <div className="flex shrink-0 items-center gap-1.5">
-      <span
-        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-          isShared ? 'bg-primary-soft text-primary' : 'bg-surface-2 text-ink-2'
-        }`}
-        title={isShared ? `Shared in ${spaceName}` : 'Private to you'}
-      >
-        {isShared ? <Users size={11} /> : <Lock size={11} />}
-        <span className="max-w-[140px] truncate">{isShared ? `Shared in ${spaceName}` : 'Private'}</span>
-      </span>
+      {session.space_id ? (
+        <Link
+          to="/spaces/$spaceId"
+          params={{ spaceId: session.space_id }}
+          className={pillClass}
+          title={isShared ? `Shared in ${spaceName}` : `In private project ${spaceName}`}
+        >
+          {isShared ? <Users size={11} /> : <Folder size={11} />}
+          <span className="max-w-[140px] truncate">{isShared ? `Shared in ${spaceName}` : spaceName}</span>
+        </Link>
+      ) : (
+        <span className={pillClass} title="Private to you">
+          <Lock size={11} />
+          <span>Private</span>
+        </span>
+      )}
 
       {isShared ? (
         <label
