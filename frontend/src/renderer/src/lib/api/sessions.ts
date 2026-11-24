@@ -138,7 +138,8 @@ export function sessionAttachmentUrl(sessionId: string, attachmentId: string): s
 
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
   const form = new FormData()
-  form.append('file', file)
+  // Electron's local protocol can fail to forward a File restored from a draft.
+  form.append('file', file.slice(0, file.size, file.type), file.name)
   const res = await apiFetch(`/v1/sessions/${sessionId}/attachments`, {
     method: 'POST',
     body: form,
