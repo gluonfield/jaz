@@ -21,19 +21,19 @@ export function RuntimeBadge({
   const fullModelLabel = session.model
     ? withReasoningEffort(session.model, session.reasoning_effort)
     : ''
-  const agent = session.runtime_ref?.agent
+  const agent = session.runtime_ref?.agent?.trim() || ''
   // Agent names arrive as slugs; prettify so the tag reads like a product name
   // rather than a raw identifier.
   const name = agentLabel(agent)
-  const title = fullModelLabel ? `${name} · ${fullModelLabel}` : name
-  const showLogo = hasAgentLogo(agent ?? '')
+  const title = agent ? (fullModelLabel ? `${name} · ${fullModelLabel}` : name) : (fullModelLabel || name)
+  const showLogo = hasAgentLogo(agent)
   const pillTone = 'bg-primary-soft text-primary-strong'
 
   return (
     <span title={title} className={`inline-flex min-w-0 items-center gap-1.5 ${className}`}>
       {showLogo ? (
         <span className="inline-flex shrink-0 items-center text-ink">
-          <AgentLogo agent={agent ?? ''} size={15} />
+          <AgentLogo agent={agent} size={15} />
         </span>
       ) : compact ? (
         // Compact means the badge sits in a one-glyph identity gutter, so an
@@ -44,7 +44,7 @@ export function RuntimeBadge({
         >
           {name.slice(0, 1).toUpperCase()}
         </span>
-      ) : (
+      ) : agent || !modelLabel ? (
         <span
           className={`shrink-0 rounded-full px-1.5 py-[3px] text-[11px] leading-none font-medium ${pillTone} ${
             truncate ? 'max-w-[11rem] truncate' : ''
@@ -52,7 +52,7 @@ export function RuntimeBadge({
         >
           {name}
         </span>
-      )}
+      ) : null}
       {!compact && modelLabel ? (
         <span
           className={`font-mono text-[11px] text-ink-3 ${

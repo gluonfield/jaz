@@ -141,7 +141,11 @@ func (s *Service) LoadTranscript(ctx context.Context, id string) (ProjectedTrans
 	if err != nil {
 		return ProjectedTranscript{}, true, err
 	}
-	return ProjectTranscript(th, events), true, nil
+	projected := ProjectTranscript(th, events)
+	if projected.Session.Status != th.ToSession().Status && s.isGeneration(gen) {
+		_ = s.store.UpdateCloudThreadStatus(ctx, acc.ID, th.ID, projected.Session.Status, projected.Session.UpdatedAt)
+	}
+	return projected, true, nil
 }
 
 func (s *Service) StreamEvents(ctx context.Context, threadID string, afterSeq int64, emit func(sessionevents.Event)) error {

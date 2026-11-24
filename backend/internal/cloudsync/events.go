@@ -343,6 +343,7 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 		pendingAt        time.Time
 		thoughtRun       int
 		inThought        bool
+		lastTurnTerminal string
 	)
 
 	flushPending := func() {
@@ -395,6 +396,7 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 
 		if isCloudUserEvent(ev.Type) && text != "" {
 			flushPending()
+			lastTurnTerminal = ""
 			acpError = ""
 			messages = append(messages, storage.Message{
 				ThreadID:         thread.ID,
@@ -413,6 +415,7 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 
 		if isCloudThinkingDelta(ev.Type) {
 			if text != "" {
+				lastTurnTerminal = ""
 				if !inThought {
 					thoughtRun++
 					inThought = true
@@ -435,6 +438,7 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 
 		if isCloudToolEvent(ev.Type) {
 			inThought = false
+			lastTurnTerminal = ""
 			if ts, ok := applyCloudToolEvent(toolStates, ev, p); ok {
 				upsertToolBlock(ts)
 				pendingSeq = ev.Seq
@@ -447,6 +451,7 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 		if isCloudAssistantDelta(ev.Type) {
 			inThought = false
 			if text != "" {
+				lastTurnTerminal = ""
 				pendingText.WriteString(text)
 				if n := len(pendingBlocks); n > 0 && pendingBlocks[n-1].Type == storage.BlockTypeText {
 					pendingBlocks[n-1].Text += text
@@ -464,6 +469,7 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 
 		if isCloudAssistantMessage(ev.Type) && text != "" {
 			inThought = false
+			lastTurnTerminal = ""
 			pendingText.Reset()
 			pendingReasoning.Reset()
 			pendingBlocks = nil
@@ -483,11 +489,26 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 		inThought = false
 		if term := cloudTerminalState(ev.Type); term != "" {
 			flushPending()
+			lastTurnTerminal = term
 			acpState = term
 			acpError = strings.TrimSpace(payloadString(p, "error"))
 		}
 
 		projector.Apply(cloudEventToSessionEvent(thread.ID, ev, ""))
+	}
+
+	if lastTurnTerminal != "" {
+		acpState = lastTurnTerminal
+		if session.Status == storage.StatusRunning {
+			switch lastTurnTerminal {
+			case "failed":
+				session.Status = storage.StatusError
+			case "cancelled":
+				session.Status = storage.StatusInterrupted
+			default:
+				session.Status = storage.StatusIdle
+			}
+		}
 	}
 
 	var acpAssistant string

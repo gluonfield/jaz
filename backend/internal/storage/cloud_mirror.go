@@ -90,6 +90,9 @@ func (t CloudThread) ToSession() Session {
 	if v, ok := ref["agent"].(string); ok && strings.TrimSpace(v) != "" {
 		agentName = strings.TrimSpace(v)
 	}
+	if agentName == "" {
+		agentName = inferCloudThreadAgent(t.ModelProfileID, t.Model)
+	}
 	cwd, _ := ref["cwd"].(string)
 	updated := t.UpdatedAt
 	if updated.IsZero() {
@@ -131,6 +134,30 @@ func (t CloudThread) ToSession() Session {
 		CreatedAt:              created,
 		UpdatedAt:              updated,
 		LastAttentionAt:        updated,
+	}
+}
+
+func inferCloudThreadAgent(modelProfileID, model string) string {
+	profile := strings.ToLower(strings.TrimSpace(modelProfileID))
+	if strings.HasPrefix(profile, "acp:") {
+		if agent := strings.TrimSpace(strings.TrimPrefix(profile, "acp:")); agent != "" {
+			return agent
+		}
+	}
+	m := strings.ToLower(strings.TrimSpace(model))
+	switch {
+	case strings.Contains(m, "gemini") || strings.HasPrefix(m, "google/") || strings.Contains(profile, "vertex"):
+		return "gemini"
+	case strings.Contains(m, "claude") || strings.Contains(profile, "anthropic"):
+		return "claude"
+	case strings.Contains(m, "grok") || strings.Contains(profile, "xai"):
+		return "grok"
+	case strings.Contains(m, "kimi") || strings.Contains(profile, "moonshot"):
+		return "kimi"
+	case strings.Contains(m, "gpt") || strings.Contains(m, "codex") || strings.Contains(profile, "openai"):
+		return "codex"
+	default:
+		return ""
 	}
 }
 

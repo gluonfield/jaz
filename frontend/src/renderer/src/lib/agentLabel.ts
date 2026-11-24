@@ -5,6 +5,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   jaz: 'Jaz',
   codex: 'Codex',
   claude: 'Claude',
+  gemini: 'Gemini',
   kimi: 'Kimi',
   grok: 'Grok',
   opencode: 'OpenCode',

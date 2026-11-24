@@ -849,3 +849,42 @@ test('Org members API, typeahead filtering, email detection, and Cloud board vis
     body: { visibility: 'team', member_user_ids: [] },
   })
 })
+
+test('projectCloudThreadMessages reconciles stale running status after turn_completed and infers cloud thread agent', async () => {
+  const { api } = fixture()
+  const projected = api.projectCloudThreadMessages(
+    {
+      id: 'thr_1',
+      run_id: 'thr_1',
+      visibility: 'private',
+      title: 'Hi',
+      status: 'running',
+      model_profile_id: 'vertex-default',
+      model: 'google/gemini-4-hydrogen',
+      reasoning_effort: 'high',
+      updated_at: '2026-11-24T14:51:22Z',
+    },
+    [
+      { thread_id: 'thr_1', seq: 1, type: 'user_message', payload: { text: 'hi' }, created_at: '2026-11-24T14:51:19Z' },
+      { thread_id: 'thr_1', seq: 2, type: 'assistant_delta', payload: { delta: 'Hey! How can I help?' }, created_at: '2026-11-24T14:51:20Z' },
+      { thread_id: 'thr_1', seq: 3, type: 'turn_completed', payload: { status: 'completed' }, created_at: '2026-11-24T14:51:21Z' },
+    ],
+  )
+  expect(projected.session.status).toBe('idle')
+  expect(projected.acp_state).toBe('idle')
+  expect(projected.session.runtime_ref?.agent).toBe('gemini')
+  expect(projected.messages).toHaveLength(2)
+  expect(projected.messages[1].content).toBe('Hey! How can I help?')
+
+  const codexSess = api.cloudThreadToSession({
+    id: 'thr_2',
+    run_id: 'thr_2',
+    visibility: 'private',
+    title: 'Codex',
+    status: 'idle',
+    model_profile_id: 'acp:codex',
+    model: 'gpt-6.1-sol',
+    updated_at: '2026-11-24T14:51:22Z',
+  })
+  expect(codexSess.runtime_ref?.agent).toBe('codex')
+})

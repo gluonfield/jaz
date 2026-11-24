@@ -104,7 +104,7 @@ const CLOUD_PROVIDER_META: Record<string, { label: string; logoAgent: string }> 
   antigravity_oauth: { label: 'Antigravity', logoAgent: 'antigravity' },
   kimi_oauth: { label: 'Kimi', logoAgent: 'kimi' },
   xai: { label: 'Grok', logoAgent: 'grok' },
-  vertex: { label: 'Vertex AI', logoAgent: 'codex' },
+  vertex: { label: 'Vertex AI', logoAgent: 'gemini' },
   openrouter: { label: 'OpenRouter', logoAgent: 'codex' },
 }
 
@@ -227,9 +227,25 @@ function mapCloudThreadStatus(status: string | undefined): Session['status'] {
   }
 }
 
+function inferCloudThreadAgent(modelProfileId?: string, model?: string): string {
+  const profile = (modelProfileId ?? '').trim().toLowerCase()
+  if (profile.startsWith('acp:')) {
+    const agent = profile.slice(4).trim()
+    if (agent) return agent
+  }
+  const m = (model ?? '').trim().toLowerCase()
+  if (m.includes('gemini') || m.startsWith('google/') || profile.includes('vertex')) return 'gemini'
+  if (m.includes('claude') || profile.includes('anthropic')) return 'claude'
+  if (m.includes('grok') || profile.includes('xai')) return 'grok'
+  if (m.includes('kimi') || profile.includes('moonshot')) return 'kimi'
+  if (m.includes('gpt') || m.includes('codex') || profile.includes('openai')) return 'codex'
+  return ''
+}
+
 export function cloudThreadToSession(thread: CloudThread): Session {
   const ref = thread.runtime_ref_json && typeof thread.runtime_ref_json === 'object' ? thread.runtime_ref_json : {}
   const updatedAt = thread.updated_at || thread.created_at || new Date().toISOString()
+  const agent = (typeof ref.agent === 'string' && ref.agent.trim()) || inferCloudThreadAgent(thread.model_profile_id, thread.model)
   return {
     id: thread.id,
     slug: thread.id,
@@ -239,7 +255,7 @@ export function cloudThreadToSession(thread: CloudThread): Session {
     runtime: 'acp',
     runtime_ref: {
       type: 'acp',
-      agent: typeof ref.agent === 'string' && ref.agent ? ref.agent : '',
+      agent,
       ...(typeof ref.cwd === 'string' ? { cwd: ref.cwd } : {}),
     },
     model_provider: thread.model_profile_id || undefined,
@@ -420,6 +436,7 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
   const events: SessionEvent[] = []
   let latestSeq = 0
   let acpState = session.status === 'running' ? 'running' : 'idle'
+  let lastTurnTerminal: 'idle' | 'failed' | 'cancelled' | null = null
   let acpError: string | undefined
   let pendingAssistantText = ''
   let pendingAssistantSeq = 0
@@ -454,7 +471,7 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
 
     if (isCloudUserEvent(ev.type) && text) {
       flushPendingAssistant()
-      acpState = 'running'
+      lastTurnTerminal = null
       acpError = undefined
       const blocks: MessageBlock[] = [{ type: 'text', text }]
       messages.push({
@@ -473,7 +490,7 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
 
     if (isCloudAssistantDeltaEvent(ev.type)) {
       if (text) {
-        acpState = 'running'
+        lastTurnTerminal = null
         pendingAssistantText += text
         pendingAssistantSeq = ev.seq
         pendingAssistantAt = ev.created_at
@@ -482,6 +499,7 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
     }
 
     if (isCloudAssistantMessageEvent(ev.type) && text) {
+      lastTurnTerminal = null
       pendingAssistantText = ''
       messages.push({
         seq: ev.seq,
@@ -496,11 +514,19 @@ export function projectCloudThreadMessages(thread: CloudThread, rawEvents: Cloud
     const terminalState = cloudTerminalEventState(ev.type)
     if (terminalState) {
       flushPendingAssistant()
+      lastTurnTerminal = terminalState
       acpState = terminalState
       acpError = typeof payload.error === 'string' && payload.error.trim() ? payload.error.trim() : undefined
     }
 
     events.push(cloudEventToSessionEvent(thread.id, ev))
+  }
+
+  if (lastTurnTerminal) {
+    acpState = lastTurnTerminal
+    if (session.status === 'running') {
+      session.status = lastTurnTerminal === 'failed' ? 'error' : lastTurnTerminal === 'cancelled' ? 'interrupted' : 'idle'
+    }
   }
 
   let acpAssistant: string | undefined

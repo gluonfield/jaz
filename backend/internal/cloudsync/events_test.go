@@ -244,3 +244,32 @@ func TestCancelAndSteerThreadRequests(t *testing.T) {
 		t.Fatalf("unexpected steer payload: %+v", steerBodies)
 	}
 }
+
+func TestProjectTranscriptReconcilesStaleRunningStatusAndInfersAgent(t *testing.T) {
+	now := time.Now().UTC()
+	thread := storage.CloudThread{
+		ID:             "ct_race",
+		RunID:          "ct_race",
+		Status:         "running", // stale GET /v1/threads before CommitTurn finishes
+		ModelProfileID: "vertex-default",
+		Model:          "google/gemini-4-hydrogen",
+		UpdatedAt:      now,
+	}
+	rawEvents := []storage.CloudThreadEvent{
+		{ThreadID: "ct_race", Seq: 1, Type: "user_message", PayloadJSON: json.RawMessage(`{"text":"hi"}`), CreatedAt: now},
+		{ThreadID: "ct_race", Seq: 2, Type: "assistant_delta", PayloadJSON: json.RawMessage(`{"delta":"Hey!"}`), CreatedAt: now.Add(time.Second)},
+		{ThreadID: "ct_race", Seq: 3, Type: "turn_completed", PayloadJSON: json.RawMessage(`{"status":"completed"}`), CreatedAt: now.Add(2 * time.Second)},
+	}
+	got := cloudsync.ProjectTranscript(thread, rawEvents)
+	if got.Session.Status != storage.StatusIdle || got.ACPState != "idle" {
+		t.Fatalf("expected reconciled idle status after turn_completed, got session.status=%q acp_state=%q", got.Session.Status, got.ACPState)
+	}
+	if got.Session.RuntimeRef == nil || got.Session.RuntimeRef.Agent != "gemini" {
+		t.Fatalf("expected inferred gemini agent for vertex-default, got %+v", got.Session.RuntimeRef)
+	}
+
+	codexThread := storage.CloudThread{ID: "ct_codex", ModelProfileID: "acp:codex", Model: "gpt-6.1-sol"}
+	if gotAgent := codexThread.ToSession().RuntimeRef.Agent; gotAgent != "codex" {
+		t.Fatalf("expected inferred codex agent for acp:codex, got %q", gotAgent)
+	}
+}

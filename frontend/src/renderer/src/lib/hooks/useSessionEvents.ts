@@ -75,9 +75,19 @@ export function useSessionEvents(
       } else {
         pending.push(event)
         flushTimer ??= setTimeout(flush, 50)
-        // turn finished: new rows were persisted
+        // turn finished: settle running state immediately and refetch persisted rows
         const state = (event.acp?.state ?? '').toLowerCase()
         if (event.type === 'acp' && ['idle', 'failed', 'cancelled'].includes(state)) {
+          const nextStatus = state === 'failed' ? 'error' : state === 'cancelled' ? 'interrupted' : 'idle'
+          queryClient.setQueryData<SessionMessages>(keys.sessionMessages(sessionId), (prev) =>
+            prev
+              ? {
+                  ...prev,
+                  acp_state: state,
+                  session: prev.session.status === 'running' ? { ...prev.session, status: nextStatus } : prev.session,
+                }
+              : prev,
+          )
           refetchMessages()
         }
       }
