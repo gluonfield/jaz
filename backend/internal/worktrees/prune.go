@@ -4,9 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/gitinfo"
@@ -14,48 +13,28 @@ import (
 )
 
 type Runtime interface {
-	SessionUsed(string) bool
 	WithStoppedSessions([]string, func() error) error
 }
 
 type Pruner struct {
-	Store     storage.SessionStore
+	Store     sessionReader
 	Workspace string
 	Runtime   Runtime
 	Lock      func(...string) func()
+	Terminal  func(string) bool
 	Log       *log.Logger
 }
 
 type directory struct {
-	worktree  Worktree
-	sessions  []storage.Session
-	attention time.Time
+	worktree Worktree
+	sessions []storage.Session
 }
 
 func (p Pruner) Prune(ctx context.Context) error {
-	groups := map[string]*directory{}
-	for _, archived := range []bool{false, true} {
-		sessions, err := p.Store.ListSessions(storage.SessionFilter{IncludeChildren: true, IncludeSourced: true, Archived: archived})
-		if err != nil {
-			return err
-		}
-		for _, session := range sessions {
-			worktree, ok := Managed(p.Workspace, session)
-			if !ok {
-				continue
-			}
-			item := groups[worktree.Cwd]
-			if item == nil {
-				item = &directory{worktree: worktree}
-				groups[worktree.Cwd] = item
-			}
-			item.sessions = append(item.sessions, session)
-			if at := storage.SessionAttentionAt(session); at.After(item.attention) {
-				item.attention = at
-			}
-		}
+	groups, err := managedDirectories(p.Store, p.Workspace)
+	if err != nil {
+		return err
 	}
-	var capped []*directory
 	for _, item := range groups {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -66,43 +45,40 @@ func (p Pruner) Prune(ctx context.Context) error {
 			}
 			continue
 		}
-		allArchived := true
-		eligible := true
-		for _, session := range item.sessions {
-			allArchived = allArchived && session.Archived
-			eligible = eligible && p.eligible(session)
-		}
-		if !eligible {
-			continue
-		}
-		if allArchived {
+		if !slices.ContainsFunc(item.sessions, retained) {
 			p.remove(ctx, item)
-		} else {
-			capped = append(capped, item)
 		}
-	}
-	sort.Slice(capped, func(i, j int) bool { return capped[i].attention.After(capped[j].attention) })
-	for _, item := range capped[min(15, len(capped)):] {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		p.remove(ctx, item)
 	}
 	return nil
 }
 
-func (p Pruner) eligible(session storage.Session) bool {
-	if session.Pinned || session.Status == storage.StatusRunning || session.Turn != nil || len(session.QueuedMessages) != 0 || session.PendingSteer != nil {
-		return false
+func managedDirectories(store sessionReader, workspace string) (map[string]*directory, error) {
+	groups := map[string]*directory{}
+	for _, archived := range []bool{false, true} {
+		sessions, err := store.ListSessions(storage.SessionFilter{IncludeChildren: true, IncludeSourced: true, Archived: archived})
+		if err != nil {
+			return nil, err
+		}
+		for _, session := range sessions {
+			worktree, ok := Managed(workspace, session)
+			if !ok {
+				continue
+			}
+			item := groups[worktree.Cwd]
+			if item == nil {
+				item = &directory{worktree: worktree}
+				groups[worktree.Cwd] = item
+			}
+			item.sessions = append(item.sessions, session)
+		}
 	}
-	switch session.SourceType {
-	case storage.SourceBotWorker:
-		return session.Archived
-	case "":
-		return p.Runtime == nil || !p.Runtime.SessionUsed(session.ID)
-	default:
-		return false
-	}
+	return groups, nil
+}
+
+func retained(session storage.Session) bool {
+	return !session.Archived || session.Pinned || session.Status == storage.StatusRunning ||
+		session.Turn != nil || len(session.QueuedMessages) != 0 ||
+		session.PendingSteer != nil || (session.SourceType != "" && session.SourceType != storage.SourceBotWorker)
 }
 
 func (p Pruner) remove(ctx context.Context, item *directory) {
@@ -112,23 +88,28 @@ func (p Pruner) remove(ctx context.Context, item *directory) {
 	}
 	defer p.Lock(ids...)()
 	remove := func() error {
-		for _, previous := range item.sessions {
-			session, err := p.Store.LoadSession(previous.ID)
-			if err != nil {
-				return err
-			}
-			current, ok := Managed(p.Workspace, session)
-			if !ok || current.Cwd != item.worktree.Cwd || !p.eligible(session) || session.Archived != previous.Archived || !session.LastAttentionAt.Equal(previous.LastAttentionAt) {
+		defer LockCheckout(p.Workspace, item.worktree.Cwd)()
+		currentGroups, err := managedDirectories(p.Store, p.Workspace)
+		if err != nil {
+			return err
+		}
+		currentItem := currentGroups[item.worktree.Cwd]
+		if currentItem == nil || len(currentItem.sessions) != len(ids) {
+			return nil
+		}
+		for _, session := range currentItem.sessions {
+			if !slices.Contains(ids, session.ID) || retained(session) || p.Terminal(session.ID) {
 				return nil
 			}
 		}
-		branch := gitinfo.Inspect(ctx, item.worktree.Cwd).Branch
-		if branch != "jaz/"+filepath.Base(item.worktree.Cwd) {
-			return nil
-		}
-		for _, session := range item.sessions {
+		branch := "jaz/" + filepath.Base(item.worktree.Cwd)
+		for _, session := range currentItem.sessions {
 			if branch != "jaz/"+session.Slug {
 				continue
+			}
+			owner, _ := Managed(p.Workspace, session)
+			if err := gitinfo.CheckWorktree(ctx, owner.Cwd, owner.ProjectPath); err != nil {
+				return err
 			}
 			message := strings.TrimSpace(session.Title)
 			if message == "" {

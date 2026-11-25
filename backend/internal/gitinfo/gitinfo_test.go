@@ -248,10 +248,6 @@ func TestRemoveAndRestoreManagedWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	run(worktree, "reset", "--hard", "HEAD^")
-	if err := RemoveManagedWorktree(ctx, worktree, "jaz/restore-thread", "snapshot"); err == nil || !strings.Contains(err.Error(), "reflog commits") {
-		t.Fatalf("pruning would lose an unreferenced reflog commit: %v", err)
-	}
-	run(dir, "update-ref", "refs/jaz/recovered/experiment", abandoned)
 	if err := os.WriteFile(filepath.Join(worktree, "file.txt"), []byte("two\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -263,6 +259,15 @@ func TestRemoveAndRestoreManagedWorktree(t *testing.T) {
 	}
 
 	branch := "jaz/restore-thread"
+	if err := RemoveManagedWorktree(ctx, worktree, branch, "snapshot"); err == nil {
+		t.Fatal("pruning would discard an ignored file")
+	}
+	if got, err := os.ReadFile(filepath.Join(worktree, "ignored.log")); err != nil || string(got) != "cache\n" {
+		t.Fatalf("ignored file changed: %q, %v", got, err)
+	}
+	if err := os.Remove(filepath.Join(worktree, "ignored.log")); err != nil {
+		t.Fatal(err)
+	}
 	if err := RemoveManagedWorktree(ctx, worktree, branch, "snapshot"); err != nil {
 		t.Fatalf("RemoveManagedWorktree: %v", err)
 	}
@@ -271,6 +276,9 @@ func TestRemoveAndRestoreManagedWorktree(t *testing.T) {
 	}
 	if !BranchExists(ctx, dir, branch) {
 		t.Fatalf("branch %q missing after remove", branch)
+	}
+	if got, err := git(ctx, dir, "show", "refs/jaz/recovery/"+abandoned+":abandoned.txt"); err != nil || got != "recover me" {
+		t.Fatalf("reflog commit was not preserved: %q, %v", got, err)
 	}
 	if err := RestoreManagedWorktree(ctx, dir, worktree, branch); err != nil {
 		t.Fatalf("RestoreManagedWorktree: %v", err)

@@ -48,7 +48,18 @@ func TestManagerReusesSameCwdAndRestartsChangedCwd(t *testing.T) {
 	if second == first {
 		t.Fatal("changed cwd should restart the terminal")
 	}
+	if first.Alive() {
+		t.Fatal("replacement terminal returned before the first process stopped")
+	}
 	if second.Cwd() != secondDir {
 		t.Fatalf("cwd = %q, want %q", second.Cwd(), secondDir)
+	}
+	first.Close()
+	if !manager.Active("session") {
+		t.Fatal("closing the replaced terminal stopped its replacement")
+	}
+	second.Close()
+	if manager.Active("session") {
+		t.Fatal("terminal remained active after close returned")
 	}
 }

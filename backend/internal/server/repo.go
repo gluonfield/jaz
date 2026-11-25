@@ -270,6 +270,7 @@ func (s *Server) PruneManagedWorktrees(ctx context.Context) {
 		Workspace: s.Workspace,
 		Runtime:   s.ACP,
 		Lock:      s.lockSession,
+		Terminal:  s.terminalManager().Active,
 		Log:       s.logger().WithPrefix("worktrees"),
 	}
 	if err := pruner.Prune(ctx); err != nil {

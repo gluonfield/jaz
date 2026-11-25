@@ -9,11 +9,12 @@ import (
 
 	"github.com/wins/jaz/backend/internal/gitinfo"
 	"github.com/wins/jaz/backend/internal/pathsafe"
+	"github.com/wins/jaz/backend/internal/worktrees"
 )
 
 // prepareSessionDir resolves server-side projects, permanent homes and utility
 // directories, optionally creating a Git worktree.
-func (m *Manager) prepareSessionDir(ctx context.Context, req SpawnRequest, cfg AgentConfig, slug, id string) (string, string, error) {
+func (m *Manager) prepareSessionDir(ctx context.Context, req SpawnRequest, cfg AgentConfig, slug, id string, register func(cwd, project string) error) (string, string, error) {
 	directory := req.Directory
 	branch := strings.TrimSpace(req.Branch)
 	if branch != "" && !req.Worktree {
@@ -68,10 +69,13 @@ func (m *Manager) prepareSessionDir(ctx context.Context, req SpawnRequest, cfg A
 			return "", "", err
 		}
 	}
+	if worktrees.IsJobDirectory(workspace, abs) {
+		return "", "", fmt.Errorf("temporary job checkouts are managed by jaz worktree run")
+	}
 	if !req.Worktree {
 		return abs, projectPath, nil
 	}
-	worktree, repo, err := gitinfo.AddWorktree(ctx, workspace, abs, slug, branch)
+	worktree, repo, err := gitinfo.AddRegisteredWorktree(ctx, workspace, abs, slug, branch, register)
 	if err != nil {
 		return "", "", err
 	}

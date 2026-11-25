@@ -51,12 +51,19 @@ func (s *Server) handleSessionTerminal(w http.ResponseWriter, r *http.Request, s
 	defer stop()
 	defer conn.Close()
 	size := terminal.Size{Cols: queryUint16(r, "cols"), Rows: queryUint16(r, "rows")}
+	unlock := s.lockSession(session.ID)
+	if err := s.ensureManagedWorktree(r.Context(), session); err != nil {
+		unlock()
+		_ = writeTerminalMessage(conn, terminal.Message{Type: "error", Err: err.Error()})
+		return
+	}
 	term, err := s.terminalManager().Open(session.ID, cwd, size)
+	unlock()
 	if err != nil {
 		_ = writeTerminalMessage(conn, terminal.Message{Type: "error", Err: err.Error()})
 		return
 	}
-	serveTerminal(conn, term, func() { s.terminalManager().Kill(session.ID) })
+	serveTerminal(conn, term, term.Close)
 }
 
 func serveTerminal(conn *websocket.Conn, term *terminal.Session, terminate func()) {

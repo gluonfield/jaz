@@ -49,7 +49,7 @@ func (m *Manager) RunUtilityPrompt(ctx context.Context, req UtilityPromptRequest
 	callCtx, cancel := context.WithTimeout(ctx, req.Timeout)
 	defer cancel()
 
-	cwd, _, err := m.prepareSessionDir(callCtx, spawnReq, cfg, "utility", "")
+	cwd, _, err := m.prepareSessionDir(callCtx, spawnReq, cfg, "utility", "", nil)
 	if err != nil {
 		return "", err
 	}

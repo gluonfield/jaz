@@ -32,15 +32,6 @@ func (m *Manager) StreamStatus(ref string) (StreamView, error) {
 	return StreamViewFromJob(job), err
 }
 
-// SessionUsed reports whether the session has had a job since the manager
-// started, so a thread whose idle process stopped is still in use.
-func (m *Manager) SessionUsed(id string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	_, used := m.used[id]
-	return used
-}
-
 // WithStoppedSessions holds off resumes while worktrees of stopped sessions
 // are removed. A live process retains its directory even between turns.
 func (m *Manager) WithStoppedSessions(ids []string, remove func() error) error {
