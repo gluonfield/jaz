@@ -26,7 +26,7 @@ type ShowViewInput struct {
 	View  string         `json:"view" jsonschema:"The view to show, as <plugin>/<view>, for example tenders/status."`
 	Title string         `json:"title" jsonschema:"A short title for the card or the side-panel tab."`
 	Data  map[string]any `json:"data,omitempty" jsonschema:"What the view draws, as a JSON object. Shows the view as a card in the conversation and persists structured view state."`
-	File  string         `json:"file,omitempty" jsonschema:"A plain JSON filename in the thread's folder holding what the view draws. Opens the view in the side panel, where it redraws whenever the file changes."`
+	File  string         `json:"file,omitempty" jsonschema:"A clean workspace-relative JSON file path in the thread's folder (for example status.json or runs/scene.json) holding what the view draws. Opens the view in the side panel, where it redraws whenever the file changes."`
 }
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
@@ -46,8 +46,8 @@ func (t *MCPTools) ShowView(ctx context.Context, req *mcp.CallToolRequest, input
 	if (input.Data == nil) == (file == "") {
 		return nil, nil, errors.New("pass either data, for a card in the conversation, or file, for a view in the side panel")
 	}
-	if file != "" && !filename.MatchString(file) {
-		return nil, nil, errors.New("file must be a plain filename inside the thread's folder")
+	if file != "" && !validViewFile(file) {
+		return nil, nil, errors.New("file must be a clean relative path inside the thread's folder")
 	}
 	ref := strings.TrimSpace(input.View)
 	html, err := t.Plugins.View(ref)

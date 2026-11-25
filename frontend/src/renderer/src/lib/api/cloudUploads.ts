@@ -1,4 +1,5 @@
 import { ApiError, readAPIResponse } from '@/lib/api/response'
+import type { ResolvedAsset } from '@/lib/artifacts'
 import {
   apiEmbeddedGetUrl as cloudEmbeddedGetUrl,
   apiFetch as cloudFetch,
@@ -9,6 +10,30 @@ import {
 import type { Attachment, SessionFileRead } from './types'
 
 const CLOUD_FILE_READ_LIMIT = 1024 * 1024
+
+export interface AssetGrantWire {
+  url: string
+  size?: number
+  size_bytes?: number
+  content_type?: string
+  contentType?: string
+  etag?: string
+  expires_at?: string
+  expiresAt?: string
+}
+
+export function normalizeAssetGrant(wire: AssetGrantWire, url: string): ResolvedAsset {
+  const size = wire.size ?? wire.size_bytes ?? 0
+  const contentType = wire.content_type ?? wire.contentType ?? 'application/octet-stream'
+  const expiresAt = wire.expires_at ?? wire.expiresAt ?? ''
+  return {
+    url,
+    size,
+    contentType,
+    ...(wire.etag ? { etag: wire.etag } : {}),
+    expiresAt,
+  }
+}
 
 export interface PresignUploadInput {
   relpath: string
@@ -184,28 +209,75 @@ function hasActiveResourceTicket(): boolean {
   return Number.isNaN(expiresAt) || expiresAt > Date.now()
 }
 
-async function fetchCloudRunFile(runId: string, relpath: string, signal?: AbortSignal): Promise<Response> {
+async function fetchCloudRunFile(
+  runId: string,
+  relpath: string,
+  options: { signal?: AbortSignal; headers?: HeadersInit } = {},
+): Promise<Response> {
   if (hasActiveResourceTicket()) {
-    const response = await fetch(cloudRunFileUrl(runId, relpath), { signal, credentials: 'omit' })
+    const response = await fetch(cloudRunFileUrl(runId, relpath), {
+      signal: options.signal,
+      headers: options.headers,
+      credentials: 'omit',
+    })
     if (response.status !== 401) return response
   }
-  return cloudFetch(cloudRunFilePath(runId, relpath), { signal })
+  return cloudFetch(cloudRunFilePath(runId, relpath), { signal: options.signal, headers: options.headers })
+}
+
+export async function grantCloudRunAsset(runId: string, relpath: string, signal?: AbortSignal): Promise<ResolvedAsset> {
+  const cleanRelpath = normalizeCloudRunRelpath(relpath)
+  const wire = await cloudPost<AssetGrantWire>(
+    `/v1/runs/${encodeURIComponent(runId)}/assets/grant`,
+    { path: cleanRelpath },
+    signal,
+  )
+  const url = wire.url?.trim() ?? ''
+  if (!url || !secureBackendConnection(url)) {
+    throw new Error('Asset grant URL must use HTTPS or loopback')
+  }
+  return normalizeAssetGrant(wire, url)
 }
 
 export async function cloudRunFileBytes(runId: string, relpath: string, signal?: AbortSignal): Promise<ArrayBuffer> {
-  const response = await fetchCloudRunFile(runId, relpath, signal)
+  const response = await fetchCloudRunFile(runId, relpath, { signal })
   if (!response.ok) await readAPIResponse(response)
   return response.arrayBuffer()
 }
 
+function parseContentRangeTotal(header: string | null): number | null {
+  if (!header) return null
+  const match = /^bytes\s+(?:\d+-\d+|\*)\/(\d+)$/i.exec(header.trim())
+  if (!match) return null
+  const total = Number(match[1])
+  return Number.isSafeInteger(total) ? total : null
+}
+
 export async function readCloudRunFile(runId: string, relpath: string, signal?: AbortSignal): Promise<SessionFileRead> {
   const cleanRelpath = normalizeCloudRunRelpath(relpath)
-  const response = await fetchCloudRunFile(runId, cleanRelpath, signal)
+  const response = await fetchCloudRunFile(runId, cleanRelpath, {
+    signal,
+    headers: { Range: `bytes=0-${CLOUD_FILE_READ_LIMIT}` },
+  })
+  const etag = response.headers.get('ETag')
+  if (response.status === 416 && parseContentRangeTotal(response.headers.get('Content-Range')) === 0) {
+    return {
+      path: cleanRelpath,
+      relative_path: cleanRelpath,
+      size: 0,
+      binary: false,
+      truncated: false,
+      content: '',
+      ...(etag ? { version: etag } : {}),
+      read_only: true,
+    }
+  }
   if (!response.ok) await readAPIResponse(response)
   const buffer = await response.arrayBuffer()
-  const totalSize = buffer.byteLength
-  const truncated = totalSize > CLOUD_FILE_READ_LIMIT
-  const sample = new Uint8Array(truncated ? buffer.slice(0, CLOUD_FILE_READ_LIMIT) : buffer)
+  const rangeTotal = response.status === 206 ? parseContentRangeTotal(response.headers.get('Content-Range')) : null
+  const totalSize = rangeTotal ?? buffer.byteLength
+  const truncated = totalSize > CLOUD_FILE_READ_LIMIT || buffer.byteLength > CLOUD_FILE_READ_LIMIT
+  const sample = new Uint8Array(buffer.byteLength > CLOUD_FILE_READ_LIMIT ? buffer.slice(0, CLOUD_FILE_READ_LIMIT) : buffer)
   let binary = sample.includes(0)
   let content: string | undefined
   if (!binary) {
@@ -222,7 +294,7 @@ export async function readCloudRunFile(runId: string, relpath: string, signal?: 
     binary,
     truncated,
     ...(binary ? {} : { content }),
-    ...(response.headers.get('ETag') ? { version: response.headers.get('ETag')! } : {}),
+    ...(etag ? { version: etag } : {}),
     read_only: true,
   }
 }

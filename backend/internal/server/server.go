@@ -151,6 +151,8 @@ type Server struct {
 	acpAuthProbes    acpAuthProbeCache
 	antigravityAuth  atomic.Pointer[acpAuthTurn]
 	worktreePruneMu  sync.Mutex
+	assetKeyOnce     sync.Once
+	assetKey         []byte
 }
 
 type sourceQueueStatsReader interface {

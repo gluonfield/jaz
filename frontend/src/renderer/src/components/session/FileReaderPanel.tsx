@@ -5,7 +5,7 @@ import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/ses
 import { DocumentEditor, DocumentHeader, isEditableDocument } from '@/components/document/DocumentEditor'
 import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { ApiError } from '@/lib/api/client'
-import { effectiveCloudRunId, healthQuery, sessionFileBytes, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sessions'
+import { effectiveCloudRunId, grantSessionAsset, healthQuery, sessionFileBytes, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sessions'
 import { useFileLocation } from '@/lib/hooks/useFileLocation'
 import { useRefetchAfterWork } from '@/lib/hooks/useRefetchAfterWork'
 import type { HealthResponse } from '@/lib/api/types'
@@ -39,15 +39,28 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   const filePath = fileRef?.path ?? ''
   const runId = effectiveCloudRunId(sessionId, cloudRunId)
   const pdf = isPDFPath(filePath)
-  const PagedFileView = pdf ? PDFFileView : isWordPath(filePath) ? WordFileView : null
+  const word = isWordPath(filePath)
   const loadBytes = useCallback((signal: AbortSignal) => sessionFileBytes(sessionId, filePath, signal, runId), [sessionId, filePath, runId])
+  const resolvePdfUrl = useCallback(async (signal: AbortSignal) => {
+    const trimmed = filePath.trim()
+    if (!trimmed) return null
+    if (!runId && (trimmed.startsWith('/') || trimmed.includes('\\') || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed))) {
+      return null
+    }
+    try {
+      const asset = await grantSessionAsset(sessionId, trimmed, signal, runId)
+      return asset.url || null
+    } catch {
+      return null
+    }
+  }, [sessionId, filePath, runId])
   const spreadsheet = isSpreadsheetPath(filePath)
-  const scrollsInternally = Boolean(PagedFileView || spreadsheet)
+  const scrollsInternally = Boolean(pdf || word || spreadsheet)
   const markdown = isMarkdownPath(filePath)
   const image = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico)(?:[?#].*)?$/i.test(filePath)
   // A document or a spreadsheet follows the agent while it writes, and once more when it stops.
   const follows = (markdown || spreadsheet) && working
-  const file = useQuery({ ...sessionFileQuery(sessionId, filePath, runId), enabled: visible && Boolean(filePath) && !PagedFileView && !image, refetchInterval: follows ? 2000 : false })
+  const file = useQuery({ ...sessionFileQuery(sessionId, filePath, runId), enabled: visible && Boolean(filePath) && !pdf && !word && !image, refetchInterval: follows ? 2000 : false })
   useRefetchAfterWork(follows, file.refetch)
   const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) && !runId })
   const [draft, setDraft] = useState(filePath)
@@ -107,9 +120,13 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           </div>
         ) : image ? (
           <ImageFileView key={`${sessionId}:${runId ?? ''}:${filePath}`} url={sessionFileRawUrl(sessionId, filePath, runId)} name={filePath.split(/[\\/]/).at(-1) ?? 'Image'} />
-        ) : PagedFileView ? (
-          <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading {pdf ? 'PDF' : 'Word document'}…</p>}>
-            <PagedFileView key={`${sessionId}:${runId ?? ''}:${filePath}`} load={loadBytes} location={fileRef?.location} visible={visible} />
+        ) : pdf ? (
+          <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading PDF…</p>}>
+            <PDFFileView key={`${sessionId}:${runId ?? ''}:${filePath}`} load={loadBytes} resolveUrl={resolvePdfUrl} location={fileRef?.location} visible={visible} />
+          </Suspense>
+        ) : word ? (
+          <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading Word document…</p>}>
+            <WordFileView key={`${sessionId}:${runId ?? ''}:${filePath}`} load={loadBytes} location={fileRef?.location} visible={visible} />
           </Suspense>
         ) : spreadsheet && !file.isPending ? (
           <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading spreadsheet…</p>}>

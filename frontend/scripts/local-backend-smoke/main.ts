@@ -22,6 +22,7 @@ async function run() {
   let cancelled = false
   let hanging = false
   let forbiddenHits = 0
+  let ungrantedAssetHits = 0
   let redirectedAuthorization = ''
   let remoteMutations = 0
   const uploaded: string[] = []
@@ -34,17 +35,31 @@ async function run() {
     response.setHeader('Cache-Control', 'no-store')
     response.setHeader('Content-Type', 'application/json')
     const origin = request.headers.origin
-    if (origin && origin !== 'null') {
-      response.writeHead(403)
-      response.end('origin is not allowed')
-      return
-    }
-    if (origin) response.setHeader('Access-Control-Allow-Origin', origin)
-    response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Jaz-Client-Platform')
-    if (request.method === 'OPTIONS') {
-      response.writeHead(204)
-      response.end()
-      return
+    const isAssetGrant = path === '/v1/sessions/stored-chat/assets/model.glb' && url.searchParams.get('grant') === 'ag_fixture'
+    if (isAssetGrant) {
+      response.setHeader('Access-Control-Allow-Origin', '*')
+      response.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+      response.setHeader('Access-Control-Allow-Headers', 'Range, If-Range')
+      response.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length, Content-Type, ETag')
+      response.setHeader('Access-Control-Allow-Private-Network', 'true')
+      if (request.method === 'OPTIONS') {
+        response.writeHead(204)
+        response.end()
+        return
+      }
+    } else {
+      if (origin && origin !== 'null') {
+        response.writeHead(403)
+        response.end('origin is not allowed')
+        return
+      }
+      if (origin) response.setHeader('Access-Control-Allow-Origin', origin)
+      response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Jaz-Client-Platform')
+      if (request.method === 'OPTIONS') {
+        response.writeHead(204)
+        response.end()
+        return
+      }
     }
     if (path === '/health') {
       response.end(JSON.stringify({ ok: healthy, auth_required: true }))
@@ -56,6 +71,36 @@ async function run() {
       return
     }
     if (path === '/fixture/forbidden') forbiddenHits += 1
+    if (path === '/v1/sessions/stored-chat/assets/model.glb') {
+      if (url.searchParams.get('grant') !== 'ag_fixture' || request.headers.authorization) {
+        ungrantedAssetHits += 1
+        response.writeHead(401)
+        response.end('{"code":"unauthorized"}')
+        return
+      }
+      response.setHeader('Access-Control-Allow-Origin', '*')
+      response.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+      response.setHeader('Access-Control-Allow-Headers', 'Range, If-Range')
+      response.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length, Content-Type, ETag')
+      response.setHeader('Access-Control-Allow-Private-Network', 'true')
+      if (request.method === 'OPTIONS') {
+        response.writeHead(204)
+        response.end()
+        return
+      }
+      const asset = Buffer.from('GLTF01234567')
+      response.setHeader('Content-Type', 'model/gltf-binary')
+      response.setHeader('Accept-Ranges', 'bytes')
+      response.setHeader('ETag', '"asset-1"')
+      if (request.headers.range === 'bytes=0-3') {
+        response.writeHead(206, { 'Content-Range': 'bytes 0-3/12', 'Content-Length': '4' })
+        response.end(asset.subarray(0, 4))
+        return
+      }
+      response.writeHead(200, { 'Content-Length': String(asset.length) })
+      response.end(asset)
+      return
+    }
     if (path === '/fixture/remote-mutate') remoteMutations += 1
     if (path === '/fixture/redirected') {
       redirectedAuthorization = request.headers.authorization || ''
@@ -268,6 +313,44 @@ async function run() {
     document.body.append(frame)
   })`)
   assert.equal(forbiddenHits, 0)
+  stage = 'sandboxed srcDoc iframe streams single-file asset grant with Range'
+  const assetResult = await evaluate(`new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('sandboxed asset fetch timed out')), 5000)
+    addEventListener('message', event => {
+      if (event.data?.type === 'asset-grant-result') {
+        clearTimeout(timer)
+        resolve(event.data)
+      }
+    }, {once:true})
+    const frame = document.createElement('iframe')
+    frame.sandbox = 'allow-scripts allow-forms'
+    frame.srcdoc = ${JSON.stringify(`<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; connect-src ${LOCAL_BACKEND_TRANSPORT_URL}"></head><body><script>
+      (async () => {
+        const res = await fetch('${LOCAL_BACKEND_TRANSPORT_URL}/v1/sessions/stored-chat/assets/model.glb?grant=ag_fixture', {
+          headers: { Range: 'bytes=0-3' },
+          credentials: 'omit',
+        });
+        const text = await res.text();
+        let ungranted = 0;
+        try {
+          const bad = await fetch('${LOCAL_BACKEND_TRANSPORT_URL}/v1/sessions/stored-chat/assets/model.glb', { credentials: 'omit' });
+          ungranted = bad.status;
+        } catch {
+          ungranted = -1;
+        }
+        parent.postMessage({
+          type: 'asset-grant-result',
+          status: res.status,
+          range: res.headers.get('Content-Range'),
+          text,
+          ungranted,
+        }, '*');
+      })().catch((err) => parent.postMessage({ type: 'asset-grant-result', error: String(err) }, '*'));
+    </script></body></html>`)}
+    document.body.append(frame)
+  })`)
+  assert.deepEqual(assetResult, { type: 'asset-grant-result', status: 206, range: 'bytes 0-3/12', text: 'GLTF', ungranted: 403 })
+  assert.equal(ungrantedAssetHits, 0)
   stage = 'ordinary HTTP CORS and redirect credentials'
   await window.webContents.debugger.sendCommand('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: 0, uploadThroughput: 0 })
   assert.equal(await evaluate(`fixture.get('/fixture/redirect').then(() => true, () => false)`), false)

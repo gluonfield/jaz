@@ -6,6 +6,14 @@ export interface ArtifactInput {
   loadingMessages: string[]
 }
 
+export interface ResolvedAsset {
+  url: string
+  size: number
+  contentType: string
+  etag?: string
+  expiresAt: string
+}
+
 const RESIZE_OBSERVER_LAYOUT_WARNING = 'ResizeObserver loop completed with undelivered notifications.'
 
 export function artifactErrorForDisplay(message: string): string | undefined {
@@ -14,6 +22,79 @@ export function artifactErrorForDisplay(message: string): string | undefined {
 
 const ARTIFACT_CSP =
   "default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://esm.sh https://cdn.jsdelivr.net https://unpkg.com; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; font-src data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; img-src data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://fonts.gstatic.com https://fonts.googleapis.com; connect-src https://cdnjs.cloudflare.com https://esm.sh https://cdn.jsdelivr.net https://unpkg.com; media-src data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; frame-src 'none'; base-uri 'none'; form-action 'none'"
+
+export function sanitizeAssetOrigin(raw?: string): string {
+  if (!raw) return ''
+  try {
+    const parsed = new URL(raw)
+    if (parsed.protocol === 'jaz-local:') {
+      return parsed.host === 'backend' ? 'jaz-local://backend' : ''
+    }
+    if (parsed.protocol === 'https:') {
+      return parsed.origin
+    }
+    if (parsed.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)) {
+      return parsed.origin
+    }
+  } catch {
+    // Ignore malformed origins.
+  }
+  return ''
+}
+
+export function buildArtifactCSP(pluginView = false, assetOrigin?: string): string {
+  if (!pluginView) return ARTIFACT_CSP
+  const safeOrigin = sanitizeAssetOrigin(assetOrigin)
+  const originSuffix = safeOrigin ? ` ${safeOrigin}` : ''
+  return [
+    "default-src 'none'",
+    "script-src 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://esm.sh https://cdn.jsdelivr.net https://unpkg.com",
+    "style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com",
+    'font-src data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com',
+    `img-src data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://fonts.gstatic.com https://fonts.googleapis.com${originSuffix}`,
+    `connect-src https://cdnjs.cloudflare.com https://esm.sh https://cdn.jsdelivr.net https://unpkg.com${originSuffix}`,
+    `media-src data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com${originSuffix}`,
+    'worker-src blob:',
+    "frame-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join('; ')
+}
+
+export function resolvePluginAssetRelpath(assetPath: string, viewFile?: string): string {
+  const trimmed = assetPath.trim()
+  if (!trimmed || trimmed.includes('\0') || trimmed.includes('\\') || trimmed.startsWith('/')) {
+    throw new Error('Asset path must be relative to the thread workspace')
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    throw new Error('Asset path must be relative to the thread workspace')
+  }
+  if (/[?#]/.test(trimmed)) {
+    throw new Error('Asset path must not include query or fragment parameters')
+  }
+  const parts: string[] = []
+  if (viewFile) {
+    const viewParts = viewFile.trim().replace(/\\/g, '/').split('/').filter((segment) => segment && segment !== '.')
+    if (viewParts.length > 1) {
+      parts.push(...viewParts.slice(0, -1))
+    }
+  }
+  for (const segment of trimmed.split('/')) {
+    if (!segment || segment === '.') continue
+    if (segment === '..') {
+      if (parts.length === 0) {
+        throw new Error('Asset path must stay inside the thread workspace')
+      }
+      parts.pop()
+      continue
+    }
+    parts.push(segment)
+  }
+  if (parts.length === 0) {
+    throw new Error('Asset path is required')
+  }
+  return parts.join('/')
+}
 
 const REACT_CDN = 'https://esm.sh/react@19.2.0'
 const REACT_DOM_CDN = 'https://esm.sh/react-dom@19.2.0'
@@ -68,6 +149,34 @@ const bridgeScript = `
   new ResizeObserver(measure).observe(document.documentElement);
   window.addEventListener('load', measure);
   requestAnimationFrame(measure);
+})();
+`
+
+const assetBridgeScript = `
+(() => {
+  let nextId = 1;
+  const pending = new Map();
+  window.addEventListener('message', (event) => {
+    if (event.source !== parent) return;
+    const message = event.data;
+    if (message?.type !== 'jaz:artifact-resolve-asset-result' || typeof message.id !== 'string') return;
+    const entry = pending.get(message.id);
+    if (!entry) return;
+    pending.delete(message.id);
+    if (message.error) entry.reject(new Error(String(message.error)));
+    else entry.resolve(message.asset);
+  });
+  const resolveAsset = (path) => {
+    if (typeof path !== 'string' || !path.trim()) {
+      return Promise.reject(new Error('Asset path is required'));
+    }
+    const id = 'asset-' + (nextId++);
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      parent.postMessage({ type: 'jaz:artifact-resolve-asset', id, path }, '*');
+    });
+  };
+  window.jaz = Object.assign(window.jaz || {}, { resolveAsset });
 })();
 `
 
@@ -271,11 +380,22 @@ export function buildArtifactThemeCSS(darkOverride?: boolean): string {
 export function buildArtifactDocument(
   input: ArtifactInput,
   theme: string,
-  opts: { measureLayout?: boolean; canvas?: boolean; data?: unknown; agentState?: AgentState; viewState?: unknown } = {},
+  opts: {
+    measureLayout?: boolean
+    canvas?: boolean
+    data?: unknown
+    agentState?: AgentState
+    viewState?: unknown
+    pluginView?: boolean
+    assetOrigin?: string
+    resolveAsset?: boolean
+  } = {},
 ): string {
+  const csp = buildArtifactCSP(opts.pluginView, opts.assetOrigin)
   const data = opts.canvas || opts.data !== undefined ? dataScript(opts.data, opts.agentState) : ''
   const viewState = opts.viewState !== undefined ? viewStateScript(opts.viewState) : ''
-  const bridge = bridgeScript + (opts.measureLayout ? widgetBridgeScript : '') + (opts.canvas ? canvasBridgeScript : '') + data + viewState
+  const assets = opts.resolveAsset ? assetBridgeScript : ''
+  const bridge = bridgeScript + (opts.measureLayout ? widgetBridgeScript : '') + (opts.canvas ? canvasBridgeScript : '') + data + viewState + assets
   if (opts.canvas) {
     theme += canvasCSS
   }
@@ -283,8 +403,8 @@ export function buildArtifactDocument(
   // viewport — then a fragment using height:100% fills the tile. Inline
   // artifacts grow to their content instead, so they must NOT get this.
   const css = opts.measureLayout ? `${artifactCSS(theme)} html,body{height:100%}` : artifactCSS(theme)
-  if (isFullHTMLDocument(input.code)) return injectArtifactHost(input.code, theme, bridge)
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}"><style>${css}</style><script>${bridge}</script></head><body>${input.code}</body></html>`
+  if (isFullHTMLDocument(input.code)) return injectArtifactHost(input.code, theme, bridge, csp)
+  return `<!doctype html><html><head><meta charset="utf-8">${contentSecurityMeta(csp)}<style>${css}</style><script>${bridge}</script></head><body>${input.code}</body></html>`
 }
 
 // A canvas component is CommonJS compiled from the agent's TSX. React and any
@@ -318,8 +438,8 @@ function isFullHTMLDocument(code: string): boolean {
   return head.startsWith('<!doctype') || head.startsWith('<html')
 }
 
-function injectArtifactHost(code: string, theme: string, bridge: string): string {
-  const support = `${contentSecurityMeta(code)}<style>${theme}</style><script>${bridge}</script>`
+function injectArtifactHost(code: string, theme: string, bridge: string, csp: string): string {
+  const support = `${contentSecurityMeta(csp)}<style>${theme}</style><script>${bridge}</script>`
   const headOpen = code.search(/<head(?:\s[^>]*)?>/i)
   if (headOpen >= 0) {
     const end = code.indexOf('>', headOpen)
@@ -335,10 +455,8 @@ function injectArtifactHost(code: string, theme: string, bridge: string): string
   return support + code
 }
 
-function contentSecurityMeta(code: string): string {
-  return /content-security-policy/i.test(code)
-    ? ''
-    : `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}">`
+function contentSecurityMeta(csp: string): string {
+  return `<meta http-equiv="Content-Security-Policy" content="${csp}">`
 }
 
 function loadingMessages(value: unknown): string[] {

@@ -265,3 +265,112 @@ test('resolveCloudModelSelection, loopDraftToInput, and isCloudViewerRole handle
   expect(api.isCloudViewerRole('admin')).toBe(false)
   expect(api.isCloudViewerRole(undefined)).toBe(false)
 })
+
+test('readCloudRunFile sends Range bytes=0-1048576, parses 206 Content-Range totals, and handles 416 empty files', async () => {
+  const api = fixture()
+  const ranges = []
+  replace('fetch', async (url, init = {}) => {
+    const parsed = new URL(String(url))
+    const headers = new Headers(init.headers)
+    ranges.push({ pathname: parsed.pathname, range: headers.get('Range') })
+    if (parsed.pathname === '/v1/runs/run_big/files/models/large.glb') {
+      const sample = new Uint8Array(1024 * 1024 + 1)
+      sample[0] = 0x67
+      sample[4] = 0x00
+      return new Response(sample, {
+        status: 206,
+        headers: {
+          'Content-Type': 'model/gltf-binary',
+          'Content-Range': 'bytes 0-1048576/196083712',
+          ETag: '"glb-etag-1"',
+        },
+      })
+    }
+    if (parsed.pathname === '/v1/runs/run_big/files/empty.txt') {
+      return new Response(null, {
+        status: 416,
+        headers: { 'Content-Range': 'bytes */0', ETag: '"empty-etag"' },
+      })
+    }
+    return new Response('not found', { status: 404 })
+  })
+
+  const big = await api.readCloudRunFile('run_big', 'models/large.glb')
+  expect(big).toEqual({
+    path: 'models/large.glb',
+    relative_path: 'models/large.glb',
+    size: 196083712,
+    binary: true,
+    truncated: true,
+    version: '"glb-etag-1"',
+    read_only: true,
+  })
+
+  const empty = await api.readCloudRunFile('run_big', 'empty.txt')
+  expect(empty).toEqual({
+    path: 'empty.txt',
+    relative_path: 'empty.txt',
+    size: 0,
+    binary: false,
+    truncated: false,
+    content: '',
+    version: '"empty-etag"',
+    read_only: true,
+  })
+
+  expect(ranges).toEqual([
+    { pathname: '/v1/runs/run_big/files/models/large.glb', range: 'bytes=0-1048576' },
+    { pathname: '/v1/runs/run_big/files/empty.txt', range: 'bytes=0-1048576' },
+  ])
+})
+
+test('grantSessionAsset routes Local and Cloud asset grants and computes active plugin asset origins', async () => {
+  const api = fixture()
+  const calls = []
+  replace('fetch', async (url, init = {}) => {
+    const parsed = new URL(String(url))
+    calls.push({ method: init.method, url: parsed.toString(), body: init.body })
+    if (parsed.pathname === '/v1/runs/run_77/assets/grant') {
+      return new Response(JSON.stringify({
+        url: 'https://storage.googleapis.com/jaz-bucket/obj?X-Goog-Signature=abc',
+        size: 196083712,
+        content_type: 'model/gltf-binary',
+        etag: '"gcs-1"',
+        expires_at: '2026-11-25T16:00:00Z',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (parsed.pathname === '/v1/sessions/loc_77/assets/grant') {
+      return new Response(JSON.stringify({
+        url: 'http://127.0.0.1:5299/v1/sessions/loc_77/assets/outputs/part.glb?grant=ag_test.sig',
+        size: 4096,
+        content_type: 'model/gltf-binary',
+        etag: '"loc-1"',
+        expires_at: '2026-11-25T16:00:00Z',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    return new Response('not found', { status: 404 })
+  })
+
+  const cloudGrant = await api.grantSessionAsset('thr_77', 'outputs/assembly.glb', undefined, 'run_77')
+  expect(cloudGrant).toEqual({
+    url: 'https://storage.googleapis.com/jaz-bucket/obj?X-Goog-Signature=abc',
+    size: 196083712,
+    contentType: 'model/gltf-binary',
+    etag: '"gcs-1"',
+    expiresAt: '2026-11-25T16:00:00Z',
+  })
+  expect(api.activePluginAssetOrigin('run_77')).toBe('https://storage.googleapis.com')
+
+  api.setApiServerMode('local')
+  api.setApiBaseUrl('http://127.0.0.1:5299')
+  const localGrant = await api.grantSessionAsset('loc_77', 'outputs/part.glb')
+  expect(localGrant).toEqual({
+    url: 'http://127.0.0.1:5299/v1/sessions/loc_77/assets/outputs/part.glb?grant=ag_test.sig',
+    size: 4096,
+    contentType: 'model/gltf-binary',
+    etag: '"loc-1"',
+    expiresAt: '2026-11-25T16:00:00Z',
+  })
+  expect(api.activePluginAssetOrigin()).toBe('http://127.0.0.1:5299')
+  expect(calls).toHaveLength(2)
+})

@@ -19,6 +19,18 @@ import (
 
 var filename = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]*$`)
 
+func validViewFile(raw string) bool {
+	if raw == "" || strings.HasPrefix(raw, "/") || strings.HasSuffix(raw, "/") || strings.ContainsRune(raw, '\\') {
+		return false
+	}
+	for part := range strings.SplitSeq(raw, "/") {
+		if !filename.MatchString(part) {
+			return false
+		}
+	}
+	return true
+}
+
 type SessionStore interface {
 	ListSessionPluginViews() ([]storage.SessionPluginView, error)
 }
@@ -137,7 +149,7 @@ func (s *Store) PageWithContext(ctx context.Context, plugin string, sessions Ses
 	groups := map[source][]PageThread{}
 	var ordered []source
 	for _, thread := range threads {
-		if !filepath.IsAbs(thread.Folder) || !filename.MatchString(thread.File) {
+		if !filepath.IsAbs(thread.Folder) || !validViewFile(thread.File) {
 			continue
 		}
 		key := source{folder: filepath.Clean(thread.Folder), file: thread.File}

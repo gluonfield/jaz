@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { use, useCallback, useMemo, useRef, useState } from 'react'
 import { ArtifactBlock } from '@/components/session/ArtifactBlock'
 import { openPluginView, pluginViewStateQuery, savePluginViewState } from '@/lib/api/plugins'
-import { sessionFileQuery } from '@/lib/api/sessions'
+import { activePluginAssetOrigin, effectiveCloudRunId, grantSessionAsset, sessionFileQuery } from '@/lib/api/sessions'
+import { resolvePluginAssetRelpath } from '@/lib/artifacts'
 import { useRefetchAfterWork } from '@/lib/hooks/useRefetchAfterWork'
 import { MCPAppThreadContext } from '@/lib/mcpAppThread'
 import type { PanelView, PanelPresentation } from '@/lib/sidePanelTabs'
@@ -30,7 +31,9 @@ export function ViewPanel({ sessionId, cloudRunId, view, visible, working, askin
 }) {
   const thread = use(MCPAppThreadContext)
   const [error, setError] = useState('')
-  const file = useQuery({ ...sessionFileQuery(sessionId, view.file, cloudRunId), enabled: visible, staleTime: 0, refetchInterval: working ? 2000 : false })
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
+  const assetOrigin = activePluginAssetOrigin(runId)
+  const file = useQuery({ ...sessionFileQuery(sessionId, view.file, runId), enabled: visible, staleTime: 0, refetchInterval: working ? 2000 : false })
   useRefetchAfterWork(working, file.refetch)
   const { reference } = view
   const state = useQuery({ ...pluginViewStateQuery(sessionId, { reference: reference ?? '', file: view.file }), enabled: visible && Boolean(reference) })
@@ -56,6 +59,10 @@ export function ViewPanel({ sessionId, cloudRunId, view, visible, working, askin
     const linked = resolveFileLink(href, path)
     return linked ? onOpenFile(linked) : false
   }, [path, onOpenFile])
+  const resolveAsset = useCallback(async (assetPath: string) => {
+    const relpath = resolvePluginAssetRelpath(assetPath, view.file)
+    return grantSessionAsset(sessionId, relpath, undefined, runId)
+  }, [sessionId, view.file, runId])
   const openSibling = useCallback(async (name: string, title: string) => {
     if (!view.reference) return
     try {
@@ -75,7 +82,7 @@ export function ViewPanel({ sessionId, cloudRunId, view, visible, working, askin
   return (
     <div className="h-full overflow-y-auto">
       {error ? <p role="alert" className="px-3 py-2 text-sm text-danger">{error}</p> : null}
-      <ArtifactBlock artifact={view} data={data} agentState={asking ? 'asking' : working ? 'working' : 'idle'} viewState={state.isSuccess ? state.data ?? null : undefined} onViewState={saveState} onSendPrompt={thread?.send} onOpenFile={openFile} onOpenView={view.reference ? openSibling : undefined} />
+      <ArtifactBlock artifact={view} data={data} agentState={asking ? 'asking' : working ? 'working' : 'idle'} viewState={state.isSuccess ? state.data ?? null : undefined} pluginView assetOrigin={assetOrigin} onViewState={saveState} onSendPrompt={thread?.send} onOpenFile={openFile} onOpenView={view.reference ? openSibling : undefined} onResolveAsset={resolveAsset} />
     </div>
   )
 }

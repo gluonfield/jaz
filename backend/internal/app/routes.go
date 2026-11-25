@@ -192,6 +192,7 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge ma
 		server.Route{Pattern: "PUT /v1/threads/{id}/user-state", Handler: httpHandlerFunc(projects.UpdateThreadUserState)},
 		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/presign", Handler: httpHandlerFunc(h.PresignUpload)},
 		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/commit", Handler: httpHandlerFunc(h.CommitUpload)},
+		server.Route{Pattern: "POST /v1/runs/{run_id}/assets/grant", Handler: httpHandlerFunc(h.Proxy)},
 		server.Route{Pattern: "GET /v1/runs/{run_id}/files/{path...}", Handler: httpHandlerFunc(h.ProxyRunFile)},
 		server.Route{Pattern: "GET /v1/user-skills", Handler: httpHandlerFunc(h.Proxy)},
 		server.Route{Pattern: "PUT /v1/user-skills/{name}", Handler: httpHandlerFunc(h.Proxy)},

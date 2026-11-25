@@ -66,7 +66,7 @@ func (s *ViewService) Open(ctx context.Context, session string, request ViewRequ
 
 func (s *ViewService) shown(ctx context.Context, session, reference, file string) (string, []sessionevents.PluginView, error) {
 	plugin, view, _ := strings.Cut(reference, "/")
-	if !name.MatchString(plugin) || !name.MatchString(view) || !filename.MatchString(file) {
+	if !name.MatchString(plugin) || !name.MatchString(view) || !validViewFile(file) {
 		return "", nil, fmt.Errorf("%w: not an owned file-following view", ErrInvalid)
 	}
 	thread, err := s.sessions.LoadSessionOverview(ctx, session)
@@ -102,7 +102,7 @@ func (s *ViewService) StateWithRevision(ctx context.Context, session, reference,
 			return record.UIStateJSON, record.Revision, nil
 		}
 	}
-	state, err := os.ReadFile(filepath.Join(s.states, thread, reference, file))
+	state, err := os.ReadFile(filepath.Join(s.states, thread, reference, filepath.FromSlash(file)))
 	if errors.Is(err, fs.ErrNotExist) {
 		return json.RawMessage("null"), 0, nil
 	}
@@ -136,11 +136,12 @@ func (s *ViewService) SaveStateWithRevision(ctx context.Context, session, refere
 		}
 		return 1, nil
 	}
-	dir := filepath.Join(s.states, thread, reference)
+	target := filepath.Join(s.states, thread, reference, filepath.FromSlash(file))
+	dir := filepath.Dir(target)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return 0, err
 	}
-	temp, err := os.CreateTemp(dir, "."+file+"-*")
+	temp, err := os.CreateTemp(dir, "."+filepath.Base(target)+"-*")
 	if err != nil {
 		return 0, err
 	}
@@ -149,5 +150,5 @@ func (s *ViewService) SaveStateWithRevision(ctx context.Context, session, refere
 	if err = errors.Join(err, temp.Close()); err != nil {
 		return 0, err
 	}
-	return 0, os.Rename(temp.Name(), filepath.Join(dir, file))
+	return 0, os.Rename(temp.Name(), target)
 }

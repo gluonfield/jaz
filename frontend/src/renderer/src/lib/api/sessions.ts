@@ -1,16 +1,32 @@
 import type { UsageWindow } from '@/lib/usageWindow'
 import { ApiError, readAPIResponse } from '@/lib/api/response'
 import { queryOptions } from '@tanstack/react-query'
+import { sanitizeAssetOrigin, type ResolvedAsset } from '@/lib/artifacts'
+import { backendTransportUrl } from '@/lib/clientRuntime'
 import type { MessageContextInput } from '@/lib/messageContext'
 import { telemetry } from '@/lib/telemetry'
 import { keys } from '../query/keys'
-import { apiEmbeddedGetUrl, apiFetch, del, get, isCloudApiSession, post, put } from './client'
+import {
+  apiBaseUrl,
+  apiEmbeddedGetUrl,
+  apiFetch,
+  del,
+  get,
+  isCloudApiSession,
+  post,
+  put,
+  resolveBackendUrl,
+  secureBackendConnection,
+} from './client'
 import { updateThreadUserState } from './cloudSpaces'
 import {
   cloudRunFileBytes,
   cloudRunFileDownloadUrl,
   cloudRunFileUrl,
+  grantCloudRunAsset,
+  normalizeAssetGrant,
   readCloudRunFile,
+  type AssetGrantWire,
 } from './cloudUploads'
 import {
   cancelCloudThread,
@@ -202,6 +218,39 @@ export function sessionFileDownloadUrl(sessionId: string, path: string, cloudRun
     return cloudRunFileDownloadUrl(runId, path)
   }
   return apiEmbeddedGetUrl(sessionFilePath(sessionId, path) + '&download=1')
+}
+
+export function activePluginAssetOrigin(cloudRunId?: string): string {
+  if (cloudRunId) {
+    const configured = import.meta.env?.VITE_JAZ_CLOUD_ASSET_ORIGIN?.trim()
+    return sanitizeAssetOrigin(configured || 'https://storage.googleapis.com')
+  }
+  return sanitizeAssetOrigin(backendTransportUrl(`${apiBaseUrl()}/`))
+}
+
+export async function grantSessionAsset(
+  sessionId: string,
+  relpath: string,
+  signal?: AbortSignal,
+  cloudRunId?: string,
+): Promise<ResolvedAsset> {
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
+  if (runId) {
+    return grantCloudRunAsset(runId, relpath, signal)
+  }
+  const wire = await post<AssetGrantWire>(
+    `/v1/sessions/${encodeURIComponent(sessionId)}/assets/grant`,
+    { path: relpath },
+    signal,
+  )
+  const rawUrl = wire.url?.trim() ?? ''
+  const resolved = rawUrl.startsWith('/')
+    ? resolveBackendUrl(rawUrl, apiBaseUrl(), 'grantSessionAsset')
+    : rawUrl
+  if (!resolved || !secureBackendConnection(resolved)) {
+    throw new Error('Asset grant URL must use HTTPS or loopback')
+  }
+  return normalizeAssetGrant(wire, backendTransportUrl(resolved))
 }
 
 export function sessionAttachmentUrl(sessionId: string, attachmentId: string): string {

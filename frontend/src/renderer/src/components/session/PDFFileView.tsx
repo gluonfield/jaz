@@ -16,7 +16,12 @@ const sources = { cMapUrl: `${folder}cmaps/`, iccUrl: `${folder}iccs/`, standard
 
 type DocumentView = { viewer: PDFViewer; document: PDFDocumentProxy; events: EventBus }
 
-export default function PDFFileView({ load, location, visible = true }: { load: (signal: AbortSignal) => Promise<ArrayBuffer>; location?: FileLocation; visible?: boolean }) {
+export default function PDFFileView({ load, resolveUrl, location, visible = true }: {
+  load: (signal: AbortSignal) => Promise<ArrayBuffer>
+  resolveUrl?: (signal: AbortSignal) => Promise<string | null>
+  location?: FileLocation
+  visible?: boolean
+}) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [view, setView] = useState<DocumentView | null>(null)
   const [error, setError] = useState('')
@@ -81,10 +86,33 @@ export default function PDFFileView({ load, location, visible = true }: { load: 
     setTarget(null)
     applied.current = null
     void (async () => {
-      const data = new Uint8Array(await load(abort.signal))
+      let document: PDFDocumentProxy | undefined
+      const url = resolveUrl ? await resolveUrl(abort.signal).catch(() => null) : null
       if (abort.signal.aborted) return
-      task = getDocument({ data, worker, ...sources })
-      const document = await task.promise
+      if (url) {
+        try {
+          task = getDocument({
+            url,
+            worker,
+            rangeChunkSize: 65536,
+            disableAutoFetch: true,
+            disableStream: false,
+            withCredentials: false,
+            ...sources,
+          })
+          document = await task.promise
+        } catch {
+          if (abort.signal.aborted) return
+          void task?.destroy()
+          task = undefined
+        }
+      }
+      if (!document) {
+        const data = new Uint8Array(await load(abort.signal))
+        if (abort.signal.aborted) return
+        task = getDocument({ data, worker, ...sources })
+        document = await task.promise
+      }
       if (abort.signal.aborted) return
       events.on('pagesinit', () => setView({ viewer, document, events }))
       viewer.setDocument(document)
@@ -101,7 +129,7 @@ export default function PDFFileView({ load, location, visible = true }: { load: 
       if (task) void task.destroy().finally(closeWorker)
       else closeWorker()
     }
-  }, [container, load, attempt])
+  }, [container, load, resolveUrl, attempt])
 
   useEffect(() => {
     if (!view) return
