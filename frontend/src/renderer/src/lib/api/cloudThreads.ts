@@ -52,6 +52,11 @@ export interface CloudThread {
   model?: string
   reasoning_effort?: string
   runtime_ref_json?: Record<string, unknown> | null
+  git_repo?: string
+  git_base_branch?: string
+  git_branch?: string
+  git_pr_number?: number
+  git_pr_url?: string
   personal_sources_enabled?: boolean
   pinned?: boolean
   archived?: boolean
@@ -89,6 +94,9 @@ export interface CreateCloudThreadInput {
   model?: string
   reasoning_effort?: string
   executor_target?: string
+  git_repo?: string
+  git_base_branch?: string
+  git_branch?: string
 }
 
 export interface CreateCloudTurnInput {
@@ -342,6 +350,11 @@ export function cloudThreadToSession(thread: CloudThread): Session {
     space_id: thread.space_id || undefined,
     visibility: thread.visibility === 'space' ? 'space' : 'private',
     run_id: thread.run_id || thread.id,
+    git_repo: thread.git_repo || undefined,
+    git_base_branch: thread.git_base_branch || undefined,
+    git_branch: thread.git_branch || undefined,
+    git_pr_number: thread.git_pr_number || undefined,
+    git_pr_url: thread.git_pr_url || undefined,
     personal_sources_enabled: thread.personal_sources_enabled,
     pinned: Boolean(thread.pinned),
     archived: Boolean(thread.archived),
@@ -367,6 +380,9 @@ export async function createCloudThread(input: CreateCloudThreadInput): Promise<
     ...(input.model ? { model: input.model } : {}),
     ...(input.reasoning_effort ? { reasoning_effort: input.reasoning_effort } : {}),
     ...(input.executor_target ? { executor_target: input.executor_target } : {}),
+    ...(input.git_repo ? { git_repo: input.git_repo } : {}),
+    ...(input.git_base_branch ? { git_base_branch: input.git_base_branch } : {}),
+    ...(input.git_branch ? { git_branch: input.git_branch } : {}),
   })
 }
 
@@ -376,7 +392,13 @@ export async function getCloudThread(threadId: string, signal?: AbortSignal): Pr
 
 export async function patchCloudThread(
   threadId: string,
-  patch: { title?: string; space_id?: string },
+  patch: {
+    title?: string
+    space_id?: string
+    git_repo?: string
+    git_base_branch?: string
+    git_branch?: string
+  },
 ): Promise<CloudThread> {
   return cloudPatch<CloudThread>(`/v1/threads/${encodeURIComponent(threadId)}`, patch)
 }

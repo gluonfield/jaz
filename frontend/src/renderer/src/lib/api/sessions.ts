@@ -59,6 +59,9 @@ export interface CreateSessionInput {
   space_id?: string
   visibility?: 'private' | 'space'
   machine_id?: string
+  git_repo?: string
+  git_base_branch?: string
+  git_branch?: string
 }
 
 export async function createSession(input: CreateSessionInput = {}): Promise<Session> {
@@ -70,6 +73,9 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
       model: input.model,
       reasoning_effort: input.reasoning_effort,
       executor_target: input.machine_id,
+      git_repo: input.git_repo,
+      git_base_branch: input.git_base_branch,
+      git_branch: input.git_branch,
     })
     return cloudThreadToSession(thread)
   }

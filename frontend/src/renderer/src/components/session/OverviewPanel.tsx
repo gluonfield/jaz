@@ -20,6 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useToast } from '@/components/ui/toast'
+import { isCloudApiSession } from '@/lib/api/client'
 import { compactSession, setSessionArchived } from '@/lib/api/sessions'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import type { QueuedAction, RepoInfo, Session } from '@/lib/api/types'
@@ -35,6 +36,7 @@ import { SidePanelShell } from './SidePanelShell'
 import { encodeMention } from './mentionCodec'
 import { OverviewDisclosureSection, OverviewRuns, SectionHeader } from './OverviewRuns'
 import { TaskStepIcon } from './TaskStepIcon'
+import { CloudGitSection } from './CloudGitSection'
 import { useRepoActions } from './useRepoActions'
 import { RepoStatus } from './RepoStatus'
 
@@ -47,6 +49,7 @@ export function OverviewPanel({
   onSend,
   onQueuePrompt,
   onQueueAction,
+  onOpenDiff,
 }: {
   session: Session
   progress?: TaskSurface
@@ -56,14 +59,20 @@ export function OverviewPanel({
   onSend: SendMessageHandler
   onQueuePrompt: SendMessageHandler
   onQueueAction: (action: QueuedAction, label: string) => Promise<void>
+  onOpenDiff?: () => void
 }) {
+  const isCloudSession = session.backend === 'cloud' || isCloudApiSession()
   const repo = useRepoActions(session)
-  const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing || repo.error))
+  const showGit = !isCloudSession && Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing || repo.error))
   return (
     <SidePanelShell scroll className="gap-6 px-4 py-4">
       <OverviewRuns threads={spawnedThreads} subagents={subagents} />
       {progress ? <ProgressSection progress={progress} working={working} /> : null}
-      {showGit ? <GitSection repo={repo} onQueueAction={onQueueAction} /> : null}
+      {isCloudSession ? (
+        <CloudGitSection session={session} onOpenDiff={onOpenDiff} />
+      ) : showGit ? (
+        <GitSection repo={repo} onQueueAction={onQueueAction} />
+      ) : null}
       <ManageSection
         session={session}
         repo={repo}

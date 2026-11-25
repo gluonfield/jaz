@@ -32,6 +32,9 @@ type createSessionRequest struct {
 	SpaceID         string `json:"space_id,omitempty"`
 	MachineID       string `json:"machine_id,omitempty"`
 	ExecutorTarget  string `json:"executor_target,omitempty"`
+	GitRepo         string `json:"git_repo,omitempty"`
+	GitBaseBranch   string `json:"git_base_branch,omitempty"`
+	GitBranch       string `json:"git_branch,omitempty"`
 }
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +72,9 @@ func (s *Server) createCloudSession(w http.ResponseWriter, r *http.Request, req 
 		Model:           strings.TrimSpace(req.Model),
 		ReasoningEffort: strings.TrimSpace(req.ReasoningEffort),
 		ExecutorTarget:  target,
+		GitRepo:         strings.TrimSpace(req.GitRepo),
+		GitBaseBranch:   strings.TrimSpace(req.GitBaseBranch),
+		GitBranch:       strings.TrimSpace(req.GitBranch),
 	})
 	if err != nil {
 		cloudapi.WriteError(w, err)

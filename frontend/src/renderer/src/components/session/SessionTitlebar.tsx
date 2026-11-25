@@ -22,11 +22,18 @@ export function SessionTitlebar({ session, isMobile, panel, sideChatAvailable, h
   const { open, mode, tabs, activeTab, selectTab, reorderTabs, closeTab, addTab, duplicateTab, toggleMode } = panel
   const activeId = activeTab?.id
   const [viewsOpen, setViewsOpen] = useState(false)
+  const openDiff = useMemo(() => () => addTab('diff'), [addTab])
+  const openOverview = useMemo(
+    () => () => {
+      if (!open || mode !== 'overview') toggleMode('overview')
+    },
+    [mode, open, toggleMode],
+  )
   const slot = useMemo(() => header ?? <>
     <RuntimeBadge session={session} truncate />
     <TokenStats session={session} />
-    <CloudThreadControls session={session} />
-  </>, [header, session])
+    <CloudThreadControls session={session} onOpenDiff={openDiff} onOpenOverview={openOverview} />
+  </>, [header, openDiff, openOverview, session])
   useTitlebarSlot(slot)
   // On desktop the open panel's own header carries its tabs and controls.
   const actions = useMemo(() => {

@@ -35,6 +35,7 @@ export function useSessionEvents(
       if (isCloud) {
         queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
         queryClient.invalidateQueries({ queryKey: keys.usage })
+        queryClient.invalidateQueries({ queryKey: keys.cloudThreadRepo(sessionId) })
         return
       }
       queryClient.invalidateQueries({ queryKey: keys.usage })

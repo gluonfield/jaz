@@ -83,6 +83,7 @@ test('SETTINGS_SECTIONS places Workspace group first and App group second with e
     'plugins',
     'mcp',
     'machines',
+    'github',
     'usage',
     'archived',
   ])
@@ -103,16 +104,19 @@ test('SETTINGS_SECTIONS places Workspace group first and App group second with e
 test('visibleSettingsSections enforces requiresCloud and requiresLocal boundaries', () => {
   const localOnlyIds = visibleSettingsSections(true, false, true).map((item) => item.id)
   expect(localOnlyIds).not.toContain('machines')
+  expect(localOnlyIds).not.toContain('github')
   expect(localOnlyIds).toEqual(expect.arrayContaining(['cloud', 'agents', 'providers', 'browser', 'computer']))
 
   const desktopCloudIds = visibleSettingsSections(true, true, true).map((item) => item.id)
   expect(desktopCloudIds).toContain('machines')
+  expect(desktopCloudIds).toContain('github')
   expect(desktopCloudIds).not.toContain('memory')
   expect(desktopCloudIds).toEqual(expect.arrayContaining(['agents', 'providers', 'browser', 'computer']))
 
   const cloudOnlyIds = visibleSettingsSections(true, true, false).map((item) => item.id)
   expect(cloudOnlyIds).toContain('cloud')
   expect(cloudOnlyIds).toContain('machines')
+  expect(cloudOnlyIds).toContain('github')
   expect(cloudOnlyIds).toContain('agents')
   expect(cloudOnlyIds).toEqual(expect.arrayContaining(['general', 'appearance', 'notifications', 'keyboard']))
   expect(cloudOnlyIds).not.toContain('memory')

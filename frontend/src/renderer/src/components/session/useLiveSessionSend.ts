@@ -124,6 +124,7 @@ export function useLiveSessionSend({
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         if (isCloud) {
           queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
+          queryClient.invalidateQueries({ queryKey: keys.cloudThreadRepo(sessionId) })
         } else {
           queryClient.invalidateQueries({ queryKey: keys.usage })
           queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })

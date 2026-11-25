@@ -92,6 +92,11 @@ export interface Session {
   space_id?: string
   visibility?: 'private' | 'space'
   run_id?: string
+  git_repo?: string
+  git_base_branch?: string
+  git_branch?: string
+  git_pr_number?: number
+  git_pr_url?: string
   personal_sources_enabled?: boolean
   backend?: 'local' | 'cloud'
   created_at: string

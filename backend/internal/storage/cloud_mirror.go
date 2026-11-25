@@ -33,18 +33,20 @@ type CloudSpaceMember struct {
 }
 
 type CloudSpace struct {
-	AccountID   string             `json:"-"`
-	ID          string             `json:"id"`
-	OrgID       string             `json:"org_id,omitempty"`
-	Name        string             `json:"name"`
-	Visibility  string             `json:"visibility,omitempty"`
-	CreatedBy   string             `json:"created_by,omitempty"`
-	CanEdit     bool               `json:"can_edit,omitempty"`
-	MemberCount int                `json:"member_count,omitempty"`
-	SourceCount int                `json:"source_count,omitempty"`
-	Members     []CloudSpaceMember `json:"members,omitempty"`
-	CreatedAt   time.Time          `json:"created_at,omitzero"`
-	UpdatedAt   time.Time          `json:"updated_at,omitzero"`
+	AccountID        string             `json:"-"`
+	ID               string             `json:"id"`
+	OrgID            string             `json:"org_id,omitempty"`
+	Name             string             `json:"name"`
+	Visibility       string             `json:"visibility,omitempty"`
+	CreatedBy        string             `json:"created_by,omitempty"`
+	DefaultGitRepo   string             `json:"default_git_repo,omitempty"`
+	DefaultGitBranch string             `json:"default_git_branch,omitempty"`
+	CanEdit          bool               `json:"can_edit,omitempty"`
+	MemberCount      int                `json:"member_count,omitempty"`
+	SourceCount      int                `json:"source_count,omitempty"`
+	Members          []CloudSpaceMember `json:"members,omitempty"`
+	CreatedAt        time.Time          `json:"created_at,omitzero"`
+	UpdatedAt        time.Time          `json:"updated_at,omitzero"`
 }
 
 type CloudThread struct {

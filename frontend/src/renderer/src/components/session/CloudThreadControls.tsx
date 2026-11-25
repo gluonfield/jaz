@@ -1,24 +1,46 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Folder, Lock, ShieldCheck, ShieldOff, Users } from 'lucide-react'
+import {
+  CheckCircle2,
+  Clock,
+  Folder,
+  GitBranch,
+  GitPullRequest,
+  Lock,
+  ShieldCheck,
+  ShieldOff,
+  Users,
+  XCircle,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { isCloudApiSession } from '@/lib/api/client'
+import { useCloudThreadRepo } from '@/lib/api/cloudGitHub'
 import { spacesQuery, updateThreadUserState } from '@/lib/api/cloudSpaces'
 import type { Session } from '@/lib/api/types'
+import { openExternal } from '@/lib/clientRuntime'
 import { useHasCloud, useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
-// Compact visibility/project badge (`Shared in <Project>`, `<Project>`, or `Private`)
-// plus an explicit Personal Sources opt-in switch (default OFF) on shared project threads.
-export function CloudThreadControls({ session }: { session: Session }) {
+// Compact visibility/project badge (`Shared in <Project>`, `<Project>`, or `Private`),
+// attached Cloud repository/PR/CI capsule, and Personal Sources opt-in switch.
+export function CloudThreadControls({
+  session,
+  onOpenDiff,
+  onOpenOverview,
+}: {
+  session: Session
+  onOpenDiff?: () => void
+  onOpenOverview?: () => void
+}) {
   const hasCloud = useHasCloud()
   const isViewer = useIsCloudViewer()
   const isCloudSession = session.backend === 'cloud' || isCloudApiSession()
   const queryClient = useQueryClient()
   const toast = useToast()
   const spaces = useQuery({ ...spacesQuery, enabled: isCloudSession && hasCloud })
+  const repoQuery = useCloudThreadRepo(session.id, isCloudSession && hasCloud)
   const isShared = session.visibility === 'space'
   const spaceName = session.space_id
     ? spaces.data?.find((space) => space.id === session.space_id)?.name ?? 'Project'
@@ -53,6 +75,14 @@ export function CloudThreadControls({ session }: { session: Session }) {
     isShared ? 'bg-primary-soft text-primary hover:bg-primary-soft/80' : 'bg-surface-2 text-ink-2 hover:text-ink'
   }`
 
+  const repoInfo = repoQuery.data
+  const repoFull = repoInfo?.attached ? (repoInfo.repo ?? '') : ''
+  const repoShort = repoFull ? (repoFull.split('/').at(-1) || repoFull) : ''
+  const branch = repoInfo?.branch || repoInfo?.base_branch || ''
+  const prUrl = repoInfo?.pr_url || ''
+  const prNumber = repoInfo?.pr_number || 0
+  const checks = repoInfo?.checks_status || ''
+
   return (
     <div className="flex shrink-0 items-center gap-1.5">
       {session.space_id ? (
@@ -71,6 +101,60 @@ export function CloudThreadControls({ session }: { session: Session }) {
           <span>Private</span>
         </span>
       )}
+
+      {repoFull ? (
+        <button
+          type="button"
+          onClick={() => {
+            if ((repoInfo?.dirty || (repoInfo?.ahead ?? 0) > 0) && onOpenDiff) {
+              onOpenDiff()
+            } else {
+              onOpenOverview?.()
+            }
+          }}
+          title={`${repoFull}${branch ? ` (${branch})` : ''}${repoInfo?.dirty ? ' · uncommitted changes' : ''}`}
+          className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2 transition-colors hover:bg-surface hover:text-ink"
+        >
+          <GitBranch size={11} className="shrink-0 text-ink-3" />
+          <span className="max-w-[150px] truncate font-mono text-[10.5px]">
+            {branch ? `${repoShort}:${branch}` : repoShort}
+          </span>
+          {repoInfo?.dirty ? (
+            <span className="size-1.5 shrink-0 rounded-full bg-running" aria-label="Uncommitted changes" />
+          ) : null}
+          {(repoInfo?.ahead ?? 0) > 0 ? (
+            <span className="font-mono text-[10px] text-ink-3 tabular-nums">↑{repoInfo?.ahead}</span>
+          ) : null}
+        </button>
+      ) : null}
+
+      {prUrl && prNumber > 0 ? (
+        <button
+          type="button"
+          onClick={() => openExternal(prUrl)}
+          title={`Open PR #${prNumber}${repoInfo?.pr_state ? ` (${repoInfo.pr_state})` : ''}${checks ? ` · checks ${checks}` : ''}`}
+          className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-2 ring-1 ring-border/70 transition-colors hover:bg-surface-2 hover:text-ink"
+        >
+          <GitPullRequest
+            size={11}
+            className={
+              repoInfo?.pr_state === 'merged'
+                ? 'text-primary'
+                : repoInfo?.pr_state === 'closed'
+                  ? 'text-ink-3'
+                  : 'text-ok'
+            }
+          />
+          <span className="font-mono text-[10.5px] tabular-nums">#{prNumber}</span>
+          {checks === 'success' ? (
+            <CheckCircle2 size={11} className="text-ok" aria-label="Checks passing" />
+          ) : checks === 'failure' ? (
+            <XCircle size={11} className="text-danger" aria-label="Checks failing" />
+          ) : checks === 'pending' ? (
+            <Clock size={11} className="text-running" aria-label="Checks pending" />
+          ) : null}
+        </button>
+      ) : null}
 
       {isShared && !isViewer ? (
         <label

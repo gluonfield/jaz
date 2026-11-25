@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Lock, Trash2, UserCheck, Users } from 'lucide-react'
 import { useState } from 'react'
+import { GitHubRepoField } from '@/components/cloud/GitHubRepoPicker'
 import { MemberPicker, type PickedMember } from '@/components/cloud/MemberPicker'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -78,17 +79,23 @@ export function SpaceModal({
   const [selectedMembers, setSelectedMembers] = useState<PickedMember[]>(() =>
     initialSelectedMembers(space),
   )
+  const [defaultGitRepo, setDefaultGitRepo] = useState(space?.default_git_repo ?? '')
+  const [defaultGitBranch, setDefaultGitBranch] = useState(space?.default_git_branch ?? '')
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const save = useMutation({
     mutationFn: () => {
       const trimmed = name.trim()
       if (!trimmed) throw new Error('Project name is required')
+      const gitRepo = defaultGitRepo.trim()
+      const gitBranch = gitRepo ? defaultGitBranch.trim() : ''
       if (space) {
         return patchSpace(space.id, {
           name: trimmed,
           visibility,
           member_user_ids: visibility === 'selected' ? selectedMembers.map((m) => m.user_id) : [],
+          default_git_repo: gitRepo,
+          default_git_branch: gitBranch,
         })
       }
       return createSpace({
@@ -97,6 +104,8 @@ export function SpaceModal({
         ...(visibility === 'selected'
           ? { member_user_ids: selectedMembers.map((m) => m.user_id) }
           : {}),
+        ...(gitRepo ? { default_git_repo: gitRepo } : {}),
+        ...(gitBranch ? { default_git_branch: gitBranch } : {}),
       })
     },
     onSuccess: (saved) => {
@@ -265,6 +274,16 @@ export function SpaceModal({
               />
             </div>
           ) : null}
+
+          <GitHubRepoField
+            repo={defaultGitRepo}
+            baseBranch={defaultGitBranch}
+            disabled={!canEdit}
+            onChange={({ repo, baseBranch }) => {
+              setDefaultGitRepo(repo)
+              setDefaultGitBranch(baseBranch)
+            }}
+          />
         </div>
       </div>
     </Modal>

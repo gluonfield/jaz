@@ -1,5 +1,6 @@
 import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { ThreadRepoPicker } from '@/components/cloud/GitHubRepoPicker'
 import type { ExecutionLocation } from '@/components/home/ExecutionLocationPicker'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { NewThreadOptions } from '@/components/home/NewThreadOptions'
@@ -73,6 +74,7 @@ function NewSessionPage() {
   const [creating, setCreating] = useState(false)
   const [spendCapError, setSpendCapError] = useState<string | null>(null)
   const [spaceId, setSpaceId] = useState(() => search.space ?? '')
+  const [repoOverride, setRepoOverride] = useState<{ repo: string; baseBranch: string } | null>(null)
 
   // The active workspace in the sidebar switcher is the single source of truth
   // for whether new threads run on Local or Cloud.
@@ -119,12 +121,17 @@ function NewSessionPage() {
   }, [directory, project, directoryInfo.error, targetIsCloud])
 
   useEffect(() => {
+    setRepoOverride(null)
     if (!cloud.active) {
       setSpaceId('')
       return
     }
     setSpaceId(search.space ?? '')
   }, [cloud.active, cloud.activeWorkspaceId, search.space])
+
+  const selectedSpace = spaceId ? spaces.data?.find((item) => item.id === spaceId) : undefined
+  const gitRepo = repoOverride ? repoOverride.repo : (selectedSpace?.default_git_repo ?? '')
+  const gitBaseBranch = repoOverride ? repoOverride.baseBranch : (selectedSpace?.default_git_branch ?? '')
 
   const handleStart = async (text?: string, options: SendMessageOptions = {}, fromApp = false) => {
     if (isViewer && targetIsCloud) {
@@ -165,6 +172,8 @@ function NewSessionPage() {
         ? {
             ...baseInput,
             ...(spaceId ? { space_id: spaceId } : {}),
+            ...(gitRepo ? { git_repo: gitRepo } : {}),
+            ...(gitRepo && gitBaseBranch ? { git_base_branch: gitBaseBranch } : {}),
           }
         : baseInput
       if (text === undefined) {
@@ -258,7 +267,17 @@ function NewSessionPage() {
             spaces={spaces.data ?? []}
             placement={controlPlacement}
             disabled={creating || readOnly}
-            onChange={setSpaceId}
+            onChange={(nextSpaceId) => {
+              setSpaceId(nextSpaceId)
+              setRepoOverride(null)
+            }}
+          />
+          <ThreadRepoPicker
+            repo={gitRepo}
+            baseBranch={gitBaseBranch}
+            placement={controlPlacement}
+            disabled={creating || readOnly}
+            onChange={setRepoOverride}
           />
           <span className="flex-1" />
         </>

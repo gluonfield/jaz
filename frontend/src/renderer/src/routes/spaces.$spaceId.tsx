@@ -4,6 +4,7 @@ import {
   FileText,
   Folder,
   FolderMinus,
+  GitBranch,
   Lock,
   MessageSquare,
   Settings2,
@@ -12,7 +13,8 @@ import {
   UserCheck,
   Users,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { ThreadRepoPicker } from '@/components/cloud/GitHubRepoPicker'
 import { CloudSpendBanner } from '@/components/session/CloudSpendBanner'
 import { ComposerCard } from '@/components/session/Composer'
 import { FastModeOption } from '@/components/session/NativeModelOptions'
@@ -63,6 +65,7 @@ function SpaceProjectPage() {
   const [creating, setCreating] = useState(false)
   const [spendCapError, setSpendCapError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [repoChoice, setRepoChoice] = useState<{ repo: string; baseBranch: string } | null>(null)
 
   const detail = useQuery(spaceQuery(spaceId))
   const allSpaces = useQuery(spacesQuery)
@@ -70,6 +73,13 @@ function SpaceProjectPage() {
   const sessions = useQuery(sidebarSessionsQuery)
   const sources = useQuery(spaceSourcesQuery(spaceId))
   const controls = useNewThreadControls('cloud')
+
+  useEffect(() => {
+    setRepoChoice(null)
+  }, [spaceId])
+
+  const effectiveGitRepo = repoChoice ? repoChoice.repo : (space?.default_git_repo ?? '')
+  const effectiveGitBaseBranch = repoChoice ? repoChoice.baseBranch : (space?.default_git_branch ?? '')
 
   const projectChats = useMemo(
     () => (sessions.data ?? []).filter((s) => s.space_id === spaceId && !s.archived),
@@ -115,7 +125,12 @@ function SpaceProjectPage() {
         text.trim() || undefined,
       )
       await submitNewSession(
-        { ...baseInput, space_id: spaceId },
+        {
+          ...baseInput,
+          space_id: spaceId,
+          ...(effectiveGitRepo ? { git_repo: effectiveGitRepo } : {}),
+          ...(effectiveGitRepo && effectiveGitBaseBranch ? { git_base_branch: effectiveGitBaseBranch } : {}),
+        },
         text,
         options,
         (initialSessionPrompt) => {
@@ -187,6 +202,16 @@ function SpaceProjectPage() {
                 <span>{projectChats.length} {projectChats.length === 1 ? 'chat' : 'chats'}</span>
                 <span>·</span>
                 <span>{sourceCount} {sourceCount === 1 ? 'source' : 'sources'}</span>
+                {space.default_git_repo ? (
+                  <>
+                    <span>·</span>
+                    <span className="inline-flex items-center gap-1 font-mono text-[11.5px] text-ink-2">
+                      <GitBranch size={11} />
+                      {space.default_git_repo}
+                      {space.default_git_branch ? `:${space.default_git_branch}` : ''}
+                    </span>
+                  </>
+                ) : null}
               </div>
             </div>
           </div>
@@ -204,19 +229,30 @@ function SpaceProjectPage() {
               View-only access — viewers cannot start new chats in this project.
             </div>
           ) : (
-            <ComposerCard
-              streaming={creating}
-              placeholder={`New chat in ${space.name}…`}
-              planAvailable
-              goalControlVisible={false}
-              goalAvailable={false}
-              disabled={creating || !controls.runtimeAvailable}
-              leftSlot={<AgentModelControls controls={controls} placement={controlPlacement} disabled={creating} />}
-              optionsSlot={controls.fastMode ? <FastModeOption {...controls.fastMode} disabled={creating} /> : null}
-              draftStorageKey={`jaz.project.draft.${spaceId}`}
-              clearTiming="never"
-              onSend={handleStartChat}
-            />
+            <div>
+              <div className="mb-1.5 flex items-center gap-1">
+                <ThreadRepoPicker
+                  repo={effectiveGitRepo}
+                  baseBranch={effectiveGitBaseBranch}
+                  placement={controlPlacement}
+                  disabled={creating}
+                  onChange={setRepoChoice}
+                />
+              </div>
+              <ComposerCard
+                streaming={creating}
+                placeholder={`New chat in ${space.name}…`}
+                planAvailable
+                goalControlVisible={false}
+                goalAvailable={false}
+                disabled={creating || !controls.runtimeAvailable}
+                leftSlot={<AgentModelControls controls={controls} placement={controlPlacement} disabled={creating} />}
+                optionsSlot={controls.fastMode ? <FastModeOption {...controls.fastMode} disabled={creating} /> : null}
+                draftStorageKey={`jaz.project.draft.${spaceId}`}
+                clearTiming="never"
+                onSend={handleStartChat}
+              />
+            </div>
           )}
         </div>
 

@@ -72,6 +72,9 @@ type CreateThreadRequest struct {
 	Model           string `json:"model,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 	ExecutorTarget  string `json:"executor_target,omitempty"`
+	GitRepo         string `json:"git_repo,omitempty"`
+	GitBaseBranch   string `json:"git_base_branch,omitempty"`
+	GitBranch       string `json:"git_branch,omitempty"`
 }
 
 type ProjectedTranscript struct {

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { isCloudApiSession } from '@/lib/api/client'
 import { sessionCloudRunId } from '@/lib/api/sessions'
 import type { Attachment, QueuedAction, Session, SessionEvent } from '@/lib/api/types'
 import type { BrowserAnnotation } from '@/lib/messageContext'
@@ -52,6 +53,7 @@ export function SidePanel({
   overviewLabel?: string
 }) {
   const isMobile = useIsMobile()
+  const isCloudSession = session.backend === 'cloud' || isCloudApiSession()
   const cloudRunId = sessionCloudRunId(session)
   return (
     <div className="flex h-full min-h-0 flex-col" data-thread-find-shortcuts="off">
@@ -84,6 +86,7 @@ export function SidePanel({
               onSend={onSend}
               onQueuePrompt={onQueuePrompt}
               onQueueAction={onQueueAction}
+              onOpenDiff={() => panel.addTab('diff')}
             />
           )}
         </div>
@@ -116,7 +119,7 @@ export function SidePanel({
                   <FileReaderPanel sessionId={session.id} cloudRunId={cloudRunId} fileRef={tab.file} visible={visible} working={working} onOpenFile={panel.openFile} onClose={panel.close} />
                 </SidePanelCloseGuard>
               ) : tab.kind === 'diff' ? (
-                <CodeDiffPanel sessionId={session.id} visible={visible} />
+                <CodeDiffPanel sessionId={session.id} visible={visible} isCloud={isCloudSession} />
               ) : tab.kind === 'app' ? (
                 <MCPAppFrame app={tab.app} file={tab.file} call={tab.call} active={visible} />
               ) : tab.kind === 'view' ? (

@@ -198,6 +198,20 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge ma
 		server.Route{Pattern: "DELETE /v1/user-skills/{name}", Handler: httpHandlerFunc(h.Proxy)},
 		server.Route{Pattern: "GET /v1/connectors", Handler: httpHandlerFunc(h.Proxy)},
 		server.Route{Pattern: "DELETE /v1/connectors/{id}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/github/status", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/github/manifest/start", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/github/install/start", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/github/oauth/start", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/github/installations", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "PATCH /v1/github/installations/{id}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "DELETE /v1/github/installations/{id}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/github/repos", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/github/repos/{owner}/{repo}/branches", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/threads/{id}/repo", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/threads/{id}/repo/changes", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/threads/{id}/repo/diff", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/threads/{id}/repo/push", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/threads/{id}/repo/pr", Handler: httpHandlerFunc(h.Proxy)},
 	)
 }
 

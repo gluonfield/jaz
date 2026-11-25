@@ -14,6 +14,7 @@ import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { CloudACPSettings } from './CloudACPSettings'
+import { CloudGitHubSettings } from './CloudGitHubSettings'
 import { ComputerSettings } from '@/components/settings/ComputerSettings'
 import { ConnectedMachinesSettings } from '@/components/settings/ConnectedMachinesSettings'
 import { NotificationsSettings } from '@/components/settings/NotificationsSettings'
@@ -206,6 +207,8 @@ function SectionContent({
       return <ComputerSettings />
     case 'machines':
       return <ConnectedMachinesSettings />
+    case 'github':
+      return <CloudGitHubSettings />
     case 'cloud':
       return <CloudSettings />
     case 'browser':

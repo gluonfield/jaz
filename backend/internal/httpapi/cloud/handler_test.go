@@ -907,3 +907,72 @@ func TestProxyRunFileDownloadAndAuthSanitization(t *testing.T) {
 		t.Fatalf("404 response should not set Content-Disposition, got %q", disp)
 	}
 }
+
+func TestProxyGitHubAndThreadRepoAndSpaceGitDefaults(t *testing.T) {
+	var createdSpace map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/.well-known/jaz-server":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "mode": "cloud", "auth": "oidc", "oidc_login_url": "/v1/auth/login"})
+		case r.URL.Path == "/v1/auth/me":
+			_ = json.NewEncoder(w).Encode(map[string]any{"user_id": "u1", "org_id": "org_a", "org_name": "Acme", "email": "dev@acme.test", "display_name": "Dev", "role": "admin"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/github/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{"configured": true, "app_name": "Jaz", "user_linked": true, "github_login": "octocat", "installations": []any{}})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/threads/th_1/repo/push":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusPreconditionRequired)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error":            "link your GitHub account before pushing",
+				"connect_required": true,
+				"connect_link":     "jaz://plugin/github/connect",
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/spaces":
+			_ = json.NewDecoder(r.Body).Decode(&createdSpace)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":                 "sp_gh",
+				"name":               createdSpace["name"],
+				"visibility":         "private",
+				"default_git_repo":   createdSpace["default_git_repo"],
+				"default_git_branch": createdSpace["default_git_branch"],
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	cloudSvc := cloudsync.New(store, nil)
+	if _, err := cloudSvc.Connect(t.Context(), cloudsync.ConnectRequest{URL: upstream.URL, Token: "cloud-jwt"}); err != nil {
+		t.Fatal(err)
+	}
+	h := cloudapi.NewHandler(cloudSvc)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/github/status", h.Proxy)
+	mux.HandleFunc("POST /v1/threads/{id}/repo/push", h.Proxy)
+	mux.HandleFunc("POST /v1/spaces", h.CreateSpace)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/github/status", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"github_login":"octocat"`) {
+		t.Fatalf("GET /v1/github/status status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	pushRec := httptest.NewRecorder()
+	mux.ServeHTTP(pushRec, httptest.NewRequest(http.MethodPost, "/v1/threads/th_1/repo/push", bytes.NewBufferString(`{}`)))
+	if pushRec.Code != http.StatusPreconditionRequired || !strings.Contains(pushRec.Body.String(), `"connect_link":"jaz://plugin/github/connect"`) {
+		t.Fatalf("POST /v1/threads/th_1/repo/push status=%d body=%s", pushRec.Code, pushRec.Body.String())
+	}
+
+	spaceRec := httptest.NewRecorder()
+	mux.ServeHTTP(spaceRec, httptest.NewRequest(http.MethodPost, "/v1/spaces", bytes.NewBufferString(`{"name":"Backend","default_git_repo":"acme/api","default_git_branch":"main"}`)))
+	if spaceRec.Code != http.StatusCreated || !strings.Contains(spaceRec.Body.String(), `"default_git_repo":"acme/api"`) || !strings.Contains(spaceRec.Body.String(), `"default_git_branch":"main"`) {
+		t.Fatalf("POST /v1/spaces status=%d body=%s", spaceRec.Code, spaceRec.Body.String())
+	}
+}

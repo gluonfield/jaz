@@ -29,6 +29,8 @@ export interface CloudSpace {
   name: string
   visibility?: SpaceVisibility
   created_by?: string
+  default_git_repo?: string
+  default_git_branch?: string
   can_edit?: boolean
   created_at?: string
   member_count?: number
@@ -86,6 +88,8 @@ export async function createSpace(input: {
   name: string
   visibility?: SpaceVisibility
   member_user_ids?: string[]
+  default_git_repo?: string
+  default_git_branch?: string
 }): Promise<CloudSpace> {
   const name = input.name.trim()
   if (!name) throw new Error('Project name is required')
@@ -93,9 +97,15 @@ export async function createSpace(input: {
     name: string
     visibility?: SpaceVisibility
     member_user_ids?: string[]
+    default_git_repo?: string
+    default_git_branch?: string
   } = { name }
   if (input.visibility) payload.visibility = input.visibility
   if (input.member_user_ids) payload.member_user_ids = input.member_user_ids
+  const defaultRepo = input.default_git_repo?.trim()
+  if (defaultRepo) payload.default_git_repo = defaultRepo
+  const defaultBranch = input.default_git_branch?.trim()
+  if (defaultBranch) payload.default_git_branch = defaultBranch
   return cloudPost<CloudSpace>('/v1/spaces', payload)
 }
 
@@ -105,6 +115,8 @@ export async function patchSpace(
     name?: string
     visibility?: SpaceVisibility
     member_user_ids?: string[]
+    default_git_repo?: string
+    default_git_branch?: string
   },
 ): Promise<CloudSpace> {
   return cloudPatch<CloudSpace>(`/v1/spaces/${encodeURIComponent(spaceId)}`, input)

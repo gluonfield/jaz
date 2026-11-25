@@ -80,6 +80,16 @@ export const keys = {
   cloudUsageSummary: ['cloud', 'usage', 'summary'] as const,
   cloudInstruction: (scope: string, scopeId: string, kind: string) =>
     ['cloud', 'instructions', scope, scopeId, kind] as const,
+  cloudGitHubRoot: ['cloud', 'github'] as const,
+  cloudGitHubStatus: ['cloud', 'github', 'status'] as const,
+  cloudGitHubInstallations: ['cloud', 'github', 'installations'] as const,
+  cloudGitHubRepos: (query = '', includePersonal = true) =>
+    ['cloud', 'github', 'repos', query, includePersonal] as const,
+  cloudGitHubBranches: (owner: string, repo: string) =>
+    ['cloud', 'github', 'branches', owner, repo] as const,
+  cloudThreadRepo: (threadId: string) => ['cloud', 'threads', threadId, 'repo'] as const,
+  cloudThreadRepoChanges: (threadId: string) => ['cloud', 'threads', threadId, 'repo', 'changes'] as const,
+  cloudThreadRepoDiff: (threadId: string, path = '') => ['cloud', 'threads', threadId, 'repo', 'diff', path] as const,
 }
 
 export const WORKSPACE_QUERY_ROOTS = [
