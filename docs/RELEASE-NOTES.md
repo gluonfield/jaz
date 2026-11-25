@@ -1,4 +1,4 @@
-Changes since v0.0.301:
+Changes since v0.0.303:
 
-- Recognizes a new agent-picker swipe while the previous gesture is still coasting.
-- Keeps keyboard and swipe navigation on the same selected agent tab.
+- Fixed ZIP uploads from Tenders → New Tender and other attachments carried into a chat draft.
+- Jaz tracks worktree ownership and cleans up eligible worktrees after threads are archived.

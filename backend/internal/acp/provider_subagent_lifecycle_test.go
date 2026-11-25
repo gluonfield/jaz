@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/plugins"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionoverview"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -67,7 +69,7 @@ func TestEveryProviderSubagentStateReadsAsRunningOrEnded(t *testing.T) {
 	}
 	sendAndWait(t, ctx, manager, spawned.SessionID, strings.Join(reports, " "))
 
-	view, err := sessionoverview.NewService(store, manager).Load(ctx, spawned.SessionID)
+	view, err := sessionoverview.NewService(store, manager, plugins.New(runtimefiles.New(store.RootDir()))).Load(ctx, spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

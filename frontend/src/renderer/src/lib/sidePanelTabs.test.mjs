@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { sidePanelTabs } from '@/lib/sidePanelTabs'
+import { pluginViewTab, refreshPluginTabs, sidePanelTabs } from '@/lib/sidePanelTabs'
 
 const empty = { tabs: [], activeId: null }
 const open = (state, tab) => sidePanelTabs(state, { type: 'open', tab })
@@ -59,4 +59,22 @@ test('tabs opened beside another tab land to its right and fall back to the end'
   state = sidePanelTabs(state, { type: 'open', tab: { id: 'orphan', kind: 'preview' }, after: 'closed' })
   expect(state.tabs.map((tab) => tab.id)).toEqual(['one', 'copy', 'two', 'three', 'orphan'])
   expect(state.activeId).toBe('orphan')
+})
+
+test('refetched plugin HTML updates mounted tabs without disturbing selection, order, or closed tabs', () => {
+  const saved = { reference: 'example/status', file: 'status.json', title: 'Status', widget_code: '<p>Version 1</p>' }
+  const standalone = { file: saved.file, title: 'Standalone', widget_code: '<p>Standalone</p>' }
+  const closed = { ...saved, file: 'closed.json' }
+  const terminal = { id: 'terminal', kind: 'terminal' }
+  const openTabs = [pluginViewTab(saved), pluginViewTab(standalone), terminal, pluginViewTab(closed)]
+  let state = sidePanelTabs(empty, { type: 'restore', tabs: openTabs })
+  state = sidePanelTabs(state, { type: 'select', id: terminal.id })
+  state = sidePanelTabs(state, { type: 'close', id: pluginViewTab(closed).id })
+
+  const current = { ...saved, widget_code: '<p>Version 2</p>' }
+  const tabs = refreshPluginTabs(state.tabs, [current, { ...standalone, widget_code: '<p>Another snapshot</p>' }, closed])
+  expect(tabs.map((tab) => tab.id)).toEqual(state.tabs.map((tab) => tab.id))
+  expect(tabs.find((tab) => tab.id === state.activeId)).toBe(terminal)
+  expect(tabs[0].view).toBe(current)
+  expect(tabs[1]).toBe(openTabs[1])
 })

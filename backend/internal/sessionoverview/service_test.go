@@ -2,12 +2,18 @@ package sessionoverview
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/plugins"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
 type overviewStore struct {
@@ -19,7 +25,7 @@ func TestDisconnectedAgentTasksPreserveNativeCapabilities(t *testing.T) {
 		SessionID:   "parent",
 		AgentEvents: []sessionevents.Event{{Type: sessionevents.TypeAgentTask, AgentTask: &sessionevents.AgentTask{ID: "task", State: "running", CanStop: true}}},
 	}}
-	view, err := NewService(store, overviewLive{}).Load(t.Context(), "parent")
+	view, err := NewService(store, overviewLive{}, plugins.New(runtimefiles.New(t.TempDir()))).Load(t.Context(), "parent")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +75,7 @@ func TestLoadFoldsLegacySubagentsAndOverlaysLiveThreads(t *testing.T) {
 	service := NewService(
 		overviewStore{view: storage.SessionOverview{Threads: []storage.OverviewThread{session}, SubagentEvents: events}},
 		overviewLive{"child": {ID: "child", ACPAgent: "CODEX", State: acp.StateRunning, UpdatedAt: now.Add(time.Hour)}},
+		plugins.New(runtimefiles.New(t.TempDir())),
 	)
 
 	view, err := service.Load(t.Context(), "parent")
@@ -87,5 +94,79 @@ func TestLoadFoldsLegacySubagentsAndOverlaysLiveThreads(t *testing.T) {
 	}
 	if !subagent.UpdatedAt.Equal(now) {
 		t.Fatalf("subagent updated at = %s, want %s", subagent.UpdatedAt, now)
+	}
+}
+
+func TestLoadRefreshesSavedViewsFromInstalledHTML(t *testing.T) {
+	layout := runtimefiles.New(t.TempDir())
+	store, err := sqlite.New(layout.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	thread, err := store.CreateSession(storage.CreateSession{Slug: "saved-views"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := []sessionevents.PluginView{
+		{Reference: "example/status", Title: "Status", File: "status.json", WidgetCode: "<p>Version 1</p>"},
+		{Reference: "blocked/status", Title: "Blocked", File: "status.json", WidgetCode: "<p>Blocked snapshot</p>"},
+		{Reference: "example/retired", Title: "Retired", File: "status.json", WidgetCode: "<p>Saved retired view</p>"},
+		{Reference: "removed/status", Title: "Removed", File: "status.json", WidgetCode: "<p>Saved removed view</p>"},
+		{Title: "Standalone", File: "status.json", WidgetCode: "<p>Standalone widget</p>"},
+	}
+	for i := len(saved) - 1; i >= 0; i-- {
+		if err := store.AppendSessionEvents(thread.ID, sessionevents.Event{
+			Type: sessionevents.TypeArtifact,
+			Artifact: &sessionevents.PresentationEvent{
+				Kind: sessionevents.PresentationPluginView, View: &saved[i],
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(layout.Plugins, "example", "views", "status.html")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	outsideViews := filepath.Join(layout.Root, "views")
+	if err := os.Mkdir(outsideViews, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(outsideViews, "status.html")
+	if err := os.WriteFile(outside, []byte("<p>Outside store</p>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(layout.Root, filepath.Join(layout.Plugins, "blocked")); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(store, overviewLive{}, plugins.New(layout))
+	want := slices.Clone(saved)
+	want[1].WidgetCode = ""
+	check := func() {
+		t.Helper()
+		view, err := service.Load(t.Context(), thread.ID)
+		if err != nil || !slices.Equal(view.PluginViews, want) {
+			t.Fatalf("overview views = %+v, %v; want %+v", view.PluginViews, err, want)
+		}
+	}
+	for _, html := range []string{"<p>Version 1</p>", "<p>Version 2</p>"} {
+		if err := os.WriteFile(path, []byte(html), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		want[0].WidgetCode = html
+		check()
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, path); err != nil {
+		t.Fatal(err)
+	}
+	want[0].WidgetCode = ""
+	check()
+	records, err := store.LoadSessionOverview(t.Context(), thread.ID)
+	if actual := sessionevents.LatestPluginViews(records.PresentationEvents); err != nil || !slices.Equal(actual, saved) {
+		t.Fatalf("saved views = %+v, %v; want %+v", actual, err, saved)
 	}
 }

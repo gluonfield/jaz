@@ -170,7 +170,8 @@ export function sessionAttachmentUrl(sessionId: string, attachmentId: string): s
 
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
   const form = new FormData()
-  form.append('file', file)
+  // Electron's local protocol can fail to forward a File restored from a draft.
+  form.append('file', file.slice(0, file.size, file.type), file.name)
   const res = await apiFetch(`/v1/sessions/${sessionId}/attachments`, {
     method: 'POST',
     body: form,
@@ -563,6 +564,7 @@ export const sessionOverviewQuery = (id: string) =>
   queryOptions({
     queryKey: keys.sessionOverview(id),
     queryFn: ({ signal }) => get<SessionOverview>(`/v1/sessions/${id}/overview`, { signal }),
+    refetchInterval: (query) => query.state.data?.plugin_views?.some((view) => view.reference) ? 5000 : false,
   })
 
 export const healthQuery = queryOptions({

@@ -1,7 +1,8 @@
 import { claudeVoice } from '@preload/claudeVoiceAPI'
 import { CLAUDE_VOICE_ARGUMENT } from '@shared/claudeVoice'
 import { installClaudeVoice } from '@preload/claudeVoice'
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
+import { inspectDroppedFile } from '@preload/inspectDroppedFile'
 import { COMPUTER_CHANNEL, type ComputerAPI } from '@shared/computerControl'
 import {
   PERMISSION_GUIDE_CHANNEL,
@@ -161,7 +162,7 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
     localEnabled: cloudConfig.localEnabled,
     localBackendTransport: LOCAL_BACKEND_TRANSPORT_URL,
     windowKind,
-    pathForFile: (file: File) => webUtils.getPathForFile(file),
+    inspectDroppedFile,
     setNativeTheme: (source: 'light' | 'dark' | 'system') =>
       ipcRenderer.send('jaz:set-native-theme', source),
     setWindowButtonsVisible: (visible: boolean) => ipcRenderer.send('jaz:set-window-buttons-visible', visible),

@@ -1,13 +1,17 @@
 import { createElement } from 'react'
 import { createRoot } from 'react-dom/client'
-import { onlineManager } from '@tanstack/react-query'
+import { onlineManager, QueryClientProvider } from '@tanstack/react-query'
 import { ReconnectingBanner } from '@/components/launch/LaunchScreen'
+import { Composer } from '@/components/session/Composer'
+import { installFileDropGuard } from '@/components/ui/FileDrop'
+import { ToastProvider } from '@/components/ui/toast'
 import { apiBaseUrl, apiEmbeddedGetUrl, apiEventSourceUrl, apiUrl, get, post, setApiBaseUrl } from '@/lib/api/client'
 import { backendTransportUrl } from '@/lib/clientRuntime'
 import { connectRemote, useConnection } from '@/lib/connection'
 import { readHealth } from '@/lib/connectionProbe'
 import { sessionMessagesQuery } from '@/lib/api/sessions'
 import { queryClient } from '@/lib/query/queryClient'
+import { submitNewSession } from '@/routes/-newSessionSubmission'
 import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
 function Status() {
@@ -18,8 +22,25 @@ function Status() {
 
 queryClient.mount()
 createRoot(document.body).render(createElement(Status))
+installFileDropGuard()
+let submission: Promise<string> | undefined
 Object.assign(window, {
   fixture: {
+    showComposer: () => {
+      const element = document.createElement('div')
+      document.body.append(element)
+      createRoot(element).render(createElement(QueryClientProvider, { client: queryClient },
+        createElement(ToastProvider, null, createElement(Composer, {
+          streaming: false,
+          onSend: (text, options) => {
+            let sessionId = ''
+            submission = submitNewSession({}, text, options, (prompt) => { sessionId = prompt.sessionId })
+              .then(() => sessionId, (error: Error) => error.message)
+          },
+        })),
+      ))
+    },
+    get submission() { return submission },
     connect: () => connectRemote(LOCAL_BACKEND_URL + '#key=jaz_fixture'),
     health: () => readHealth(LOCAL_BACKEND_URL),
     chat: () => queryClient.fetchQuery(sessionMessagesQuery('stored-chat')),

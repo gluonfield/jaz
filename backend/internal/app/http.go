@@ -60,7 +60,7 @@ func HTTPModule() fx.Option {
 		),
 		fx.Annotate(
 			sessionoverview.NewService,
-			fx.From(new(*sqlitestore.Store), new(*acp.Manager)),
+			fx.From(new(*sqlitestore.Store), new(*acp.Manager), new(*plugins.Store)),
 		),
 		fx.Annotate(agentsessionsapi.NewHandler, fx.From(new(*acp.Manager))),
 		sessionsapi.NewMessagesHandler,

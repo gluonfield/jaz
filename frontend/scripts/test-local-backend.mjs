@@ -18,8 +18,8 @@ export async function checkLocalBackend() {
     plugins: [{
       name: 'source-paths',
       setup(builder) {
-        builder.onResolve({ filter: /^@(?:main|shared)?\// }, ({ path }) => ({
-          path: resolveSync(join(frontend, path.replace('@main/', 'src/main/').replace('@shared/', 'src/shared/').replace('@/', 'src/renderer/src/')), frontend),
+        builder.onResolve({ filter: /^@(?:main|preload|shared)?\// }, ({ path }) => ({
+          path: resolveSync(join(frontend, path.replace(/^@(main|preload|shared)\//, 'src/$1/').replace('@/', 'src/renderer/src/')), frontend),
         }))
       },
     }],
@@ -27,12 +27,12 @@ export async function checkLocalBackend() {
   const bundles = await Promise.all([
     build({ ...options, entrypoints: [join(frontend, 'scripts/local-backend-smoke/main.ts')], naming: 'main.cjs', target: 'node', format: 'cjs', external: ['electron'] }),
     build({ ...options, entrypoints: [join(frontend, 'scripts/local-backend-smoke/preload.ts')], naming: 'preload.cjs', target: 'node', format: 'cjs', external: ['electron'] }),
-    build({ ...options, entrypoints: [join(frontend, 'scripts/local-backend-smoke/renderer.tsx')], naming: 'renderer.js', target: 'browser', define: { 'import.meta.env': '{}', 'process.env.NODE_ENV': '"production"' } }),
+    build({ ...options, entrypoints: [join(frontend, 'scripts/local-backend-smoke/renderer.tsx')], naming: 'renderer/renderer.js', target: 'browser', format: 'iife', define: { 'import.meta.env': '{}', 'process.env.NODE_ENV': '"production"' } }),
   ])
   for (const bundle of bundles) {
     if (!bundle.success) throw new AggregateError(bundle.logs)
   }
-  await writeFile(join(output, 'index.html'), '<!doctype html><script src="renderer.js" defer></script>')
+  await writeFile(join(output, 'renderer/index.html'), '<!doctype html><meta charset="utf-8"><script src="renderer.js" defer></script>')
   await writeFile(join(output, 'bootstrap.cjs'), `const { app, dialog } = require('electron')
 if (process.platform === 'darwin') app.setActivationPolicy('prohibited')
 dialog.showErrorBox = (title, content) => {
