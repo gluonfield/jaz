@@ -60,7 +60,7 @@ export function Popover({
   })
 
   useLayoutEffect(() => {
-    if (open && menuRef.current) setMenuWidth(layoutRect(menuRef.current).width)
+    if (open && menuRef.current) setMenuWidth(menuRef.current.offsetWidth)
   }, [open, rect, children])
 
   useEffect(() => {

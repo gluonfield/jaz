@@ -163,19 +163,13 @@ export function SidebarOrganizationMenu({
                 setOpen((value) => !value)
                 setSubmenu(null)
               }}
-              className={`relative grid size-6 cursor-pointer place-items-center rounded-md transition-[background-color,color,opacity,scale] duration-150 hover:bg-list-hover hover:text-ink active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-primary/40 max-sm:size-9 ${
+              className={`grid size-6 cursor-pointer place-items-center rounded-md transition-[background-color,color,opacity,scale] duration-150 hover:bg-list-hover hover:text-ink active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-primary/40 max-sm:size-9 ${
                 !isDefault
                   ? 'text-primary opacity-100'
                   : 'text-ink-3 opacity-75 hover:opacity-100 group-hover/organization:opacity-100'
               }`}
             >
               <ListFilter size={14} />
-              {!isDefault ? (
-                <span
-                  aria-hidden
-                  className="absolute right-1 top-1 size-1.5 rounded-full bg-primary"
-                />
-              ) : null}
             </button>
           }
         >
