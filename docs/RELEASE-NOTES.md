@@ -1,6 +1,4 @@
-Changes since v0.0.302:
+Changes since v0.0.303:
 
-- Dropping a folder into the desktop composer adds a local folder reference and lets the session start.
-- Markdown Reader preserves link destinations when saving edits.
-- Popovers stay visible above modal backdrops.
-- Saved plugin views refresh after updates and respect access denials and dismissals.
+- Fixed ZIP uploads from Tenders → New Tender and other attachments carried into a chat draft.
+- Jaz tracks worktree ownership and cleans up eligible worktrees after threads are archived.
