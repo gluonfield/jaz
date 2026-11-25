@@ -429,10 +429,72 @@ func makeACPToolEvent(sessionID string, ev storage.CloudThreadEvent, p map[strin
 	}
 }
 
+type cloudTurnState struct {
+	threadID   string
+	assistant  strings.Builder
+	thoughtRun int
+	inThought  bool
+	needSep    bool
+	tools      map[string]*cloudToolState
+}
+
+func newCloudTurnState(threadID string) cloudTurnState {
+	return cloudTurnState{
+		threadID: threadID,
+		tools:    map[string]*cloudToolState{},
+	}
+}
+
+func (st *cloudTurnState) resetTurn() {
+	st.assistant.Reset()
+	st.inThought = false
+	st.needSep = false
+	st.tools = map[string]*cloudToolState{}
+}
+
+func (st *cloudTurnState) onThought(sessionID string, ev storage.CloudThreadEvent, p map[string]any, chunk string) sessionevents.Event {
+	if st.assistant.Len() > 0 {
+		st.needSep = true
+	}
+	if !st.inThought {
+		st.thoughtRun++
+		st.inThought = true
+	}
+	return makeACPThoughtEvent(sessionID, ev, p, st.thoughtRun, chunk)
+}
+
+func (st *cloudTurnState) onTool(sessionID string, ev storage.CloudThreadEvent, p map[string]any) (sessionevents.Event, bool) {
+	st.inThought = false
+	if st.assistant.Len() > 0 {
+		st.needSep = true
+	}
+	if st.tools == nil {
+		st.tools = map[string]*cloudToolState{}
+	}
+	ts, ok := applyCloudToolEvent(st.tools, ev, p)
+	if !ok {
+		return sessionevents.Event{}, false
+	}
+	return makeACPToolEvent(sessionID, ev, p, ts), true
+}
+
+func (st *cloudTurnState) onAssistantDelta(chunk string) {
+	st.inThought = false
+	if chunk == "" {
+		return
+	}
+	if st.needSep && st.assistant.Len() > 0 && !strings.HasSuffix(st.assistant.String(), "\n") && !strings.HasPrefix(chunk, "\n") {
+		st.assistant.WriteString("\n\n")
+	}
+	st.needSep = false
+	st.assistant.WriteString(chunk)
+}
+
 func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThreadEvent) ProjectedTranscript {
 	session := thread.ToSession()
 	messages := make([]storage.Message, 0)
 	projector := sessionevents.NewProjector()
+	turn := newCloudTurnState(thread.ID)
 	var latestSeq int64
 	acpState := "idle"
 	if session.Status == storage.StatusRunning {
@@ -441,39 +503,27 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 	var acpError string
 
 	var (
-		pendingText      strings.Builder
-		toolStates       = map[string]*cloudToolState{}
 		pendingSeq       int64
 		pendingAt        time.Time
-		thoughtRun       int
-		inThought        bool
-		needSep          bool
 		hasOpenTurn      bool
 		lastTurnTerminal string
 	)
 
 	flushPending := func() {
-		if pendingText.Len() == 0 {
-			toolStates = map[string]*cloudToolState{}
-			inThought = false
-			needSep = false
-			return
+		if turn.assistant.Len() > 0 {
+			text := turn.assistant.String()
+			messages = append(messages, storage.Message{
+				ThreadID:  thread.ID,
+				Seq:       pendingSeq,
+				Role:      "assistant",
+				Content:   text,
+				Blocks:    []storage.Block{{Type: storage.BlockTypeText, Text: text}},
+				CreatedAt: pendingAt,
+			})
 		}
-		text := pendingText.String()
-		messages = append(messages, storage.Message{
-			ThreadID:  thread.ID,
-			Seq:       pendingSeq,
-			Role:      "assistant",
-			Content:   text,
-			Blocks:    []storage.Block{{Type: storage.BlockTypeText, Text: text}},
-			CreatedAt: pendingAt,
-		})
-		pendingText.Reset()
-		toolStates = map[string]*cloudToolState{}
+		turn.resetTurn()
 		pendingSeq = 0
 		pendingAt = time.Time{}
-		inThought = false
-		needSep = false
 	}
 
 	for _, ev := range rawEvents {
@@ -507,41 +557,25 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 			if text != "" {
 				hasOpenTurn = true
 				lastTurnTerminal = ""
-				if pendingText.Len() > 0 {
-					needSep = true
-				}
-				if !inThought {
-					thoughtRun++
-					inThought = true
-				}
-				projector.Apply(makeACPThoughtEvent(thread.ID, ev, p, thoughtRun, text))
+				projector.Apply(turn.onThought(thread.ID, ev, p, text))
 			}
 			continue
 		}
 
 		if isCloudToolEvent(ev.Type) {
-			inThought = false
 			hasOpenTurn = true
 			lastTurnTerminal = ""
-			if pendingText.Len() > 0 {
-				needSep = true
-			}
-			if ts, ok := applyCloudToolEvent(toolStates, ev, p); ok {
-				projector.Apply(makeACPToolEvent(thread.ID, ev, p, ts))
+			if toolEv, ok := turn.onTool(thread.ID, ev, p); ok {
+				projector.Apply(toolEv)
 			}
 			continue
 		}
 
 		if isCloudAssistantDelta(ev.Type) {
-			inThought = false
 			if text != "" {
 				hasOpenTurn = true
 				lastTurnTerminal = ""
-				if needSep && pendingText.Len() > 0 && !strings.HasSuffix(pendingText.String(), "\n") && !strings.HasPrefix(text, "\n") {
-					pendingText.WriteString("\n\n")
-				}
-				needSep = false
-				pendingText.WriteString(text)
+				turn.onAssistantDelta(text)
 				pendingSeq = ev.Seq
 				pendingAt = ev.CreatedAt
 			}
@@ -549,12 +583,9 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 		}
 
 		if isCloudAssistantMessage(ev.Type) && text != "" {
-			inThought = false
-			needSep = false
+			turn.resetTurn()
 			hasOpenTurn = false
 			lastTurnTerminal = ""
-			pendingText.Reset()
-			toolStates = map[string]*cloudToolState{}
 			messages = append(messages, storage.Message{
 				ThreadID:  thread.ID,
 				Seq:       ev.Seq,
@@ -566,7 +597,7 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 			continue
 		}
 
-		inThought = false
+		turn.inThought = false
 		if term := cloudTerminalState(ev.Type); term != "" {
 			flushPending()
 			hasOpenTurn = false
@@ -596,8 +627,8 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 	}
 
 	var acpAssistant string
-	if acpState == "running" && pendingText.Len() > 0 {
-		acpAssistant = pendingText.String()
+	if acpState == "running" && turn.assistant.Len() > 0 {
+		acpAssistant = turn.assistant.String()
 	} else if acpState != "running" {
 		flushPending()
 	}
@@ -619,72 +650,37 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 }
 
 type StreamProjector struct {
-	threadID   string
-	assistant  strings.Builder
-	thoughtRun int
-	inThought  bool
-	needSep    bool
-	tools      map[string]*cloudToolState
+	turn cloudTurnState
 }
 
 func NewStreamProjector(threadID string) *StreamProjector {
-	return &StreamProjector{
-		threadID: threadID,
-		tools:    map[string]*cloudToolState{},
-	}
+	return &StreamProjector{turn: newCloudTurnState(threadID)}
 }
 
 func (sp *StreamProjector) Convert(ev storage.CloudThreadEvent) sessionevents.Event {
 	sessionID := ev.ThreadID
 	if sessionID == "" {
-		sessionID = sp.threadID
+		sessionID = sp.turn.threadID
 	}
 	p := payloadMap(ev.PayloadJSON)
 	switch {
 	case isCloudUserEvent(ev.Type):
-		sp.assistant.Reset()
-		sp.inThought = false
-		sp.needSep = false
-		sp.tools = map[string]*cloudToolState{}
+		sp.turn.resetTurn()
 	case isCloudThinkingDelta(ev.Type):
-		if sp.assistant.Len() > 0 {
-			sp.needSep = true
-		}
-		if !sp.inThought {
-			sp.thoughtRun++
-			sp.inThought = true
-		}
-		return makeACPThoughtEvent(sessionID, ev, p, sp.thoughtRun, payloadText(p))
+		return sp.turn.onThought(sessionID, ev, p, payloadText(p))
 	case isCloudToolEvent(ev.Type):
-		sp.inThought = false
-		if sp.assistant.Len() > 0 {
-			sp.needSep = true
-		}
-		if sp.tools == nil {
-			sp.tools = map[string]*cloudToolState{}
-		}
-		if ts, ok := applyCloudToolEvent(sp.tools, ev, p); ok {
-			return makeACPToolEvent(sessionID, ev, p, ts)
+		if toolEv, ok := sp.turn.onTool(sessionID, ev, p); ok {
+			return toolEv
 		}
 	case isCloudAssistantDelta(ev.Type):
-		sp.inThought = false
-		if chunk := payloadText(p); chunk != "" {
-			if sp.needSep && sp.assistant.Len() > 0 && !strings.HasSuffix(sp.assistant.String(), "\n") && !strings.HasPrefix(chunk, "\n") {
-				sp.assistant.WriteString("\n\n")
-			}
-			sp.needSep = false
-			sp.assistant.WriteString(chunk)
-		}
-		return cloudEventToSessionEvent(sp.threadID, ev, sp.assistant.String())
+		sp.turn.onAssistantDelta(payloadText(p))
+		return cloudEventToSessionEvent(sp.turn.threadID, ev, sp.turn.assistant.String())
 	case cloudTerminalState(ev.Type) != "":
-		sp.assistant.Reset()
-		sp.inThought = false
-		sp.needSep = false
-		sp.tools = map[string]*cloudToolState{}
+		sp.turn.resetTurn()
 	default:
-		sp.inThought = false
+		sp.turn.inThought = false
 	}
-	return cloudEventToSessionEvent(sp.threadID, ev, "")
+	return cloudEventToSessionEvent(sp.turn.threadID, ev, "")
 }
 
 func cloudEventToSessionEvent(threadID string, ev storage.CloudThreadEvent, assistantOverride string) sessionevents.Event {
