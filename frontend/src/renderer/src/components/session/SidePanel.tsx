@@ -120,7 +120,7 @@ export function SidePanel({
               ) : tab.kind === 'app' ? (
                 <MCPAppFrame app={tab.app} file={tab.file} call={tab.call} active={visible} />
               ) : tab.kind === 'view' ? (
-                <ViewPanel sessionId={session.id} view={tab.view} visible={visible} working={working} asking={asking} onOpenFile={panel.openFile} onOpenView={panel.openView} />
+                <ViewPanel sessionId={session.id} cloudRunId={cloudRunId} view={tab.view} visible={visible} working={working} asking={asking} onOpenFile={panel.openFile} onOpenView={panel.openView} />
               ) : (
                 <SideChatPanel
                   sessionId={session.id}

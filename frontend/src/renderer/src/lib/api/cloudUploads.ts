@@ -176,9 +176,18 @@ export function cloudRunFileDownloadUrl(runId: string, relpath: string): string 
   return cloudEmbeddedGetUrl(`${cloudRunFilePath(runId, relpath)}?download=1`)
 }
 
+function hasActiveResourceTicket(): boolean {
+  const ticket = cachedResourceTicket()
+  if (!ticket?.token) return false
+  if (!ticket.expires_at) return true
+  const expiresAt = Date.parse(ticket.expires_at)
+  return Number.isNaN(expiresAt) || expiresAt > Date.now()
+}
+
 async function fetchCloudRunFile(runId: string, relpath: string, signal?: AbortSignal): Promise<Response> {
-  if (cachedResourceTicket()?.token) {
-    return fetch(cloudRunFileUrl(runId, relpath), { signal, credentials: 'omit' })
+  if (hasActiveResourceTicket()) {
+    const response = await fetch(cloudRunFileUrl(runId, relpath), { signal, credentials: 'omit' })
+    if (response.status !== 401) return response
   }
   return cloudFetch(cloudRunFilePath(runId, relpath), { signal })
 }

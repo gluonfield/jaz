@@ -897,4 +897,13 @@ func TestProxyRunFileDownloadAndAuthSanitization(t *testing.T) {
 	if strings.Contains(unauthRec.Body.String(), `"code":"unauthorized"`) {
 		t.Fatalf("upstream 401 leaked local unauthorized code: %s", unauthRec.Body.String())
 	}
+
+	missingRec := httptest.NewRecorder()
+	mux.ServeHTTP(missingRec, httptest.NewRequest(http.MethodGet, "/v1/runs/run_1/files/missing.md?download=1", nil))
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("missing file status=%d want 404", missingRec.Code)
+	}
+	if disp := missingRec.Header().Get("Content-Disposition"); disp != "" {
+		t.Fatalf("404 response should not set Content-Disposition, got %q", disp)
+	}
 }

@@ -3,11 +3,13 @@ import { useToast } from '@/components/ui/toast'
 import { boardsQuery } from '@/lib/api/boards'
 import { type LoopDetail, updateLoop } from '@/lib/api/loops'
 import type { Loop } from '@/lib/api/types'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import { BoardAssignmentPicker } from './BoardAssignmentPicker'
 
 export function LoopBoardAssignments({ loop, boardIds }: { loop: Loop; boardIds: string[] }) {
   const boards = useQuery(boardsQuery)
+  const isViewer = useIsCloudViewer()
   const queryClient = useQueryClient()
   const toast = useToast()
 
@@ -52,8 +54,10 @@ export function LoopBoardAssignments({ loop, boardIds }: { loop: Loop; boardIds:
           <BoardAssignmentPicker
             boards={allBoards}
             selected={selected}
-            disabled={assign.isPending}
-            onChange={(next) => assign.mutate(next)}
+            disabled={assign.isPending || isViewer}
+            onChange={(next) => {
+              if (!isViewer) assign.mutate(next)
+            }}
             hint="Checked boards show this loop's widget and receive updates on every run."
           />
         )}

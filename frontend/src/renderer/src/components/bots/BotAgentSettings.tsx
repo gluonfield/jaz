@@ -35,14 +35,15 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
   const [pluginsOpen, setPluginsOpen] = useState(false)
   const disabled = working || update.isPending || isViewer
   const agent = bot.agent ?? ''
-  const live = (category: string) => agentSession?.config_options?.find((option) => option.category === category)?.current_value
+  const liveModel = agentSession?.config_options?.find((option) => option.category === 'model')?.current_value
+  const liveEffort = agentSession?.config_options?.find((option) => option.category === 'thought_level')?.current_value
   const runtime = runtimeModelState(settings, agent)
-  const localModel = live('model') || bot.model || runtime.defaultModel
+  const localModel = liveModel || bot.model || runtime.defaultModel
   const localReasoning = useModelReasoningState({
     settings: usingCloudProfiles ? undefined : settings,
     agent: usingCloudProfiles ? '' : agent,
     model: localModel,
-    reasoningEffort: live('thought_level') || bot.reasoning_effort || runtime.defaultEffort,
+    reasoningEffort: liveEffort || bot.reasoning_effort || runtime.defaultEffort,
     provider: runtime.provider,
   })
   const cloudSelection = useMemo(
@@ -51,11 +52,11 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
         ? resolveCloudModelSelection(cloudProfiles, {
             profileId: agent,
             agent,
-            model: live('model') || bot.model,
-            effort: live('thought_level') || bot.reasoning_effort,
+            model: liveModel || bot.model,
+            effort: liveEffort || bot.reasoning_effort,
           })
         : null,
-    [agent, bot.model, bot.reasoning_effort, cloudProfiles, agentSession, usingCloudProfiles],
+    [agent, bot.model, bot.reasoning_effort, cloudProfiles, liveEffort, liveModel, usingCloudProfiles],
   )
   const model = usingCloudProfiles ? (cloudSelection?.model ?? '') : localModel
   const modelSuggestions = usingCloudProfiles ? (cloudSelection?.modelSuggestions ?? []) : localReasoning.modelSuggestions

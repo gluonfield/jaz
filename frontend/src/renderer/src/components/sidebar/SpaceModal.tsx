@@ -13,7 +13,7 @@ import {
   type CloudSpace,
   type SpaceVisibility,
 } from '@/lib/api/cloudSpaces'
-import { useCloudSession } from '@/lib/cloudSession'
+import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
 
@@ -66,10 +66,11 @@ export function SpaceModal({
   onDeleted?: (spaceId: string) => void
 }) {
   const cloud = useCloudSession()
+  const isViewer = useIsCloudViewer()
   const queryClient = useQueryClient()
   const toast = useToast()
   const isEdit = Boolean(space)
-  const canEdit = !space || space.can_edit !== false
+  const canEdit = !isViewer && (!space || space.can_edit !== false)
   const [name, setName] = useState(space?.name ?? '')
   const [visibility, setVisibility] = useState<SpaceVisibility>(
     space ? (space.visibility ?? 'selected') : 'private',

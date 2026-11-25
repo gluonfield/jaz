@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/Modal'
 import { botFilesQuery, saveBotFile } from '@/lib/api/bots'
 import type { Bot, BotFile, BotFileName } from '@/lib/api/types'
 import { BOT_FILE_LABELS } from '@/lib/bots'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import { SAVE_LABEL, useDocumentSave } from '@/lib/hooks/useDocumentSave'
 import { markdownKit } from './markdownKit'
@@ -20,11 +21,13 @@ export function BotFileEditor({ bot, name, onClose }: { bot: Bot; name: BotFileN
 }
 
 function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose: () => void }) {
+  const isViewer = useIsCloudViewer()
   const label = BOT_FILE_LABELS[file.name]
   const queryClient = useQueryClient()
   const { state, unsaved, touch, takeTheirs, keepMine } = useDocumentSave(file, {
     read: async () => (await queryClient.fetchQuery({ ...botFilesQuery(bot.id), staleTime: 0 })).find((item) => item.name === file.name)!,
     write: async (content, version) => {
+      if (isViewer) return file
       const saved = await saveBotFile(bot.id, file.name, content, version)
       queryClient.setQueryData(keys.botFiles(bot.id), (files: BotFile[] | undefined) => files?.map((item) => (item.name === saved.name ? saved : item)))
       void queryClient.invalidateQueries({ queryKey: keys.botActivity(bot.id) })
@@ -37,14 +40,17 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
     extensions: markdownKit,
     content: file.content,
     contentType: 'markdown',
-    autofocus: 'end',
+    editable: !isViewer,
+    autofocus: isViewer ? false : 'end',
     editorProps: { attributes: { class: 'editor-prose outline-none', 'aria-label': label } },
-    onUpdate: ({ editor }) => touch(editor),
+    onUpdate: ({ editor }) => {
+      if (!isViewer) touch(editor)
+    },
   })
 
   // Closing saves first and stays open on an edit that could not be saved.
   const close = async () => {
-    if ((await unsaved()) && !window.confirm(`Discard your edits to ${label}?`)) return
+    if (!isViewer && (await unsaved()) && !window.confirm(`Discard your edits to ${label}?`)) return
     onClose()
   }
 
@@ -59,16 +65,18 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
       className="h-[min(720px,calc(100dvh-3rem))]"
       // The negative margin keeps the toolbar on the title's line.
       headerAccessory={
-        <div className="-my-1.5 flex items-center gap-2">
-          <span role="status" className={`text-[12px] ${state === 'saving' ? 'text-ink-3' : 'text-danger'}`}>
-            {SAVE_LABEL[state]}
-          </span>
-          {editor ? (
-            <span className="flex items-center gap-0.5">
-              <Toolbar editor={editor} />
+        isViewer ? undefined : (
+          <div className="-my-1.5 flex items-center gap-2">
+            <span role="status" className={`text-[12px] ${state === 'saving' ? 'text-ink-3' : 'text-danger'}`}>
+              {SAVE_LABEL[state]}
             </span>
-          ) : null}
-        </div>
+            {editor ? (
+              <span className="flex items-center gap-0.5">
+                <Toolbar editor={editor} />
+              </span>
+            ) : null}
+          </div>
+        )
       }
       footer={
         state === 'conflict' ? (

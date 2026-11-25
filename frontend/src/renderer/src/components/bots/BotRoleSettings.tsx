@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import type { Bot } from '@/lib/api/types'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { useUpdateBot } from './useUpdateBot'
 
 export function BotRoleField({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
@@ -14,14 +15,17 @@ export function BotRoleField({ value, onChange, disabled }: { value: string; onC
 }
 
 export function BotRoleSettings({ bot }: { bot: Bot }) {
+  const isViewer = useIsCloudViewer()
   const [prompt, setPrompt] = useState(bot.prompt ?? '')
   const update = useUpdateBot(bot.id)
   return (
     <div>
-      <BotRoleField value={prompt} onChange={setPrompt} disabled={update.isPending} />
-      <div className="mt-2 flex justify-end">
-        <Button disabled={update.isPending || prompt.trim() === (bot.prompt ?? '')} onClick={() => update.mutate({ prompt: prompt.trim() })}>Save role</Button>
-      </div>
+      <BotRoleField value={prompt} onChange={setPrompt} disabled={update.isPending || isViewer} />
+      {!isViewer ? (
+        <div className="mt-2 flex justify-end">
+          <Button disabled={update.isPending || prompt.trim() === (bot.prompt ?? '')} onClick={() => update.mutate({ prompt: prompt.trim() })}>Save role</Button>
+        </div>
+      ) : null}
     </div>
   )
 }

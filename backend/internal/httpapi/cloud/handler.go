@@ -344,7 +344,7 @@ func (h *Handler) ProxyRunFile(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set(header, v)
 		}
 	}
-	if r.URL.Query().Get("download") == "1" {
+	if r.URL.Query().Get("download") == "1" && resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		if name := path.Base(strings.TrimSuffix(relpath, "/")); name != "" && name != "." && name != "/" {
 			if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": name}); disposition != "" {
 				w.Header().Set("Content-Disposition", disposition)

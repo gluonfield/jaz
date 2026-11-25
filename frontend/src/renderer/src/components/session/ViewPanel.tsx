@@ -18,8 +18,9 @@ function parse(content?: string): unknown {
 
 // A plugin's view in the side panel draws a JSON file in the thread's folder
 // and follows it while the agent works, as a document does.
-export function ViewPanel({ sessionId, view, visible, working, asking, onOpenFile, onOpenView }: {
+export function ViewPanel({ sessionId, cloudRunId, view, visible, working, asking, onOpenFile, onOpenView }: {
   sessionId: string
+  cloudRunId?: string
   view: PanelView
   visible: boolean
   working: boolean
@@ -29,7 +30,7 @@ export function ViewPanel({ sessionId, view, visible, working, asking, onOpenFil
 }) {
   const thread = use(MCPAppThreadContext)
   const [error, setError] = useState('')
-  const file = useQuery({ ...sessionFileQuery(sessionId, view.file), enabled: visible, staleTime: 0, refetchInterval: working ? 2000 : false })
+  const file = useQuery({ ...sessionFileQuery(sessionId, view.file, cloudRunId), enabled: visible, staleTime: 0, refetchInterval: working ? 2000 : false })
   useRefetchAfterWork(working, file.refetch)
   const { reference } = view
   const state = useQuery({ ...pluginViewStateQuery(sessionId, { reference: reference ?? '', file: view.file }), enabled: visible && Boolean(reference) })

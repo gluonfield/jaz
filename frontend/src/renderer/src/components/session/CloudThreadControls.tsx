@@ -7,13 +7,14 @@ import { useToast } from '@/components/ui/toast'
 import { isCloudApiSession } from '@/lib/api/client'
 import { spacesQuery, updateThreadUserState } from '@/lib/api/cloudSpaces'
 import type { Session } from '@/lib/api/types'
-import { useHasCloud } from '@/lib/cloudSession'
+import { useHasCloud, useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
 // Compact visibility/project badge (`Shared in <Project>`, `<Project>`, or `Private`)
 // plus an explicit Personal Sources opt-in switch (default OFF) on shared project threads.
 export function CloudThreadControls({ session }: { session: Session }) {
   const hasCloud = useHasCloud()
+  const isViewer = useIsCloudViewer()
   const isCloudSession = session.backend === 'cloud' || isCloudApiSession()
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -71,7 +72,7 @@ export function CloudThreadControls({ session }: { session: Session }) {
         </span>
       )}
 
-      {isShared ? (
+      {isShared && !isViewer ? (
         <label
           className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-surface px-2 py-0.5 text-[11px] text-ink-2 ring-1 ring-border/70 transition-colors duration-150 hover:text-ink"
           title={

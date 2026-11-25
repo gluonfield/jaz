@@ -6,6 +6,7 @@ import type { ThreadDetailsView } from '@/components/session/ThreadView'
 import { Popover } from '@/components/ui/Popover'
 import type { Bot, BotColor, BotFileName } from '@/lib/api/types'
 import { BOT_COLORS, BOT_SHAPES, botMood } from '@/lib/bots'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { BotActivity } from '@/components/bots/BotActivity'
 import { BotAgentSettings } from './BotAgentSettings'
 import { BotWorkspaceSettings } from './BotWorkspaceSettings'
@@ -99,9 +100,17 @@ export function BotDetails({ bot, focusName, agentSession, working }: { bot: Bot
 // Shapes wear the current color and colors the current shape, so every pick
 // previews exactly what it sets.
 function AvatarEditor({ bot }: { bot: Bot }) {
+  const isViewer = useIsCloudViewer()
   const [open, setOpen] = useState(false)
   const update = useUpdateBot(bot.id)
   const { avatar } = bot
+  if (isViewer) {
+    return (
+      <div className="grid size-[72px] place-items-center rounded-full">
+        <BotAvatar avatar={avatar} size={64} mood={botMood(bot)} live />
+      </div>
+    )
+  }
   return (
     <Popover
       open={open}

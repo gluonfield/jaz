@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import type { Bot } from '@/lib/api/types'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { useUpdateBot } from './useUpdateBot'
 
 // Blur or Enter saves; Escape puts the old name back. Only an edit in progress
@@ -10,20 +11,23 @@ export function BotNameInput({ bot, autoFocus, className, onDone }: {
   className: string
   onDone?: () => void
 }) {
+  const isViewer = useIsCloudViewer()
   const [draft, setDraft] = useState<string | null>(null)
   const cancelled = useRef(false)
   const update = useUpdateBot(bot.id)
 
   const finish = () => {
     const next = draft?.trim()
-    if (!cancelled.current && next && next !== bot.name) update.mutate({ name: next })
+    if (!isViewer && !cancelled.current && next && next !== bot.name) update.mutate({ name: next })
     setDraft(null)
     onDone?.()
   }
 
   return (
     <input
-      autoFocus={autoFocus}
+      autoFocus={autoFocus && !isViewer}
+      disabled={isViewer}
+      readOnly={isViewer}
       value={draft ?? bot.name}
       aria-label="Name"
       placeholder="Name"
@@ -42,7 +46,7 @@ export function BotNameInput({ bot, autoFocus, className, onDone }: {
         if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur()
       }}
       onBlur={finish}
-      className={`min-w-0 select-text bg-transparent text-ink outline-none ${className}`}
+      className={`min-w-0 select-text bg-transparent text-ink outline-none disabled:cursor-default ${className}`}
     />
   )
 }

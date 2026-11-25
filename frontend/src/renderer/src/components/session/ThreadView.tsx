@@ -313,6 +313,7 @@ export function ThreadView({
   }, [revealedMessageSeq, pauseFollowing, scrollToMessage])
 
   const stopSession = useCallback(() => {
+    if (isReadOnly) return
     // The turn runs detached server-side; clear local optimistic state now.
     abortLiveMessage()
     void cancelSession(sessionId, isCloudThreadView)
@@ -322,13 +323,14 @@ export function ThreadView({
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         queryClient.invalidateQueries({ queryKey: isCloudThreadView ? keys.cloudUsageSummary : keys.usage })
       })
-  }, [abortLiveMessage, isCloudThreadView, queryClient, sessionId])
+  }, [abortLiveMessage, isCloudThreadView, isReadOnly, queryClient, sessionId])
 
   const clearGoal = useCallback(() => {
+    if (isReadOnly) return
     void clearSessionGoal(sessionId)
       .then(() => queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) }))
       .catch((error) => toast(error instanceof Error ? error.message : 'Could not turn Goal mode off', 'danger'))
-  }, [queryClient, sessionId, toast])
+  }, [isReadOnly, queryClient, sessionId, toast])
 
   const sendACPFallback = useCallback(async (
     targetSessionID: string,
@@ -355,6 +357,7 @@ export function ThreadView({
     action: 'implement' | 'clarify',
     text = '',
   ) => {
+    if (isReadOnly) return
     const parentVisible = approval.sessionId !== sessionId
     if (approval.type === 'message') {
       await sendACPFallback(
@@ -386,14 +389,16 @@ export function ThreadView({
     queryClient.invalidateQueries({ queryKey: keys.sessionMessages(approval.sessionId) })
     queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
     queryClient.invalidateQueries({ queryKey: keys.usage })
-  }, [queryClient, sendACPFallback, sessionId])
+  }, [isReadOnly, queryClient, sendACPFallback, sessionId])
 
   const uploadAttachment = useCallback(
-    (file: File) =>
-      isCloudThreadView
+    (file: File) => {
+      if (isReadOnly) return Promise.reject(new Error('View-only access'))
+      return isCloudThreadView
         ? uploadCloudFile(detailSession?.run_id || sessionId, file)
-        : uploadSessionAttachment(sessionId, file),
-    [detailSession?.run_id, isCloudThreadView, sessionId],
+        : uploadSessionAttachment(sessionId, file)
+    },
+    [detailSession?.run_id, isCloudThreadView, isReadOnly, sessionId],
   )
 
   const handleSideChatSend = useCallback(async (
@@ -401,6 +406,7 @@ export function ThreadView({
     message: string,
     options: SendMessageOptions = {},
   ) => {
+    if (isReadOnly) return
     const uploaded = options.files?.length
       ? await Promise.all(options.files.map((file) => uploadAttachment(file)))
       : []
@@ -412,7 +418,7 @@ export function ThreadView({
       attachment_ids: prepared.attachmentIds,
     })
     await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
-  }, [queryClient, sessionId, uploadAttachment])
+  }, [isReadOnly, queryClient, sessionId, uploadAttachment])
 
 
 
@@ -420,7 +426,7 @@ export function ThreadView({
     if (seenRequestedRef.current || !detail.isSuccess) return
     seenRequestedRef.current = true
     if (isCloudThreadView) {
-      if (!detail.data.session.unread) return
+      if (isReadOnly || !detail.data.session.unread) return
       void updateThreadUserState(sessionId, {
         last_read_seq: detail.data.latest_event_seq || 1,
         unread: false,
@@ -430,7 +436,7 @@ export function ThreadView({
       return
     }
     void markThreadSeen(sessionId).finally(() => invalidateSessionLists(queryClient))
-  }, [detail.data, detail.isSuccess, isCloudThreadView, sessionId, queryClient])
+  }, [detail.data, detail.isSuccess, isCloudThreadView, isReadOnly, sessionId, queryClient])
 
   // A deep link jumps once. Without this the effect re-fires on every streamed
   // update and drags the reader back to the linked message after they have
@@ -554,11 +560,11 @@ export function ThreadView({
         sideChatEvents={sideChatEvents}
         overview={details?.({ agentSession: derived.agentSession, working: sessionRunning, threads: spawnedThreads, subagents: providerSubagents })}
         overviewLabel={overviewLabel}
-        onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
-        onUploadAttachment={uploadAttachment}
+        onAddBrowserAnnotation={isReadOnly ? undefined : composerContexts.addBrowserAnnotation}
+        onUploadAttachment={isReadOnly ? undefined : uploadAttachment}
         onSend={handleSend}
-        onQueuePrompt={queue.onQueuePrompt}
-        onQueueAction={queue.onQueueAction}
+        onQueuePrompt={isReadOnly ? () => Promise.resolve() : queue.onQueuePrompt}
+        onQueueAction={isReadOnly ? () => Promise.resolve() : queue.onQueueAction}
         onSendSideChat={handleSideChatSend}
       />
     </SidePanelDrawer>
@@ -703,7 +709,7 @@ export function ThreadView({
               />
             )}
             <ThreadFindBar find={threadFind} />
-            <SelectionContextToolbar scrollRef={scrollRef} onAdd={composerContexts.addSelection} />
+            {!isReadOnly ? <SelectionContextToolbar scrollRef={scrollRef} onAdd={composerContexts.addSelection} /> : null}
 
             {showPlanDecision && planDecisionError ? (
               <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">

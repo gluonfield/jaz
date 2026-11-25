@@ -260,10 +260,12 @@ function LoopPromptCard({
       ? draft.reasoningEffort
       : reasoningEffort
   useEffect(() => {
+    if (!runtimeReady) return
+    if (usingCloudProfiles && !cloudSelection?.profile) return
     if (draft.reasoningEffort !== reasoningEffortOverride) {
       set({ reasoningEffort: reasoningEffortOverride })
     }
-  }, [draft.reasoningEffort, reasoningEffortOverride, set])
+  }, [cloudSelection?.profile, draft.reasoningEffort, reasoningEffortOverride, runtimeReady, set, usingCloudProfiles])
 
   return (
     <div>
