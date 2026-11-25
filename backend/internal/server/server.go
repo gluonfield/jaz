@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -147,10 +148,10 @@ type Server struct {
 	Terminal     *terminal.Manager
 	terminalOnce sync.Once
 
-	acpAuthLoginJobs   sync.Map
-	acpAuthProbes      acpAuthProbeCache
-	antigravityLoginMu sync.Mutex
-	worktreePruneMu    sync.Mutex
+	acpAuthLoginJobs sync.Map
+	acpAuthProbes    acpAuthProbeCache
+	antigravityAuth  atomic.Pointer[acpAuthTurn]
+	worktreePruneMu  sync.Mutex
 }
 
 type sourceQueueStatsReader interface {

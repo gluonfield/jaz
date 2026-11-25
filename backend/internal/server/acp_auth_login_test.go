@@ -515,15 +515,23 @@ exit 0
 	defer store.Close()
 	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/antigravity/auth/login", nil)
-	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, req)
-	if res.Code != http.StatusOK {
-		t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
+	start := func() acpAuthLoginResponse {
+		t.Helper()
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/acp/agents/antigravity/auth/login", nil))
+		if res.Code != http.StatusOK {
+			t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
+		}
+		var started acpAuthLoginResponse
+		if err := json.Unmarshal(res.Body.Bytes(), &started); err != nil {
+			t.Fatal(err)
+		}
+		return started
 	}
-	var started acpAuthLoginResponse
-	if err := json.Unmarshal(res.Body.Bytes(), &started); err != nil {
-		t.Fatal(err)
+	abandoned := start()
+	started := start()
+	if got := waitForACPAuthLogin(t, handler, abandoned.ID); got.Status != "failed" {
+		t.Fatalf("retry did not replace the pending sign-in: %#v", got)
 	}
 
 	deadline := time.Now().Add(10 * time.Second)

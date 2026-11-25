@@ -24,16 +24,29 @@ import (
 
 const acpAuthLoginTimeout = 16 * time.Minute
 
-var errAntigravityAuthBusy = errors.New("another Antigravity account operation is in progress")
+type acpAuthTurn struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
 
-func (s *Server) claimACPAuth(agent string) (func(), error) {
+// claimACPAuth serializes Antigravity account operations without letting one
+// lock out the next: it cancels the context of the operation in flight, then
+// waits for it to release. A sign-in pending on the user ends there; an
+// operation that ignores its context finishes first.
+func (s *Server) claimACPAuth(ctx context.Context, agent string) (context.Context, func()) {
 	if agent != acp.AgentAntigravity {
-		return func() {}, nil
+		return ctx, func() {}
 	}
-	if !s.antigravityLoginMu.TryLock() {
-		return nil, errAntigravityAuthBusy
+	ctx, cancel := context.WithCancel(ctx)
+	turn := &acpAuthTurn{cancel: cancel, done: make(chan struct{})}
+	if prev := s.antigravityAuth.Swap(turn); prev != nil {
+		prev.cancel()
+		<-prev.done
 	}
-	return sync.OnceFunc(s.antigravityLoginMu.Unlock), nil
+	return ctx, sync.OnceFunc(func() {
+		cancel()
+		close(turn.done)
+	})
 }
 
 type acpAuthLoginRequest struct {
@@ -126,10 +139,6 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 	}
 	job, err := s.runACPAuthLogin(r.Context(), agent, auth, invocation)
 	if err != nil {
-		if errors.Is(err, errAntigravityAuthBusy) {
-			writeError(w, http.StatusConflict, err)
-			return
-		}
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -213,16 +222,12 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 	if err := acp.PrepareAgentLoginInvocation(agent, auth, s.runtimeRoot(), invocation); err != nil {
 		return nil, err
 	}
-	cmdCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), acpAuthLoginTimeout)
+	claimCtx, release := s.claimACPAuth(context.WithoutCancel(ctx), agent)
+	cmdCtx, cancel := context.WithTimeout(claimCtx, acpAuthLoginTimeout)
 	cmd := exec.CommandContext(cmdCtx, invocation.Executable, invocation.Args...)
 	cmd.Env = acpAuthLoginEnv(invocation)
 	cmd.Dir = firstNonEmpty(strings.TrimSpace(invocation.Cwd), strings.TrimSpace(s.runtimeRoot()))
 	writer := acpAuthLoginWriter{job: job}
-	release, err := s.claimACPAuth(agent)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
 	outputDone, err := startACPAuthLoginProcess(cmd, job, writer, invocation.UsePTY)
 	if err != nil {
 		release()

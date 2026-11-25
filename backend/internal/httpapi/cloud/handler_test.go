@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -691,6 +692,52 @@ func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/loops", nil))
 	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "loop_c1") {
 		t.Fatalf("local /v1/loops leaked cloud loop: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestExpiredCloudSessionIsNotRelayedAsLocalAuthRejection(t *testing.T) {
+	var expired atomic.Bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case expired.Load():
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"invalid session token","code":"unauthorized"}`)
+		case r.URL.Path == "/v1/auth/me":
+			_ = json.NewEncoder(w).Encode(map[string]any{"user_id": "u1", "org_id": "org_1"})
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{})
+		}
+	}))
+	defer upstream.Close()
+
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	cloudSvc := cloudsync.New(store, nil)
+	cloudHandler := cloudapi.NewHandler(cloudSvc)
+	botsHandler := botsapi.NewHandler(nil, nil).WithCloud(cloudSvc)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/cloud/connect", cloudHandler.Connect)
+	mux.HandleFunc("GET /v1/cloud/members", cloudHandler.ListMembers)
+	mux.HandleFunc("GET /v1/connectors", cloudHandler.Proxy)
+	mux.HandleFunc("GET /v1/bots/events", botsHandler.Events)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/cloud/connect", bytes.NewBufferString(fmt.Sprintf(`{"url":%q,"token":"tok"}`, upstream.URL))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("connect status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	expired.Store(true)
+
+	for _, path := range []string{"/v1/cloud/members", "/v1/connectors", "/v1/bots/events"} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusUnauthorized || strings.Contains(rec.Body.String(), `"code"`) {
+			t.Fatalf("%s: want an uncoded 401, got %d %s", path, rec.Code, rec.Body.String())
+		}
 	}
 }
 

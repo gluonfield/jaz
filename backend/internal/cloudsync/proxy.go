@@ -56,6 +56,16 @@ func writeProxyJSONError(w http.ResponseWriter, status int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
+// On the local API a 401 coded "unauthorized" means the local key was rejected,
+// so Cloud's own 401 body must never be relayed under it.
+func cloudSessionRejected(w http.ResponseWriter, resp *http.Response) bool {
+	if resp.StatusCode != http.StatusUnauthorized {
+		return false
+	}
+	writeProxyJSONError(w, http.StatusUnauthorized, ErrNotConnected.Error())
+	return true
+}
+
 func (s *Service) prepareProxyRequest(w http.ResponseWriter, r *http.Request, sse bool) (*http.Request, bool) {
 	if s.ActiveWorkspaceID() == LocalWorkspaceID {
 		return nil, false
@@ -125,6 +135,9 @@ func (s *Service) ProxyActiveWorkspace(w http.ResponseWriter, r *http.Request) b
 		return true
 	}
 	defer resp.Body.Close()
+	if cloudSessionRejected(w, resp) {
+		return true
+	}
 
 	for _, hdr := range []string{"Content-Type", "Content-Disposition", "ETag", "Cache-Control"} {
 		if v := resp.Header.Get(hdr); v != "" {
@@ -161,6 +174,9 @@ func (s *Service) ProxyActiveWorkspaceSSE(w http.ResponseWriter, r *http.Request
 		return true
 	}
 	defer resp.Body.Close()
+	if cloudSessionRejected(w, resp) {
+		return true
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if ct := resp.Header.Get("Content-Type"); ct != "" {
 			w.Header().Set("Content-Type", ct)

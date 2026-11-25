@@ -1,21 +1,19 @@
 import { LoaderCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { DEFAULT_CLOUD_URL } from '@/lib/cloudSession'
 
-// The single "paste a backend's client URL" form, shared by the first-run
-// launch screen and the in-app machine switcher. Callers own the surrounding
-// surface (a floating card, a modal body) and the connect action; this owns
-// only the field, the copy, and the connect/back controls.
+// The launch screen's Jaz Cloud address form. The caller owns the surrounding
+// surface and the connect action; this owns only the field, the copy, and the
+// connect/back controls.
 export function RemoteServerForm({
   value,
-  cloudOnly = false,
   onChange,
   onSubmit,
   onBack,
   busy,
 }: {
   value: string
-  cloudOnly?: boolean
   onChange: (value: string) => void
   onSubmit: () => void
   onBack: () => void
@@ -30,20 +28,14 @@ export function RemoteServerForm({
       className="flex w-full flex-col gap-2.5"
     >
       <div className="px-0.5">
-        <p className="text-[13px] font-medium text-ink">
-          {cloudOnly ? 'Connect to Jaz Cloud' : 'Connect to a server'}
-        </p>
-        <p className="mt-0.5 text-[12px] text-ink-3">
-          {cloudOnly
-            ? 'Enter your Jaz Cloud server’s HTTPS address.'
-            : 'Paste a connection link or your server’s HTTPS address.'}
-        </p>
+        <p className="text-[13px] font-medium text-ink">Connect to Jaz Cloud</p>
+        <p className="mt-0.5 text-[12px] text-ink-3">Enter your Jaz Cloud server’s HTTPS address.</p>
       </div>
       <Input
         autoFocus
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="https://jaz.example.com"
+        placeholder={DEFAULT_CLOUD_URL}
         spellCheck={false}
         className="rounded-full font-mono text-[12px]"
       />

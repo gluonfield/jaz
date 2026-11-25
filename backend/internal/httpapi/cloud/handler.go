@@ -369,7 +369,7 @@ func WriteRawJSON(w http.ResponseWriter, status int, raw json.RawMessage) {
 func WriteError(w http.ResponseWriter, err error) {
 	var uerr *cloudsync.UpstreamError
 	if errors.As(err, &uerr) {
-		if len(uerr.Body) > 0 {
+		if len(uerr.Body) > 0 && uerr.StatusCode != http.StatusUnauthorized {
 			WriteRawJSON(w, uerr.StatusCode, uerr.Body)
 			return
 		}

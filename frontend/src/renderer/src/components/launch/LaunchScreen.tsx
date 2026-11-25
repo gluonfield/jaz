@@ -5,6 +5,7 @@ import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
 import { useKnownBackends } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { DEFAULT_CLOUD_URL } from '@/lib/cloudSession'
 import {
   connectionPreference,
   connectRemote,
@@ -78,7 +79,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   const backends = useKnownBackends()
   const deviceLabel = localDeviceLabel()
   const current = describeBackend(currentUrl)
-  const [url, setUrl] = useState('')
+  const [url, setUrl] = useState(clientRuntime.cloudUrl ? '' : DEFAULT_CLOUD_URL)
   const canStartLocal = clientRuntime.capabilities.localBackend
   const cloudOnly = !canStartLocal
   const visibleBackends = cloudOnly ? backends.filter((backend) => !describeBackend(backend.url).local) : backends
@@ -147,7 +148,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
         : 'Connecting to backend…'
 
   const reconnectHint = canStartLocal
-    ? 'Start one here or connect to a cloud server.'
+    ? 'Start one here or connect to Jaz Cloud.'
     : 'Sign in to connect to your Jaz Cloud workspace.'
 
   const ssoPromptNeeded = cloudOnly && currentAuth === 'oidc' && error === 'Sign in to connect to this server'
@@ -340,13 +341,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                           />
                         )
                       })}
-                      {!cloudOnly ? (
-                        <ChoiceButton
-                          label="Connect to a server"
-                          disabled={busy !== null}
-                          onClick={() => setMode('remote')}
-                        />
-                      ) : activeSso || visibleBackends.length > 0 ? (
+                      {cloudOnly && (activeSso || visibleBackends.length > 0) ? (
                         <button
                           type="button"
                           disabled={busy !== null}
@@ -357,7 +352,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                         </button>
                       ) : (
                         <ChoiceButton
-                          primary
+                          primary={cloudOnly}
                           kind="cloud"
                           label="Connect to Jaz Cloud"
                           disabled={busy !== null}
@@ -373,7 +368,6 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                     >
                       <RemoteServerForm
                         value={url}
-                        cloudOnly={cloudOnly}
                         onChange={setUrl}
                         onSubmit={() => connectTo(url)}
                         onBack={() => {
