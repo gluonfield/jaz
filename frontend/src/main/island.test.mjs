@@ -35,6 +35,9 @@ if (process.env.JAZ_ISLAND_TEST_CHILD === '1') {
       getCursorScreenPoint: () => ({ x: 10, y: 10 }),
       getDisplayNearestPoint: () => ({ id: 1, internal: true, bounds: { x: 0, y: 0, width: 1512, height: 982 }, workArea }),
     },
+    webContents: {
+      getFocusedWebContents: () => null,
+    },
     BrowserWindow: class {
       constructor(options) {
         this.options = options

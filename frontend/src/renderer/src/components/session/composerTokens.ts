@@ -124,3 +124,62 @@ export function tokenEndingAt(
   }
   return null
 }
+
+let graphemeSegmenter: Intl.Segmenter | null | undefined
+
+function prevGraphemeStart(value: string, caret: number): number {
+  if (caret <= 0) return 0
+  if (graphemeSegmenter === undefined) {
+    graphemeSegmenter =
+      typeof Intl !== 'undefined' && 'Segmenter' in Intl
+        ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+        : null
+  }
+  if (graphemeSegmenter) {
+    let last = 0
+    for (const { index } of graphemeSegmenter.segment(value.slice(0, caret))) {
+      last = index
+    }
+    return last
+  }
+  const prev = value.charCodeAt(caret - 1)
+  if (caret >= 2 && prev >= 0xdc00 && prev <= 0xdfff) {
+    const lead = value.charCodeAt(caret - 2)
+    if (lead >= 0xd800 && lead <= 0xdbff) return caret - 2
+  }
+  return caret - 1
+}
+
+function prevWordStart(value: string, caret: number): number {
+  let pos = caret
+  if (pos > 0 && value[pos - 1] === '\n') return pos - 1
+  while (pos > 0 && (value[pos - 1] === ' ' || value[pos - 1] === '\t')) pos--
+  if (pos === 0 || value[pos - 1] === '\n') return pos
+  const wordChar = /[\p{L}\p{N}_]/u
+  const matchWord = wordChar.test(value[pos - 1])
+  while (pos > 0 && value[pos - 1] !== '\n' && value[pos - 1] !== ' ' && value[pos - 1] !== '\t') {
+    if (wordChar.test(value[pos - 1]) !== matchWord) break
+    pos--
+  }
+  return pos
+}
+
+export function backwardDeleteRange(
+  value: string,
+  start: number,
+  end: number,
+  modifiers: { meta?: boolean; alt?: boolean; ctrl?: boolean } = {},
+): { from: number; to: number } | null {
+  if (start !== end) {
+    return { from: Math.min(start, end), to: Math.max(start, end) }
+  }
+  if (start <= 0 || start > value.length) return null
+  if (modifiers.meta) {
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1
+    return { from: lineStart < start ? lineStart : start - 1, to: start }
+  }
+  if (modifiers.alt || modifiers.ctrl) {
+    return { from: prevWordStart(value, start), to: start }
+  }
+  return { from: prevGraphemeStart(value, start), to: start }
+}

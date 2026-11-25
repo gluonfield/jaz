@@ -25,6 +25,7 @@ import { keys } from '@/lib/query/keys'
 import { threadSearchTitle } from '@/lib/threadDisplay'
 import { ComposerSuggestions, type SuggestionItem, type SuggestionSection } from './ComposerSuggestions'
 import {
+  backwardDeleteRange,
   expandTokens,
   findActiveTrigger,
   pruneTokens,
@@ -125,6 +126,18 @@ export function useMentionInput({
   const pendingCaret = useRef<number | null>(null)
   const mirrorRef = useRef<HTMLDivElement>(null)
   const composingRef = useRef(false)
+  const inputSeqRef = useRef(0)
+  const backspaceFallbackRef = useRef<number | null>(null)
+  const warnedBackspaceDropRef = useRef(false)
+
+  const cancelBackspaceFallback = useCallback(() => {
+    if (backspaceFallbackRef.current !== null) {
+      window.clearTimeout(backspaceFallbackRef.current)
+      backspaceFallbackRef.current = null
+    }
+  }, [])
+
+  useEffect(() => cancelBackspaceFallback, [cancelBackspaceFallback])
 
   // autoFocus lands before React's focus listeners attach; sync the initial state.
   useEffect(() => {
@@ -334,6 +347,7 @@ export function useMentionInput({
       if (!target) return
       target.style.height = 'auto'
       target.style.height = `${Math.min(target.scrollHeight, maxHeight)}px`
+      if (mirrorRef.current) mirrorRef.current.scrollTop = target.scrollTop
     },
     [maxHeight],
   )
@@ -383,6 +397,7 @@ export function useMentionInput({
   }
 
   const reset = useCallback(() => {
+    cancelBackspaceFallback()
     clearDraft()
     setCaret(0)
     setDismissedAt(null)
@@ -391,9 +406,10 @@ export function useMentionInput({
       el.style.height = 'auto'
       el.focus()
     }
-  }, [clearDraft])
+  }, [cancelBackspaceFallback, clearDraft])
 
   const restore = (draft: ComposerDraft) => {
+    cancelBackspaceFallback()
     setDraft(draft)
     setCaret(draft.text.length)
     setDismissedAt(null)
@@ -425,6 +441,8 @@ export function useMentionInput({
   }
 
   const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    inputSeqRef.current += 1
+    cancelBackspaceFallback()
     const next = e.target.value
     // setDraft prunes tokens whose display no longer occurs in the text.
     setDraft({ text: next, tokens })
@@ -450,6 +468,7 @@ export function useMentionInput({
 
   const onCompositionStart = () => {
     composingRef.current = true
+    cancelBackspaceFallback()
   }
 
   const onCompositionEnd = () => {
@@ -484,18 +503,63 @@ export function useMentionInput({
         return true
       }
     }
-    if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (e.key === 'Backspace') {
       const el = e.currentTarget
-      if (el.selectionStart === el.selectionEnd) {
-        const hit = tokenEndingAt(text, el.selectionStart, tokens)
+      const start = el.selectionStart
+      const end = el.selectionEnd
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && start !== null && start === end) {
+        const hit = tokenEndingAt(text, start, tokens)
         if (hit) {
           e.preventDefault()
-          const next = text.slice(0, hit.start) + text.slice(el.selectionStart)
+          cancelBackspaceFallback()
+          const next = text.slice(0, hit.start) + text.slice(start)
           setDraft({ text: next, tokens })
           setCaret(hit.start)
           placeCaret(hit.start)
           return true
         }
+      }
+      // On macOS Electron, Cocoa's deleteBackward: command can occasionally
+      // stop attaching to Backspace while insertText: still works. Native
+      // deletion fires onChange synchronously before a macrotask; if it did
+      // not run, apply the deletion here so Backspace never silently stalls.
+      if (!e.defaultPrevented && !el.disabled && !el.readOnly && start !== null && end !== null && (start !== end || start > 0)) {
+        const snapshotValue = el.value
+        const snapshotSeq = inputSeqRef.current
+        const modifiers = { meta: e.metaKey, alt: e.altKey, ctrl: e.ctrlKey }
+        cancelBackspaceFallback()
+        backspaceFallbackRef.current = window.setTimeout(() => {
+          backspaceFallbackRef.current = null
+          if (
+            inputSeqRef.current !== snapshotSeq ||
+            composingRef.current ||
+            textareaRef.current !== el ||
+            document.activeElement !== el ||
+            el.disabled ||
+            el.readOnly ||
+            el.value !== snapshotValue ||
+            el.selectionStart !== start ||
+            el.selectionEnd !== end
+          ) {
+            return
+          }
+          const range = backwardDeleteRange(snapshotValue, start, end, modifiers)
+          if (!range) return
+          if (!warnedBackspaceDropRef.current) {
+            warnedBackspaceDropRef.current = true
+            console.warn('[composer] native Backspace produced no edit; applied fallback deletion', {
+              start,
+              end,
+              length: snapshotValue.length,
+              tokens: currentDraft().tokens.size,
+              modifiers,
+            })
+          }
+          const next = snapshotValue.slice(0, range.from) + snapshotValue.slice(range.to)
+          setDraft({ text: next, tokens: currentDraft().tokens })
+          setCaret(range.from)
+          placeCaret(range.from)
+        }, 0)
       }
     }
     return false
@@ -526,7 +590,11 @@ export function useMentionInput({
     reset,
     restore,
     onFocus: () => setFocused(true),
-    onBlur: () => setFocused(false),
+    onBlur: () => {
+      composingRef.current = false
+      cancelBackspaceFallback()
+      setFocused(false)
+    },
     onChange,
     onSelect,
     onScroll,
