@@ -192,40 +192,57 @@ function groupSessionsForDisplay(sessions: Session[], sortBy: SidebarSortBy = 'u
   return ordered
 }
 
+const DATE_BUCKETS = [
+  { key: 'date:today', label: 'Today' },
+  { key: 'date:yesterday', label: 'Yesterday' },
+  { key: 'date:7d', label: 'Previous 7 days' },
+  { key: 'date:30d', label: 'Previous 30 days' },
+  { key: 'date:older', label: 'Older' },
+] as const
+
+const STATUS_BUCKETS = [
+  { key: 'status:running', label: 'Running' },
+  { key: 'status:unread', label: 'Unread' },
+  { key: 'status:attention', label: 'Needs attention' },
+  { key: 'status:idle', label: 'Idle' },
+] as const
+
+const ENVIRONMENT_BUCKETS = [
+  { key: 'env:cloud', label: 'Cloud' },
+  { key: 'env:local', label: 'Local' },
+] as const
+
 function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
 }
 
-function dateBucket(ms: number, now: Date): { key: string; label: string } {
+function dateBucketKey(ms: number, now: Date): string {
   const todayStart = startOfDay(now)
   const dayMs = 24 * 60 * 60 * 1000
-  if (ms >= todayStart) return { key: 'date:today', label: 'Today' }
-  if (ms >= todayStart - dayMs) return { key: 'date:yesterday', label: 'Yesterday' }
-  if (ms >= todayStart - 7 * dayMs) return { key: 'date:7d', label: 'Previous 7 days' }
-  if (ms >= todayStart - 30 * dayMs) return { key: 'date:30d', label: 'Previous 30 days' }
-  return { key: 'date:older', label: 'Older' }
+  if (ms >= todayStart) return 'date:today'
+  if (ms >= todayStart - dayMs) return 'date:yesterday'
+  if (ms >= todayStart - 7 * dayMs) return 'date:7d'
+  if (ms >= todayStart - 30 * dayMs) return 'date:30d'
+  return 'date:older'
 }
 
-function statusBucket(session: Session): { key: string; label: string } {
-  if (session.status === 'running') return { key: 'status:running', label: 'Running' }
-  if (session.unread) return { key: 'status:unread', label: 'Unread' }
-  if (session.status === 'error' || session.status === 'interrupted') {
-    return { key: 'status:attention', label: 'Needs attention' }
-  }
-  return { key: 'status:idle', label: 'Idle' }
+function statusBucketKey(session: Session): string {
+  if (session.status === 'running') return 'status:running'
+  if (session.unread) return 'status:unread'
+  if (session.status === 'error' || session.status === 'interrupted') return 'status:attention'
+  return 'status:idle'
 }
 
 function groupByBuckets(
   items: SessionListItem[],
-  order: Array<{ key: string; label: string }>,
-  bucketOf: (item: SessionListItem) => { key: string; label: string },
+  order: ReadonlyArray<{ key: string; label: string }>,
+  bucketKeyOf: (item: SessionListItem) => string,
 ): SessionProjectGroup[] {
   const buckets = new Map<string, SessionProjectGroup>(
     order.map((entry) => [entry.key, { key: entry.key, label: entry.label, items: [], kind: 'bucket' }]),
   )
   for (const item of items) {
-    const target = bucketOf(item)
-    const bucket = buckets.get(target.key)
+    const bucket = buckets.get(bucketKeyOf(item))
     if (bucket) bucket.items.push(item)
   }
   return [...buckets.values()]
@@ -253,44 +270,30 @@ export function sidebarSessionSections(
     return { pinnedItems, recentItems, groups: [], ungrouped: recentItems }
   }
   if (groupBy === 'date') {
-    const groups = groupByBuckets(
+    return {
+      pinnedItems,
       recentItems,
-      [
-        { key: 'date:today', label: 'Today' },
-        { key: 'date:yesterday', label: 'Yesterday' },
-        { key: 'date:7d', label: 'Previous 7 days' },
-        { key: 'date:30d', label: 'Previous 30 days' },
-        { key: 'date:older', label: 'Older' },
-      ],
-      (item) => dateBucket(sessionTime(item.session, sortBy), now),
-    )
-    return { pinnedItems, recentItems, groups, ungrouped: [] }
+      groups: groupByBuckets(recentItems, DATE_BUCKETS, (item) => dateBucketKey(sessionTime(item.session, sortBy), now)),
+      ungrouped: [],
+    }
   }
   if (groupBy === 'status') {
-    const groups = groupByBuckets(
+    return {
+      pinnedItems,
       recentItems,
-      [
-        { key: 'status:running', label: 'Running' },
-        { key: 'status:unread', label: 'Unread' },
-        { key: 'status:attention', label: 'Needs attention' },
-        { key: 'status:idle', label: 'Idle' },
-      ],
-      (item) => statusBucket(item.session),
-    )
-    return { pinnedItems, recentItems, groups, ungrouped: [] }
+      groups: groupByBuckets(recentItems, STATUS_BUCKETS, (item) => statusBucketKey(item.session)),
+      ungrouped: [],
+    }
   }
   if (groupBy === 'environment') {
-    const groups = groupByBuckets(
+    return {
+      pinnedItems,
       recentItems,
-      [
-        { key: 'env:cloud', label: 'Cloud' },
-        { key: 'env:local', label: 'Local' },
-      ],
-      (item) => (item.session.backend === 'cloud'
-        ? { key: 'env:cloud', label: 'Cloud' }
-        : { key: 'env:local', label: 'Local' }),
-    )
-    return { pinnedItems, recentItems, groups, ungrouped: [] }
+      groups: groupByBuckets(recentItems, ENVIRONMENT_BUCKETS, (item) =>
+        item.session.backend === 'cloud' ? 'env:cloud' : 'env:local',
+      ),
+      ungrouped: [],
+    }
   }
   return { pinnedItems, recentItems, ...sessionsBySavedProject(recentItems, projects, spaces, show === 'all') }
 }

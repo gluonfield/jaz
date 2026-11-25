@@ -6,8 +6,6 @@ import type { SidebarGroupBy, SidebarShowFilter, SidebarSortBy } from './sidebar
 const LEGACY_STORAGE_KEY = 'jaz.sidebar.organization'
 const VIEW_STORAGE_KEY = 'jaz.sidebar.view'
 
-export type SidebarOrganization = SidebarGroupBy
-
 export interface SidebarViewState {
   groupBy: SidebarGroupBy
   sortBy: SidebarSortBy
@@ -19,10 +17,6 @@ export const DEFAULT_SIDEBAR_VIEW: SidebarViewState = {
   sortBy: 'updated',
   show: 'all',
 }
-
-const VALID_GROUP_BY = new Set<SidebarGroupBy>(['project', 'date', 'status', 'environment', 'none'])
-const VALID_SORT_BY = new Set<SidebarSortBy>(['updated', 'created'])
-const VALID_SHOW = new Set<SidebarShowFilter>(['all', 'active', 'unread'])
 
 const GROUP_BY_LABEL: Record<SidebarGroupBy, string> = {
   date: 'Date',
@@ -59,15 +53,19 @@ export function isDefaultSidebarView(view: SidebarViewState): boolean {
   )
 }
 
+function isKeyOf<T extends Record<string, string>>(map: T, value: unknown): value is keyof T {
+  return typeof value === 'string' && Object.hasOwn(map, value)
+}
+
 function storedSidebarView(): SidebarViewState {
   try {
     const raw = localStorage.getItem(VIEW_STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<SidebarViewState>
       return {
-        groupBy: parsed.groupBy && VALID_GROUP_BY.has(parsed.groupBy) ? parsed.groupBy : DEFAULT_SIDEBAR_VIEW.groupBy,
-        sortBy: parsed.sortBy && VALID_SORT_BY.has(parsed.sortBy) ? parsed.sortBy : DEFAULT_SIDEBAR_VIEW.sortBy,
-        show: parsed.show && VALID_SHOW.has(parsed.show) ? parsed.show : DEFAULT_SIDEBAR_VIEW.show,
+        groupBy: isKeyOf(GROUP_BY_LABEL, parsed.groupBy) ? parsed.groupBy : DEFAULT_SIDEBAR_VIEW.groupBy,
+        sortBy: isKeyOf(SORT_BY_LABEL, parsed.sortBy) ? parsed.sortBy : DEFAULT_SIDEBAR_VIEW.sortBy,
+        show: isKeyOf(SHOW_LABEL, parsed.show) ? parsed.show : DEFAULT_SIDEBAR_VIEW.show,
       }
     }
     if (localStorage.getItem(LEGACY_STORAGE_KEY) === 'recent') {

@@ -256,7 +256,6 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 			// "Error: authentication failed or timed out") is the real story.
 			err = errors.New(last)
 		}
-		release()
 		job.finish(err, cmdCtx.Err())
 	}()
 	return job, nil

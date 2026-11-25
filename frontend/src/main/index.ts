@@ -13,7 +13,6 @@ import {
   screen,
   session,
   shell,
-  webContents,
 } from 'electron'
 import appIcon from '../assets/jaz-icon-1024.png?asset'
 import { startLocalBackend, stopLocalBackend } from './backend'
@@ -235,13 +234,6 @@ function createWindow(): void {
   attachVoiceOverlay(win)
   attachWindowLifecycle(win, { label: 'main', onDidFinishLoad: () => updates.sendStatusTo(win) })
   attachBrowserNavigationCommands(win)
-  win.on('focus', () => {
-    if (win.isDestroyed()) return
-    const focused = webContents.getFocusedWebContents()
-    if (!focused || (focused !== win.webContents && focused.hostWebContents !== win.webContents)) {
-      win.webContents.focus()
-    }
-  })
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
   })

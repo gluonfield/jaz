@@ -1,5 +1,6 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, powerMonitor, screen, webContents, type Display } from 'electron'
+import { app, BrowserWindow, ipcMain, powerMonitor, screen, type Display } from 'electron'
+import { restoreWindowContentsFocus } from './diagnostics'
 import {
   alertLabel,
   alertPath,
@@ -62,12 +63,7 @@ export function createIsland(open: (path: string) => void) {
       window?.hide()
       placement = null
       const focusedWin = BrowserWindow.getFocusedWindow?.()
-      if (focusedWin && !focusedWin.isDestroyed() && focusedWin !== window) {
-        const focusedContents = webContents?.getFocusedWebContents?.()
-        if (!focusedContents || (focusedContents !== focusedWin.webContents && focusedContents.hostWebContents !== focusedWin.webContents)) {
-          focusedWin.webContents.focus()
-        }
-      }
+      if (focusedWin && focusedWin !== window) restoreWindowContentsFocus(focusedWin)
     }, ISLAND_RETRACT_MS)
   }
 
