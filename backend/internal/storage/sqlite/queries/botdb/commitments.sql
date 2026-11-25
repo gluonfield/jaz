@@ -149,14 +149,13 @@ SELECT
   t.last_completed_at_ms
 FROM bot_commitment_thread_states s
 JOIN threads t ON t.id = s.thread_id
+LEFT JOIN bot_commitment_threads l
+  ON l.commitment_id = s.commitment_id AND l.thread_id = s.thread_id
 WHERE s.commitment_id IN (sqlc.slice(ids))
 GROUP BY s.commitment_id, s.thread_id
 ORDER BY
   MIN(s.linked),
-  CASE WHEN EXISTS (
-    SELECT 1 FROM bot_commitment_threads l
-    WHERE l.commitment_id = s.commitment_id AND l.thread_id = s.thread_id
-  ) THEN 0 ELSE 1 END,
+  CASE WHEN l.id = MIN(s.linked) THEN 0 ELSE 1 END,
   t.created_at_ms,
   s.thread_id;
 

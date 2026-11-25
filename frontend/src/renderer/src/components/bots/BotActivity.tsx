@@ -1,12 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { CornerDownRight } from 'lucide-react'
-import { useEffect, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotOwed, BotOwedThread, BotThreadActivity } from '@/lib/api/types'
 import { type ConnectedTaskThread, connectedTaskThreads, taskName, taskStateLabel } from '@/lib/bots'
 import { clockTime, formatDuration, shortDate } from '@/lib/format/time'
+
+const EMPTY_OWED: BotOwed[] = []
+const EMPTY_ITEMS: BotActivity[] = []
+const EMPTY_STARTED: Record<string, BotThreadActivity[]> = {}
+const EMPTY_CONNECTED: ConnectedTaskThread[] = []
 
 // What a bot is working on and what it did: its open tasks, then by day the
 // tasks it closed and the threads it started, one line each. A task opens a
@@ -16,13 +21,27 @@ export function BotActivity({ bot }: { bot: Bot }) {
   const activity = useQuery(botActivityQuery(bot.id))
   const [shown, setShown] = useState<number>()
   const now = useNow()
+  const owed = activity.data?.owed ?? EMPTY_OWED
+  const items = activity.data?.items ?? EMPTY_ITEMS
+  const started = activity.data?.started ?? EMPTY_STARTED
+  const connectedByTask = useMemo(() => {
+    const map = new Map<number, ConnectedTaskThread[]>()
+    for (const item of owed) {
+      map.set(item.id, connectedTaskThreads(item, started))
+    }
+    for (const item of items) {
+      if (item.kind === 'task') {
+        map.set(item.task.id, connectedTaskThreads(item.task, started))
+      }
+    }
+    return map
+  }, [owed, items, started])
   if (activity.isPending) {
     return <p className="text-[13px] text-ink-3">Loading activity…</p>
   }
   if (activity.isError && !activity.data) {
     return <p role="alert" className="text-[13px] text-danger">Couldn’t load activity.</p>
   }
-  const { owed, items, started = {} } = activity.data
   const groups = [
     { title: '', tasks: owed.filter((task) => task.status !== 'waiting_for_user') },
     { title: 'Waiting for you', tasks: owed.filter((task) => task.status === 'waiting_for_user') },
@@ -46,7 +65,7 @@ export function BotActivity({ bot }: { bot: Bot }) {
                     <TaskButton
                       task={item}
                       stated={!title}
-                      threadCount={connectedTaskThreads(item, started).length}
+                      threadCount={connectedByTask.get(item.id)?.length ?? 0}
                       onOpen={setShown}
                     />
                   </li>
@@ -66,7 +85,7 @@ export function BotActivity({ bot }: { bot: Bot }) {
                     <TaskButton
                       task={item.task}
                       stated
-                      threadCount={connectedTaskThreads(item.task, started).length}
+                      threadCount={connectedByTask.get(item.task.id)?.length ?? 0}
                       onOpen={setShown}
                     />
                   </li>
@@ -75,7 +94,15 @@ export function BotActivity({ bot }: { bot: Bot }) {
           </ul>
         </section>
       ))}
-      {task ? <TaskModal botId={bot.id} task={task} started={started} now={now} onClose={() => setShown(undefined)} /> : null}
+      {task ? (
+        <TaskModal
+          botId={bot.id}
+          task={task}
+          threads={connectedByTask.get(task.id) ?? EMPTY_CONNECTED}
+          now={now}
+          onClose={() => setShown(undefined)}
+        />
+      ) : null}
     </div>
   )
 }
@@ -83,10 +110,11 @@ export function BotActivity({ bot }: { bot: Bot }) {
 const LINE = '-mx-2 flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-left text-[13px] transition-colors duration-150 hover:bg-list-hover'
 
 function TaskButton({ task, stated, threadCount, onOpen }: { task: BotOwed; stated: boolean; threadCount: number; onOpen: (id: number) => void }) {
+  const title = taskName(task)
   return (
-    <button type="button" onClick={() => onOpen(task.id)} className={`${LINE} cursor-pointer`}>
+    <button type="button" title={title} onClick={() => onOpen(task.id)} className={`${LINE} cursor-pointer`}>
       <Line
-        title={taskName(task)}
+        title={title}
         count={threadCount > 0 ? threadCount : undefined}
         state={stated ? taskStateLabel(task) : undefined}
         tone={task.moving ? 'running' : undefined}
@@ -100,13 +128,13 @@ function TaskButton({ task, stated, threadCount, onOpen }: { task: BotOwed; stat
 function TaskModal({
   botId,
   task,
-  started,
+  threads,
   now,
   onClose,
 }: {
   botId: string
   task: BotOwed
-  started: Record<string, BotThreadActivity[]>
+  threads: ConnectedTaskThread[]
   now: number
   onClose: () => void
 }) {
@@ -114,7 +142,6 @@ function TaskModal({
   const request = task.request.trim()
   const next = task.next?.trim()
   const nextLabel = task.status === 'stopped' || task.status === 'cancelled' ? 'Reason' : 'Next step'
-  const threads = connectedTaskThreads(task, started)
   // The chat jumps to a message once per link, so a repeated click scrolls itself.
   const toMessage = (event: MouseEvent<HTMLAnchorElement>) => {
     onClose()
@@ -195,7 +222,7 @@ function ThreadLink({ line, depth = 0, onClick }: { line: ThreadLine; depth?: nu
     <Link
       to="/sessions/$sessionId"
       params={{ sessionId: line.id }}
-      title={line.hint}
+      title={line.hint || line.title}
       onClick={onClick}
       style={indent ? { paddingLeft: `${8 + indent}px` } : undefined}
       className={LINE}

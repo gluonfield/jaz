@@ -814,6 +814,45 @@ func TestActivityIncludesConnectedTaskThreadsBeyondTheActivityWindow(t *testing.
 	if err != nil || len(tasks) != 1 || !slices.Equal(tasks[0].Threads, wantOpen) {
 		t.Fatalf("Tasks() = %+v, %v; want %+v", tasks, err, wantOpen)
 	}
+
+	// A running descendant of a closed task cut past activityShown stays visible
+	// as a standalone side_chat when its parent is not shown.
+	cutTask, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Cut closed task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cutParent, err := store.CreateSession(storage.CreateSession{Slug: "cut-parent", Title: "Cut parent", ParentID: bot.ID, SourceType: storage.SourceBotWorker, SourceID: bot.ID, Commitment: cutTask.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishAt(cutParent.ID, old)
+	cutChild, err := store.CreateSession(storage.CreateSession{Slug: "cut-child", Title: "Cut child rerun", ParentID: cutParent.ID, SourceType: storage.SourceBotWorker, SourceID: bot.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishAt(cutChild.ID, old.Add(time.Minute))
+	if err := store.DropCommitment(cutTask.ID, "Old", time.Now().UTC().Add(-20*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	for i := range activityShown {
+		newer, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: fmt.Sprintf("Newer closed %d", i)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.DropCommitment(newer.ID, "Closed", time.Now().UTC().Add(-time.Duration(i+1)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.StartSessionTurn(cutChild.ID, storage.Turn{StartedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	withCut, err := service.Activity(bot.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(withCut.Items, func(item Activity) bool { return item.Kind == "side_chat" && item.ThreadID == cutChild.ID && item.Running }) {
+		t.Fatalf("running rerun of a cut closed task vanished from Activity items: %+v, started=%+v", withCut.Items, withCut.Started)
+	}
 }
 
 func TestIdentityFileChangesAreRecordedOnceWithTheUsersOwnEditsNamed(t *testing.T) {

@@ -93,7 +93,6 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 	}
 	view := ActivityView{Owed: make([]Owed, 0, len(open)), Started: map[string][]Activity{}}
 	tasked := map[string]bool{}
-	taskParents := map[string]bool{}
 	shownCommitments := make([]storage.Commitment, 0, len(open))
 	for _, commitment := range open {
 		owed, err := s.taskView(commitment)
@@ -102,7 +101,6 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 		}
 		for _, thread := range commitment.Threads {
 			tasked[thread.ID] = true
-			taskParents[thread.ID] = true
 		}
 		view.Owed = append(view.Owed, owed)
 		shownCommitments = append(shownCommitments, commitment)
@@ -115,7 +113,6 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 	for i, commitment := range closed {
 		for _, thread := range commitment.Threads {
 			tasked[thread.ID] = tasked[thread.ID] || thread.State != "working" && thread.State != "background"
-			taskParents[thread.ID] = true
 		}
 		// Older closed tasks cannot make the cut, but still keep their threads
 		// out of the list.
@@ -137,60 +134,7 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 		}
 		chats = append(chats, listed...)
 	}
-	listed := map[string]bool{}
-	for _, chat := range chats {
-		listed[chat.ID] = true
-	}
-	for id := range taskParents {
-		listed[id] = true
-	}
-	startedSeen := map[string]map[string]bool{}
-	addStarted := func(parentID string, item Activity) {
-		if startedSeen[parentID] == nil {
-			startedSeen[parentID] = map[string]bool{}
-		}
-		if startedSeen[parentID][item.ThreadID] {
-			return
-		}
-		startedSeen[parentID][item.ThreadID] = true
-		view.Started[parentID] = append(view.Started[parentID], item)
-	}
-	for _, chat := range chats {
-		item := Activity{Kind: "side_chat", At: cmp.Or(chat.CompletedAt, chat.UpdatedAt), Title: cmp.Or(chat.Title, chat.Slug), Status: chat.Status, ThreadID: chat.ID}
-		if chat.Status == storage.StatusRunning && chat.Turn != nil {
-			item.Running, item.At = true, cmp.Or(chat.Turn.StartedAt, chat.UpdatedAt)
-		}
-		if listed[chat.ParentID] {
-			addStarted(chat.ParentID, item)
-			continue
-		}
-		if tasked[chat.ID] {
-			continue
-		}
-		out = append(out, item)
-	}
-	for _, commitment := range shownCommitments {
-		inTask := make(map[string]bool, len(commitment.Threads))
-		for _, thread := range commitment.Threads {
-			inTask[thread.ID] = true
-		}
-		for _, thread := range commitment.Threads {
-			if thread.ParentID == "" || thread.ParentID == thread.ID || !inTask[thread.ParentID] {
-				continue
-			}
-			addStarted(thread.ParentID, Activity{
-				Kind:     "side_chat",
-				At:       cmp.Or(thread.CompletedAt, thread.UpdatedAt),
-				Running:  thread.State == "working",
-				Title:    cmp.Or(thread.Title, thread.Slug),
-				Status:   thread.Status,
-				ThreadID: thread.ID,
-			})
-		}
-	}
-	for _, started := range view.Started {
-		slices.SortStableFunc(started, func(a, b Activity) int { return a.At.Compare(b.At) })
-	}
+	out = append(out, collectSideChats(chats, shownCommitments, tasked, view.Started)...)
 	routines, err := s.allRoutines()
 	if err != nil {
 		return ActivityView{}, err
@@ -252,10 +196,7 @@ func (s *Service) taskView(commitment storage.Commitment) (Owed, error) {
 	task := Owed{ID: commitment.ID, Name: commitment.Name, Request: commitment.Request, For: name, Next: commitment.Note,
 		Status: commitment.Status, ReplySeq: commitment.ReplySeq, CheckAt: commitment.CheckAt, QuestionSeq: commitment.QuestionSeq, Question: commitment.Question, OpeningSeq: commitment.OpeningSeq, DependsOn: commitment.DependsOn,
 		Blocked: commitment.Blocked, Moving: commitment.Moving, Stalled: commitment.Stalled, OpenedAt: commitment.OpenedAt}
-	inTask := make(map[string]bool, len(commitment.Threads))
-	for _, thread := range commitment.Threads {
-		inTask[thread.ID] = true
-	}
+	inTask := threadIDSet(commitment.Threads)
 	for _, thread := range commitment.Threads {
 		parentID := ""
 		if thread.ParentID != thread.ID && inTask[thread.ParentID] {
@@ -264,4 +205,73 @@ func (s *Service) taskView(commitment storage.Commitment) (Owed, error) {
 		task.Threads = append(task.Threads, OwedThread{ID: thread.ID, ParentID: parentID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State})
 	}
 	return task, nil
+}
+
+// collectSideChats groups child worker chats under their parents in started
+// (backfilling shown task descendants older than activityWindow) and returns
+// the standalone side chats not already represented by a task.
+func collectSideChats(chats []storage.Session, shownCommitments []storage.Commitment, tasked map[string]bool, started map[string][]Activity) []Activity {
+	listed := make(map[string]bool, len(chats))
+	for _, chat := range chats {
+		listed[chat.ID] = true
+	}
+	for _, commitment := range shownCommitments {
+		for _, thread := range commitment.Threads {
+			listed[thread.ID] = true
+		}
+	}
+	seen := map[string]map[string]bool{}
+	record := func(parentID string, item Activity) {
+		if seen[parentID] == nil {
+			seen[parentID] = map[string]bool{}
+		}
+		if seen[parentID][item.ThreadID] {
+			return
+		}
+		seen[parentID][item.ThreadID] = true
+		started[parentID] = append(started[parentID], item)
+	}
+	var standalone []Activity
+	for _, chat := range chats {
+		item := Activity{Kind: "side_chat", At: cmp.Or(chat.CompletedAt, chat.UpdatedAt), Title: cmp.Or(chat.Title, chat.Slug), Status: chat.Status, ThreadID: chat.ID}
+		if chat.Status == storage.StatusRunning && chat.Turn != nil {
+			item.Running, item.At = true, cmp.Or(chat.Turn.StartedAt, chat.UpdatedAt)
+		}
+		if listed[chat.ParentID] {
+			record(chat.ParentID, item)
+			continue
+		}
+		if tasked[chat.ID] {
+			continue
+		}
+		standalone = append(standalone, item)
+	}
+	for _, commitment := range shownCommitments {
+		inTask := threadIDSet(commitment.Threads)
+		for _, thread := range commitment.Threads {
+			if thread.ParentID == "" || thread.ParentID == thread.ID || !inTask[thread.ParentID] {
+				continue
+			}
+			record(thread.ParentID, Activity{
+				Kind:     "side_chat",
+				At:       cmp.Or(thread.CompletedAt, thread.UpdatedAt),
+				Running:  thread.State == "working",
+				Title:    cmp.Or(thread.Title, thread.Slug),
+				Status:   thread.Status,
+				ThreadID: thread.ID,
+			})
+		}
+	}
+	for _, children := range started {
+		slices.SortStableFunc(children, func(a, b Activity) int { return a.At.Compare(b.At) })
+	}
+	return standalone
+}
+
+func threadIDSet(threads []storage.CommitmentThread) map[string]bool {
+	ids := make(map[string]bool, len(threads))
+	for _, thread := range threads {
+		ids[thread.ID] = true
+	}
+	return ids
 }

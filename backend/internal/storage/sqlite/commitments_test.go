@@ -731,4 +731,13 @@ func TestCommitmentListsAllConnectedThreadsDeduplicatedAcrossStatesAndLinks(t *t
 	if !slices.Contains(followupIDs, finishedWorker.ID) || !slices.Contains(followupIDs, childWorking.ID) || len(followupIDs) != 2 {
 		t.Fatalf("reused task threads = %+v, want [%s, %s]", loadedFollowup.Threads, finishedWorker.ID, childWorking.ID)
 	}
+	// A directly linked root always precedes its directly linked descendant even
+	// if the descendant has an earlier created_at_ms.
+	if _, err := store.db.Exec("UPDATE threads SET created_at_ms = 1 WHERE id = ?", childWorking.ID); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := store.LoadCommitment(task.ID)
+	if err != nil || len(reloaded.Threads) < 2 || reloaded.Threads[0].ID != finishedWorker.ID || reloaded.Threads[1].ID != childWorking.ID {
+		t.Fatalf("reordered root/descendant threads = %+v, %v; want root %s before child %s", reloaded.Threads, err, finishedWorker.ID, childWorking.ID)
+	}
 }

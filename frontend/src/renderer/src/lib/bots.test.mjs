@@ -250,6 +250,23 @@ test('connectedTaskThreads handles parent_id trees without started and stays cyc
     ['a', 0],
     ['b', 1],
   ])
+
+  const viaStartedIntermediate = connectedTaskThreads(
+    {
+      threads: [
+        { id: 'w1', title: 'Worker 1', state: 'finished' },
+        { id: 'g1', parent_id: 'c1', title: 'Grandchild 1', state: 'working' },
+      ],
+    },
+    {
+      w1: [{ kind: 'side_chat', at: '2026-11-22T09:01:00Z', title: 'Child 1', status: 'idle', thread_id: 'c1' }],
+    },
+  )
+  expect(viaStartedIntermediate.map((row) => [row.id, row.depth])).toEqual([
+    ['w1', 0],
+    ['c1', 1],
+    ['g1', 2],
+  ])
 })
 
 test('remembered bot selection stays isolated per workspace', () => {

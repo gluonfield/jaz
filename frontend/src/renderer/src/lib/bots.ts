@@ -69,6 +69,8 @@ export type ConnectedTaskThread = {
   activity?: BotThreadActivity
 }
 
+type ConnectedEdge = Omit<ConnectedTaskThread, 'depth'>
+
 // Every thread connected to a task in display order: directly linked threads
 // plus any descendant threads spawned under them (from parent_id and
 // activity.started), deduplicated and cycle-safe so each thread appears once.
@@ -87,20 +89,15 @@ export function connectedTaskThreads(
   }
   if (!uniqueDirect.length) return []
 
-  const childrenByParent = new Map<string, Omit<ConnectedTaskThread, 'depth'>[]>()
-  const seenPerParent = new Map<string, Set<string>>()
-  const record = (parentId: string, edge: Omit<ConnectedTaskThread, 'depth'>) => {
+  const childrenByParent = new Map<string, Map<string, ConnectedEdge>>()
+  const record = (parentId: string, edge: ConnectedEdge) => {
     if (!parentId || edge.id === parentId) return
-    let seen = seenPerParent.get(parentId)
-    if (!seen) {
-      seen = new Set()
-      seenPerParent.set(parentId, seen)
+    let children = childrenByParent.get(parentId)
+    if (!children) {
+      children = new Map()
+      childrenByParent.set(parentId, children)
     }
-    if (seen.has(edge.id)) return
-    seen.add(edge.id)
-    const list = childrenByParent.get(parentId)
-    if (list) list.push(edge)
-    else childrenByParent.set(parentId, [edge])
+    if (!children.has(edge.id)) children.set(edge.id, edge)
   }
 
   for (const [rawParentId, items] of Object.entries(started)) {
@@ -113,9 +110,7 @@ export function connectedTaskThreads(
   }
   for (const thread of uniqueDirect) {
     const parentId = thread.parent_id?.trim()
-    if (parentId && directById.has(parentId)) {
-      record(parentId, { id: thread.id, thread })
-    }
+    if (parentId) record(parentId, { id: thread.id, thread })
   }
 
   const nestedChildIds = new Set<string>()
@@ -125,33 +120,28 @@ export function connectedTaskThreads(
     const parentId = queue[i]
     if (scannedParents.has(parentId)) continue
     scannedParents.add(parentId)
-    for (const child of childrenByParent.get(parentId) ?? []) {
-      if (child.id === parentId) continue
-      nestedChildIds.add(child.id)
-      queue.push(child.id)
+    for (const childId of childrenByParent.get(parentId)?.keys() ?? []) {
+      nestedChildIds.add(childId)
+      queue.push(childId)
     }
   }
 
   const rows: ConnectedTaskThread[] = []
   const visited = new Set<string>()
-  const append = (id: string, entry: Omit<ConnectedTaskThread, 'depth'>, depth: number) => {
-    if (visited.has(id)) return
-    visited.add(id)
+  const append = (entry: ConnectedEdge, depth: number) => {
+    if (visited.has(entry.id)) return
+    visited.add(entry.id)
     rows.push({ ...entry, depth })
-    for (const child of childrenByParent.get(id) ?? []) {
-      append(child.id, child, depth + 1)
+    for (const child of childrenByParent.get(entry.id)?.values() ?? []) {
+      append(child, depth + 1)
     }
   }
 
   for (const thread of uniqueDirect) {
-    if (!nestedChildIds.has(thread.id)) {
-      append(thread.id, { id: thread.id, thread }, 0)
-    }
+    if (!nestedChildIds.has(thread.id)) append({ id: thread.id, thread }, 0)
   }
   for (const thread of uniqueDirect) {
-    if (!visited.has(thread.id)) {
-      append(thread.id, { id: thread.id, thread }, 0)
-    }
+    if (!visited.has(thread.id)) append({ id: thread.id, thread }, 0)
   }
   return rows
 }
