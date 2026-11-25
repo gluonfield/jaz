@@ -79,6 +79,7 @@ test('SETTINGS_SECTIONS places Workspace group first and App group second with e
     'cloud',
     'personalization',
     'memory',
+    'agents',
     'plugins',
     'mcp',
     'machines',
@@ -91,7 +92,6 @@ test('SETTINGS_SECTIONS places Workspace group first and App group second with e
     'notifications',
     'keyboard',
     'voice',
-    'agents',
     'providers',
     'browser',
     'computer',
@@ -141,7 +141,7 @@ test('SettingsNav heads workspace settings with the switcher alone and keeps App
   expect(switcherAt).toBeGreaterThan(-1)
   expect(switcherAt).toBeLessThan(cloudDesktopHtml.indexOf('>Workspace<'))
   expect(cloudDesktopHtml.indexOf('Connected Machines')).toBeLessThan(appAt)
-  expect(appAt).toBeLessThan(cloudDesktopHtml.indexOf('Agents (ACP)'))
+  expect(cloudDesktopHtml.indexOf('Agents (ACP)')).toBeLessThan(appAt)
   expect(cloudDesktopHtml).toContain('Computer Use')
   expect(cloudDesktopHtml).not.toContain('Cambridge Advanced Systems')
   expect(cloudDesktopHtml).not.toContain('<input')

@@ -1,5 +1,5 @@
 import { ChevronRight, ListFilter, Plus } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { type ReactNode, useCallback, useState } from 'react'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import type { SidebarGroupBy, SidebarShowFilter, SidebarSortBy } from './sidebarSessionModel'
 
@@ -27,7 +27,7 @@ const VALID_SHOW = new Set<SidebarShowFilter>(['all', 'active', 'unread'])
 const GROUP_BY_LABEL: Record<SidebarGroupBy, string> = {
   date: 'Date',
   status: 'Status',
-  project: 'Folder',
+  project: 'Project',
   environment: 'Environment',
   none: 'None',
 }
@@ -97,6 +97,44 @@ type SubmenuKey = 'groupBy' | 'sortBy' | 'show'
 const SUBMENU_PANEL_CLASS =
   'absolute left-full top-0 ml-1.5 min-w-[152px] rounded-[14px] bg-surface p-1.5 shadow-xl ring-1 ring-border max-sm:static max-sm:ml-2 max-sm:mt-1 max-sm:rounded-lg max-sm:bg-surface-2/60 max-sm:shadow-none max-sm:ring-0'
 
+const PRIMARY_GROUP_OPTIONS: SidebarGroupBy[] = ['date', 'status', 'project']
+const SORT_OPTIONS: SidebarSortBy[] = ['updated', 'created']
+const SHOW_OPTIONS: SidebarShowFilter[] = ['all', 'active', 'unread']
+
+function SubmenuRow({
+  label,
+  valueLabel,
+  open,
+  onHover,
+  onToggle,
+  children,
+}: {
+  label: string
+  valueLabel: string
+  open: boolean
+  onHover: () => void
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className="relative" onMouseEnter={onHover}>
+      <MenuRow
+        active={open}
+        onClick={onToggle}
+        trailing={
+          <span className="flex items-center gap-1 text-[12px] text-ink-3">
+            <span>{valueLabel}</span>
+            <ChevronRight size={13} />
+          </span>
+        }
+      >
+        {label}
+      </MenuRow>
+      {open ? <div className={SUBMENU_PANEL_CLASS}>{children}</div> : null}
+    </div>
+  )
+}
+
 export function SidebarOrganizationMenu({
   view,
   onChange,
@@ -116,16 +154,11 @@ export function SidebarOrganizationMenu({
   }, [])
   const isDefault = isDefaultSidebarView(view)
 
-  const selectGroupBy = (groupBy: SidebarGroupBy) => {
-    onChange({ ...view, groupBy })
-    close()
+  const toggleSubmenu = (key: SubmenuKey) => {
+    setSubmenu((current) => (current === key ? null : key))
   }
-  const selectSortBy = (sortBy: SidebarSortBy) => {
-    onChange({ ...view, sortBy })
-    close()
-  }
-  const selectShow = (show: SidebarShowFilter) => {
-    onChange({ ...view, show })
+  const updateView = (patch: Partial<SidebarViewState>) => {
+    onChange({ ...view, ...patch })
     close()
   }
 
@@ -174,104 +207,74 @@ export function SidebarOrganizationMenu({
           }
         >
           <div className="min-w-[196px]">
-            <div
-              className="relative"
-              onMouseEnter={() => setSubmenu('groupBy')}
+            <SubmenuRow
+              label="Group by"
+              valueLabel={GROUP_BY_LABEL[view.groupBy]}
+              open={submenu === 'groupBy'}
+              onHover={() => setSubmenu('groupBy')}
+              onToggle={() => toggleSubmenu('groupBy')}
             >
-              <MenuRow
-                active={submenu === 'groupBy'}
-                onClick={() => setSubmenu((current) => (current === 'groupBy' ? null : 'groupBy'))}
-                trailing={
-                  <span className="flex items-center gap-1 text-[12px] text-ink-3">
-                    <span>{GROUP_BY_LABEL[view.groupBy]}</span>
-                    <ChevronRight size={13} />
-                  </span>
-                }
-              >
-                Group by
-              </MenuRow>
-              {submenu === 'groupBy' ? (
-                <div className={SUBMENU_PANEL_CLASS}>
-                  <MenuRow selected={view.groupBy === 'date'} onClick={() => selectGroupBy('date')}>
-                    Date
-                  </MenuRow>
-                  <MenuRow selected={view.groupBy === 'status'} onClick={() => selectGroupBy('status')}>
-                    Status
-                  </MenuRow>
-                  <MenuRow selected={view.groupBy === 'project'} onClick={() => selectGroupBy('project')}>
-                    Folder
-                  </MenuRow>
-                  {showEnvironmentOption ? (
-                    <MenuRow selected={view.groupBy === 'environment'} onClick={() => selectGroupBy('environment')}>
-                      Environment
-                    </MenuRow>
-                  ) : null}
-                  <div className="my-1 border-t border-border/70" />
-                  <MenuRow selected={view.groupBy === 'none'} onClick={() => selectGroupBy('none')}>
-                    None
-                  </MenuRow>
-                </div>
+              {PRIMARY_GROUP_OPTIONS.map((option) => (
+                <MenuRow
+                  key={option}
+                  selected={view.groupBy === option}
+                  onClick={() => updateView({ groupBy: option })}
+                >
+                  {GROUP_BY_LABEL[option]}
+                </MenuRow>
+              ))}
+              {showEnvironmentOption ? (
+                <MenuRow
+                  selected={view.groupBy === 'environment'}
+                  onClick={() => updateView({ groupBy: 'environment' })}
+                >
+                  {GROUP_BY_LABEL.environment}
+                </MenuRow>
               ) : null}
-            </div>
+              <div className="my-1 border-t border-border/70" />
+              <MenuRow
+                selected={view.groupBy === 'none'}
+                onClick={() => updateView({ groupBy: 'none' })}
+              >
+                {GROUP_BY_LABEL.none}
+              </MenuRow>
+            </SubmenuRow>
 
-            <div
-              className="relative"
-              onMouseEnter={() => setSubmenu('sortBy')}
+            <SubmenuRow
+              label="Sort by"
+              valueLabel={SORT_BY_LABEL[view.sortBy]}
+              open={submenu === 'sortBy'}
+              onHover={() => setSubmenu('sortBy')}
+              onToggle={() => toggleSubmenu('sortBy')}
             >
-              <MenuRow
-                active={submenu === 'sortBy'}
-                onClick={() => setSubmenu((current) => (current === 'sortBy' ? null : 'sortBy'))}
-                trailing={
-                  <span className="flex items-center gap-1 text-[12px] text-ink-3">
-                    <span>{SORT_BY_LABEL[view.sortBy]}</span>
-                    <ChevronRight size={13} />
-                  </span>
-                }
-              >
-                Sort by
-              </MenuRow>
-              {submenu === 'sortBy' ? (
-                <div className={SUBMENU_PANEL_CLASS}>
-                  <MenuRow selected={view.sortBy === 'updated'} onClick={() => selectSortBy('updated')}>
-                    Last updated
-                  </MenuRow>
-                  <MenuRow selected={view.sortBy === 'created'} onClick={() => selectSortBy('created')}>
-                    Created
-                  </MenuRow>
-                </div>
-              ) : null}
-            </div>
+              {SORT_OPTIONS.map((option) => (
+                <MenuRow
+                  key={option}
+                  selected={view.sortBy === option}
+                  onClick={() => updateView({ sortBy: option })}
+                >
+                  {SORT_BY_LABEL[option]}
+                </MenuRow>
+              ))}
+            </SubmenuRow>
 
-            <div
-              className="relative"
-              onMouseEnter={() => setSubmenu('show')}
+            <SubmenuRow
+              label="Show"
+              valueLabel={SHOW_LABEL[view.show]}
+              open={submenu === 'show'}
+              onHover={() => setSubmenu('show')}
+              onToggle={() => toggleSubmenu('show')}
             >
-              <MenuRow
-                active={submenu === 'show'}
-                onClick={() => setSubmenu((current) => (current === 'show' ? null : 'show'))}
-                trailing={
-                  <span className="flex items-center gap-1 text-[12px] text-ink-3">
-                    <span>{SHOW_LABEL[view.show]}</span>
-                    <ChevronRight size={13} />
-                  </span>
-                }
-              >
-                Show
-              </MenuRow>
-              {submenu === 'show' ? (
-                <div className={SUBMENU_PANEL_CLASS}>
-                  <MenuRow selected={view.show === 'all'} onClick={() => selectShow('all')}>
-                    All
-                  </MenuRow>
-                  <MenuRow selected={view.show === 'active'} onClick={() => selectShow('active')}>
-                    Active
-                  </MenuRow>
-                  <MenuRow selected={view.show === 'unread'} onClick={() => selectShow('unread')}>
-                    Unread
-                  </MenuRow>
-                </div>
-              ) : null}
-            </div>
+              {SHOW_OPTIONS.map((option) => (
+                <MenuRow
+                  key={option}
+                  selected={view.show === option}
+                  onClick={() => updateView({ show: option })}
+                >
+                  {SHOW_LABEL[option]}
+                </MenuRow>
+              ))}
+            </SubmenuRow>
 
             {onCreateProject ? (
               <div onMouseEnter={() => setSubmenu(null)}>

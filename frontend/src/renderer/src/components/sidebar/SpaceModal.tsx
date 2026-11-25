@@ -148,7 +148,7 @@ export function SpaceModal({
           ? canEdit
             ? 'Rename this project or manage who in this workspace can access it.'
             : 'View who has access to this project.'
-          : 'Organize related chats, source files, and custom instructions in one folder.'
+          : 'Organize related chats, source files, and custom instructions in one project.'
       }
       footer={
         <>

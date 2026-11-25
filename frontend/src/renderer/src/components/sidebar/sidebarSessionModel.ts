@@ -80,7 +80,12 @@ function withLocalChildState(items: SessionListItem[]): SessionListItem[] {
   }))
 }
 
-function sessionsBySavedProject(items: SessionListItem[], projects: Project[], spaces: CloudSpace[]) {
+function sessionsBySavedProject(
+  items: SessionListItem[],
+  projects: Project[],
+  spaces: CloudSpace[],
+  keepEmpty: boolean,
+) {
   const cloudGroups = new Map<string, SessionProjectGroup>(spaces.map((space) => [
     space.id,
     { key: space.id, label: space.name, items: [], kind: 'cloud', space },
@@ -118,12 +123,9 @@ function sessionsBySavedProject(items: SessionListItem[], projects: Project[], s
   }
 
   return {
-    groups: [
-      ...[...cloudGroups.values()].map((group) => ({ ...group, items: withLocalChildState(group.items) })),
-      ...[...localGroups.values()]
-        .filter((group) => group.items.length > 0)
-        .map((group) => ({ ...group, items: withLocalChildState(group.items) })),
-    ],
+    groups: [...cloudGroups.values(), ...localGroups.values()]
+      .filter((group) => keepEmpty || group.items.length > 0)
+      .map((group) => ({ ...group, items: withLocalChildState(group.items) })),
     ungrouped: withLocalChildState(ungrouped),
   }
 }
@@ -290,7 +292,7 @@ export function sidebarSessionSections(
     )
     return { pinnedItems, recentItems, groups, ungrouped: [] }
   }
-  return { pinnedItems, recentItems, ...sessionsBySavedProject(recentItems, projects, spaces) }
+  return { pinnedItems, recentItems, ...sessionsBySavedProject(recentItems, projects, spaces, show === 'all') }
 }
 
 export function applySessionDragOrder(

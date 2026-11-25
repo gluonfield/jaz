@@ -148,7 +148,7 @@ describe('sidebar session organization', () => {
 })
 
 
-test('shows project groups only when they contain visible unpinned sessions', () => {
+test('keeps saved projects visible even when they have no unpinned sessions, and filters both local and cloud symmetrically when filtered', () => {
   const projects = [
     { path: '/empty', name: 'Empty' },
     { path: '/pinned', name: 'Pinned only' },
@@ -157,25 +157,40 @@ test('shows project groups only when they contain visible unpinned sessions', ()
   const sessions = [session('pinned', { path: '/pinned', pinned: true }), session('thread', { path: '/active' })]
   const sections = sidebarSessionSections(sessions, projects)
   expect(sections.groups.map((group) => [group.key, group.items.length])).toEqual([
+    ['/empty', 0],
+    ['/pinned', 0],
     ['/active', 1],
   ])
   const blocks = sessionDisplayBlocks(sections.groups, [], new Set(), false, new Set())
-  expect(blocks.map((block) => block.key)).toEqual(['project:/active'])
+  expect(blocks.map((block) => block.key)).toEqual(['project:/empty', 'project:/pinned', 'project:/active'])
   expect(sections.pinnedItems.map((entry) => entry.session.id)).toEqual(['pinned'])
-  expect(sidebarSessionSections([], projects).groups).toEqual([])
+  expect(sidebarSessionSections([], projects).groups.map((group) => [group.key, group.items.length])).toEqual([
+    ['/empty', 0],
+    ['/pinned', 0],
+    ['/active', 0],
+  ])
+
+  const filteredUnread = sidebarSessionSections(sessions, projects, {
+    spaces: [{ id: 'sp_empty', name: 'Empty Cloud', visibility: 'private' }],
+    show: 'unread',
+  })
+  expect(filteredUnread.groups).toEqual([])
 
   const removed = sidebarSessionSections(sessions, projects.filter((project) => project.path !== '/active'))
-  expect(removed.groups).toEqual([])
+  expect(removed.groups.map((group) => group.key)).toEqual(['/empty', '/pinned'])
   expect(removed.ungrouped.map((entry) => entry.session.id)).toEqual(['thread'])
 })
 
 describe('unified cloud & local sidebar grouping, sorting, and filtering', () => {
-  test('groups Cloud projects and Local projects in the same Project view while preserving empty Cloud projects', () => {
+  test('groups Cloud projects and Local projects symmetrically in Project view while preserving empty projects for both', () => {
     const spaces = [
       { id: 'sp_1', name: 'rockstars', visibility: 'team' },
       { id: 'sp_empty', name: 'Q4', visibility: 'private' },
     ]
-    const localProjects = [{ path: '/repo/jaz', name: 'jaz' }]
+    const localProjects = [
+      { path: '/repo/jaz', name: 'jaz' },
+      { path: '/repo/empty', name: 'empty-local' },
+    ]
     const sessions = [
       { id: 'c1', space_id: 'sp_1', backend: 'cloud', updated_at: '2026-11-25T09:00:00Z', last_attention_at: '2026-11-25T09:00:00Z' },
       { id: 'c_loose', backend: 'cloud', updated_at: '2026-11-25T08:00:00Z', last_attention_at: '2026-11-25T08:00:00Z' },
@@ -186,6 +201,7 @@ describe('unified cloud & local sidebar grouping, sorting, and filtering', () =>
       ['sp_1', 'cloud', ['c1']],
       ['sp_empty', 'cloud', []],
       ['/repo/jaz', 'local', ['l1']],
+      ['/repo/empty', 'local', []],
     ])
     expect(sections.ungrouped.map((i) => i.session.id)).toEqual(['c_loose'])
   })

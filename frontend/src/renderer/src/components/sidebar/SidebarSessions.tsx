@@ -4,6 +4,7 @@ import { Folder, FolderOpen, Lock, SquarePen, Users } from 'lucide-react'
 import { motion, Reorder, type Transition, useDragControls } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
+import { CreateProjectDialog } from '@/components/projects/CreateProjectDialog'
 import { Collapse } from '@/components/ui/Collapse'
 import { HoverCardGroup } from '@/components/ui/HoverCard'
 import { SkeletonRows } from '@/components/ui/Skeleton'
@@ -170,12 +171,23 @@ function ProjectGroup({
   shortcutByID: Map<string, number>
   shortcutMode: boolean
 }) {
+  const navigate = useNavigate()
   const dragControls = useDragControls()
   const { group, items, collapsed } = block
   const isLocalProject = group.kind === 'local'
   const isCloudProject = group.kind === 'cloud' && Boolean(group.space)
   const isBucket = group.kind === 'bucket'
-  const rowHoverActionClass = `grid size-6 place-items-center rounded-md text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100 [@media(hover:none)]:opacity-100 ${group.items.length ? 'opacity-0' : ''}`
+  const hasThreads = group.items.length > 0
+  const rowHoverActionClass = `grid size-6 place-items-center rounded-md text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100 [@media(hover:none)]:opacity-100 ${hasThreads ? 'opacity-0' : ''}`
+  const handleTap = () => {
+    if (hasThreads) {
+      onToggle()
+    } else if (isCloudProject && group.space) {
+      void navigate({ to: '/spaces/$spaceId', params: { spaceId: group.space.id } })
+    } else if (isLocalProject) {
+      void navigate({ to: '/new', search: { project: group.key } })
+    }
+  }
 
   return (
     <Reorder.Item
@@ -191,9 +203,15 @@ function ProjectGroup({
         <motion.button
           type="button"
           onPointerDown={isLocalProject ? (event) => dragControls.start(event) : undefined}
-          onTap={onToggle}
-          aria-expanded={!collapsed}
-          aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${group.label}`}
+          onTap={handleTap}
+          aria-expanded={hasThreads ? !collapsed : undefined}
+          aria-label={
+            hasThreads
+              ? `${collapsed ? 'Expand' : 'Collapse'} ${group.label}`
+              : isCloudProject
+                ? `Open project ${group.label}`
+                : `New task in ${group.label}`
+          }
           className={`flex h-full min-w-0 flex-1 touch-none items-center gap-2 rounded-lg px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
             isLocalProject ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
           }`}
@@ -239,23 +257,25 @@ function ProjectGroup({
           </div>
         ) : null}
       </div>
-      <Collapse open={!collapsed}>
-        <SessionRows
-          items={items}
-          shortcutByID={shortcutByID}
-          shortcutMode={shortcutMode}
-          reserveIconSpace={!isBucket}
-        />
-        {items.length < group.items.length ? (
-          <button
-            type="button"
-            onClick={onShowMore}
-            className={`${MORE_ACTION_CLASS} ${isBucket ? 'pl-2.5 max-sm:pl-3' : 'pl-9 max-sm:pl-10'}`}
-          >
-            Show More
-          </button>
-        ) : null}
-      </Collapse>
+      {hasThreads ? (
+        <Collapse open={!collapsed}>
+          <SessionRows
+            items={items}
+            shortcutByID={shortcutByID}
+            shortcutMode={shortcutMode}
+            reserveIconSpace={!isBucket}
+          />
+          {items.length < group.items.length ? (
+            <button
+              type="button"
+              onClick={onShowMore}
+              className={`${MORE_ACTION_CLASS} ${isBucket ? 'pl-2.5 max-sm:pl-3' : 'pl-9 max-sm:pl-10'}`}
+            >
+              Show More
+            </button>
+          ) : null}
+        </Collapse>
+      ) : null}
     </Reorder.Item>
   )
 }
@@ -488,12 +508,17 @@ export function SidebarSessions({ open }: { open: boolean }) {
     reorder.mutate(next.map((project) => project.path))
   }
 
-  if (sessions.isPending || (!cloudOnly && view.groupBy === 'project' && projects.isPending)) {
+  if (
+    sessions.isPending ||
+    (view.groupBy === 'project' && ((!cloudOnly && projects.isPending) || (hasCloud && cloudSpaces.isPending)))
+  ) {
     return <SkeletonRows count={4} />
   }
   if (sessions.isError && !sessions.data) {
     return <p className="px-2.5 py-1 text-[13px] text-ink-3">Backend unreachable</p>
   }
+
+  const canCreateProject = hasCloud || !cloudOnly
 
   return (
     <HoverCardGroup>
@@ -508,7 +533,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
             view={view}
             onChange={changeView}
             showEnvironmentOption={showEnvironmentOption}
-            onCreateProject={hasCloud ? () => setCreateProjectOpen(true) : undefined}
+            onCreateProject={canCreateProject ? () => setCreateProjectOpen(true) : undefined}
           />
           {view.groupBy !== 'none' ? (
             <ProjectSessionList
@@ -536,16 +561,26 @@ export function SidebarSessions({ open }: { open: boolean }) {
           ) : null}
         </div>
         {createProjectOpen ? (
-          <SpaceModal
-            onClose={() => setCreateProjectOpen(false)}
-            onCreated={(created) => {
-              queryClient.setQueryData<CloudSpace[]>(keys.cloudSpaces, (prev) => [
-                ...(prev ?? []),
-                created,
-              ])
-              void navigate({ to: '/spaces/$spaceId', params: { spaceId: created.id } })
-            }}
-          />
+          hasCloud ? (
+            <SpaceModal
+              onClose={() => setCreateProjectOpen(false)}
+              onCreated={(created) => {
+                queryClient.setQueryData<CloudSpace[]>(keys.cloudSpaces, (prev) => [
+                  ...(prev ?? []),
+                  created,
+                ])
+                void navigate({ to: '/spaces/$spaceId', params: { spaceId: created.id } })
+              }}
+            />
+          ) : (
+            <CreateProjectDialog
+              onClose={() => setCreateProjectOpen(false)}
+              onCreated={(project) => {
+                setCreateProjectOpen(false)
+                void navigate({ to: '/new', search: { project: project.path } })
+              }}
+            />
+          )
         ) : null}
       </section>
     </HoverCardGroup>
