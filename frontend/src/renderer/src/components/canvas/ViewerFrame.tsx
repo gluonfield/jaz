@@ -3,8 +3,10 @@ import type { CanvasFile } from '@/lib/api/canvas'
 import { sessionFileRawUrl } from '@/lib/api/sessions'
 import { useCanvas } from './canvasContext'
 
-export function rawUrl(sessionId: string, file: CanvasFile): string {
-  return `${sessionFileRawUrl(sessionId, file.path)}&v=${encodeURIComponent(file.version ?? '')}`
+export function rawUrl(sessionId: string, file: CanvasFile, cloudRunId?: string): string {
+  const base = sessionFileRawUrl(sessionId, file.path, cloudRunId)
+  const sep = base.includes('?') ? '&' : '?'
+  return `${base}${sep}v=${encodeURIComponent(file.version ?? '')}`
 }
 
 export function ViewerFrame({ id, status, focusable, controls, paper, children }: {

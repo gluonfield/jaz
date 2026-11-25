@@ -29,6 +29,7 @@ import { useToast } from '@/components/ui/toast'
 import { spaceQuery, spaceSourcesQuery, spacesQuery } from '@/lib/api/cloudSpaces'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { deleteSession, moveSessionToSpace, sidebarSessionsQuery } from '@/lib/api/sessions'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import type { SendMessageOptions } from '@/lib/sendMessage'
@@ -56,6 +57,7 @@ function SpaceProjectPage() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const isMobile = useIsMobile()
+  const isViewer = useIsCloudViewer()
 
   const [tab, setTab] = useState<ProjectTab>('chats')
   const [creating, setCreating] = useState(false)
@@ -93,6 +95,10 @@ function SpaceProjectPage() {
   })
 
   const handleStartChat = async (text: string, options: SendMessageOptions = {}) => {
+    if (isViewer) {
+      toast('Viewers have read-only access in this workspace.', 'danger')
+      return
+    }
     if (!controls.runtimeAvailable) {
       toast('No cloud models are configured for your workspace.', 'danger')
       return
@@ -151,7 +157,7 @@ function SpaceProjectPage() {
 
   if (!space) return null
 
-  const canEdit = space.can_edit !== false
+  const canEdit = !isViewer && space.can_edit !== false
   const visibilityMeta =
     space.visibility === 'private'
       ? { label: 'Private', Icon: Lock }
@@ -193,19 +199,25 @@ function SpaceProjectPage() {
 
         <div>
           <CloudSpendBanner capError={spendCapError} onClearError={() => setSpendCapError(null)} />
-          <ComposerCard
-            streaming={creating}
-            placeholder={`New chat in ${space.name}…`}
-            planAvailable
-            goalControlVisible={false}
-            goalAvailable={false}
-            disabled={creating || !controls.runtimeAvailable}
-            leftSlot={<AgentModelControls controls={controls} placement={controlPlacement} disabled={creating} />}
-            optionsSlot={controls.fastMode ? <FastModeOption {...controls.fastMode} disabled={creating} /> : null}
-            draftStorageKey={`jaz.project.draft.${spaceId}`}
-            clearTiming="never"
-            onSend={handleStartChat}
-          />
+          {isViewer ? (
+            <div className="rounded-card border border-border bg-surface px-4 py-3 text-center text-[13px] text-ink-3">
+              View-only access — viewers cannot start new chats in this project.
+            </div>
+          ) : (
+            <ComposerCard
+              streaming={creating}
+              placeholder={`New chat in ${space.name}…`}
+              planAvailable
+              goalControlVisible={false}
+              goalAvailable={false}
+              disabled={creating || !controls.runtimeAvailable}
+              leftSlot={<AgentModelControls controls={controls} placement={controlPlacement} disabled={creating} />}
+              optionsSlot={controls.fastMode ? <FastModeOption {...controls.fastMode} disabled={creating} /> : null}
+              draftStorageKey={`jaz.project.draft.${spaceId}`}
+              clearTiming="never"
+              onSend={handleStartChat}
+            />
+          )}
         </div>
 
         <div className="flex flex-col gap-4">
@@ -271,24 +283,28 @@ function SpaceProjectPage() {
                           {formatRelativeDate(chat.updated_at)}
                         </span>
                       </Link>
-                      <button
-                        type="button"
-                        title="Remove from project"
-                        aria-label={`Remove ${sessionLabel(chat)} from project`}
-                        onClick={() => removeFromProject.mutate(chat.id)}
-                        className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-ink-3 opacity-0 transition-colors hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
-                      >
-                        <FolderMinus size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        title="Delete chat"
-                        aria-label={`Delete ${sessionLabel(chat)}`}
-                        onClick={() => deleteChat.mutate(chat.id)}
-                        className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-ink-3 opacity-0 transition-colors hover:bg-surface-2 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {!isViewer ? (
+                        <>
+                          <button
+                            type="button"
+                            title="Remove from project"
+                            aria-label={`Remove ${sessionLabel(chat)} from project`}
+                            onClick={() => removeFromProject.mutate(chat.id)}
+                            className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-ink-3 opacity-0 transition-colors hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+                          >
+                            <FolderMinus size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            title="Delete chat"
+                            aria-label={`Delete ${sessionLabel(chat)}`}
+                            onClick={() => deleteChat.mutate(chat.id)}
+                            className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-ink-3 opacity-0 transition-colors hover:bg-surface-2 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </>
+                      ) : null}
                     </li>
                   )
                 })}

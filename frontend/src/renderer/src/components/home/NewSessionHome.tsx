@@ -37,6 +37,7 @@ function HomeLogo({ value, invertInLightMode, invertInDarkMode }: {
 export function NewSessionHome({
   creating,
   disabled = false,
+  placeholder,
   goalAvailable = false,
   leftSlot,
   shelf,
@@ -50,6 +51,7 @@ export function NewSessionHome({
 }: {
   creating: boolean
   disabled?: boolean
+  placeholder?: string
   goalAvailable?: boolean
   leftSlot: ReactNode
   /** setup controls on a tab behind the composer's top edge */
@@ -92,8 +94,8 @@ export function NewSessionHome({
             ) : null}
             <ComposerCard
               streaming={creating}
-              autoFocus
-              placeholder="Ask anything, or hand your assistant a task…"
+              autoFocus={!disabled}
+              placeholder={placeholder ?? 'Ask anything, or hand your assistant a task…'}
               planAvailable
               goalControlVisible
               goalAvailable={goalAvailable}

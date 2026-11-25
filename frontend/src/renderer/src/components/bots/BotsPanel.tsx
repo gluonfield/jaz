@@ -10,6 +10,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton'
 import { botsQuery, type BotListEntry } from '@/lib/api/bots'
 import type { Bot } from '@/lib/api/types'
 import { botAvatars, type BotMood, botMood, dragSections, pinOrder, placePin } from '@/lib/bots'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 import { BotIcon } from './BotAvatar'
@@ -24,13 +25,16 @@ type PinDrag = { id: string; pins: string[] }
 const SPRING = { type: 'spring', duration: 0.3, bounce: 0 } as const
 
 export function BotsPanel({ mobile }: { mobile: boolean }) {
+  const isViewer = useIsCloudViewer()
   const bots = useQuery(botsQuery)
   const list = useMemo(() => bots.data ?? [], [bots.data])
   const pins = useMemo(() => pinOrder(list), [list])
   const pin = usePins()
   const [drag, setDrag] = useState<PinDrag | null>(null)
   const { tiles, rows } = dragSections(list, pins, drag ?? undefined)
-  const startDrag = (id: string) => setDrag({ id, pins })
+  const startDrag = (id: string) => {
+    if (!isViewer) setDrag({ id, pins })
+  }
 
   return (
     <>
@@ -38,7 +42,7 @@ export function BotsPanel({ mobile }: { mobile: boolean }) {
         <Link to="/loops" aria-label="Loops" title="Loops" activeProps={{ className: 'bg-list-active! text-ink!' }} className={`ml-auto ${PANEL_ICON_BUTTON_CLASS}`}>
           <Repeat size={15} className="max-sm:size-[18px]" />
         </Link>
-        <NewBotPicker bots={list} />
+        {!isViewer ? <NewBotPicker bots={list} /> : null}
       </SidebarHeader>
       <SidebarScroll mobile={mobile} tight>
         {bots.isPending ? (

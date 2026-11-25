@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { installDroppedFileInspection } from '@main/fileActions'
 import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
-import { configureAppPermissions } from '@main/permissions'
+import { configureAppPermissions, setTrustedRendererPath } from '@main/permissions'
 import { LOCAL_BACKEND_TRANSPORT_URL, LOCAL_BACKEND_URL } from '@shared/localBackend'
 import type { SessionMessages } from '@/lib/api/types'
 
@@ -152,6 +152,7 @@ async function run() {
   assert.ok(address && typeof address !== 'string')
   const backend = `http://127.0.0.1:${address.port}`
   await app.whenReady()
+  setTrustedRendererPath(join(output, 'renderer', 'index.html'))
   configureAppPermissions(session.defaultSession)
   configureLocalBackendTransport(session.defaultSession, backend)
   installDroppedFileInspection()

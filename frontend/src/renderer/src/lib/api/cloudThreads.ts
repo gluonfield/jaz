@@ -1,6 +1,8 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
 import type { ModelPickerOption, PickerAgentOption } from '@/lib/modelPicker'
+import { modelSuggestionFor } from '@/lib/modelSuggestion'
+import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 import { keys } from '@/lib/query/keys'
 import {
   apiFetch as cloudFetch,
@@ -12,7 +14,7 @@ import {
   post as cloudPost,
 } from './client'
 import type { ConnectedMachine } from './serverTypes'
-import type { Attachment, Session, SessionEvent, SessionMessages } from './types'
+import type { Attachment, ReasoningEffortOption, Session, SessionEvent, SessionMessages } from './types'
 
 export type RawCloudModelOption = string | ModelPickerOption
 
@@ -175,6 +177,77 @@ export function cloudProfileToAgentOption(profile: CloudModelProfile): PickerAge
     label: profile.display_name?.trim() || meta?.label || profile.provider || profile.profile_id,
     logoAgent: profile.agent?.trim() || meta?.logoAgent || '',
     provider,
+  }
+}
+
+export interface ResolvedCloudModelSelection {
+  profile?: CloudModelProfile
+  agentItems: PickerAgentOption[]
+  agents: string[]
+  profileId: string
+  model: string
+  modelSuggestions: ModelPickerOption[]
+  effort: string
+  effortOptions: ReasoningEffortOption[]
+}
+
+export function findCloudModelProfile(
+  profiles: CloudModelProfile[],
+  selector?: string,
+  fallbackAgent?: string,
+): CloudModelProfile | undefined {
+  if (profiles.length === 0) return undefined
+  const trimmed = selector?.trim() ?? ''
+  if (trimmed) {
+    const exact = profiles.find((profile) => profile.profile_id === trimmed)
+    if (exact) return exact
+    const lowered = trimmed.toLowerCase()
+    const byProvider = profiles.find((profile) => profile.provider === lowered)
+    if (byProvider) return byProvider
+    const byAgent = profiles.find((profile) => (profile.agent ?? '').toLowerCase() === lowered)
+    if (byAgent) return byAgent
+  }
+  const agentTrimmed = fallbackAgent?.trim().toLowerCase() ?? ''
+  if (agentTrimmed) {
+    const byAgent = profiles.find((profile) => (profile.agent ?? '').toLowerCase() === agentTrimmed)
+    if (byAgent) return byAgent
+  }
+  return profiles[0]
+}
+
+export function resolveCloudModelSelection(
+  profiles: CloudModelProfile[],
+  input: { profileId?: string; agent?: string; model?: string; effort?: string } = {},
+): ResolvedCloudModelSelection {
+  const agentItems = profiles.map(cloudProfileToAgentOption)
+  const agents = agentItems.map((item) => item.id)
+  const profile = findCloudModelProfile(profiles, input.profileId, input.agent)
+  const modelSuggestions = profile?.models ?? []
+  const requestedModel = input.model?.trim() ?? ''
+  const storedModelValid = Boolean(
+    requestedModel && (modelSuggestions.length === 0 || modelSuggestions.some((option) => option.value === requestedModel)),
+  )
+  const model = storedModelValid
+    ? requestedModel
+    : (profile?.default_model || modelSuggestions[0]?.value || requestedModel)
+  const selectedSuggestion = modelSuggestionFor(modelSuggestions, model)
+  const effortOptions = (selectedSuggestion?.reasoning?.efforts ?? []).map((value) => ({
+    value,
+    label: reasoningEffortLabel(value, []),
+  }))
+  const requestedEffort = input.effort?.trim() || profile?.default_effort || ''
+  const effort = effortOptions.some((option) => option.value === requestedEffort)
+    ? requestedEffort
+    : selectedSuggestion?.reasoning?.default_effort ?? effortOptions[0]?.value ?? ''
+  return {
+    profile,
+    agentItems,
+    agents,
+    profileId: profile?.profile_id ?? '',
+    model,
+    modelSuggestions,
+    effort,
+    effortOptions,
   }
 }
 

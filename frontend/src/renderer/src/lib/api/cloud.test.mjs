@@ -31,6 +31,9 @@ const bundle = await build({
           `export * from ${JSON.stringify(new URL('../connectionProbe.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('../backends.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('../modelPicker.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('../markdownImages.ts', import.meta.url).pathname)}`,
+          `export { isCloudViewerRole } from ${JSON.stringify(new URL('../cloudSession.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('../../components/loops/loopDraft.ts', import.meta.url).pathname)}`,
         ].join('\n'),
         loader: 'ts',
       }))
@@ -1015,4 +1018,143 @@ test('listCloudModelProfiles preserves reasoning efforts and Cloud thread/projec
     'DELETE /v1/spaces/sp_priv/sources/src_1',
     'DELETE /v1/spaces/sp_priv',
   ])
+})
+
+test('Cloud run file helpers normalize workspace paths, use ticket auth with credentials omit, and route session file APIs', async () => {
+  const { api } = fixture()
+  const requests = []
+  replace('fetch', async (url, init = {}) => {
+    const parsed = new URL(String(url))
+    requests.push({
+      pathname: parsed.pathname,
+      ticket: parsed.searchParams.get('ticket'),
+      credentials: init.credentials,
+      auth: init.headers ? new Headers(init.headers).get('Authorization') : null,
+    })
+    if (parsed.pathname === '/v1/runs/run_99/files/docs/report.md') {
+      return new Response('# Cloud Report\n\nReady.', {
+        status: 200,
+        headers: { 'Content-Type': 'text/markdown', ETag: '"etag-md-1"' },
+      })
+    }
+    if (parsed.pathname === '/v1/runs/run_99/files/assets/chart.bin') {
+      return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/octet-stream' },
+      })
+    }
+    return new Response('not found', { status: 404 })
+  })
+
+  expect(api.normalizeCloudRunRelpath('/workspace/docs/report.md')).toBe('docs/report.md')
+  expect(api.normalizeCloudRunRelpath('file:///workspace/docs/report.md#heading')).toBe('docs/report.md')
+  expect(api.normalizeCloudRunRelpath('./docs/../docs/report.md?raw=1')).toBe('docs/report.md')
+  expect(() => api.normalizeCloudRunRelpath('../etc/passwd')).toThrow('invalid file path')
+
+  const doc = await api.readSessionFile('thr_99', '/workspace/docs/report.md', undefined, 'run_99')
+  expect(doc).toEqual({
+    path: 'docs/report.md',
+    relative_path: 'docs/report.md',
+    size: 22,
+    binary: false,
+    truncated: false,
+    content: '# Cloud Report\n\nReady.',
+    version: '"etag-md-1"',
+    read_only: true,
+  })
+
+  const bin = await api.readSessionFile('thr_99', 'assets/chart.bin', undefined, 'run_99')
+  expect(bin.binary).toBe(true)
+  expect(bin.content).toBeUndefined()
+  expect(bin.read_only).toBe(true)
+
+  const bytes = await api.sessionFileBytes('thr_99', 'assets/chart.bin', undefined, 'run_99')
+  expect(new Uint8Array(bytes)).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]))
+
+  expect(requests).toEqual([
+    { pathname: '/v1/runs/run_99/files/docs/report.md', ticket: 'rt_signed_abc', credentials: 'omit', auth: null },
+    { pathname: '/v1/runs/run_99/files/assets/chart.bin', ticket: 'rt_signed_abc', credentials: 'omit', auth: null },
+    { pathname: '/v1/runs/run_99/files/assets/chart.bin', ticket: 'rt_signed_abc', credentials: 'omit', auth: null },
+  ])
+
+  expect(api.sessionFileRawUrl('thr_99', '/workspace/assets/chart.png', 'run_99')).toBe(
+    'https://cloud.jaz.example/v1/runs/run_99/files/assets/chart.png?ticket=rt_signed_abc',
+  )
+  expect(api.sessionFileDownloadUrl('thr_99', '/workspace/docs/report.md', 'run_99')).toBe(
+    'https://cloud.jaz.example/v1/runs/run_99/files/docs/report.md?download=1&ticket=rt_signed_abc',
+  )
+  expect(api.markdownImageSource('chart.png', 'img1', 'thr_99', 'docs/report.md', 'run_99')).toBe(
+    'https://cloud.jaz.example/v1/runs/run_99/files/docs/chart.png?ticket=rt_signed_abc&image=img1',
+  )
+
+  // Attached Desktop mode (local server mode) still routes Cloud sessions to /v1/runs/{runId}/files/...
+  api.setApiServerMode('local')
+  expect(api.sessionCloudRunId({ id: 'thr_1', backend: 'cloud', run_id: 'run_1' })).toBe('run_1')
+  expect(api.sessionCloudRunId({ id: 'loc_1', backend: 'local' })).toBeUndefined()
+  expect(api.sessionFileRawUrl('thr_1', '/workspace/out.png', 'run_1')).toBe(
+    'https://cloud.jaz.example/v1/runs/run_1/files/out.png?ticket=rt_signed_abc',
+  )
+  expect(api.sessionFileRawUrl('loc_1', '/tmp/local.png')).toContain('/v1/sessions/loc_1/file?')
+})
+
+test('resolveCloudModelSelection, loopDraftToInput, and isCloudViewerRole handle Cloud-only profiles and RBAC', () => {
+  const { api } = fixture()
+  const profiles = [
+    {
+      profile_id: 'openai-org',
+      provider: 'openai',
+      display_name: 'Codex Org',
+      agent: 'codex',
+      default_model: 'gpt-6.1-sol',
+      default_effort: 'high',
+      models: [
+        { value: 'gpt-6.1-sol', label: 'gpt-6.1-sol', reasoning: { efforts: ['low', 'medium', 'high'], default_effort: 'high', status: 'ready' } },
+      ],
+    },
+    {
+      profile_id: 'vertex-org',
+      provider: 'vertex',
+      display_name: 'Vertex AI',
+      agent: 'gemini',
+      default_model: 'google/gemini-4-hydrogen',
+      default_effort: 'medium',
+      models: [
+        { value: 'google/gemini-4-hydrogen', label: 'gemini-4-hydrogen', reasoning: { efforts: ['low', 'medium', 'high'], default_effort: 'medium', status: 'ready' } },
+      ],
+    },
+  ]
+
+  const resolved = api.resolveCloudModelSelection(profiles, { profileId: 'vertex-org', effort: 'unsupported' })
+  expect(resolved.profileId).toBe('vertex-org')
+  expect(resolved.model).toBe('google/gemini-4-hydrogen')
+  expect(resolved.effort).toBe('medium')
+  expect(resolved.agents).toEqual(['openai-org', 'vertex-org'])
+
+  const byAgent = api.resolveCloudModelSelection(profiles, { agent: 'gemini' })
+  expect(byAgent.profileId).toBe('vertex-org')
+
+  const draft = {
+    ...api.emptyLoopDraft(['b1']),
+    prompt: 'Check status',
+    runtime: 'vertex-org',
+    provider: 'vertex-org',
+    model: 'google/gemini-4-hydrogen',
+    reasoningEffort: 'high',
+  }
+  const input = api.loopDraftToInput(draft, undefined, profiles)
+  expect(input).toMatchObject({
+    prompt: 'Check status',
+    runtime: 'acp',
+    acp_agent: 'gemini',
+    model_provider: 'vertex-org',
+    model: 'google/gemini-4-hydrogen',
+    reasoning_effort: 'high',
+    board_ids: ['b1'],
+  })
+
+  expect(api.isCloudViewerRole('viewer')).toBe(true)
+  expect(api.isCloudViewerRole(' VIEWER ')).toBe(true)
+  expect(api.isCloudViewerRole('member')).toBe(false)
+  expect(api.isCloudViewerRole('admin')).toBe(false)
+  expect(api.isCloudViewerRole(undefined)).toBe(false)
 })

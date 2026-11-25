@@ -263,6 +263,7 @@ export interface SessionFileRead {
   binary?: boolean
   truncated?: boolean
   version?: string
+  read_only?: boolean
 }
 
 export interface HealthResponse {

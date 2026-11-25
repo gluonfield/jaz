@@ -15,6 +15,7 @@ import { markThreadSeen } from '@/lib/api/feed'
 import { sessionEventsQuery, uploadSessionAttachment } from '@/lib/api/sessions'
 import type { Bot } from '@/lib/api/types'
 import { botAvatars, botChat } from '@/lib/bots'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
@@ -37,6 +38,7 @@ import { GroupDetails } from './GroupDetails'
 export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const isViewer = useIsCloudViewer()
   const reportHistoryError = useCallback(
     (message: string) => toast(`Couldn't load earlier history: ${message}`, 'danger'),
     [toast],
@@ -81,6 +83,7 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
     setDetailsOpen((open) => !open)
   })
   const send = async (text: string, options: SendMessageOptions = {}) => {
+    if (isViewer) return
     try {
       const uploaded = await Promise.all((options.files ?? []).map((file) => uploadSessionAttachment(group.id, file)))
       await sendGroupMessage(group.id, text, preparedSendMessage(options, uploaded).attachmentIds)
@@ -130,17 +133,23 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
           </div>
         </div>
         <div className={`${THREAD_COLUMN_CLASS} w-full pb-4`}>
-          <ComposerCard
-            streaming={false}
-            placeholder={`Message ${group.name}`}
-            chat
-            clearTiming="immediate"
-            draftStorageKey={`jaz.groupDraft.${group.id}`}
-            draftStorage="local"
-            attachmentSessionId={group.id}
-            onSend={send}
-            onUploadAttachment={(file) => uploadSessionAttachment(group.id, file)}
-          />
+          {isViewer ? (
+            <div className="rounded-card border border-border bg-surface px-4 py-3 text-center text-[13px] text-ink-3">
+              View-only access — viewers cannot send messages in this workspace.
+            </div>
+          ) : (
+            <ComposerCard
+              streaming={false}
+              placeholder={`Message ${group.name}`}
+              chat
+              clearTiming="immediate"
+              draftStorageKey={`jaz.groupDraft.${group.id}`}
+              draftStorage="local"
+              attachmentSessionId={group.id}
+              onSend={send}
+              onUploadAttachment={(file) => uploadSessionAttachment(group.id, file)}
+            />
+          )}
         </div>
       </div>
       {isMobile ? details : slot && createPortal(details, slot)}

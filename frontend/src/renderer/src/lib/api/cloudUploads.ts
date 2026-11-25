@@ -1,6 +1,14 @@
-import { ApiError } from '@/lib/api/response'
-import { apiEmbeddedGetUrl as cloudEmbeddedGetUrl, post as cloudPost, secureBackendConnection } from './client'
-import type { Attachment } from './types'
+import { ApiError, readAPIResponse } from '@/lib/api/response'
+import {
+  apiEmbeddedGetUrl as cloudEmbeddedGetUrl,
+  apiFetch as cloudFetch,
+  cachedResourceTicket,
+  post as cloudPost,
+  secureBackendConnection,
+} from './client'
+import type { Attachment, SessionFileRead } from './types'
+
+const CLOUD_FILE_READ_LIMIT = 1024 * 1024
 
 export interface PresignUploadInput {
   relpath: string
@@ -118,11 +126,94 @@ export async function uploadCloudFile(
   }
 }
 
-export function cloudRunFileUrl(runId: string, relpath: string): string {
-  const encodedPath = relpath
-    .replace(/^\/+/, '')
+export function normalizeCloudRunRelpath(rawPath: string): string {
+  let value = rawPath.trim()
+  if (/^file:\/\//i.test(value)) {
+    value = value.replace(/^file:\/\//i, '')
+    try {
+      value = decodeURIComponent(value)
+    } catch {
+      // Keep raw path when percent-encoding is malformed.
+    }
+  }
+  value = value.replace(/[?#].*$/, '').replace(/\\/g, '/')
+  if (value === '/workspace') {
+    value = ''
+  } else if (value.startsWith('/workspace/')) {
+    value = value.slice('/workspace/'.length)
+  }
+  const parts: string[] = []
+  for (const segment of value.replace(/^\/+/, '').split('/')) {
+    if (!segment || segment === '.') continue
+    if (segment === '..') {
+      if (parts.length === 0) {
+        throw new ApiError(400, 'invalid file path')
+      }
+      parts.pop()
+      continue
+    }
+    parts.push(segment)
+  }
+  if (parts.length === 0) {
+    throw new ApiError(400, 'file path is required')
+  }
+  return parts.join('/')
+}
+
+export function cloudRunFilePath(runId: string, relpath: string): string {
+  const encodedPath = normalizeCloudRunRelpath(relpath)
     .split('/')
     .map((segment) => encodeURIComponent(segment))
     .join('/')
-  return cloudEmbeddedGetUrl(`/v1/runs/${encodeURIComponent(runId)}/files/${encodedPath}`)
+  return `/v1/runs/${encodeURIComponent(runId)}/files/${encodedPath}`
+}
+
+export function cloudRunFileUrl(runId: string, relpath: string): string {
+  return cloudEmbeddedGetUrl(cloudRunFilePath(runId, relpath))
+}
+
+export function cloudRunFileDownloadUrl(runId: string, relpath: string): string {
+  return cloudEmbeddedGetUrl(`${cloudRunFilePath(runId, relpath)}?download=1`)
+}
+
+async function fetchCloudRunFile(runId: string, relpath: string, signal?: AbortSignal): Promise<Response> {
+  if (cachedResourceTicket()?.token) {
+    return fetch(cloudRunFileUrl(runId, relpath), { signal, credentials: 'omit' })
+  }
+  return cloudFetch(cloudRunFilePath(runId, relpath), { signal })
+}
+
+export async function cloudRunFileBytes(runId: string, relpath: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  const response = await fetchCloudRunFile(runId, relpath, signal)
+  if (!response.ok) await readAPIResponse(response)
+  return response.arrayBuffer()
+}
+
+export async function readCloudRunFile(runId: string, relpath: string, signal?: AbortSignal): Promise<SessionFileRead> {
+  const cleanRelpath = normalizeCloudRunRelpath(relpath)
+  const response = await fetchCloudRunFile(runId, cleanRelpath, signal)
+  if (!response.ok) await readAPIResponse(response)
+  const buffer = await response.arrayBuffer()
+  const totalSize = buffer.byteLength
+  const truncated = totalSize > CLOUD_FILE_READ_LIMIT
+  const sample = new Uint8Array(truncated ? buffer.slice(0, CLOUD_FILE_READ_LIMIT) : buffer)
+  let binary = sample.includes(0)
+  let content: string | undefined
+  if (!binary) {
+    try {
+      content = new TextDecoder('utf-8', { fatal: true }).decode(sample)
+    } catch {
+      binary = true
+    }
+  }
+  return {
+    path: cleanRelpath,
+    relative_path: cleanRelpath,
+    size: totalSize,
+    binary,
+    truncated,
+    ...(binary ? {} : { content }),
+    ...(response.headers.get('ETag') ? { version: response.headers.get('ETag')! } : {}),
+    read_only: true,
+  }
 }

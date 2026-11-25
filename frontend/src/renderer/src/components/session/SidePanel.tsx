@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { sessionCloudRunId } from '@/lib/api/sessions'
 import type { Attachment, QueuedAction, Session, SessionEvent } from '@/lib/api/types'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
@@ -51,6 +52,7 @@ export function SidePanel({
   overviewLabel?: string
 }) {
   const isMobile = useIsMobile()
+  const cloudRunId = sessionCloudRunId(session)
   return (
     <div className="flex h-full min-h-0 flex-col" data-thread-find-shortcuts="off">
       {/* Desktop: the open panel's own header carries its tabs and the controls
@@ -111,7 +113,7 @@ export function SidePanel({
                 <TerminalPanel session={session} visible={visible} />
               ) : tab.kind === 'file' ? (
                 <SidePanelCloseGuard value={(guard) => panel.registerCloseGuard(tab.id, guard)}>
-                  <FileReaderPanel sessionId={session.id} fileRef={tab.file} visible={visible} working={working} onOpenFile={panel.openFile} onClose={panel.close} />
+                  <FileReaderPanel sessionId={session.id} cloudRunId={cloudRunId} fileRef={tab.file} visible={visible} working={working} onOpenFile={panel.openFile} onClose={panel.close} />
                 </SidePanelCloseGuard>
               ) : tab.kind === 'diff' ? (
                 <CodeDiffPanel sessionId={session.id} visible={visible} />

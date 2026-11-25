@@ -128,6 +128,11 @@ func TestResourceTicketsAreStatelessScopedAndInvalidateOnKeyRotation(t *testing.
 		{"/v1/bots/events?ticket=" + first.Token, http.StatusNoContent},
 		{"/v1/bots/events?ticket=" + first.Token + "tamper", http.StatusUnauthorized},
 		{"/v1/bots/events?ticket=invalid", http.StatusUnauthorized},
+		{"/v1/runs/run_1/files/report.md?ticket=" + first.Token, http.StatusNoContent},
+		{"/v1/runs/run_1/files/sub/chart.png?download=1&ticket=" + first.Token, http.StatusNoContent},
+		{"/v1/runs/run_1/files/report.md?ticket=" + first.Token + "tamper", http.StatusUnauthorized},
+		{"/v1/runs/run_1/files/?ticket=" + first.Token, http.StatusUnauthorized},
+		{"/v1/runs/run_1/uploads/presign?ticket=" + first.Token, http.StatusUnauthorized},
 		{"/v1/settings/agents?ticket=" + first.Token, http.StatusUnauthorized},
 		{"/v1/sessions/test/terminal?ticket=" + first.Token, http.StatusUnauthorized},
 	} {

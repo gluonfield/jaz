@@ -41,7 +41,7 @@ export function railTab(pathname: string, settingsOpen: boolean): RailTab {
 export function useRailSections() {
   const isCloudOnly = useIsCloudOnly()
   const apps = (useQuery({ ...mcpEntrypointsQuery, enabled: !isCloudOnly }).data ?? []).filter((entry) => entry.type === 'global')
-  const plugins = useQuery({ ...pluginsQuery, enabled: !isCloudOnly }).data ?? []
+  const plugins = useQuery(pluginsQuery).data ?? []
   return [
     ...SECTIONS.map(({ to, label, Icon }) => ({ path: to, label, icon: <Icon aria-hidden />, link: linkOptions({ to }) })),
     ...apps.map((app) => ({
@@ -85,10 +85,8 @@ export function NavRail({
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const { activeWorkspaceId } = useCloudSession()
   const sections = useRailSections()
-  const isCloudOnly = useIsCloudOnly()
   const botsUnread = useQuery({
     ...botsQuery,
-    enabled: !isCloudOnly,
     select: (bots) => bots.some((bot) => bot.unread),
   }).data
 

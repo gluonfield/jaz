@@ -73,6 +73,7 @@ import { readCanvasLocation, saveCanvasLocation } from '@/components/canvas/canv
 
 interface Props {
   sessionId: string
+  cloudRunId?: string
   // Width of the board's left edge that the chat covers.
   inset: number
   working: boolean
@@ -189,7 +190,7 @@ interface BoardProps extends Props {
   error: Error | null
 }
 
-function Board({ sessionId, pageId, pageName, inset, bindSelection, onPage, onSelect, onPrompt, view, local, commit, apply, replay, error, initialViewport, onViewport, targetItem, onJump }: BoardProps) {
+function Board({ sessionId, cloudRunId, pageId, pageName, inset, bindSelection, onPage, onSelect, onPrompt, view, local, commit, apply, replay, error, initialViewport, onViewport, targetItem, onJump }: BoardProps) {
   const flow = useReactFlow<BoardNode, BoardEdge>()
   const { zoom } = useViewport()
   const theme = useArtifactThemeCSS()
@@ -323,6 +324,7 @@ function Board({ sessionId, pageId, pageName, inset, bindSelection, onPage, onSe
 
   const board = useMemo<CanvasBoard>(() => ({
     sessionId,
+    cloudRunId,
     view,
     theme,
     focused,
@@ -336,7 +338,7 @@ function Board({ sessionId, pageId, pageName, inset, bindSelection, onPage, onSe
     add,
     duplicate,
     prompt: onPrompt,
-  }), [sessionId, view, theme, focused, flash, editing, dropTarget, connectSource, commit, add, duplicate, onPrompt])
+  }), [sessionId, cloudRunId, view, theme, focused, flash, editing, dropTarget, connectSource, commit, add, duplicate, onPrompt])
 
   const picked = nodes.filter((node) => node.selected)
   const focusedItem = nodes.find((node) => node.id === focused)?.data.item

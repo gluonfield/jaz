@@ -20,7 +20,7 @@ import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
 import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
-import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
+import { useCloudSession, useIsCloudOnly, useIsCloudViewer } from '@/lib/cloudSession'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useTaskWorkspace } from '@/lib/hooks/useTaskWorkspace'
 import { modelSuggestionLabel } from '@/lib/models'
@@ -65,6 +65,7 @@ function NewSessionPage() {
   const voice = useGlobalVoice()
   const cloud = useCloudSession()
   const cloudOnly = useIsCloudOnly()
+  const isViewer = useIsCloudViewer()
   const navigate = useNavigate()
   const search = Route.useSearch()
   const queryClient = useQueryClient()
@@ -126,6 +127,10 @@ function NewSessionPage() {
   }, [cloud.active, cloud.activeWorkspaceId, search.space])
 
   const handleStart = async (text?: string, options: SendMessageOptions = {}, fromApp = false) => {
+    if (isViewer && targetIsCloud) {
+      toast('Viewers have read-only access in this workspace.', 'danger')
+      return
+    }
     if (text === undefined && voice.sessionId && voice.phase !== 'off') {
       await navigate({ to: '/sessions/$sessionId', params: { sessionId: voice.sessionId } })
       return
@@ -205,7 +210,7 @@ function NewSessionPage() {
     if (handledPrompt.current === prompt) return
     handledPrompt.current = prompt
     void navigate({ replace: true, state: (previous) => ({ ...previous, newThreadPrompt: undefined }) })
-    if (prompt.mode === 'send') {
+    if (prompt.mode === 'send' && !(isViewer && targetIsCloud)) {
       void handleStart(prompt.text, { files: prompt.files }, true)
       return
     }
@@ -240,7 +245,8 @@ function NewSessionPage() {
     .filter(Boolean)
     .join(' · ')
 
-  const agentControls = <AgentModelControls controls={controls} placement={controlPlacement} disabled={creating} />
+  const readOnly = isViewer && targetIsCloud
+  const agentControls = <AgentModelControls controls={controls} placement={controlPlacement} disabled={creating || readOnly} />
   // The thread's setup sits on a shelf above the composer: where it runs, and
   // whether it is a chat or a canvas.
   const setupControls = (
@@ -251,7 +257,7 @@ function NewSessionPage() {
             spaceId={spaceId}
             spaces={spaces.data ?? []}
             placement={controlPlacement}
-            disabled={creating}
+            disabled={creating || readOnly}
             onChange={setSpaceId}
           />
           <span className="flex-1" />
@@ -289,20 +295,21 @@ function NewSessionPage() {
       ) : null}
       <NewSessionHome
         creating={creating}
-        disabled={!runtimeAvailable || (!targetIsCloud && !workspaceReady)}
+        disabled={readOnly || !runtimeAvailable || (!targetIsCloud && !workspaceReady)}
+        placeholder={readOnly ? 'View-only access — viewers cannot start new chats' : undefined}
         goalAvailable={!targetIsCloud && acpAgentSupportsGoal(runtime)}
         leftSlot={isMobile ? null : agentControls}
         shelf={isMobile ? null : setupControls}
         banner={targetIsCloud ? <CloudSpendBanner capError={spendCapError} onClearError={() => setSpendCapError(null)} /> : null}
         canvas={!targetIsCloud && canvas}
-        optionsSlot={controls.fastMode ? <FastModeOption {...controls.fastMode} disabled={creating} /> : null}
+        optionsSlot={controls.fastMode ? <FastModeOption {...controls.fastMode} disabled={creating || readOnly} /> : null}
         draftStorageKey={NEW_SESSION_DRAFT_KEY}
         // Tokens freeze their absolute expansion at insert time, so re-picking
         // the directory after tagging keeps old tags valid rather than rebasing
         // them.
         fileRoot={targetIsCloud ? '' : directory}
         onSend={handleStart}
-        onVoice={!targetIsCloud && voiceAvailable ? () => void handleStart() : undefined}
+        onVoice={!targetIsCloud && !readOnly && voiceAvailable ? () => void handleStart() : undefined}
       />
     </>
   )

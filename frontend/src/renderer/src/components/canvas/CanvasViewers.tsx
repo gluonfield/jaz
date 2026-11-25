@@ -14,7 +14,7 @@ const CadViewer = lazy(() => import('./CadViewer'))
 const DxfViewer = lazy(() => import('./DxfViewer'))
 
 export function FileViewer({ id, file, data }: { id: string; file: CanvasFile; data: unknown }) {
-  const { sessionId, view, focused: focusedId } = useCanvas()
+  const { sessionId, cloudRunId, view, focused: focusedId } = useCanvas()
   const focused = focusedId === id
   if (!file.version) {
     return <ViewerFrame id={id}><div className="canvas-viewer-empty">File missing</div></ViewerFrame>
@@ -25,25 +25,25 @@ export function FileViewer({ id, file, data }: { id: string; file: CanvasFile; d
     case 'image':
       return (
         <ViewerFrame id={id}>
-          <img className="canvas-image" src={rawUrl(sessionId, file)} alt={fileName(file.path)} draggable={false} />
+          <img className="canvas-image" src={rawUrl(sessionId, file, cloudRunId)} alt={fileName(file.path)} draggable={false} />
         </ViewerFrame>
       )
     case 'pdf':
       return (
         <ViewerFrame id={id} focusable paper>
-          <iframe className="canvas-frame" title={fileName(file.path)} src={`${rawUrl(sessionId, file)}#${focused ? 'view=FitH' : 'toolbar=0&view=FitH'}`} />
+          <iframe className="canvas-frame" title={fileName(file.path)} src={`${rawUrl(sessionId, file, cloudRunId)}#${focused ? 'view=FitH' : 'toolbar=0&view=FitH'}`} />
         </ViewerFrame>
       )
     case 'cad':
       return (
         <Suspense fallback={<ViewerFrame id={id} focusable><div className="canvas-viewer-empty">Opening…</div></ViewerFrame>}>
-          <CadViewer id={id} src={rawUrl(sessionId, file)} kind={extension(file.path)} focused={focused} />
+          <CadViewer id={id} src={rawUrl(sessionId, file, cloudRunId)} kind={extension(file.path)} focused={focused} />
         </Suspense>
       )
     case 'dxf':
       return (
         <Suspense fallback={<ViewerFrame id={id} focusable paper><div className="canvas-viewer-empty">Opening…</div></ViewerFrame>}>
-          <DxfViewer id={id} src={rawUrl(sessionId, file)} />
+          <DxfViewer id={id} src={rawUrl(sessionId, file, cloudRunId)} />
         </Suspense>
       )
     case 'markdown':
@@ -56,10 +56,10 @@ export function FileViewer({ id, file, data }: { id: string; file: CanvasFile; d
 }
 
 function TextFileViewer({ id, file, data }: { id: string; file: CanvasFile; data: unknown }) {
-  const { sessionId, theme } = useCanvas()
+  const { sessionId, cloudRunId, theme } = useCanvas()
   const read = useQuery({
-    queryKey: [...keys.sessionFile(sessionId, file.path), file.version],
-    queryFn: () => readSessionFile(sessionId, file.path),
+    queryKey: [...keys.sessionFile(sessionId, file.path), ...(cloudRunId ? ['cloud', cloudRunId] : []), file.version],
+    queryFn: ({ signal }) => readSessionFile(sessionId, file.path, signal, cloudRunId),
     staleTime: Infinity,
   })
   const viewer = viewerFor(file.path)

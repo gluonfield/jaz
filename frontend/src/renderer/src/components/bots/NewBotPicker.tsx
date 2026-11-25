@@ -6,6 +6,7 @@ import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { Popover } from '@/components/ui/Popover'
 import type { Bot } from '@/lib/api/types'
 import { botAvatars } from '@/lib/bots'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { BotIcon } from './BotAvatar'
 import { NewGroupDialog } from './NewGroupDialog'
 import { NewBotDialog } from './NewBotDialog'
@@ -13,6 +14,7 @@ import { NewBotDialog } from './NewBotDialog'
 type Row = { key: string; label: string; icon: ReactNode; run: () => void }
 
 export function NewBotPicker({ bots }: { bots: Bot[] }) {
+  const isViewer = useIsCloudViewer()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
@@ -21,8 +23,12 @@ export function NewBotPicker({ bots }: { bots: Bot[] }) {
   const navigate = useNavigate()
   const needle = query.trim().toLowerCase()
   const rows: Row[] = [
-    { key: 'bot', label: 'New bot', icon: <Plus size={15} />, run: () => setCreating(true) },
-    { key: 'group', label: 'New group chat', icon: <Users size={15} />, run: () => setGrouping(true) },
+    ...(isViewer
+      ? []
+      : [
+          { key: 'bot', label: 'New bot', icon: <Plus size={15} />, run: () => setCreating(true) },
+          { key: 'group', label: 'New group chat', icon: <Users size={15} />, run: () => setGrouping(true) },
+        ]),
     ...bots
       .filter((bot) => bot.name.toLowerCase().includes(needle))
       .map((bot) => ({

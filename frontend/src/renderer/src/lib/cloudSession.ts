@@ -90,3 +90,12 @@ export function useHasCloud(): boolean {
 export function useIsCloudOnly(): boolean {
   return useConnection().mode === 'cloud' || clientRuntime.capabilities?.localBackend === false
 }
+
+export function isCloudViewerRole(role?: string | null): boolean {
+  return (role ?? '').trim().toLowerCase() === 'viewer'
+}
+
+export function useIsCloudViewer(): boolean {
+  const cloud = useCloudSession()
+  return cloud.active && isCloudViewerRole(cloud.user?.role)
+}

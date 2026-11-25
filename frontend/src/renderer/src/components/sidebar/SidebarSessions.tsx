@@ -15,7 +15,7 @@ import {
   sidebarSessionsQuery,
 } from '@/lib/api/sessions'
 import { useShowModelIcons } from '@/lib/appearance'
-import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
+import { useCloudSession, useIsCloudOnly, useIsCloudViewer } from '@/lib/cloudSession'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
@@ -172,6 +172,7 @@ function ProjectGroup({
   shortcutMode: boolean
 }) {
   const navigate = useNavigate()
+  const isViewer = useIsCloudViewer()
   const dragControls = useDragControls()
   const { group, items, collapsed } = block
   const isLocalProject = group.kind === 'local'
@@ -245,15 +246,17 @@ function ProjectGroup({
             >
               <FolderOpen size={13} />
             </Link>
-            <Link
-              to="/new"
-              search={{ space: group.space.id }}
-              className={rowHoverActionClass}
-              aria-label={`New task in ${group.label}`}
-              title={`New task in ${group.label}`}
-            >
-              <SquarePen size={13} />
-            </Link>
+            {!isViewer ? (
+              <Link
+                to="/new"
+                search={{ space: group.space.id }}
+                className={rowHoverActionClass}
+                aria-label={`New task in ${group.label}`}
+                title={`New task in ${group.label}`}
+              >
+                <SquarePen size={13} />
+              </Link>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -406,6 +409,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
   const cloud = useCloudSession()
   const hasCloud = cloud.active
   const cloudOnly = useIsCloudOnly()
+  const isViewer = useIsCloudViewer()
   const sessions = useQuery(sidebarSessionsQuery)
   const cloudSpaces = useQuery({ ...spacesQuery, enabled: hasCloud })
   const projects = useQuery({ ...projectsQuery, enabled: !cloudOnly })
@@ -518,7 +522,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
     return <p className="px-2.5 py-1 text-[13px] text-ink-3">Backend unreachable</p>
   }
 
-  const canCreateProject = hasCloud || !cloudOnly
+  const canCreateProject = !isViewer && (hasCloud || !cloudOnly)
 
   return (
     <HoverCardGroup>

@@ -840,3 +840,61 @@ func TestCloudMachineBridgeEndpoints(t *testing.T) {
 		}
 	}
 }
+
+func TestProxyRunFileDownloadAndAuthSanitization(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/.well-known/jaz-server":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "mode": "cloud", "auth": "oidc", "oidc_login_url": "/v1/auth/login"})
+		case r.URL.Path == "/v1/auth/me":
+			_ = json.NewEncoder(w).Encode(map[string]any{"user_id": "u1", "org_id": "org_a", "org_name": "Acme", "email": "dev@acme.test", "display_name": "Dev", "role": "member"})
+		case r.URL.Path == "/v1/runs/run_1/files/docs/report.md":
+			w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+			w.Header().Set("ETag", `"etag-1"`)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("# Report"))
+		case r.URL.Path == "/v1/runs/run_1/files/expired.txt":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"expired jwt","code":"unauthorized"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	cloudSvc := cloudsync.New(store, nil)
+	if _, err := cloudSvc.Connect(t.Context(), cloudsync.ConnectRequest{URL: upstream.URL, Token: "cloud-jwt"}); err != nil {
+		t.Fatal(err)
+	}
+	h := cloudapi.NewHandler(cloudSvc)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/runs/{run_id}/files/{path...}", h.ProxyRunFile)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/runs/run_1/files/docs/report.md?download=1", nil))
+	if rec.Code != http.StatusOK || rec.Body.String() != "# Report" {
+		t.Fatalf("download run file status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if disp := rec.Header().Get("Content-Disposition"); !strings.Contains(disp, "attachment") || !strings.Contains(disp, "report.md") {
+		t.Fatalf("Content-Disposition = %q, want attachment filename=report.md", disp)
+	}
+	if got := rec.Header().Get("ETag"); got != `"etag-1"` {
+		t.Fatalf("ETag = %q, want %q", got, `"etag-1"`)
+	}
+
+	unauthRec := httptest.NewRecorder()
+	mux.ServeHTTP(unauthRec, httptest.NewRequest(http.MethodGet, "/v1/runs/run_1/files/expired.txt", nil))
+	if unauthRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expired upstream status=%d want 401", unauthRec.Code)
+	}
+	if strings.Contains(unauthRec.Body.String(), `"code":"unauthorized"`) {
+		t.Fatalf("upstream 401 leaked local unauthorized code: %s", unauthRec.Body.String())
+	}
+}

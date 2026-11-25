@@ -20,6 +20,7 @@ import {
   setSessionTitle,
 } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { RuntimeBadge } from './RuntimeBadge'
@@ -69,6 +70,8 @@ export function SessionRow({
   showRuntimeBadge?: boolean
   reserveIconSpace: boolean
 }) {
+  const isViewer = useIsCloudViewer()
+  const readOnlyCloud = session.backend === 'cloud' && isViewer
   const shortcut = shortcutMode && shortcutIndex ? shortcutIndex : undefined
   const title = sessionLabel(session)
   const state = stateDot(session)
@@ -133,7 +136,7 @@ export function SessionRow({
                   <span title={state.title} className={`size-1.5 shrink-0 rounded-full ${state.className}`} />
                 </span>
               ) : null}
-              {shortcutMode || inlineEditing ? null : (
+              {shortcutMode || inlineEditing || readOnlyCloud ? null : (
                 <>
                   <PinButton session={session} />
                   <ArchiveButton session={session} />
@@ -143,7 +146,7 @@ export function SessionRow({
           )}
         </Link>
       </HoverCard>
-      {menu ? (
+      {menu && !readOnlyCloud ? (
         <RowActionsMenu
           session={session}
           point={menu}

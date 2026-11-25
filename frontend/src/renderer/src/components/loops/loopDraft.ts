@@ -1,3 +1,4 @@
+import { type CloudModelProfile, resolveCloudModelSelection } from '@/lib/api/cloudThreads'
 import type { LoopInput } from '@/lib/api/loops'
 import type { AgentSettings, Loop } from '@/lib/api/types'
 import { acpUsesModelProvider } from '@/lib/agentRuntimes'
@@ -67,7 +68,32 @@ export function canSaveLoop(draft: LoopDraft): boolean {
   return stepValid(draft, 0) && stepValid(draft, 1) && stepValid(draft, 2)
 }
 
-export function loopDraftToInput(draft: LoopDraft, settings?: AgentSettings): LoopInput {
+export function loopDraftToInput(
+  draft: LoopDraft,
+  settings?: AgentSettings,
+  cloudProfiles?: CloudModelProfile[],
+): LoopInput {
+  if (cloudProfiles !== undefined) {
+    const selected = resolveCloudModelSelection(cloudProfiles, {
+      profileId: draft.provider || draft.runtime,
+      agent: draft.runtime,
+      model: draft.model,
+      effort: draft.reasoningEffort,
+    })
+    return {
+      prompt: draft.prompt.trim(),
+      name: draft.name.trim() || undefined,
+      schedule: { kind: 'cron', expr: cronFromDraft(draft.schedule), timezone: localTimezone() },
+      status: draft.schedule.preset === 'manual' ? 'paused' : 'active',
+      runtime: 'acp',
+      acp_agent: selected.profile?.agent || draft.runtime || 'codex',
+      model_provider: selected.profile?.profile_id || draft.provider || '',
+      model: draft.model || selected.model,
+      reasoning_effort: draft.reasoningEffort || selected.effort,
+      directory: draft.directory || undefined,
+      board_ids: draft.boardIds,
+    }
+  }
   const usesModelProvider = acpUsesModelProvider(settings, draft.runtime)
   return {
     prompt: draft.prompt.trim(),

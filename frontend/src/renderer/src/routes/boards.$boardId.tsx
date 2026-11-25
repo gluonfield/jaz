@@ -22,7 +22,7 @@ import {
 } from '@/lib/api/boards'
 import { loopDetailQuery } from '@/lib/api/loops'
 import { clientRuntime, popOutBoard } from '@/lib/clientRuntime'
-import { useCloudSession } from '@/lib/cloudSession'
+import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import { useTheme } from '@/lib/theme'
 
@@ -38,6 +38,7 @@ function BoardPage() {
   const navigate = Route.useNavigate()
   const detail = useQuery(boardDetailQuery(boardId))
   const cloud = useCloudSession()
+  const isViewer = useIsCloudViewer()
   const queryClient = useQueryClient()
   const { resolved } = useTheme()
   const scaleTimer = useRef<number | null>(null)
@@ -59,10 +60,10 @@ function BoardPage() {
   // Consume ?add=1 once: open the picker and strip the param so a reload
   // doesn't reopen it.
   useEffect(() => {
-    if (!add) return
+    if (!add || isViewer) return
     setModal('add')
     void navigate({ search: {}, replace: true })
-  }, [add, navigate])
+  }, [add, isViewer, navigate])
 
   useEffect(() => {
     const loopId = pendingLoopId.current
@@ -145,7 +146,7 @@ function BoardPage() {
   }
 
   const { board, items } = detail.data
-  const canEdit = !cloud.active || board.can_edit !== false
+  const canEdit = !isViewer && (!cloud.active || board.can_edit !== false)
   const VisibilityIcon = boardVisibilityIcon(board.visibility)
   const boardTabs = isBoardWindow && boards.data ? boards.data : [board]
   // Single commit path: Enter blurs the input, blur commits. Escape unmounts

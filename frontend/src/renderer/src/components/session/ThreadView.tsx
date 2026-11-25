@@ -55,12 +55,14 @@ import {
   cancelSession,
   clearSessionGoal,
   sendSessionSideChat,
+  sessionCloudRunId,
   sessionEventsQuery,
   sessionOverviewQuery,
   sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import type { AgentSessionState, ChatMessage, SessionEvent, SessionOverview } from '@/lib/api/types'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { MCPAppThreadContext, type MCPAppThread } from '@/lib/mcpAppThread'
 import { SidePanelSlot } from '@/lib/sidePanelSlot'
@@ -172,6 +174,8 @@ export function ThreadView({
   }, [toast])
   const detail = useSessionHistory(sessionId, reportHistoryError)
   const isCloudThreadView = detail.data?.session.backend === 'cloud' || isCloudApiSession()
+  const isViewer = useIsCloudViewer()
+  const isReadOnly = isCloudThreadView && isViewer
   useComputerControl(sessionId, !isCloudThreadView)
   const voice = useVoiceMode(sessionId)
   const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !isCloudThreadView }).data
@@ -271,9 +275,10 @@ export function ThreadView({
   // what app views reported, and on a canvas the selection too.
   const { take: takeAppContexts } = appContexts
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
+    if (isReadOnly) return Promise.resolve()
     pinToBottom()
     return sendMessage(text, { ...options, contexts: options.contexts ?? [...(canvasContexts.present ? canvasContexts.contexts : []), ...takeAppContexts()] })
-  }, [pinToBottom, sendMessage, canvasContexts.present, canvasContexts.contexts, takeAppContexts])
+  }, [isReadOnly, pinToBottom, sendMessage, canvasContexts.present, canvasContexts.contexts, takeAppContexts])
   const appThread = useMemo<MCPAppThread>(() => ({
     id: sessionId,
     send: (text) => void handleSend(text),
@@ -512,7 +517,7 @@ export function ThreadView({
   const transcriptMessages = optimisticTranscriptMessages(messages, optimisticUser)
   const goalStatusVisible = goalActive
   const canContinueFromInlineError =
-    isACP && !sessionRunning && !streaming && (!live || Boolean(live.error)) && !hasBlockingPendingPermission
+    !isReadOnly && isACP && !sessionRunning && !streaming && (!live || Boolean(live.error)) && !hasBlockingPendingPermission
   const continueErrorAction: SessionErrorAction | undefined =
     canContinueFromInlineError ? {
       label: 'Continue',
@@ -530,9 +535,10 @@ export function ThreadView({
   ) : null
 
   const overviewLabel = details ? 'Details' : undefined
+  const cloudRunId = sessionCloudRunId(session)
   // Docked, never overlapping: the chat pane flexes and stays centered
   // between the sidebar and this panel.
-  const canvasBoard = <ThreadCanvas page={page} item={item} navigationKey={navigationKey} onPage={canvasContexts.onPage} sessionId={session.id} inset={canvas && canvasChat.shown ? canvasChat.width + 8 : 0} working={sessionRunning} bindSelection={canvasContexts.bindSelection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
+  const canvasBoard = <ThreadCanvas page={page} item={item} navigationKey={navigationKey} onPage={canvasContexts.onPage} sessionId={session.id} cloudRunId={cloudRunId} inset={canvas && canvasChat.shown ? canvasChat.width + 8 : 0} working={sessionRunning} bindSelection={canvasContexts.bindSelection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
   const sidePanelDrawer = (
     <SidePanelDrawer panel={sidePanel} isMobile={isMobile}>
       <SidePanel
@@ -561,7 +567,7 @@ export function ThreadView({
   return (
     <MCPAppThreadContext value={appThread}>
     <MarkdownArtifactContext value={markdownArtifacts}>
-    <FileReaderLinkProvider sessionId={session.id} documentPath={session.runtime_ref?.cwd ? `${session.runtime_ref.cwd}/` : undefined} onOpen={sidePanel.openFile}>
+    <FileReaderLinkProvider sessionId={session.id} cloudRunId={cloudRunId} documentPath={session.runtime_ref?.cwd ? `${session.runtime_ref.cwd}/` : undefined} onOpen={sidePanel.openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         {/* Phone: the closed side panel slides off to the right (translateX 100%);
             clip horizontal overflow so it can't be revealed by scrolling.
@@ -711,7 +717,11 @@ export function ThreadView({
               onHeightChange={setBottomDockHeight}
             >
               <VoiceMode voice={voice} face={voice.bot?.avatar ?? null} />
-              {showPlanDecision ? (
+              {isReadOnly ? (
+                <div className="rounded-card border border-border bg-surface px-4 py-3 text-center text-[13px] text-ink-3">
+                  View-only access — you can read this thread and its files, but cannot send messages.
+                </div>
+              ) : showPlanDecision ? (
                 <PlanDecisionCard
                   pending={planDecisionPending}
                   onImplement={() => {

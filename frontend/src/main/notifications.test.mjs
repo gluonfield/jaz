@@ -17,6 +17,7 @@ if (process.env.JAZ_NOTIFICATION_TEST_CHILD === '1') {
     powerMonitor: {},
     screen: {},
     shell: {},
+    webContents: { getFocusedWebContents: () => null },
     Notification: class extends EventEmitter {
       static isSupported() {
         return true

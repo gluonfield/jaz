@@ -1,15 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Popover } from '@/components/ui/Popover'
 import { Select } from '@/components/ui/Select'
 import { agentLabel } from '@/lib/agentLabel'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
+import { cloudModelProfilesQuery, resolveCloudModelSelection } from '@/lib/api/cloudThreads'
 import { pluginsQuery } from '@/lib/api/plugins'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import type { AgentSessionState, Bot } from '@/lib/api/types'
+import { useCloudSession, useIsCloudOnly, useIsCloudViewer } from '@/lib/cloudSession'
 import { useModelReasoningState } from '@/lib/modelReasoning'
 import { pickerEffortOptions } from '@/lib/modelPicker'
 import { useUpdateBot } from './useUpdateBot'
@@ -18,22 +20,52 @@ import { useUpdateBot } from './useUpdateBot'
 // are the truth for the bot; before it starts, the bot's stored pick is, and
 // then the agent's default.
 export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; agentSession?: AgentSessionState; working: boolean }) {
-  const settings = useQuery(agentSettingsQuery).data
+  const cloud = useCloudSession()
+  const cloudOnly = useIsCloudOnly()
+  const isViewer = useIsCloudViewer()
+  const usingCloudProfiles = cloudOnly || cloud.active
+  const settings = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles }).data
+  const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: usingCloudProfiles && cloud.active })
+  const cloudProfiles = useMemo(
+    () => (usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : []),
+    [cloudProfilesQuery.data, usingCloudProfiles],
+  )
   const installedPlugins = (useQuery(pluginsQuery).data ?? []).filter((plugin) => plugin.installed && plugin.enabled)
   const update = useUpdateBot(bot.id)
   const [pluginsOpen, setPluginsOpen] = useState(false)
-  const disabled = working || update.isPending
+  const disabled = working || update.isPending || isViewer
   const agent = bot.agent ?? ''
   const live = (category: string) => agentSession?.config_options?.find((option) => option.category === category)?.current_value
   const runtime = runtimeModelState(settings, agent)
-  const model = live('model') || bot.model || runtime.defaultModel
-  const reasoning = useModelReasoningState({
-    settings,
-    agent,
-    model,
+  const localModel = live('model') || bot.model || runtime.defaultModel
+  const localReasoning = useModelReasoningState({
+    settings: usingCloudProfiles ? undefined : settings,
+    agent: usingCloudProfiles ? '' : agent,
+    model: localModel,
     reasoningEffort: live('thought_level') || bot.reasoning_effort || runtime.defaultEffort,
     provider: runtime.provider,
   })
+  const cloudSelection = useMemo(
+    () =>
+      usingCloudProfiles
+        ? resolveCloudModelSelection(cloudProfiles, {
+            profileId: agent,
+            agent,
+            model: live('model') || bot.model,
+            effort: live('thought_level') || bot.reasoning_effort,
+          })
+        : null,
+    [agent, bot.model, bot.reasoning_effort, cloudProfiles, agentSession, usingCloudProfiles],
+  )
+  const model = usingCloudProfiles ? (cloudSelection?.model ?? '') : localModel
+  const modelSuggestions = usingCloudProfiles ? (cloudSelection?.modelSuggestions ?? []) : localReasoning.modelSuggestions
+  const effort = usingCloudProfiles ? (cloudSelection?.effort ?? '') : localReasoning.effectiveReasoningEffort
+  const effortOptions = usingCloudProfiles ? (cloudSelection?.effortOptions ?? []) : localReasoning.reasoningOptions
+  const modelsLoading = usingCloudProfiles ? cloudProfilesQuery.isPending : localReasoning.modelsLoading
+  const selectValue = usingCloudProfiles ? (cloudSelection?.profileId || agent) : agent
+  const selectOptions = usingCloudProfiles
+    ? cloudAgentOptions(cloudProfiles, agent)
+    : agentOptions(enabledACPAgents(settings), agent)
   const inheritsAll = bot.plugins === undefined
   const selectedPlugins = new Set(bot.plugins ?? [])
   const pluginsLabel = inheritsAll
@@ -55,11 +87,22 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
         <Select
           aria-label="Agent"
           variant="plain"
-          value={agent}
-          options={agentOptions(enabledACPAgents(settings), agent)}
-          disabled={disabled}
+          value={selectValue}
+          options={selectOptions}
+          disabled={disabled || selectOptions.length === 0}
           onChange={(next) => {
-            if (next === agent) return
+            if (next === selectValue) return
+            if (usingCloudProfiles) {
+              const picked = resolveCloudModelSelection(cloudProfiles, { profileId: next })
+              const label = picked.profile?.display_name || agentLabel(next)
+              if (!window.confirm(`Move ${bot.name} to ${label}? ${label} starts with a fresh memory; the chat and routines stay.`)) return
+              update.mutate({
+                agent: picked.profile?.agent || next,
+                model: picked.model,
+                reasoning_effort: picked.effort,
+              })
+              return
+            }
             const label = agentLabel(next)
             if (!window.confirm(`Move ${bot.name} to ${label}? ${label} starts with a fresh memory; the chat and routines stay.`)) return
             update.mutate({ agent: next })
@@ -69,12 +112,12 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
       <Row label="Model">
         <div className="-mr-2.5 flex min-w-0 flex-1 justify-end">
           <ModelSelect
-            key={agent}
+            key={selectValue}
             value={model}
-            effort={reasoning.effectiveReasoningEffort}
-            suggestions={reasoning.modelSuggestions}
-            effortOptions={pickerEffortOptions(reasoning.reasoningOptions)}
-            loading={reasoning.modelsLoading}
+            effort={effort}
+            suggestions={modelSuggestions}
+            effortOptions={pickerEffortOptions(effortOptions)}
+            loading={modelsLoading}
             disabled={disabled}
             placement="below"
             align="end"
@@ -153,4 +196,23 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 function agentOptions(agents: string[], current: string) {
   return (!current || agents.includes(current) ? agents : [current, ...agents]).map((agent) => ({ value: agent, label: agentLabel(agent) }))
+}
+
+function cloudAgentOptions(profiles: { profile_id: string; display_name?: string; provider: string; agent?: string }[], current: string) {
+  const options = profiles.map((profile) => ({
+    value: profile.profile_id,
+    label: profile.display_name || profile.provider || profile.profile_id,
+  }))
+  if (
+    current &&
+    !profiles.some(
+      (profile) =>
+        profile.profile_id === current ||
+        profile.provider === current.toLowerCase() ||
+        (profile.agent ?? '').toLowerCase() === current.toLowerCase(),
+    )
+  ) {
+    return [{ value: current, label: agentLabel(current) }, ...options]
+  }
+  return options
 }

@@ -7,6 +7,12 @@ import { keys } from '../query/keys'
 import { apiEmbeddedGetUrl, apiFetch, del, get, isCloudApiSession, post, put } from './client'
 import { updateThreadUserState } from './cloudSpaces'
 import {
+  cloudRunFileBytes,
+  cloudRunFileDownloadUrl,
+  cloudRunFileUrl,
+  readCloudRunFile,
+} from './cloudUploads'
+import {
   cancelCloudThread,
   cloudThreadToSession,
   createCloudThread,
@@ -145,20 +151,50 @@ export async function createSessionFile(sessionId: string, path: string, content
   if (!response.ok) throw new ApiError(response.status, `could not create ${path}`)
 }
 
+export function sessionCloudRunId(session?: Pick<Session, 'id' | 'backend' | 'run_id'>): string | undefined {
+  if (!session) return undefined
+  if (session.backend === 'cloud' || isCloudApiSession()) {
+    return session.run_id || session.id
+  }
+  return undefined
+}
+
+export function effectiveCloudRunId(sessionId: string, cloudRunId?: string): string | undefined {
+  if (cloudRunId) return cloudRunId
+  return isCloudApiSession() ? sessionId : undefined
+}
+
 // sessionFileBytes reads a file with the connection's own credentials. A
 // reader that fetches uses it; sessionFileRawUrl is for an element that loads
 // its own address and so needs the short-lived ticket in it.
-export async function sessionFileBytes(sessionId: string, path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+export async function sessionFileBytes(
+  sessionId: string,
+  path: string,
+  signal?: AbortSignal,
+  cloudRunId?: string,
+): Promise<ArrayBuffer> {
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
+  if (runId) {
+    return cloudRunFileBytes(runId, path, signal)
+  }
   const response = await apiFetch(sessionFilePath(sessionId, path), { signal })
   if (!response.ok) await readAPIResponse(response)
   return response.arrayBuffer()
 }
 
-export function sessionFileRawUrl(sessionId: string, path: string): string {
+export function sessionFileRawUrl(sessionId: string, path: string, cloudRunId?: string): string {
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
+  if (runId) {
+    return cloudRunFileUrl(runId, path)
+  }
   return apiEmbeddedGetUrl(sessionFilePath(sessionId, path))
 }
 
-export function sessionFileDownloadUrl(sessionId: string, path: string): string {
+export function sessionFileDownloadUrl(sessionId: string, path: string, cloudRunId?: string): string {
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
+  if (runId) {
+    return cloudRunFileDownloadUrl(runId, path)
+  }
   return apiEmbeddedGetUrl(sessionFilePath(sessionId, path) + '&download=1')
 }
 
@@ -354,15 +390,26 @@ export const sessionRepoFileDiffQuery = (id: string, file: RepoFileChange, base?
     staleTime: 30_000,
   })
 
-export const sessionFileQuery = (id: string, path: string) =>
-  queryOptions({
-    queryKey: keys.sessionFile(id, path),
-    queryFn: () => readSessionFile(id, path),
+export const sessionFileQuery = (id: string, path: string, cloudRunId?: string) => {
+  const runId = effectiveCloudRunId(id, cloudRunId)
+  return queryOptions({
+    queryKey: runId ? [...keys.sessionFile(id, path), 'cloud', runId] : keys.sessionFile(id, path),
+    queryFn: ({ signal }) => readSessionFile(id, path, signal, runId),
     staleTime: 15_000,
   })
+}
 
-export function readSessionFile(id: string, path: string): Promise<SessionFileRead> {
-  return get<SessionFileRead>(`/v1/sessions/${id}/file?path=${encodeURIComponent(path)}`)
+export function readSessionFile(
+  id: string,
+  path: string,
+  signal?: AbortSignal,
+  cloudRunId?: string,
+): Promise<SessionFileRead> {
+  const runId = effectiveCloudRunId(id, cloudRunId)
+  if (runId) {
+    return readCloudRunFile(runId, path, signal)
+  }
+  return get<SessionFileRead>(`/v1/sessions/${id}/file?path=${encodeURIComponent(path)}`, { signal })
 }
 
 // Publishes the session's current branch to its remote (git push -u) and

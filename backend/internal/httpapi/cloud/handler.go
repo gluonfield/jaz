@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 
@@ -326,15 +328,27 @@ func (h *Handler) Proxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ProxyRunFile(w http.ResponseWriter, r *http.Request) {
-	resp, err := h.service.OpenRunFile(r.Context(), r.PathValue("run_id"), r.PathValue("path"))
+	relpath := r.PathValue("path")
+	resp, err := h.service.OpenRunFile(r.Context(), r.PathValue("run_id"), relpath)
 	if err != nil {
 		WriteError(w, err)
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		WriteError(w, cloudsync.ErrNotConnected)
+		return
+	}
 	for _, header := range []string{"Content-Type", "Content-Disposition", "Content-Length", "ETag"} {
 		if v := resp.Header.Get(header); v != "" {
 			w.Header().Set(header, v)
+		}
+	}
+	if r.URL.Query().Get("download") == "1" {
+		if name := path.Base(strings.TrimSuffix(relpath, "/")); name != "" && name != "." && name != "/" {
+			if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": name}); disposition != "" {
+				w.Header().Set("Content-Disposition", disposition)
+			}
 		}
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")

@@ -11,7 +11,15 @@ export const botsQuery = queryOptions<BotListEntry[]>({
   staleTime: 10_000,
 })
 
-export function createBot(input: { name: string; avatar: BotAvatar; workspaces: string[]; prompt?: string }): Promise<Bot> {
+export function createBot(input: {
+  name: string
+  avatar: BotAvatar
+  workspaces: string[]
+  prompt?: string
+  agent?: string
+  model?: string
+  reasoning_effort?: string
+}): Promise<Bot> {
   return post<Bot>('/v1/bots', input)
 }
 

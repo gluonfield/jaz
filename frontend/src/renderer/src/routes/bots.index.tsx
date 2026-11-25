@@ -6,7 +6,7 @@ import { NewBotDialog } from '@/components/bots/NewBotDialog'
 import { Button } from '@/components/ui/Button'
 import { botsQuery } from '@/lib/api/bots'
 import { dragSections, lastBotId, pinOrder } from '@/lib/bots'
-import { useCloudSession } from '@/lib/cloudSession'
+import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 
 export const Route = createFileRoute('/bots/')({
   component: BotsIndex,
@@ -15,6 +15,7 @@ export const Route = createFileRoute('/bots/')({
 function BotsIndex() {
   const [creating, setCreating] = useState(false)
   const { activeWorkspaceId } = useCloudSession()
+  const isViewer = useIsCloudViewer()
   const bots = useQuery(botsQuery)
   const last = lastBotId(activeWorkspaceId)
   if (bots.isPending) return null
@@ -24,12 +25,20 @@ function BotsIndex() {
   if (selected) return <Navigate to="/bots/$botId" params={{ botId: selected.id }} search={(prev) => prev} replace />
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
-      <p className="text-sm text-ink-2">Bots keep working on their own, on your schedule.</p>
-      <Button variant="primary" size="lg" onClick={() => setCreating(true)}>
-        <Plus size={15} />
-        New bot
-      </Button>
-      <NewBotDialog open={creating} onClose={() => setCreating(false)} />
+      <p className="text-sm text-ink-2">
+        {isViewer
+          ? 'Viewers have read-only access and cannot create bots.'
+          : 'Bots keep working on their own, on your schedule.'}
+      </p>
+      {!isViewer ? (
+        <>
+          <Button variant="primary" size="lg" onClick={() => setCreating(true)}>
+            <Plus size={15} />
+            New bot
+          </Button>
+          <NewBotDialog open={creating} onClose={() => setCreating(false)} />
+        </>
+      ) : null}
     </div>
   )
 }

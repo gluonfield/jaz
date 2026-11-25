@@ -228,7 +228,7 @@ const USER_REMARK_PLUGINS = [...CHAT_REMARK_PLUGINS, remarkLineBreaks]
 const MarkdownFileImage: NonNullable<Components['img']> = ({ src, ...props }) => {
   const files = useFileLinks()
   const imageId = useId()
-  return <MarkdownImage {...props} src={markdownImageSource(src ?? '', imageId, files?.sessionId, files?.documentPath)} />
+  return <MarkdownImage {...props} src={markdownImageSource(src ?? '', imageId, files?.sessionId, files?.documentPath, files?.cloudRunId)} />
 }
 
 function BaseMarkdown({
@@ -273,9 +273,9 @@ function BaseMarkdown({
 function MarkdownDocument({ path, label }: { path: string; label: string }) {
   const files = useFileLinks()!
   const openFile = files.onOpen
-  return <MarkdownDocumentCard sessionId={files.sessionId} file={{ path }} label={label} onOpen={openFile}
+  return <MarkdownDocumentCard sessionId={files.sessionId} cloudRunId={files.cloudRunId} file={{ path }} label={label} onOpen={openFile}
     renderContent={(content, documentPath) => (
-      <FileReaderLinkProvider sessionId={files.sessionId} documentPath={documentPath} onOpen={openFile}>
+      <FileReaderLinkProvider sessionId={files.sessionId} cloudRunId={files.cloudRunId} documentPath={documentPath} onOpen={openFile}>
         <RenderedMarkdown text={content} className="file-prose" artifactPreview />
       </FileReaderLinkProvider>
     )} />

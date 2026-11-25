@@ -13,6 +13,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { deleteLoop, loopDetailQuery, loopTone, runLoopNow, type LoopTone } from '@/lib/api/loops'
 import type { Loop, LoopRun } from '@/lib/api/types'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { fullTime, hasTime, relativeTime, shortDate } from '@/lib/format/time'
 import { keys } from '@/lib/query/keys'
 
@@ -61,6 +62,7 @@ function LoopDetail({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useToast()
+  const isViewer = useIsCloudViewer()
   const [editing, setEditing] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
 
@@ -122,53 +124,55 @@ function LoopDetail({
           </p>
           {loop.blocked ? <p className="mt-2 text-[13px] text-ink-2">{loop.blocked}</p> : null}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <IconButton
-            variant="primary"
-            size="md"
-            aria-label={run.isPending ? 'Starting loop' : 'Run loop now'}
-            title={run.isPending ? 'Starting loop' : 'Run loop now'}
-            disabled={run.isPending}
-            onClick={() => run.mutate()}
-          >
-            <Play size={14} />
-          </IconButton>
-          <Popover
-            open={actionsOpen}
-            onClose={() => setActionsOpen(false)}
-            placement="below"
-            align="end"
-            trigger={
-              <IconButton
-                variant="ghost"
-                size="md"
-                aria-label="Loop actions"
-                title="Loop actions"
-                onClick={() => setActionsOpen((open) => !open)}
-              >
-                <MoreHorizontal size={15} />
-              </IconButton>
-            }
-          >
-            <MenuRow
-              onClick={() => {
-                setActionsOpen(false)
-                setEditing(true)
-              }}
+        {!isViewer ? (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <IconButton
+              variant="primary"
+              size="md"
+              aria-label={run.isPending ? 'Starting loop' : 'Run loop now'}
+              title={run.isPending ? 'Starting loop' : 'Run loop now'}
+              disabled={run.isPending}
+              onClick={() => run.mutate()}
             >
-              <span className="flex items-center gap-2">
-                <Pencil size={13} />
-                Edit
-              </span>
-            </MenuRow>
-            <MenuRow disabled={remove.isPending} onClick={onDelete}>
-              <span className="flex items-center gap-2 text-danger">
-                <Trash2 size={13} />
-                Delete
-              </span>
-            </MenuRow>
-          </Popover>
-        </div>
+              <Play size={14} />
+            </IconButton>
+            <Popover
+              open={actionsOpen}
+              onClose={() => setActionsOpen(false)}
+              placement="below"
+              align="end"
+              trigger={
+                <IconButton
+                  variant="ghost"
+                  size="md"
+                  aria-label="Loop actions"
+                  title="Loop actions"
+                  onClick={() => setActionsOpen((open) => !open)}
+                >
+                  <MoreHorizontal size={15} />
+                </IconButton>
+              }
+            >
+              <MenuRow
+                onClick={() => {
+                  setActionsOpen(false)
+                  setEditing(true)
+                }}
+              >
+                <span className="flex items-center gap-2">
+                  <Pencil size={13} />
+                  Edit
+                </span>
+              </MenuRow>
+              <MenuRow disabled={remove.isPending} onClick={onDelete}>
+                <span className="flex items-center gap-2 text-danger">
+                  <Trash2 size={13} />
+                  Delete
+                </span>
+              </MenuRow>
+            </Popover>
+          </div>
+        ) : null}
       </header>
 
       <div className="mt-5 whitespace-pre-wrap rounded-card bg-surface px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2">

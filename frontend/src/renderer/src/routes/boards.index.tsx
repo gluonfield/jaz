@@ -14,7 +14,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton'
 import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import type { Board, BoardVisibility } from '@/lib/api/types'
 import { popOutBoard } from '@/lib/clientRuntime'
-import { useCloudSession } from '@/lib/cloudSession'
+import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
 export const Route = createFileRoute('/boards/')({
@@ -24,6 +24,8 @@ export const Route = createFileRoute('/boards/')({
 function BoardsPage() {
   const boards = useQuery(boardsQuery)
   const cloud = useCloudSession()
+  const isViewer = useIsCloudViewer()
+  const canCreate = !isViewer
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
   const [createVisibility, setCreateVisibility] = useState<BoardVisibility>('private')
@@ -63,10 +65,12 @@ function BoardsPage() {
               : 'Tiled dashboards your loops keep up to date.'}
           </p>
         </div>
-        <Button variant="primary" size="lg" onClick={() => openCreate('private')}>
-          <Plus size={15} />
-          New board
-        </Button>
+        {canCreate ? (
+          <Button variant="primary" size="lg" onClick={() => openCreate('private')}>
+            <Plus size={15} />
+            New board
+          </Button>
+        ) : null}
       </header>
 
       {boards.isPending ? (
@@ -74,15 +78,19 @@ function BoardsPage() {
       ) : boards.isError ? (
         <EmptyState title="Boards unavailable">Could not load boards.</EmptyState>
       ) : allBoards.length === 0 ? (
-        <DashedCta
-          onClick={() => openCreate('private')}
-          title="Create your first board"
-          subtitle={
-            cloud.active
-              ? 'Create a personal board or share one with your whole team or selected teammates.'
-              : 'Assign loops to a board and every run rewrites its widgets — counts, lists, charts — from data they just gathered.'
-          }
-        />
+        canCreate ? (
+          <DashedCta
+            onClick={() => openCreate('private')}
+            title="Create your first board"
+            subtitle={
+              cloud.active
+                ? 'Create a personal board or share one with your whole team or selected teammates.'
+                : 'Assign loops to a board and every run rewrites its widgets — counts, lists, charts — from data they just gathered.'
+            }
+          />
+        ) : (
+          <EmptyState title="No boards yet">Boards shared with you will appear here.</EmptyState>
+        )
       ) : cloud.active ? (
         <div className="space-y-8">
           <BoardSection
@@ -90,18 +98,20 @@ function BoardsPage() {
             subtitle="Shared with everyone in this workspace or selected teammates."
             boards={teamBoards}
             cloudActive
+            isViewer={isViewer}
             onDelete={onDelete}
             newLabel="New team board"
-            onNew={() => openCreate('team')}
+            onNew={canCreate ? () => openCreate('team') : undefined}
           />
           <BoardSection
             title="Personal"
             subtitle="Private boards visible only to you."
             boards={personalBoards}
             cloudActive
+            isViewer={isViewer}
             onDelete={onDelete}
             newLabel="New personal board"
-            onNew={() => openCreate('private')}
+            onNew={canCreate ? () => openCreate('private') : undefined}
           />
         </div>
       ) : (
@@ -112,6 +122,7 @@ function BoardsPage() {
               board={board}
               index={index}
               cloudActive={false}
+              isViewer={false}
               onDelete={() => onDelete(board)}
             />
           ))}
@@ -135,6 +146,7 @@ function BoardSection({
   subtitle,
   boards,
   cloudActive,
+  isViewer,
   onDelete,
   newLabel,
   onNew,
@@ -143,9 +155,10 @@ function BoardSection({
   subtitle: string
   boards: Board[]
   cloudActive: boolean
+  isViewer: boolean
   onDelete: (board: Board) => void
   newLabel: string
-  onNew: () => void
+  onNew?: () => void
 }) {
   return (
     <section className="space-y-3">
@@ -167,10 +180,11 @@ function BoardSection({
             board={board}
             index={index}
             cloudActive={cloudActive}
+            isViewer={isViewer}
             onDelete={() => onDelete(board)}
           />
         ))}
-        <NewBoardTile index={boards.length} label={newLabel} onClick={onNew} />
+        {onNew ? <NewBoardTile index={boards.length} label={newLabel} onClick={onNew} /> : null}
       </div>
     </section>
   )
@@ -196,14 +210,16 @@ function BoardCard({
   board,
   index,
   cloudActive,
+  isViewer,
   onDelete,
 }: {
   board: Board
   index: number
   cloudActive: boolean
+  isViewer: boolean
   onDelete: () => void
 }) {
-  const canDelete = !cloudActive || board.can_edit !== false
+  const canDelete = !isViewer && (!cloudActive || board.can_edit !== false)
   const ownerLabel =
     cloudActive && board.is_owner === false
       ? board.owner_display_name || board.owner_email || ''
