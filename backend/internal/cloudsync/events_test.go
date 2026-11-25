@@ -296,6 +296,32 @@ func TestProjectTranscriptReconcilesStaleRunningStatusAndInfersAgent(t *testing.
 	}
 }
 
+func TestProjectTranscriptOpenTurnAndCommentarySeparator(t *testing.T) {
+	now := time.Now().UTC()
+	thread := storage.CloudThread{
+		ID:     "ct_open",
+		RunID:  "ct_open",
+		Status: "idle", // stale SQLite mirror status while turn is actively running
+	}
+	rawEvents := []storage.CloudThreadEvent{
+		{ThreadID: "ct_open", Seq: 1, Type: "user_message", PayloadJSON: json.RawMessage(`{"text":"do pwd"}`), CreatedAt: now},
+		{ThreadID: "ct_open", Seq: 2, Type: "assistant_delta", PayloadJSON: json.RawMessage(`{"delta":"Spinning up workspace."}`), CreatedAt: now.Add(time.Second)},
+		{ThreadID: "ct_open", Seq: 3, Type: "tool_call", PayloadJSON: json.RawMessage(`{"call_id":"c1","tool":"request_workspace","status":"running"}`), CreatedAt: now.Add(2 * time.Second)},
+		{ThreadID: "ct_open", Seq: 4, Type: "tool_result", PayloadJSON: json.RawMessage(`{"call_id":"c1","tool":"request_workspace","status":"completed","output":"ready"}`), CreatedAt: now.Add(3 * time.Second)},
+		{ThreadID: "ct_open", Seq: 5, Type: "assistant_delta", PayloadJSON: json.RawMessage(`{"delta":"Running pwd now."}`), CreatedAt: now.Add(4 * time.Second)},
+	}
+	got := cloudsync.ProjectTranscript(thread, rawEvents)
+	if got.Session.Status != storage.StatusRunning || got.ACPState != "running" {
+		t.Fatalf("expected open turn to reconcile stale idle -> running, got session=%q acp=%q", got.Session.Status, got.ACPState)
+	}
+	if len(got.Messages) != 1 {
+		t.Fatalf("expected in-flight commentary to stay in ACPAssistant instead of flushing completed message, got %+v", got.Messages)
+	}
+	if got.ACPAssistant != "Spinning up workspace.\n\nRunning pwd now." {
+		t.Fatalf("expected paragraph separator across tool call, got %q", got.ACPAssistant)
+	}
+}
+
 func TestUpdateDeleteThreadAndDeleteSpaceMirrorSync(t *testing.T) {
 	ctx := context.Background()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
