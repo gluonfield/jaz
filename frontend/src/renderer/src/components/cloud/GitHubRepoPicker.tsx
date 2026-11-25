@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, GitBranch, LoaderCircle, Lock, LogIn, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
@@ -6,6 +7,7 @@ import { Input } from '@/components/ui/Input'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
 import {
+  CLOUD_GITHUB_PLUGIN_ID,
   useCloudGitHubBranches,
   useCloudGitHubOAuth,
   useCloudGitHubRepos,
@@ -68,6 +70,14 @@ export function ThreadRepoPicker({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const isViewer = useIsCloudViewer()
+  const navigate = useNavigate()
+  const openGitHubPlugin = () => {
+    setOpen(false)
+    void navigate({
+      to: '.',
+      search: (prev) => ({ ...prev, settings: 'plugins', plugin: CLOUD_GITHUB_PLUGIN_ID }),
+    })
+  }
 
   const { status, repos, branches, oauth } = useGitHubPickerData({
     enabled: !disabled,
@@ -125,23 +135,33 @@ export function ThreadRepoPicker({
             Checking GitHub…
           </div>
         ) : !status.data?.configured ? (
-          <p className="px-2 py-1.5 text-[12px] text-ink-3">
-            GitHub App is not configured for this workspace yet. Set it up in Settings → GitHub.
-          </p>
+          <div className="flex flex-col gap-2 px-2 py-1.5">
+            <p className="text-[12px] text-ink-3">
+              GitHub is not configured for this Jaz Cloud deployment yet.
+            </p>
+            <Button variant="ghost" size="sm" onClick={openGitHubPlugin} className="self-start px-2">
+              Open GitHub in Plugins
+            </Button>
+          </div>
         ) : repos.data?.connect_required ? (
           <div className="flex flex-col gap-2 px-2 py-1.5">
             <p className="text-[12px] text-ink-2">Connect your GitHub account to browse repositories.</p>
-            {!isViewer ? (
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={oauth.isPending}
-                onClick={() => oauth.mutate(undefined)}
-              >
-                {oauth.isPending ? <LoaderCircle size={13} className="animate-spin" /> : <LogIn size={13} />}
-                Connect GitHub
+            <div className="flex flex-wrap items-center gap-1.5">
+              {!isViewer ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={oauth.isPending}
+                  onClick={() => oauth.mutate(undefined)}
+                >
+                  {oauth.isPending ? <LoaderCircle size={13} className="animate-spin" /> : <LogIn size={13} />}
+                  Connect GitHub
+                </Button>
+              ) : null}
+              <Button variant="ghost" size="sm" onClick={openGitHubPlugin}>
+                Manage in Plugins
               </Button>
-            ) : null}
+            </div>
           </div>
         ) : (
           <>
@@ -166,7 +186,20 @@ export function ThreadRepoPicker({
                   Loading repositories…
                 </div>
               ) : filteredRepos.length === 0 ? (
-                <p className="px-2.5 py-2 text-[12px] text-ink-3">No matching repositories.</p>
+                <div className="flex flex-col gap-1.5 px-2.5 py-2">
+                  <p className="text-[12px] text-ink-3">
+                    {search.trim() ? 'No matching repositories.' : 'No repositories available yet.'}
+                  </p>
+                  {!search.trim() ? (
+                    <button
+                      type="button"
+                      onClick={openGitHubPlugin}
+                      className="self-start cursor-pointer text-[11.5px] font-medium text-primary hover:underline"
+                    >
+                      Manage GitHub access in Plugins
+                    </button>
+                  ) : null}
+                </div>
               ) : (
                 filteredRepos.map((item) => (
                   <MenuRow
@@ -246,6 +279,12 @@ export function GitHubRepoField({
   onChange: (next: { repo: string; baseBranch: string }) => void
 }) {
   const isViewer = useIsCloudViewer()
+  const navigate = useNavigate()
+  const openGitHubPlugin = () =>
+    void navigate({
+      to: '.',
+      search: (prev) => ({ ...prev, settings: 'plugins', plugin: CLOUD_GITHUB_PLUGIN_ID }),
+    })
   const { status, repos, branches, oauth } = useGitHubPickerData({
     enabled: true,
     loadRepos: true,
@@ -277,19 +316,24 @@ export function GitHubRepoField({
       </div>
 
       {repos.data?.connect_required ? (
-        <div className="flex items-center justify-between gap-2 rounded-control border border-border bg-surface px-2.5 py-2 text-[12px] text-ink-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-border bg-surface px-2.5 py-2 text-[12px] text-ink-2">
           <span>Connect GitHub to select a repository.</span>
-          {!isViewer && !disabled ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={oauth.isPending}
-              onClick={() => oauth.mutate(undefined)}
-            >
-              {oauth.isPending ? <LoaderCircle size={12} className="animate-spin" /> : <LogIn size={12} />}
-              Connect
+          <div className="flex items-center gap-1.5">
+            {!isViewer && !disabled ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={oauth.isPending}
+                onClick={() => oauth.mutate(undefined)}
+              >
+                {oauth.isPending ? <LoaderCircle size={12} className="animate-spin" /> : <LogIn size={12} />}
+                Connect
+              </Button>
+            ) : null}
+            <Button variant="ghost" size="sm" onClick={openGitHubPlugin}>
+              Plugins
             </Button>
-          ) : null}
+          </div>
         </div>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">

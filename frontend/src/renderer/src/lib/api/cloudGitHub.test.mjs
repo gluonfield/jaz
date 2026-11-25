@@ -74,84 +74,52 @@ function setupCloudApi() {
   return api
 }
 
-test('startCloudGitHubManifest defaults app_name to Jaz and forwards optional github_org', async () => {
+test('isCloudAuthExpiredError matches only HTTP 401 ApiError responses', () => {
   const api = setupCloudApi()
-  const bodies = []
-  replace('fetch', async (url, init) => {
-    expect(String(url)).toBe('https://cloud.jaz.example/v1/github/manifest/start')
-    expect(init.method).toBe('POST')
-    bodies.push(JSON.parse(init.body))
-    return Response.json({
-      state: 'st_123',
-      action_url: 'https://github.com/settings/apps/new?state=st_123',
-      callback_url: 'https://cloud.jaz.example/v1/github/manifest/callback',
-      manifest: { name: 'Jaz', request_oauth_on_install: true },
-    })
-  })
-
-  await api.startCloudGitHubManifest({})
-  await api.startCloudGitHubManifest({ app_name: '  ', github_org: 'acme-corp' })
-  await api.startCloudGitHubManifest({ app_name: 'Jaz Acme', github_org: 'acme-corp' })
-
-  expect(bodies).toEqual([
-    { app_name: 'Jaz' },
-    { app_name: 'Jaz', github_org: 'acme-corp' },
-    { app_name: 'Jaz Acme', github_org: 'acme-corp' },
-  ])
+  expect(api.isCloudAuthExpiredError(new api.ApiError(401, 'not signed in to Jaz Cloud'))).toBe(true)
+  expect(api.isCloudAuthExpiredError(new api.ApiError(403, 'forbidden'))).toBe(false)
+  expect(api.isCloudAuthExpiredError(new api.ApiError(500, 'server error'))).toBe(false)
+  expect(api.isCloudAuthExpiredError(new Error('not signed in to Jaz Cloud'))).toBe(false)
 })
 
-test('submitGitHubManifestForm submits hidden POST manifest form and rejects insecure URLs', () => {
+test('buildCloudGitHubPlugin maps configured, linked, viewer, unconfigured, and auth-expired states for Plugins', () => {
   const api = setupCloudApi()
-  const appended = []
-  let submitted = null
-  let removed = false
 
-  replace('document', {
-    createElement(tag) {
-      const el = {
-        tagName: tag.toUpperCase(),
-        style: {},
-        children: [],
-        appendChild(child) {
-          this.children.push(child)
-          return child
-        },
-        submit() {
-          submitted = {
-            method: this.method,
-            action: this.action,
-            target: this.target,
-            inputs: this.children.map((c) => ({ type: c.type, name: c.name, value: c.value })),
-          }
-        },
-        remove() {
-          removed = true
-        },
-      }
-      return el
-    },
-    body: {
-      appendChild(node) {
-        appended.push(node)
-        return node
-      },
-    },
+  const unconfigured = api.buildCloudGitHubPlugin({
+    status: { configured: false, user_linked: false, installations: [] },
+  })
+  expect(unconfigured).toMatchObject({
+    id: 'github',
+    origin: 'builtin',
+    icon: { kind: 'asset', value: 'github' },
+    auth: { kind: 'oauth', status: 'unavailable', connected: false },
+  })
+  expect(unconfigured.auth.reason).toContain('not configured')
+
+  const available = api.buildCloudGitHubPlugin({
+    status: { configured: true, user_linked: false, installations: [] },
+  })
+  expect(available.auth).toMatchObject({ kind: 'oauth', status: 'available', connected: false, accounts: [] })
+
+  const viewerUnlinked = api.buildCloudGitHubPlugin({
+    status: { configured: true, user_linked: false, installations: [] },
+    isViewer: true,
+  })
+  expect(viewerUnlinked.auth).toMatchObject({ status: 'unavailable', connected: false })
+  expect(viewerUnlinked.auth.reason).toContain('View-only')
+
+  const linked = api.buildCloudGitHubPlugin({
+    status: { configured: true, user_linked: true, github_login: 'octocat', installations: [] },
+  })
+  expect(linked.auth).toMatchObject({
+    status: 'connected',
+    connected: true,
+    accounts: [{ id: 'github-default', provider: 'github', alias: '@octocat', account_id: '@octocat' }],
   })
 
-  expect(() => api.submitGitHubManifestForm('http://evil.example/new', { name: 'Jaz' })).toThrow()
-
-  api.submitGitHubManifestForm('https://github.com/organizations/acme/settings/apps/new?state=abc', {
-    name: 'Jaz',
-    request_oauth_on_install: true,
-  })
-  expect(appended).toHaveLength(1)
-  expect(removed).toBe(true)
-  expect(submitted).toEqual({
-    method: 'POST',
-    action: 'https://github.com/organizations/acme/settings/apps/new?state=abc',
-    target: '_blank',
-    inputs: [{ type: 'hidden', name: 'manifest', value: '{"name":"Jaz","request_oauth_on_install":true}' }],
-  })
+  const expired = api.buildCloudGitHubPlugin({ authExpired: true })
+  expect(expired.auth).toMatchObject({ status: 'unavailable', connected: false })
+  expect(expired.auth.reason).toContain('Sign in to Jaz Cloud')
 })
 
 test('disconnectCloudGitHubAccount deletes only github connector accounts', async () => {
@@ -308,6 +276,4 @@ test('GitHub URL and segment guards reject unsafe schemes and invalid org/repo n
   expect(() => api.openSafeGitHubUrl('http://github.com/acme/app')).toThrow()
   api.openSafeGitHubUrl('https://github.com/acme/app/pull/42')
   expect(opened).toEqual(['https://github.com/acme/app/pull/42'])
-
-  await expect(api.startCloudGitHubManifest({ github_org: 'bad/org' })).rejects.toThrow()
 })

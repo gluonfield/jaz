@@ -42,14 +42,21 @@ import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { TitlebarActionsOutlet, TitlebarProvider, TitlebarSlotOutlet } from '@/lib/titlebar'
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
 
-type RootSearch = { settings?: SettingsSection }
+type RootSearch = { settings?: SettingsSection; plugin?: string }
 type SettingsSectionNavigation = { replace?: boolean }
 
 export const Route = createRootRoute({
   // Settings rides in the URL so it's a real history entry that ⌘[ / ⌘] and the
   // browser back/forward step in and out of like any other page.
-  validateSearch: (search): RootSearch =>
-    isSettingsSection(search.settings) ? { settings: search.settings } : {},
+  validateSearch: (search): RootSearch => {
+    const settings = isSettingsSection(search.settings) ? search.settings : undefined
+    const plugin =
+      settings === 'plugins' && typeof search.plugin === 'string' && search.plugin.trim()
+        ? search.plugin.trim()
+        : undefined
+    if (plugin) return { settings, plugin }
+    return settings ? { settings } : {}
+  },
   component: RootComponent,
 })
 
@@ -142,7 +149,7 @@ function RootLayout() {
 
   // Settings open-state is derived from the URL, not local state. lastSection
   // lets the sidebar button reopen the pane the user last viewed.
-  const settingsSection = Route.useSearch().settings
+  const { settings: settingsSection, plugin: settingsPlugin } = Route.useSearch()
   const settingsOpen = settingsSection !== undefined
   const lastSection = useRef<SettingsSection>('cloud')
   useEffect(() => {
@@ -153,7 +160,7 @@ function RootLayout() {
     (section?: SettingsSection) =>
       void navigate({
         to: '.',
-        search: (prev) => ({ ...prev, settings: section ?? lastSection.current }),
+        search: (prev) => ({ ...prev, settings: section ?? lastSection.current, plugin: undefined }),
       }),
     [navigate],
   )
@@ -162,14 +169,24 @@ function RootLayout() {
       if (section === settingsSection) return
       void navigate({
         to: '.',
-        search: (prev) => ({ ...prev, settings: section }),
+        search: (prev) => ({ ...prev, settings: section, plugin: section === 'plugins' ? prev.plugin : undefined }),
         replace: options?.replace,
       })
     },
     [navigate, settingsSection],
   )
+  const selectSettingsPlugin = useCallback(
+    (pluginID: string | null) => {
+      void navigate({
+        to: '.',
+        search: (prev) => ({ ...prev, settings: 'plugins', plugin: pluginID || undefined }),
+        replace: true,
+      })
+    },
+    [navigate],
+  )
   const closeSettings = useCallback(() => {
-    void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined }) })
+    void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined, plugin: undefined }) })
   }, [navigate])
 
   // Phone: the sidebar is a full-screen drawer (CSS `max-sm:w-full`) that slides
@@ -404,6 +421,8 @@ function RootLayout() {
                 <SettingsOverlay
                   open={settingsOpen}
                   section={settingsSection}
+                  selectedPlugin={settingsPlugin}
+                  onSelectPlugin={selectSettingsPlugin}
                   onSectionChange={goToSettingsSection}
                   onClose={closeSettings}
                 />

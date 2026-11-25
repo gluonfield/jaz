@@ -1,10 +1,12 @@
 import type { CloudUser, ServerCapabilities } from '@/lib/api/serverTypes'
 import { clientRuntime } from '@/lib/clientRuntime'
 import {
+  LOCAL_WORKSPACE_ID,
   useCloudAccount,
   type CloudAccountStatus,
   type CloudWorkspaceSummary,
 } from '@/lib/cloudAccount'
+import { activeCloudWorkspace } from '@/lib/cloudWorkspaceDisplay'
 import { useConnection } from '@/lib/connection'
 
 export const DEFAULT_CLOUD_URL = 'https://jaz-cloud-staging.camadvanced.com'
@@ -68,9 +70,14 @@ export function useCloudSession(): ActiveCloudSession {
     }
   }
 
+  const attachedActive =
+    attached.status === 'connected' &&
+    attached.activeWorkspaceId !== LOCAL_WORKSPACE_ID &&
+    attached.workspaces.length > 0
+
   return {
-    active: attached.status === 'connected',
-    source: attached.status === 'connected' || attached.workspaces.length > 0 || attached.url ? 'attached' : null,
+    active: attachedActive,
+    source: attachedActive || attached.workspaces.length > 0 || attached.url ? 'attached' : null,
     status: attached.status,
     activeWorkspaceId: attached.activeWorkspaceId,
     workspaces: attached.workspaces,
@@ -84,7 +91,7 @@ export function useCloudSession(): ActiveCloudSession {
 }
 
 export function useHasCloud(): boolean {
-  return useCloudSession().active
+  return Boolean(activeCloudWorkspace(useCloudSession()))
 }
 
 export function useIsCloudOnly(): boolean {

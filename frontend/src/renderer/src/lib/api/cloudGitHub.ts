@@ -1,5 +1,6 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Plugin } from '@/lib/api/plugins'
 import { ApiError } from '@/lib/api/response'
 import { openExternal } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
@@ -7,6 +8,7 @@ import { del, get, patch, post, secureBackendConnection } from './client'
 import { patchCloudThread, type CloudThread } from './cloudThreads'
 
 export const DEFAULT_GITHUB_APP_NAME = 'Jaz'
+export const CLOUD_GITHUB_PLUGIN_ID = 'github'
 export const GITHUB_CONNECT_LINK = 'jaz://plugin/github/connect'
 
 export interface CloudGitHubInstallation {
@@ -33,22 +35,7 @@ export interface CloudGitHubStatus {
   user_linked: boolean
   github_login?: string
   installations: CloudGitHubInstallation[]
-  manifest_supported?: boolean
   install_manage_url?: string
-}
-
-export interface CloudGitHubManifestStartInput {
-  app_name?: string
-  github_org?: string
-  public?: boolean
-  redirect_to?: string
-}
-
-export interface CloudGitHubManifestStartResult {
-  state: string
-  action_url: string
-  callback_url: string
-  manifest: Record<string, unknown>
 }
 
 export interface CloudGitHubInstallStartResult {
@@ -229,35 +216,66 @@ export function parseGitHubConnectError(error: unknown): GitHubConnectRequiredEr
   }
 }
 
-export function submitGitHubManifestForm(
-  actionUrl: string,
-  manifest: Record<string, unknown>,
-  target = '_blank',
-): void {
-  const trimmedUrl = actionUrl.trim()
-  if (!trimmedUrl || !secureBackendConnection(trimmedUrl)) {
-    throw new Error('GitHub App manifest action URL must use HTTPS or loopback')
-  }
-  if (typeof document === 'undefined' || !document.body) {
-    throw new Error('Document is unavailable to submit GitHub App manifest form')
-  }
-  const form = document.createElement('form')
-  form.method = 'POST'
-  form.action = trimmedUrl
-  if (target) form.target = target
-  form.style.display = 'none'
+export function isCloudAuthExpiredError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401
+}
 
-  const input = document.createElement('input')
-  input.type = 'hidden'
-  input.name = 'manifest'
-  input.value = JSON.stringify(manifest)
-  form.appendChild(input)
+export function buildCloudGitHubPlugin(input: {
+  status?: CloudGitHubStatus
+  authExpired?: boolean
+  isViewer?: boolean
+}): Plugin {
+  const { status, authExpired = false, isViewer = false } = input
+  const configured = Boolean(status?.configured)
+  const linked = Boolean(status?.user_linked)
+  const loginLabel = status?.github_login ? `@${status.github_login}` : ''
+  const accounts = linked
+    ? [
+        {
+          id: 'github-default',
+          provider: CLOUD_GITHUB_PLUGIN_ID,
+          alias: loginLabel || 'GitHub',
+          account_id: loginLabel,
+          status: 'connected',
+        },
+      ]
+    : []
 
-  document.body.appendChild(form)
-  try {
-    form.submit()
-  } finally {
-    form.remove()
+  let authStatus = 'unavailable'
+  let reason: string | undefined
+  if (authExpired) {
+    reason = 'Sign in to Jaz Cloud again to manage GitHub access.'
+  } else if (status && !configured) {
+    reason = 'GitHub is not configured for this Jaz Cloud deployment yet.'
+  } else if (configured) {
+    if (linked) {
+      authStatus = 'connected'
+    } else if (isViewer) {
+      reason = 'View-only access — viewers cannot link a GitHub account.'
+    } else {
+      authStatus = 'available'
+    }
+  }
+
+  return {
+    id: CLOUD_GITHUB_PLUGIN_ID,
+    name: CLOUD_GITHUB_PLUGIN_ID,
+    display_name: 'GitHub',
+    description: 'Browse repositories, push branches, and open pull requests in Cloud threads',
+    category: 'developer_tools',
+    keywords: ['git', 'github', 'repo', 'repository', 'pull request', 'pr', 'code'],
+    icon: { kind: 'asset', value: CLOUD_GITHUB_PLUGIN_ID },
+    origin: 'builtin',
+    execution: 'cloud',
+    installed: true,
+    enabled: true,
+    auth: {
+      kind: 'oauth',
+      status: authStatus,
+      reason,
+      connected: linked,
+      accounts,
+    },
   }
 }
 
@@ -277,22 +295,6 @@ export async function getCloudGitHubStatus(signal?: AbortSignal): Promise<CloudG
     user_linked: Boolean(raw.user_linked),
     installations: Array.isArray(raw.installations) ? raw.installations.map(normalizeInstallation) : [],
   }
-}
-
-export function startCloudGitHubManifest(
-  input: CloudGitHubManifestStartInput = {},
-): Promise<CloudGitHubManifestStartResult> {
-  const appName = input.app_name?.trim() || DEFAULT_GITHUB_APP_NAME
-  const githubOrg = input.github_org?.trim() || ''
-  if (githubOrg && !isValidGitHubSegment(githubOrg)) {
-    return Promise.reject(new Error('GitHub organization name contains invalid characters'))
-  }
-  return post<CloudGitHubManifestStartResult>('/v1/github/manifest/start', {
-    app_name: appName,
-    ...(githubOrg ? { github_org: githubOrg } : {}),
-    ...(input.public !== undefined ? { public: input.public } : {}),
-    ...(input.redirect_to?.trim() ? { redirect_to: input.redirect_to.trim() } : {}),
-  })
 }
 
 export function startCloudGitHubInstall(
@@ -461,6 +463,7 @@ export const cloudGitHubStatusQuery = queryOptions({
   queryKey: keys.cloudGitHubStatus,
   queryFn: ({ signal }) => getCloudGitHubStatus(signal),
   staleTime: 15_000,
+  retry: (failureCount, error) => !(error instanceof ApiError && (error.status === 401 || error.status === 403)) && failureCount < 2,
 })
 
 export const cloudGitHubInstallationsQuery = queryOptions({

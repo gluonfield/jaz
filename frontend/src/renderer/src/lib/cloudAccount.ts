@@ -16,11 +16,12 @@ import {
 } from '@/lib/api/client'
 import type { CloudUser, ServerCapabilities } from '@/lib/api/serverTypes'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { LOCAL_WORKSPACE_ID } from '@/lib/cloudWorkspaceDisplay'
 import { fetchServerDiscovery } from '@/lib/connectionProbe'
 import { keys, WORKSPACE_QUERY_ROOTS } from '@/lib/query/keys'
 import { queryClient } from '@/lib/query/queryClient'
 
-export const LOCAL_WORKSPACE_ID = 'local'
+export { LOCAL_WORKSPACE_ID }
 
 export type CloudAccountStatus = 'disconnected' | 'checking' | 'connected'
 

@@ -6,7 +6,6 @@ import {
   Boxes,
   Brain,
   ChartNoAxesColumn,
-  GitBranch,
   Globe,
   Keyboard,
   Laptop,
@@ -30,7 +29,6 @@ export type SettingsSection =
   | 'browser'
   | 'computer'
   | 'machines'
-  | 'github'
   | 'cloud'
   | 'usage'
   | 'keyboard'
@@ -64,7 +62,6 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'plugins', label: 'Plugins', icon: Puzzle, group: 'workspace', wide: true },
   { id: 'mcp', label: 'MCP servers', icon: Plug, group: 'workspace' },
   { id: 'machines', label: 'Connected Machines', icon: Laptop, group: 'workspace', requiresCloud: true },
-  { id: 'github', label: 'GitHub', icon: GitBranch, group: 'workspace', requiresCloud: true },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn, group: 'workspace' },
   { id: 'archived', label: 'Archived threads', icon: ArchiveRestore, group: 'workspace' },
   { id: 'general', label: 'General', icon: SlidersHorizontal, group: 'app' },

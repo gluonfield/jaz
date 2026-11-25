@@ -83,7 +83,6 @@ test('SETTINGS_SECTIONS places Workspace group first and App group second with e
     'plugins',
     'mcp',
     'machines',
-    'github',
     'usage',
     'archived',
   ])
@@ -109,14 +108,14 @@ test('visibleSettingsSections enforces requiresCloud and requiresLocal boundarie
 
   const desktopCloudIds = visibleSettingsSections(true, true, true).map((item) => item.id)
   expect(desktopCloudIds).toContain('machines')
-  expect(desktopCloudIds).toContain('github')
+  expect(desktopCloudIds).not.toContain('github')
   expect(desktopCloudIds).not.toContain('memory')
   expect(desktopCloudIds).toEqual(expect.arrayContaining(['agents', 'providers', 'browser', 'computer']))
 
   const cloudOnlyIds = visibleSettingsSections(true, true, false).map((item) => item.id)
   expect(cloudOnlyIds).toContain('cloud')
   expect(cloudOnlyIds).toContain('machines')
-  expect(cloudOnlyIds).toContain('github')
+  expect(cloudOnlyIds).not.toContain('github')
   expect(cloudOnlyIds).toContain('agents')
   expect(cloudOnlyIds).toEqual(expect.arrayContaining(['general', 'appearance', 'notifications', 'keyboard']))
   expect(cloudOnlyIds).not.toContain('memory')
@@ -127,6 +126,7 @@ test('visibleSettingsSections enforces requiresCloud and requiresLocal boundarie
 
   const cloudOnlyDisconnectedIds = visibleSettingsSections(true, false, false).map((item) => item.id)
   expect(cloudOnlyDisconnectedIds).not.toContain('machines')
+  expect(cloudOnlyDisconnectedIds).not.toContain('github')
   expect(cloudOnlyDisconnectedIds).not.toContain('agents')
   expect(cloudOnlyDisconnectedIds).not.toContain('computer')
 })
@@ -145,6 +145,7 @@ test('SettingsNav heads workspace settings with the switcher alone and keeps App
   expect(switcherAt).toBeGreaterThan(-1)
   expect(switcherAt).toBeLessThan(cloudDesktopHtml.indexOf('>Workspace<'))
   expect(cloudDesktopHtml.indexOf('Connected Machines')).toBeLessThan(appAt)
+  expect(cloudDesktopHtml).not.toContain('GitHub')
   expect(cloudDesktopHtml.indexOf('Agents (ACP)')).toBeLessThan(appAt)
   expect(cloudDesktopHtml).toContain('Computer Use')
   expect(cloudDesktopHtml).not.toContain('Cambridge Advanced Systems')
@@ -161,7 +162,20 @@ test('SettingsNav heads workspace settings with the switcher alone and keeps App
   expect(localWithCloudHtml).toContain('data-switcher="true"')
   expect(localWithCloudHtml).not.toContain('>Local<')
   expect(localWithCloudHtml).not.toContain('Connected Machines')
+  expect(localWithCloudHtml).not.toContain('GitHub')
   expect(localWithCloudHtml).toContain('Agents (ACP)')
+
+  // Even if cloudState.active is stale while activeWorkspaceId is local, Cloud-only sections stay hidden.
+  const staleLocalHtml = renderSettingsNav({
+    cloudState: {
+      active: true,
+      activeWorkspaceId: 'local',
+      workspaces: [casWorkspace],
+    },
+    cloudOnly: false,
+  })
+  expect(staleLocalHtml).not.toContain('Connected Machines')
+  expect(staleLocalHtml).not.toContain('GitHub')
 
   const pureLocalHtml = renderSettingsNav({
     cloudState: {
@@ -174,6 +188,7 @@ test('SettingsNav heads workspace settings with the switcher alone and keeps App
   expect(pureLocalHtml).toContain('data-switcher="true"')
   expect(pureLocalHtml).toContain('>Workspace<')
   expect(pureLocalHtml).toContain('>App<')
+  expect(pureLocalHtml).not.toContain('GitHub')
 
   const cloudOnlyHtml = renderSettingsNav({
     cloudState: {
@@ -185,6 +200,7 @@ test('SettingsNav heads workspace settings with the switcher alone and keeps App
   })
   expect(cloudOnlyHtml).toContain('data-switcher="true"')
   expect(cloudOnlyHtml).toContain('Connected Machines')
+  expect(cloudOnlyHtml).not.toContain('GitHub')
   expect(cloudOnlyHtml).toContain('Agents (ACP)')
   expect(cloudOnlyHtml).not.toContain('Model Providers')
   expect(cloudOnlyHtml).not.toContain('Browser')

@@ -1,3 +1,4 @@
+import github from '@/assets/integrations/github.svg'
 import gmail from '@/assets/integrations/gmail.svg'
 import google_calendar from '@/assets/integrations/google_calendar.svg'
 import google_drive from '@/assets/integrations/google_drive.png'
@@ -7,6 +8,7 @@ import whatsapp from '@/assets/integrations/whatsapp.svg'
 import type { Plugin } from '@/lib/api/plugins'
 
 const pluginAssetUrls: Record<string, string> = {
+  github,
   gmail,
   google_calendar,
   google_drive,

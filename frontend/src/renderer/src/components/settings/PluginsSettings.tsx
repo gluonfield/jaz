@@ -1,12 +1,22 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Loader2, MoreHorizontal, Plus, RefreshCw, Settings2 } from 'lucide-react'
+import { ArrowRight, Loader2, LogIn, MoreHorizontal, Plus, RefreshCw, Settings2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { SearchField } from '@/components/ui/SearchField'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
+import {
+  CLOUD_GITHUB_PLUGIN_ID,
+  buildCloudGitHubPlugin,
+  disconnectCloudGitHubAccount,
+  isCloudAuthExpiredError,
+  useCloudGitHubAuthRefresh,
+  useCloudGitHubOAuth,
+  useCloudGitHubStatus,
+} from '@/lib/api/cloudGitHub'
 import {
   addPluginSource,
   disconnectPluginAccount,
@@ -20,9 +30,13 @@ import {
   type PluginInstallInput,
   type PluginInstallResult,
 } from '@/lib/api/plugins'
-import { useCloudSession } from '@/lib/cloudSession'
+import { attachCloudSignIn } from '@/lib/cloudAccount'
+import { useCloudSession, useIsCloudOnly, useIsCloudViewer } from '@/lib/cloudSession'
+import { activeCloudWorkspace, workspaceDisplayName } from '@/lib/cloudWorkspaceDisplay'
+import { startCloudSignIn } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
 import { AddPluginModal, type AddPluginMode } from './AddPluginModal'
+import { CloudGitHubPluginSection } from './CloudGitHubPluginSection'
 import { ConnectionQRModal } from './ConnectionQRModal'
 import { MarketplacesModal } from './MarketplacesModal'
 import { PluginDetailModal } from './PluginDetailModal'
@@ -32,24 +46,104 @@ import { usePluginSignIn } from './usePluginSignIn'
 
 const CONNECTED_PREVIEW_LIMIT = 4
 
-export function PluginsSettings() {
+export function PluginsSettings({
+  selectedPlugin,
+  onSelectPlugin,
+}: {
+  selectedPlugin?: string
+  onSelectPlugin?: (pluginID: string | null) => void
+} = {}) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const cloud = useCloudSession()
-  const canManageOrgPlugins = !cloud.active || cloud.user?.role === 'admin'
+  const isCloudOnly = useIsCloudOnly()
+  const isViewer = useIsCloudViewer()
+  const workspace = activeCloudWorkspace(cloud)
+  const isCloudActive = Boolean(workspace)
+  const canManageOrgPlugins = !isCloudActive || (!isViewer && cloud.user?.role === 'admin')
   const [query, setQuery] = useState('')
-  const [selectedID, setSelectedID] = useState<string | null>(null)
+  const [localSelectedID, setLocalSelectedID] = useState<string | null>(selectedPlugin ?? null)
   const [addMode, setAddMode] = useState<AddPluginMode | null>(null)
   const [managingSources, setManagingSources] = useState(false)
   const [showAllConnected, setShowAllConnected] = useState(false)
+  const [signingInCloud, setSigningInCloud] = useState(false)
+
+  const selectedID = onSelectPlugin ? (selectedPlugin ?? null) : localSelectedID
+  const setSelectedID = (next: string | null) => {
+    if (onSelectPlugin) {
+      onSelectPlugin(next)
+      return
+    }
+    setLocalSelectedID(next)
+  }
 
   const signIn = usePluginSignIn({ onStartAccepted: () => setSelectedID(null) })
   const catalog = signIn.catalog
-  const allPlugins = signIn.plugins
+  const githubAuthRefresh = useCloudGitHubAuthRefresh()
+  const githubStatus = useCloudGitHubStatus(isCloudActive, githubAuthRefresh.polling)
+  const githubOAuth = useCloudGitHubOAuth({
+    onStarted: () => {
+      githubAuthRefresh.start()
+      toast('Finish GitHub sign-in in your browser')
+    },
+    onError: (err) => {
+      toast(err.message || 'Could not start GitHub sign-in', 'danger')
+    },
+  })
+
+  const prevGitHubStateRef = useRef<{ linked: boolean; count: number } | null>(null)
+  useEffect(() => {
+    const data = githubStatus.data
+    if (!data) return
+    const next = { linked: data.user_linked, count: data.installations.length }
+    const prev = prevGitHubStateRef.current
+    prevGitHubStateRef.current = next
+    if (prev && githubAuthRefresh.polling && ((!prev.linked && next.linked) || next.count > prev.count)) {
+      githubAuthRefresh.stop()
+    }
+  }, [githubAuthRefresh, githubStatus.data])
+
+  const cloudGitHubPlugin = useMemo(
+    () =>
+      isCloudActive
+        ? buildCloudGitHubPlugin({
+            status: githubStatus.data,
+            authExpired: githubStatus.isError && isCloudAuthExpiredError(githubStatus.error),
+            isViewer,
+          })
+        : null,
+    [githubStatus.data, githubStatus.error, githubStatus.isError, isCloudActive, isViewer],
+  )
+
+  const allPlugins = useMemo(() => {
+    if (!cloudGitHubPlugin) return signIn.plugins
+    if (signIn.plugins.some((plugin) => plugin.id === CLOUD_GITHUB_PLUGIN_ID)) return signIn.plugins
+    return [cloudGitHubPlugin, ...signIn.plugins]
+  }, [cloudGitHubPlugin, signIn.plugins])
+
   const sources = useMemo(() => catalog.data?.sources ?? [], [catalog.data?.sources])
 
   const invalidateAll = () =>
     Promise.all([keys.plugins, keys.mcpServers, keys.mcpApps].map((queryKey) => queryClient.invalidateQueries({ queryKey })))
+
+  const signInToCloud = async () => {
+    if (!workspace || signingInCloud) return
+    setSigningInCloud(true)
+    try {
+      const loginUrl = workspace.oidc_login_url || cloud.oidcLoginUrl || undefined
+      const err =
+        cloud.source === 'primary' || isCloudOnly
+          ? await startCloudSignIn(workspace.url, loginUrl)
+          : await attachCloudSignIn(workspace.url, loginUrl)
+      if (err) {
+        toast(err, 'danger')
+      }
+    } catch (caught) {
+      toast(caught instanceof Error ? caught.message : 'Could not start Jaz Cloud sign-in', 'danger')
+    } finally {
+      setSigningInCloud(false)
+    }
+  }
 
   const reportInstall = (result: PluginInstallResult, action: 'Installed' | 'Updated') => {
     if (result.plugins.length) {
@@ -92,6 +186,16 @@ export function PluginsSettings() {
     onSuccess: () => toast('Disconnected'),
     onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
     onSettled: invalidateAll,
+  })
+
+  const disconnectGitHub = useMutation({
+    mutationFn: () => disconnectCloudGitHubAccount(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.cloudGitHubRoot })
+      void queryClient.invalidateQueries({ queryKey: keys.plugins })
+      toast('Disconnected GitHub account')
+    },
+    onError: (error: Error) => toast(error.message || 'Could not disconnect GitHub account', 'danger'),
   })
 
   const toggleEnabled = useMutation({
@@ -182,6 +286,14 @@ export function PluginsSettings() {
   }
 
   const quickAdd = (plugin: Plugin) => {
+    if (isCloudActive && plugin.id === CLOUD_GITHUB_PLUGIN_ID) {
+      if (!isViewer && githubStatus.data?.configured && !githubStatus.data.user_linked) {
+        githubOAuth.mutate(undefined)
+        return
+      }
+      setSelectedID(plugin.id)
+      return
+    }
     if (plugin.auth && pluginCanConnect(plugin)) {
       signIn.start(plugin)
       return
@@ -190,7 +302,7 @@ export function PluginsSettings() {
       installMarketplacePlugin(plugin)
       return
     }
-    if (cloud.active && !plugin.enabled) {
+    if (isCloudActive && !plugin.enabled) {
       toggleEnabled.mutate({ id: plugin.id, enabled: true })
       return
     }
@@ -198,6 +310,8 @@ export function PluginsSettings() {
   }
 
   const disconnectingAccountID = disconnect.isPending ? disconnect.variables : undefined
+  const catalogAuthExpired = catalog.isError && isCloudAuthExpiredError(catalog.error)
+  const selectedIsCloudGitHub = Boolean(isCloudActive && selected?.id === CLOUD_GITHUB_PLUGIN_ID)
 
   return (
     <section className="pb-10">
@@ -248,7 +362,27 @@ export function PluginsSettings() {
 
       {catalog.isPending ? (
         <SkeletonRows count={5} />
-      ) : catalog.isError ? (
+      ) : catalogAuthExpired && workspace ? (
+        <SettingsCard className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[14px] font-semibold text-ink">Sign in to Jaz Cloud</h3>
+              <p className="mt-0.5 text-[12.5px] text-ink-3">
+                Your session for {workspaceDisplayName(workspace)} has expired. Sign in again to manage plugins and connections.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" disabled={signingInCloud} onClick={() => void catalog.refetch()}>
+                Retry
+              </Button>
+              <Button variant="primary" size="sm" disabled={signingInCloud} onClick={() => void signInToCloud()}>
+                {signingInCloud ? <Loader2 size={13} className="animate-spin" /> : <LogIn size={13} />}
+                Sign in
+              </Button>
+            </div>
+          </div>
+        </SettingsCard>
+      ) : catalog.isError && !catalogAuthExpired ? (
         <p className="py-2 text-[13px] text-danger" role="alert">
           {catalog.error.message}
         </p>
@@ -275,6 +409,7 @@ export function PluginsSettings() {
               </div>
               <div className="divide-y divide-border/50">
                 {visibleConnected.map((plugin) => {
+                  const isCloudGitHub = isCloudActive && plugin.id === CLOUD_GITHUB_PLUGIN_ID
                   const accounts = plugin.auth?.accounts ?? []
                   const singleAccount = accounts.length === 1 ? accounts[0] : null
                   const hasSkillsOrViews = (plugin.skills?.length ?? 0) > 0 || (plugin.views?.length ?? 0) > 0
@@ -288,15 +423,20 @@ export function PluginsSettings() {
                       key={plugin.id}
                       plugin={plugin}
                       busy={
-                        Boolean(singleAccount && disconnectingAccountID === singleAccount.id) ||
+                        (isCloudGitHub && disconnectGitHub.isPending) ||
+                        Boolean(!isCloudGitHub && singleAccount && disconnectingAccountID === singleAccount.id) ||
                         (remove.isPending && remove.variables === plugin.id) ||
                         (update.isPending && update.variables === plugin.id)
                       }
                       onOpen={() => setSelectedID(plugin.id)}
                       onAddAccount={plugin.auth?.multi_account && pluginCanConnect(plugin) ? () => signIn.start(plugin) : undefined}
-                      onDisconnect={singleAccount ? () => disconnect.mutate(singleAccount.id) : undefined}
+                      onDisconnect={
+                        singleAccount && !isViewer
+                          ? () => (isCloudGitHub ? disconnectGitHub.mutate() : disconnect.mutate(singleAccount.id))
+                          : undefined
+                      }
                       onRemove={canRemove ? () => remove.mutate(plugin.id) : undefined}
-                      onUpdate={canManageOrgPlugins && !cloud.active && plugin.installed && plugin.source ? () => update.mutate(plugin.id) : undefined}
+                      onUpdate={canManageOrgPlugins && !isCloudActive && plugin.installed && plugin.source ? () => update.mutate(plugin.id) : undefined}
                     />
                   )
                 })}
@@ -318,7 +458,9 @@ export function PluginsSettings() {
               <h3 className="text-[13px] font-semibold text-ink">{group.label}</h3>
               <div className="grid grid-cols-1 gap-x-8 gap-y-0.5 sm:grid-cols-2">
                 {group.plugins.map((plugin) => {
+                  const isCloudGitHub = isCloudActive && plugin.id === CLOUD_GITHUB_PLUGIN_ID
                   const busy =
+                    (isCloudGitHub && githubOAuth.isPending) ||
                     (signIn.isConnecting && signIn.connectingPluginID === plugin.id) ||
                     (install.isPending && install.variables?.plugin_id === plugin.id) ||
                     (toggleEnabled.isPending && toggleEnabled.variables?.id === plugin.id)
@@ -341,16 +483,41 @@ export function PluginsSettings() {
       <PluginDetailModal
         plugin={selected}
         canManage={canManageOrgPlugins}
-        canToggleEnabled={cloud.active}
+        canDisconnect={!isViewer}
+        canToggleEnabled={isCloudActive}
         togglingEnabled={toggleEnabled.isPending && toggleEnabled.variables?.id === selected?.id}
-        connecting={signIn.isConnecting && signIn.connectingPluginID === selected?.id}
-        disconnectingAccountID={disconnectingAccountID}
+        connecting={selectedIsCloudGitHub ? githubOAuth.isPending : (signIn.isConnecting && signIn.connectingPluginID === selected?.id)}
+        disconnectingAccountID={
+          selectedIsCloudGitHub
+            ? (disconnectGitHub.isPending ? 'github-default' : undefined)
+            : disconnectingAccountID
+        }
         installing={install.isPending && install.variables?.plugin_id === selected?.id}
         updating={update.isPending && update.variables === selected?.id}
         removing={remove.isPending && remove.variables === selected?.id}
+        extraContent={
+          selectedIsCloudGitHub ? (
+            <CloudGitHubPluginSection
+              statusQuery={githubStatus}
+              onInstallStarted={githubAuthRefresh.start}
+            />
+          ) : undefined
+        }
         onClose={() => setSelectedID(null)}
-        onConnect={(plugin) => signIn.start(plugin)}
-        onDisconnect={(accountID) => disconnect.mutate(accountID)}
+        onConnect={(plugin) => {
+          if (isCloudActive && plugin.id === CLOUD_GITHUB_PLUGIN_ID) {
+            if (!isViewer) githubOAuth.mutate(undefined)
+            return
+          }
+          signIn.start(plugin)
+        }}
+        onDisconnect={(accountID) => {
+          if (selectedIsCloudGitHub) {
+            disconnectGitHub.mutate()
+            return
+          }
+          disconnect.mutate(accountID)
+        }}
         onToggleEnabled={(plugin, enabled) => toggleEnabled.mutate({ id: plugin.id, enabled })}
         onInstall={installMarketplacePlugin}
         onUpdate={(plugin) => update.mutate(plugin.id)}

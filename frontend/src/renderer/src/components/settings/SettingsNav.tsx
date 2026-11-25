@@ -2,6 +2,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Fragment } from 'react'
 import { SidebarWorkspaceSwitcher } from '@/components/sidebar/SidebarWorkspaceSwitcher'
 import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
+import { activeCloudWorkspace } from '@/lib/cloudWorkspaceDisplay'
 import { type SettingsSection, useExperimentalFeaturesEnabled, visibleSettingsSections } from './sections'
 
 // The Settings menu. On desktop it takes the left column on the window colour,
@@ -18,7 +19,7 @@ export function SettingsNav({
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const cloud = useCloudSession()
   const cloudOnly = useIsCloudOnly()
-  const items = visibleSettingsSections(experimentalEnabled, cloud.active, !cloudOnly)
+  const items = visibleSettingsSections(experimentalEnabled, Boolean(activeCloudWorkspace(cloud)), !cloudOnly)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col pt-1.5 pr-3 pl-1.5 max-sm:px-3 max-sm:pt-0">

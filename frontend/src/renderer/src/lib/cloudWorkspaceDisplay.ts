@@ -1,5 +1,7 @@
 import type { CloudWorkspaceSummary } from '@/lib/cloudAccount'
 
+export const LOCAL_WORKSPACE_ID = 'local'
+
 function urlHost(raw: string): string {
   try {
     return new URL(raw).host
@@ -16,6 +18,6 @@ export function workspaceDisplayName(workspace: Pick<CloudWorkspaceSummary, 'org
 export function activeCloudWorkspace(
   cloud: { active: boolean; activeWorkspaceId: string; workspaces: CloudWorkspaceSummary[] },
 ): CloudWorkspaceSummary | null {
-  if (!cloud.active) return null
+  if (!cloud.active || cloud.activeWorkspaceId === LOCAL_WORKSPACE_ID) return null
   return cloud.workspaces.find((ws) => ws.id === cloud.activeWorkspaceId) ?? cloud.workspaces[0] ?? null
 }

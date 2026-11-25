@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowDownToLine, Check, Copy, ExternalLink, Loader2, Plug, Plus, QrCode, RefreshCw, Trash2, Unplug } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, type ReactNode, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -26,6 +26,7 @@ import { PluginAvatar } from './PluginVisuals'
 export function PluginDetailModal({
   plugin,
   canManage = true,
+  canDisconnect = true,
   canToggleEnabled = false,
   togglingEnabled = false,
   connecting,
@@ -33,6 +34,7 @@ export function PluginDetailModal({
   installing,
   updating,
   removing,
+  extraContent,
   onClose,
   onConnect,
   onDisconnect,
@@ -43,6 +45,7 @@ export function PluginDetailModal({
 }: {
   plugin: Plugin | null
   canManage?: boolean
+  canDisconnect?: boolean
   canToggleEnabled?: boolean
   togglingEnabled?: boolean
   connecting: boolean
@@ -50,6 +53,7 @@ export function PluginDetailModal({
   installing: boolean
   updating: boolean
   removing: boolean
+  extraContent?: ReactNode
   onClose: () => void
   onConnect: (plugin: Plugin) => void
   onDisconnect: (accountID: string) => void
@@ -109,7 +113,7 @@ export function PluginDetailModal({
             ) : null}
           </div>
 
-          {singleConnectedAccount ? (
+          {singleConnectedAccount && canDisconnect ? (
             <Button
               variant="secondary"
               size="lg"
@@ -120,7 +124,7 @@ export function PluginDetailModal({
               {disconnectingAccountID === singleConnectedAccount.id ? <Loader2 size={14} className="animate-spin" /> : <Unplug size={14} />}
               {disconnectingAccountID === singleConnectedAccount.id ? 'Disconnecting…' : 'Disconnect'}
             </Button>
-          ) : plugin.auth ? (
+          ) : singleConnectedAccount ? null : plugin.auth ? (
             <ConnectButton plugin={plugin} connecting={connecting} onConnect={() => onConnect(plugin)} />
           ) : canToggleEnabled && plugin.installed && onToggleEnabled ? (
             <div className="flex shrink-0 items-center gap-2 pt-1 text-[13px] text-ink-2">
@@ -145,10 +149,12 @@ export function PluginDetailModal({
         {hasAccounts ? (
           <AccountsSection
             accounts={accounts}
+            canDisconnect={canDisconnect}
             disconnectingAccountID={disconnectingAccountID}
             onDisconnect={onDisconnect}
           />
         ) : null}
+        {extraContent}
         {hasConfig ? <ConfigSection key={plugin.id} plugin={plugin} variables={plugin.config_variables!} /> : null}
         {hasPrompts ? <SuggestedPromptsSection prompts={plugin.suggested_prompts!} /> : null}
         {hasSkills ? (
@@ -237,10 +243,12 @@ function ConnectButton({
 
 function AccountsSection({
   accounts,
+  canDisconnect = true,
   disconnectingAccountID,
   onDisconnect,
 }: {
   accounts: IntegrationConnectionAccount[]
+  canDisconnect?: boolean
   disconnectingAccountID?: string
   onDisconnect: (accountID: string) => void
 }) {
@@ -256,14 +264,16 @@ function AccountsSection({
                 <p className="truncate text-[13px] font-medium text-ink">{accountLabel(account)}</p>
                 {detail ? <p className="truncate text-[12px] text-ink-3">{detail}</p> : null}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={disconnectingAccountID === account.id}
-                onClick={() => onDisconnect(account.id)}
-              >
-                {disconnectingAccountID === account.id ? 'Disconnecting…' : 'Disconnect'}
-              </Button>
+              {canDisconnect ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={disconnectingAccountID === account.id}
+                  onClick={() => onDisconnect(account.id)}
+                >
+                  {disconnectingAccountID === account.id ? 'Disconnecting…' : 'Disconnect'}
+                </Button>
+              ) : null}
             </div>
           )
         })}
