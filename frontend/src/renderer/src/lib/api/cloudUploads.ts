@@ -282,7 +282,7 @@ export async function readCloudRunFile(runId: string, relpath: string, signal?: 
   let content: string | undefined
   if (!binary) {
     try {
-      content = new TextDecoder('utf-8', { fatal: true }).decode(sample)
+      content = new TextDecoder('utf-8', { fatal: true }).decode(sample, { stream: truncated })
     } catch {
       binary = true
     }

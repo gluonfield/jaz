@@ -52,6 +52,29 @@ test('host CSP is always prepended even when plugin HTML mentions content-securi
   expect(html.indexOf(hostMeta)).toBeLessThan(html.indexOf('default-src *'))
   expect(html).not.toContain('worker-src blob:')
   expect(html).not.toContain("'wasm-unsafe-eval'")
+
+  // Sneaky script or HTML comment before <head> cannot run ahead of host CSP.
+  const sneaky = buildArtifactDocument(
+    {
+      title: 'sneaky',
+      code: '<!doctype html><html><script>fetch("https://evil.example")</script><head></head><body>x</body></html>',
+      loadingMessages: [],
+    },
+    '',
+  )
+  expect(sneaky.indexOf(hostMeta)).toBeGreaterThan(-1)
+  expect(sneaky.indexOf(hostMeta)).toBeLessThan(sneaky.indexOf('https://evil.example'))
+
+  const commentedHead = buildArtifactDocument(
+    {
+      title: 'commented',
+      code: '<!doctype html><html><!-- <head> --><script>evil()</script><head></head></html>',
+      loadingMessages: [],
+    },
+    '',
+  )
+  expect(commentedHead.indexOf(hostMeta)).toBeGreaterThan(-1)
+  expect(commentedHead.indexOf(hostMeta)).toBeLessThan(commentedHead.indexOf('evil()'))
 })
 
 test('plugin view CSP adds active asset origin, worker-src blob:, wasm-unsafe-eval, and resolveAsset bridge strictly for plugin views', () => {
@@ -85,8 +108,9 @@ test('resolvePluginAssetRelpath resolves relative to view.file and blocks worksp
   expect(resolvePluginAssetRelpath('./meshes/part.glb', 'runs/scene.json')).toBe('runs/meshes/part.glb')
   expect(resolvePluginAssetRelpath('../outputs/assembly.glb', 'runs/scene.json')).toBe('outputs/assembly.glb')
 
-  for (const bad of ['', '   ', '.', '..', '../secret.txt', '/etc/passwd', 'file:///etc/passwd', 'https://example.com/a.glb', 'a\\b.glb', 'a.glb?x=1', 'a.glb#frag']) {
+  for (const bad of ['', '   ', '.', '..', '../secret.txt', '/etc/passwd', 'file:///etc/passwd', 'https://example.com/a.glb', 'a\\b.glb', 'a.glb?x=1', 'a.glb#frag', 'outputs/', 'outputs//a.glb']) {
     expect(() => resolvePluginAssetRelpath(bad, 'status.json')).toThrow()
   }
   expect(() => resolvePluginAssetRelpath('../../etc/passwd', 'runs/scene.json')).toThrow()
+  expect(() => resolvePluginAssetRelpath('a.glb', '../evil/scene.json')).toThrow()
 })

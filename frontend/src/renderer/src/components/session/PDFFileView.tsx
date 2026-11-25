@@ -103,8 +103,9 @@ export default function PDFFileView({ load, resolveUrl, location, visible = true
           document = await task.promise
         } catch {
           if (abort.signal.aborted) return
-          void task?.destroy()
+          await task?.destroy().catch(() => {})
           task = undefined
+          if (abort.signal.aborted) return
         }
       }
       if (!document) {

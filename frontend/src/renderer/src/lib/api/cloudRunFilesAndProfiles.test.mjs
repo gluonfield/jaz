@@ -292,6 +292,20 @@ test('readCloudRunFile sends Range bytes=0-1048576, parses 206 Content-Range tot
         headers: { 'Content-Range': 'bytes */0', ETag: '"empty-etag"' },
       })
     }
+    if (parsed.pathname === '/v1/runs/run_big/files/utf8.md') {
+      // Split a 3-byte UTF-8 em-dash (0xE2 0x80 0x94) right across the 1 MiB truncation boundary.
+      const sample = new Uint8Array(1024 * 1024 + 1)
+      sample.fill(0x61)
+      sample[1024 * 1024 - 1] = 0xe2
+      sample[1024 * 1024] = 0x80
+      return new Response(sample, {
+        status: 206,
+        headers: {
+          'Content-Type': 'text/markdown',
+          'Content-Range': 'bytes 0-1048576/2097152',
+        },
+      })
+    }
     return new Response('not found', { status: 404 })
   })
 
@@ -318,9 +332,16 @@ test('readCloudRunFile sends Range bytes=0-1048576, parses 206 Content-Range tot
     read_only: true,
   })
 
+  const utf8 = await api.readCloudRunFile('run_big', 'utf8.md')
+  expect(utf8.binary).toBe(false)
+  expect(utf8.truncated).toBe(true)
+  expect(utf8.size).toBe(2097152)
+  expect(utf8.content?.length).toBe(1024 * 1024 - 1)
+
   expect(ranges).toEqual([
     { pathname: '/v1/runs/run_big/files/models/large.glb', range: 'bytes=0-1048576' },
     { pathname: '/v1/runs/run_big/files/empty.txt', range: 'bytes=0-1048576' },
+    { pathname: '/v1/runs/run_big/files/utf8.md', range: 'bytes=0-1048576' },
   ])
 })
 

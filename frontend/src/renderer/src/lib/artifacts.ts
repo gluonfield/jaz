@@ -63,7 +63,7 @@ export function buildArtifactCSP(pluginView = false, assetOrigin?: string): stri
 
 export function resolvePluginAssetRelpath(assetPath: string, viewFile?: string): string {
   const trimmed = assetPath.trim()
-  if (!trimmed || trimmed.includes('\0') || trimmed.includes('\\') || trimmed.startsWith('/')) {
+  if (!trimmed || trimmed.includes('\0') || trimmed.includes('\\') || trimmed.startsWith('/') || trimmed.endsWith('/') || trimmed.includes('//')) {
     throw new Error('Asset path must be relative to the thread workspace')
   }
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
@@ -75,6 +75,9 @@ export function resolvePluginAssetRelpath(assetPath: string, viewFile?: string):
   const parts: string[] = []
   if (viewFile) {
     const viewParts = viewFile.trim().replace(/\\/g, '/').split('/').filter((segment) => segment && segment !== '.')
+    if (viewParts.includes('..')) {
+      throw new Error('View path must stay inside the thread workspace')
+    }
     if (viewParts.length > 1) {
       parts.push(...viewParts.slice(0, -1))
     }
@@ -438,21 +441,19 @@ function isFullHTMLDocument(code: string): boolean {
   return head.startsWith('<!doctype') || head.startsWith('<html')
 }
 
+const HEAD_PREFIX = /^\s*(?:<!doctype\s[^>]*>\s*)?(?:<html(?:\s[^>]*)?>\s*)?<head(?:\s[^>]*)?>/i
+const DOC_PREFIX = /^\s*(?:<!doctype\s[^>]*>\s*)?(?:<html(?:\s[^>]*)?>\s*)?/i
+
 function injectArtifactHost(code: string, theme: string, bridge: string, csp: string): string {
   const support = `${contentSecurityMeta(csp)}<style>${theme}</style><script>${bridge}</script>`
-  const headOpen = code.search(/<head(?:\s[^>]*)?>/i)
-  if (headOpen >= 0) {
-    const end = code.indexOf('>', headOpen)
-    if (end >= 0) return code.slice(0, end + 1) + support + code.slice(end + 1)
+  const head = HEAD_PREFIX.exec(code)
+  if (head) {
+    const end = head[0].length
+    return code.slice(0, end) + support + code.slice(end)
   }
-  const headClose = code.search(/<\/head\s*>/i)
-  if (headClose >= 0) return code.slice(0, headClose) + support + code.slice(headClose)
-  const bodyOpen = code.search(/<body(?:\s[^>]*)?>/i)
-  if (bodyOpen >= 0) {
-    const end = code.indexOf('>', bodyOpen)
-    if (end >= 0) return code.slice(0, end + 1) + support + code.slice(end + 1)
-  }
-  return support + code
+  const prefix = DOC_PREFIX.exec(code)
+  const end = prefix ? prefix[0].length : 0
+  return code.slice(0, end) + `<head>${support}</head>` + code.slice(end)
 }
 
 function contentSecurityMeta(csp: string): string {

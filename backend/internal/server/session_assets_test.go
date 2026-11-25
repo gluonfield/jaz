@@ -99,6 +99,10 @@ func TestSessionAssetGrantAndRangeStreaming(t *testing.T) {
 		"..",
 		"../secret.txt",
 		"outputs/../outputs/other.glb",
+		"outputs/./other.glb",
+		"outputs//other.glb",
+		"outputs/",
+		"C:outputs/other.glb",
 		outsideFile,
 		"/etc/passwd",
 		`outputs\other.glb`,
@@ -271,5 +275,71 @@ func TestSessionAssetGrantAndRangeStreaming(t *testing.T) {
 	handler.ServeHTTP(expiredRes, httptest.NewRequest(http.MethodGet, "/v1/sessions/"+sessionA.ID+"/assets/outputs/other.glb?grant="+url.QueryEscape(expiredToken), nil))
 	if expiredRes.Code != http.StatusUnauthorized {
 		t.Fatalf("expired grant status = %d, want 401", expiredRes.Code)
+	}
+
+	// Bearer-authed requests must NEVER get Tier 1 CORS or read assets without a valid grant.
+	bearerAsset := httptest.NewRequest(http.MethodGet, parsedURL.EscapedPath(), nil)
+	bearerAsset.Header.Set("Authorization", "Bearer test-secret")
+	bearerAssetRes := httptest.NewRecorder()
+	handler.ServeHTTP(bearerAssetRes, bearerAsset)
+	if bearerAssetRes.Code != http.StatusUnauthorized || bearerAssetRes.Header().Get("Access-Control-Allow-Origin") == "*" {
+		t.Fatalf("bearer-only asset fetch status=%d acao=%q, want 401 and no *", bearerAssetRes.Code, bearerAssetRes.Header().Get("Access-Control-Allow-Origin"))
+	}
+
+	mixedAuth := httptest.NewRequest(http.MethodGet, parsedURL.RequestURI(), nil)
+	mixedAuth.Header.Set("Origin", "null")
+	mixedAuth.Header.Set("Authorization", "Bearer test-secret")
+	mixedAuthRes := httptest.NewRecorder()
+	handler.ServeHTTP(mixedAuthRes, mixedAuth)
+	if mixedAuthRes.Code != http.StatusForbidden {
+		t.Fatalf("Origin: null with Authorization + ?grant= status = %d, want 403", mixedAuthRes.Code)
+	}
+
+	ticketAsGrantNull := httptest.NewRequest(http.MethodGet, parsedURL.EscapedPath()+"?grant="+url.QueryEscape(ticket.Token), nil)
+	ticketAsGrantNull.Header.Set("Origin", "null")
+	ticketAsGrantNullRes := httptest.NewRecorder()
+	handler.ServeHTTP(ticketAsGrantNullRes, ticketAsGrantNull)
+	if ticketAsGrantNullRes.Code != http.StatusForbidden {
+		t.Fatalf("Origin: null with ?grant=tk_... status = %d, want 403", ticketAsGrantNullRes.Code)
+	}
+
+	// Post-grant symlink swap (TOCTOU protection) must still be rejected by os.OpenRoot.
+	swapPath := filepath.Join(dir, "outputs", "swappable.glb")
+	if err := os.WriteFile(swapPath, []byte("legit"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	swapGrantRes := mint(sessionA.ID, "outputs/swappable.glb", "Bearer test-secret")
+	if swapGrantRes.Code != http.StatusOK {
+		t.Fatalf("swap grant status = %d", swapGrantRes.Code)
+	}
+	var swapGrant assetGrantResponse
+	if err := json.Unmarshal(swapGrantRes.Body.Bytes(), &swapGrant); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(swapPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideFile, swapPath); err != nil {
+		t.Fatal(err)
+	}
+	swapURL, _ := url.Parse(swapGrant.URL)
+	swapFetch := httptest.NewRecorder()
+	handler.ServeHTTP(swapFetch, httptest.NewRequest(http.MethodGet, swapURL.RequestURI(), nil))
+	if swapFetch.Code != http.StatusForbidden {
+		t.Fatalf("post-grant symlink swap status = %d, want 403; body = %s", swapFetch.Code, swapFetch.Body.String())
+	}
+
+	// Even when AuthKey is empty, GET /assets/{rel} must require a valid signed ag_ grant.
+	noAuthSrv := &Server{Store: store}
+	noAuthHandler := noAuthSrv.Handler()
+	noAuthUnauth := httptest.NewRecorder()
+	noAuthHandler.ServeHTTP(noAuthUnauth, httptest.NewRequest(http.MethodGet, "/v1/sessions/"+sessionA.ID+"/assets/outputs/other.glb", nil))
+	if noAuthUnauth.Code != http.StatusUnauthorized {
+		t.Fatalf("no-auth server without grant status = %d, want 401", noAuthUnauth.Code)
+	}
+	noAuthForged := httptest.NewRecorder()
+	noAuthHandler.ServeHTTP(noAuthForged, httptest.NewRequest(http.MethodGet, "/v1/sessions/"+sessionA.ID+"/assets/outputs/other.glb?grant="+url.QueryEscape(grantToken), nil))
+	if noAuthForged.Code != http.StatusUnauthorized {
+		t.Fatalf("no-auth server with foreign grant status = %d, want 401", noAuthForged.Code)
 	}
 }

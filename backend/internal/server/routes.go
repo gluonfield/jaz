@@ -13,7 +13,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /.well-known/jaz-server", s.handleServerDiscovery)
 	mux.HandleFunc("GET /v1/auth/check", s.handleAuthCheck)
 	mux.HandleFunc("GET /v1/sessions/", s.handleGetSession)
-	mux.HandleFunc("GET /v1/sessions/{session}/assets/{rel...}", s.handleGetSessionAsset)
+	mux.HandleFunc("GET /v1/sessions/{session}/assets/{rel...}", s.handleSessionAssetUnauthorized)
 	mux.HandleFunc("POST /v1/sessions", s.handleCreateSession)
 	mux.HandleFunc("POST /v1/sessions/{session}/assets/grant", s.handleGrantSessionAsset)
 	mux.HandleFunc("POST /v1/sessions/{session}/side-chat", s.handleSessionSideChat)
@@ -80,6 +80,10 @@ func (s *Server) Handler() http.Handler {
 				route.Handler.ServeHTTP(w, r)
 				return
 			}
+		}
+		if sessionRef, rel, ok := parseSessionAssetRequest(r); ok {
+			s.handleGrantedSessionAsset(w, r, sessionRef, rel)
+			return
 		}
 		authed.ServeHTTP(w, r)
 	})

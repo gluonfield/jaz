@@ -76,7 +76,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 		ctx := sessioncontext.WithClientPlatform(r.Context(), requestClientPlatform(r))
 		r = r.WithContext(ctx)
 		key := s.AuthKey
-		if key == "" || isPublicRoute(r) || isSessionAssetGrantFetch(r) {
+		if key == "" || isPublicRoute(r) {
 			next.ServeHTTP(w, r)
 			return
 		}

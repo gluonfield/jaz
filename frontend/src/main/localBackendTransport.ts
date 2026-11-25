@@ -9,6 +9,17 @@ export function registerLocalBackendTransport(): void {
 }
 
 const ASSET_GRANT_PATH = /^\/v1\/sessions\/[^/]+\/assets\/.+$/
+const SANDBOXED_ASSET_ALLOWED_HEADERS = [
+  'range',
+  'if-range',
+  'if-none-match',
+  'if-modified-since',
+  'accept',
+  'origin',
+  'access-control-request-method',
+  'access-control-request-headers',
+  'access-control-request-private-network',
+] as const
 
 export function isSandboxedAssetGrantRequest(
   url: URL,
@@ -16,9 +27,32 @@ export function isSandboxedAssetGrantRequest(
 ): boolean {
   if (request.initiatorOrigin !== 'null') return false
   if (request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS') return false
-  if (!ASSET_GRANT_PATH.test(url.pathname) || /%(?:2e|2f|5c)/i.test(url.pathname)) return false
+  if (!ASSET_GRANT_PATH.test(url.pathname) || /%(?:00|2e|2f|5c)/i.test(url.pathname)) return false
+  if (url.pathname.endsWith('/') || url.pathname.includes('//')) return false
   const grant = url.searchParams.get('grant')
   return Boolean(grant && grant.startsWith('ag_'))
+}
+
+function forwardSandboxedAssetRequest(backendURL: string, url: URL, request: Request): Promise<Response> {
+  const grant = url.searchParams.get('grant') ?? ''
+  const targetURL = `${backendURL}${url.pathname}?grant=${encodeURIComponent(grant)}`
+  const headers = new Headers()
+  for (const name of SANDBOXED_ASSET_ALLOWED_HEADERS) {
+    const value = request.headers.get(name)
+    if (value !== null) headers.set(name, value)
+  }
+  return fetch(targetURL, {
+    method: request.method,
+    headers,
+    signal: request.signal,
+    redirect: 'manual',
+  }).then(async (response) => {
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      await response.body?.cancel()
+      return Response.error()
+    }
+    return response
+  })
 }
 
 export function configureLocalBackendTransport(target: Session, backendURL: string): void {
@@ -34,22 +68,10 @@ export function configureLocalBackendTransport(target: Session, backendURL: stri
     if (!fromRenderer && !fromSandboxedAsset) {
       return new Response('Forbidden', { status: 403 })
     }
-    const targetURL = backendURL + url.pathname + url.search
     if (fromSandboxedAsset) {
-      const headers = new Headers(request.headers)
-      headers.delete('Authorization')
-      headers.delete('Cookie')
-      const response = await fetch(targetURL, {
-        method: request.method,
-        headers,
-        redirect: 'manual',
-      })
-      if ([301, 302, 303, 307, 308].includes(response.status)) {
-        await response.body?.cancel()
-        return Response.error()
-      }
-      return response
+      return forwardSandboxedAssetRequest(backendURL, url, request)
     }
+    const targetURL = backendURL + url.pathname + url.search
     // Node's loopback transport stays available when Chromium reports the computer offline.
     const response = await fetch(new Request(targetURL, request), { redirect: 'manual' })
     const location = response.headers.get('Location')
