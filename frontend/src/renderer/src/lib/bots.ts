@@ -1,4 +1,4 @@
-import type { ACPPermission, Attachment, Bot, BotActivityEvent, BotAvatar, BotColor, BotFileName, BotOwed, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
+import type { ACPPermission, Attachment, Bot, BotActivityEvent, BotAvatar, BotColor, BotFileName, BotOwed, BotOwedThread, BotShape, BotThreadActivity, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
 import { messageText } from '@/lib/messageText'
 import { isPresentedApp } from '@/lib/mcpApps'
 import { hasPermissionSurface } from '@/lib/sessionPermissions'
@@ -52,7 +52,108 @@ export function taskStateLabel(task: Pick<BotOwed, 'status' | 'moving' | 'blocke
 }
 
 export function taskName(task: Pick<BotOwed, 'name' | 'request'>): string {
-  return task.name || task.request.split(/;\s*done when\b/i, 1)[0] || task.request
+  const named = task.name?.trim()
+  if (named) return named
+  const firstLine = task.request
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) ?? task.request
+  const concise = firstLine.split(/;\s*done when\b/i, 1)[0]?.replace(/\s+/g, ' ').trim()
+  return concise || firstLine.replace(/\s+/g, ' ').trim() || task.request
+}
+
+export type ConnectedTaskThread = {
+  id: string
+  depth: number
+  thread?: BotOwedThread
+  activity?: BotThreadActivity
+}
+
+// Every thread connected to a task in display order: directly linked threads
+// plus any descendant threads spawned under them (from parent_id and
+// activity.started), deduplicated and cycle-safe so each thread appears once.
+export function connectedTaskThreads(
+  task: Pick<BotOwed, 'threads'>,
+  started: Record<string, BotThreadActivity[]> = {},
+): ConnectedTaskThread[] {
+  const directById = new Map<string, BotOwedThread>()
+  const uniqueDirect: BotOwedThread[] = []
+  for (const raw of task.threads ?? []) {
+    const id = raw.id.trim()
+    if (!id || directById.has(id)) continue
+    const normalized = id === raw.id ? raw : { ...raw, id }
+    directById.set(id, normalized)
+    uniqueDirect.push(normalized)
+  }
+  if (!uniqueDirect.length) return []
+
+  const childrenByParent = new Map<string, Omit<ConnectedTaskThread, 'depth'>[]>()
+  const seenPerParent = new Map<string, Set<string>>()
+  const record = (parentId: string, edge: Omit<ConnectedTaskThread, 'depth'>) => {
+    if (!parentId || edge.id === parentId) return
+    let seen = seenPerParent.get(parentId)
+    if (!seen) {
+      seen = new Set()
+      seenPerParent.set(parentId, seen)
+    }
+    if (seen.has(edge.id)) return
+    seen.add(edge.id)
+    const list = childrenByParent.get(parentId)
+    if (list) list.push(edge)
+    else childrenByParent.set(parentId, [edge])
+  }
+
+  for (const [rawParentId, items] of Object.entries(started)) {
+    const parentId = rawParentId.trim()
+    for (const item of items ?? []) {
+      const childId = item.thread_id?.trim()
+      if (!childId) continue
+      record(parentId, { id: childId, thread: directById.get(childId), activity: item })
+    }
+  }
+  for (const thread of uniqueDirect) {
+    const parentId = thread.parent_id?.trim()
+    if (parentId && directById.has(parentId)) {
+      record(parentId, { id: thread.id, thread })
+    }
+  }
+
+  const nestedChildIds = new Set<string>()
+  const scannedParents = new Set<string>()
+  const queue = uniqueDirect.map((thread) => thread.id)
+  for (let i = 0; i < queue.length; i++) {
+    const parentId = queue[i]
+    if (scannedParents.has(parentId)) continue
+    scannedParents.add(parentId)
+    for (const child of childrenByParent.get(parentId) ?? []) {
+      if (child.id === parentId) continue
+      nestedChildIds.add(child.id)
+      queue.push(child.id)
+    }
+  }
+
+  const rows: ConnectedTaskThread[] = []
+  const visited = new Set<string>()
+  const append = (id: string, entry: Omit<ConnectedTaskThread, 'depth'>, depth: number) => {
+    if (visited.has(id)) return
+    visited.add(id)
+    rows.push({ ...entry, depth })
+    for (const child of childrenByParent.get(id) ?? []) {
+      append(child.id, child, depth + 1)
+    }
+  }
+
+  for (const thread of uniqueDirect) {
+    if (!nestedChildIds.has(thread.id)) {
+      append(thread.id, { id: thread.id, thread }, 0)
+    }
+  }
+  for (const thread of uniqueDirect) {
+    if (!visited.has(thread.id)) {
+      append(thread.id, { id: thread.id, thread }, 0)
+    }
+  }
+  return rows
 }
 
 // What a bot's identity files are called on screen.

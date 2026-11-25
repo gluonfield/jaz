@@ -315,7 +315,16 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	}
 	threads := map[int64][]storage.CommitmentThread{}
 	for _, link := range links {
-		threads[link.CommitmentID] = append(threads[link.CommitmentID], storage.CommitmentThread{ID: link.ThreadID, Slug: link.Slug, Title: link.Title.String, State: link.State})
+		threads[link.CommitmentID] = append(threads[link.CommitmentID], storage.CommitmentThread{
+			ID:          link.ThreadID,
+			ParentID:    link.ParentID,
+			Slug:        link.Slug,
+			Title:       link.Title.String,
+			State:       link.State,
+			Status:      link.Status,
+			UpdatedAt:   msToTime(link.UpdatedAtMs),
+			CompletedAt: msToTime(link.LastCompletedAtMs),
+		})
 	}
 	questions, err := q.ListCommitmentQuestions(ctx, ids)
 	if err != nil {

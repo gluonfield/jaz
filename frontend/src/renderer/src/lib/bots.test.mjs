@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { botChat, dragSections, lastBotId, placePin, rememberBot, taskStateLabel } from './bots'
+import { botChat, connectedTaskThreads, dragSections, lastBotId, placePin, rememberBot, taskName, taskStateLabel } from './bots'
 import { optimisticTranscriptMessages } from './optimisticUserMessage'
 import { mergeEarlierHistory } from './sessionHistory'
 
@@ -185,6 +185,71 @@ test('task state distinguishes active work and blockers from worker completion',
 test('a closed task says how it closed, whatever its threads did', () => {
   expect(taskStateLabel({ status: 'completed', threads: [{ state: 'finished' }] })).toBe('Done')
   expect(taskStateLabel({ status: 'cancelled', threads: [{ state: 'failed' }] })).toBe('Dropped')
+})
+
+test('taskName uses the concise name and falls back to a clean single line for older unnamed tasks', () => {
+  expect(taskName({ name: '  Connected threads  ', request: 'Full long request\nwith multiple lines' })).toBe('Connected threads')
+  expect(taskName({ request: 'Overnight stress run; done when all checks pass' })).toBe('Overnight stress run')
+  expect(taskName({ request: '\n  Fix   bot task list\n\nSecond paragraph details' })).toBe('Fix bot task list')
+})
+
+test('connectedTaskThreads lists direct links and nested descendants in display order without duplicates', () => {
+  const task = {
+    threads: [
+      { id: 'worker-1', title: 'Worker 1', state: 'finished' },
+      { id: 'child-1', parent_id: 'worker-1', title: 'Child 1', state: 'working' },
+      { id: 'worker-2', title: 'Worker 2', state: 'failed' },
+      { id: 'idle-child', parent_id: 'worker-2', title: 'Idle child', state: 'idle' },
+      { id: 'worker-1', title: 'Duplicate worker', state: 'finished' },
+    ],
+  }
+  const started = {
+    'worker-1': [{ kind: 'side_chat', at: '2026-11-22T09:01:00Z', title: 'Child 1', status: 'running', running: true, thread_id: 'child-1' }],
+    'child-1': [{ kind: 'side_chat', at: '2026-11-22T09:02:00Z', title: 'Grandchild 1', status: 'idle', thread_id: 'grandchild-1' }],
+  }
+  const connected = connectedTaskThreads(task, started)
+  expect(connected.map((row) => [row.id, row.depth])).toEqual([
+    ['worker-1', 0],
+    ['child-1', 1],
+    ['grandchild-1', 2],
+    ['worker-2', 0],
+    ['idle-child', 1],
+  ])
+  expect(connected[1].thread?.state).toBe('working')
+  expect(connected[2].activity?.title).toBe('Grandchild 1')
+  expect(connected[4].thread?.state).toBe('idle')
+})
+
+test('connectedTaskThreads handles parent_id trees without started and stays cycle-safe', () => {
+  const fromParentIds = connectedTaskThreads({
+    threads: [
+      { id: 'root', title: 'Root', state: 'finished' },
+      { id: 'child', parent_id: 'root', title: 'Child', state: 'gone' },
+      { id: 'grandchild', parent_id: 'child', title: 'Grandchild', state: 'background' },
+    ],
+  })
+  expect(fromParentIds.map((row) => [row.id, row.depth, row.thread?.state])).toEqual([
+    ['root', 0, 'finished'],
+    ['child', 1, 'gone'],
+    ['grandchild', 2, 'background'],
+  ])
+
+  const cyclic = connectedTaskThreads(
+    {
+      threads: [
+        { id: 'a', title: 'Thread A', state: 'working' },
+        { id: 'b', title: 'Thread B', state: 'finished' },
+      ],
+    },
+    {
+      a: [{ kind: 'side_chat', at: '2026-11-22T09:01:00Z', title: 'Thread B', thread_id: 'b' }],
+      b: [{ kind: 'side_chat', at: '2026-11-22T09:02:00Z', title: 'Thread A', thread_id: 'a' }],
+    },
+  )
+  expect(cyclic.map((row) => [row.id, row.depth])).toEqual([
+    ['a', 0],
+    ['b', 1],
+  ])
 })
 
 test('remembered bot selection stays isolated per workspace', () => {

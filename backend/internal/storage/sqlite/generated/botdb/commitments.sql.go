@@ -545,18 +545,40 @@ func (q *Queries) ListCommitmentQuestions(ctx context.Context, ids []int64) ([]L
 }
 
 const listCommitmentThreads = `-- name: ListCommitmentThreads :many
-SELECT s.commitment_id, s.thread_id, s.slug, s.title, s.state FROM bot_commitment_thread_states s
-JOIN bot_commitment_threads l ON l.id = s.linked AND l.thread_id = s.thread_id
+SELECT
+  s.commitment_id,
+  s.thread_id,
+  s.slug,
+  s.title,
+  s.state,
+  CAST(COALESCE(t.parent_id, '') AS TEXT) AS parent_id,
+  t.status,
+  t.updated_at_ms,
+  t.last_completed_at_ms
+FROM bot_commitment_thread_states s
+JOIN threads t ON t.id = s.thread_id
 WHERE s.commitment_id IN (/*SLICE:ids*/?)
-ORDER BY s.linked
+GROUP BY s.commitment_id, s.thread_id
+ORDER BY
+  MIN(s.linked),
+  CASE WHEN EXISTS (
+    SELECT 1 FROM bot_commitment_threads l
+    WHERE l.commitment_id = s.commitment_id AND l.thread_id = s.thread_id
+  ) THEN 0 ELSE 1 END,
+  t.created_at_ms,
+  s.thread_id
 `
 
 type ListCommitmentThreadsRow struct {
-	CommitmentID int64          `json:"commitment_id"`
-	ThreadID     string         `json:"thread_id"`
-	Slug         string         `json:"slug"`
-	Title        sql.NullString `json:"title"`
-	State        string         `json:"state"`
+	CommitmentID      int64          `json:"commitment_id"`
+	ThreadID          string         `json:"thread_id"`
+	Slug              string         `json:"slug"`
+	Title             sql.NullString `json:"title"`
+	State             string         `json:"state"`
+	ParentID          string         `json:"parent_id"`
+	Status            string         `json:"status"`
+	UpdatedAtMs       int64          `json:"updated_at_ms"`
+	LastCompletedAtMs int64          `json:"last_completed_at_ms"`
 }
 
 func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error) {
@@ -584,6 +606,10 @@ func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]Lis
 			&i.Slug,
 			&i.Title,
 			&i.State,
+			&i.ParentID,
+			&i.Status,
+			&i.UpdatedAtMs,
+			&i.LastCompletedAtMs,
 		); err != nil {
 			return nil, err
 		}

@@ -105,8 +105,12 @@ func (c Commitment) IsOpen() bool {
 // working, background (its turn ended while its agent runs a background
 // task), finished, failed, idle or gone.
 type CommitmentThread struct {
-	ID    string
-	Slug  string
-	Title string
-	State string
+	ID          string
+	ParentID    string
+	Slug        string
+	Title       string
+	State       string
+	Status      string
+	UpdatedAt   time.Time
+	CompletedAt time.Time
 }

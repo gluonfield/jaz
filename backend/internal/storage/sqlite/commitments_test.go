@@ -590,8 +590,8 @@ func TestTaskRecoveryAndCompletionAccountForWorkersStartedByItsWorker(t *testing
 	if err != nil || !loaded.Moving {
 		t.Fatalf("task ignored its active descendant worker: %+v, %v", loaded, err)
 	}
-	if len(loaded.Threads) != 1 || loaded.Threads[0].ID != worker.ID {
-		t.Fatalf("derived worker activity changed the direct task links: %+v", loaded.Threads)
+	if len(loaded.Threads) != 2 || loaded.Threads[0].ID != worker.ID || loaded.Threads[1].ID != child.ID || loaded.Threads[1].ParentID != worker.ID || loaded.Threads[1].State != "working" {
+		t.Fatalf("connected task threads = %+v, want direct worker and active descendant", loaded.Threads)
 	}
 	watch, err := store.ListWatchBots()
 	if err != nil || len(watch) != 0 {
@@ -617,5 +617,118 @@ func TestTaskRecoveryAndCompletionAccountForWorkersStartedByItsWorker(t *testing
 	}
 	if err := store.DropCommitment(task.ID, "Cancelled", time.Now()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCommitmentListsAllConnectedThreadsDeduplicatedAcrossStatesAndLinks(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Audit connected threads"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishedWorker, err := store.CreateSession(storage.CreateSession{Slug: "finished-worker", Title: "Finished worker", SourceType: storage.SourceBotWorker, SourceID: bot.ID, ParentID: bot.ID, Commitment: task.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StartSessionTurn(finishedWorker.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.FinishSessionTurn(finishedWorker.ID, storage.StatusIdle, "", time.Now().UTC(), nil); err != nil {
+		t.Fatal(err)
+	}
+	// A child worker that is also directly linked to the same task must appear once.
+	childWorking, err := store.CreateSession(storage.CreateSession{Slug: "child-working", Title: "Child working", SourceType: storage.SourceBotWorker, SourceID: bot.ID, ParentID: finishedWorker.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.LinkCommitmentThread(bot.ID, childWorking.ID, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StartSessionTurn(childWorking.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	failedWorker, err := store.CreateSession(storage.CreateSession{Slug: "failed-worker", Title: "Failed worker", SourceType: storage.SourceBotWorker, SourceID: bot.ID, ParentID: bot.ID, Commitment: task.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StartSessionTurn(failedWorker.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.FinishSessionTurn(failedWorker.ID, storage.StatusError, "boom", time.Now().UTC(), nil); err != nil {
+		t.Fatal(err)
+	}
+	idleChild, err := store.CreateSession(storage.CreateSession{Slug: "idle-child", Title: "Idle child", SourceType: storage.SourceBotWorker, SourceID: bot.ID, ParentID: failedWorker.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archivedGrandchild, err := store.CreateSession(storage.CreateSession{Slug: "archived-grandchild", Title: "Archived grandchild", SourceType: storage.SourceBotWorker, SourceID: bot.ID, ParentID: idleChild.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetArchived(archivedGrandchild.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	// Internal memory search threads are not user-facing task threads.
+	if _, err := store.CreateSession(storage.CreateSession{Slug: "mem", Title: "Memory search", SourceType: storage.SourceMemorySearch, SourceID: "q", ParentID: finishedWorker.ID}); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.LoadCommitment(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]storage.CommitmentThread{}
+	for _, thread := range loaded.Threads {
+		if _, dup := got[thread.ID]; dup {
+			t.Fatalf("duplicate thread %s in %+v", thread.ID, loaded.Threads)
+		}
+		got[thread.ID] = thread
+	}
+	want := map[string]struct {
+		parent string
+		state  string
+	}{
+		finishedWorker.ID:     {bot.ID, "finished"},
+		childWorking.ID:       {finishedWorker.ID, "working"},
+		failedWorker.ID:       {bot.ID, "failed"},
+		idleChild.ID:          {failedWorker.ID, "idle"},
+		archivedGrandchild.ID: {idleChild.ID, "gone"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("connected threads = %+v, want %d threads", loaded.Threads, len(want))
+	}
+	for id, expect := range want {
+		thread, ok := got[id]
+		if !ok || thread.ParentID != expect.parent || thread.State != expect.state {
+			t.Fatalf("thread %s = %+v, want parent=%s state=%s", id, thread, expect.parent, expect.state)
+		}
+	}
+
+	// Reusing finishedWorker for a follow-up task connects both it and its descendant.
+	followup, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Follow-up task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.LinkCommitmentThread(bot.ID, finishedWorker.ID, followup.ID); err != nil {
+		t.Fatal(err)
+	}
+	loadedFollowup, err := store.LoadCommitment(followup.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var followupIDs []string
+	for _, thread := range loadedFollowup.Threads {
+		followupIDs = append(followupIDs, thread.ID)
+	}
+	if !slices.Contains(followupIDs, finishedWorker.ID) || !slices.Contains(followupIDs, childWorking.ID) || len(followupIDs) != 2 {
+		t.Fatalf("reused task threads = %+v, want [%s, %s]", loadedFollowup.Threads, finishedWorker.ID, childWorking.ID)
 	}
 }

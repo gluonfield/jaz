@@ -222,7 +222,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const wasDark = document.documentElement.classList.contains('dark')
   const dark = (on: boolean) => document.documentElement.classList.toggle('dark', on)
   const editor = () => document.querySelector<HTMLElement>('[role="dialog"] .ProseMirror')
-  const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] li > button > span:nth-child(2)')].map((node) => node.textContent)
+  const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] li > button > span:not(:first-child):not([aria-label])')].map((node) => node.textContent)
   const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
   const body = () => dialog()?.querySelector('header + div')?.textContent ?? ''
   const threadLines = () => [...dialog()?.querySelectorAll('[aria-label="Threads"] a') ?? []].map((line) => line.textContent).join('|')
@@ -321,9 +321,9 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: the lists show a task\'s threads, threads under threads or raw memory changes')
     }
     await click(owed[0].name!)
-    await until('a task did not open a modal with its name, what was asked and its threads', () => dialog()?.querySelector('h2')?.textContent === owed[0].name && body() === owed[0].request + 'ThreadsCommitments and lost resultsWorking')
-    if (router.state.location.pathname !== '/bots/panel' || !dialog()!.textContent?.includes('Working') || nested.some(link)) {
-      throw new Error('Bot panel: a task modal left the bot, lost its state or listed threads under threads')
+    await until('a task did not open a modal with its name, what was asked and all connected threads', () => dialog()?.querySelector('h2')?.textContent === owed[0].name && Boolean(link('side-a')) && Boolean(link('review-a1')) && Boolean(link('review-a2')))
+    if (router.state.location.pathname !== '/bots/panel' || !dialog()!.textContent?.includes('Working') || !dialog()!.textContent?.includes(owed[0].request)) {
+      throw new Error('Bot panel: a task modal left the bot or lost its request/state')
     }
     await capture('bot-panel-task-modal')
     dark(true)
@@ -337,7 +337,7 @@ export async function exerciseBotPanel(): Promise<void> {
     activityFails = true
     await client.invalidateQueries({ queryKey: activityKey })
     await settle()
-    if (!text().includes(`Tasks ${owed.length}`) || body() !== owed[0].request + 'ThreadsCommitments and lost resultsWorking') {
+    if (!text().includes(`Tasks ${owed.length}`) || !link('side-a') || !link('review-a2')) {
       throw new Error('Bot panel: a failed background refresh hid the last loaded tasks or the open one')
     }
     activityFails = false
@@ -346,7 +346,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes(`Tasks ${owed.length}`))
     await click('Capacity test with 20 threads')
-    await until('a task with several threads did not list every one, once', () => threadLines() === 'Capacity harnessFinished|Capacity runFailed' && !body().startsWith('Capacity test'))
+    await until('a task with several threads did not list every connected one, once', () => Boolean(link('side-f')) && Boolean(link('review-f1')) && Boolean(link('side-g')) && !body().startsWith('Capacity test'))
     await window.smoke.key('Escape')
     await until('Escape did not close the task', () => !dialog())
     await click('Run the login suites')
@@ -371,11 +371,11 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: legacy commitment rows or a closed task\'s thread leaked into the history')
     }
     const closed = [...tabpanel().querySelectorAll('section:not([aria-label="Tasks"]) li > button')].map((row) => row.textContent).join('|')
-    if (closed !== 'Calmer bot facesDone|Muse-style identity cardsDropped') {
+    if (closed !== 'Calmer bot faces1Done|Muse-style identity cardsDropped') {
       throw new Error(`Bot panel: closed tasks are not one-line rows in their days, got ${closed}`)
     }
     await click('Calmer bot faces')
-    await until('a closed task did not open its modal with what was asked and its threads', () => dialog()?.querySelector('h2')?.textContent === 'Calmer bot faces' && dialog()!.textContent!.includes('Done') && body() === 'Make the bot faces calmer so a busy sidebar does not flickerThreadsFaces redesignFinished')
+    await until('a closed task did not open its modal with what was asked and its threads', () => dialog()?.querySelector('h2')?.textContent === 'Calmer bot faces' && dialog()!.textContent!.includes('Done') && body() === 'Make the bot faces calmer so a busy sidebar does not flickerThreads1Faces redesignFinished')
     await capture('bot-panel-task-done')
     await click('Close')
     await click('Muse-style identity cards')
@@ -412,7 +412,7 @@ export async function exerciseBotPanel(): Promise<void> {
     client.setQueryData(activityKey, { ...current, owed: [] })
     await until('a bot without tasks hid its work history', () => !tabpanel().querySelector('section[aria-label="Tasks"]') && text().includes('Notes cleanup'))
     await capture('bot-panel-no-tasks')
-    client.setQueryData(activityKey, { owed: [], items: [] })
+    client.setQueryData(activityKey, { owed: [], items: [], started: {} })
     await until('a bot with no tasks or work did not say it has no tasks', () => tabpanel().textContent === 'No tasks yet.')
     await capture('bot-panel-empty')
     dark(true)

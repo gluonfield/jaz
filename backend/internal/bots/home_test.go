@@ -533,12 +533,15 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	var lines []string
 	for _, item := range view.Owed {
 		for _, thread := range item.Threads {
-			lines = append(lines, fmt.Sprintf("#%d %s: %s %s %s", item.ID, item.Request, thread.ID, thread.Title, thread.State))
+			lines = append(lines, fmt.Sprintf("#%d %s: %s %s %s %s", item.ID, item.Request, thread.ID, thread.ParentID, thread.Title, thread.State))
 		}
 	}
 	if want := []string{
-		fmt.Sprintf("#%d Plan review: %s Plan review finished", commitments["Plan review"], finished),
-		fmt.Sprintf("#%d Queue fixes: %s Queue fixes working", commitments["Queue fixes"], working),
+		fmt.Sprintf("#%d Plan review: %s  Plan review finished", commitments["Plan review"], finished),
+		fmt.Sprintf("#%d Plan review: %s %s Diff review finished", commitments["Plan review"], diff, finished),
+		fmt.Sprintf("#%d Plan review: %s %s Design review gone", commitments["Plan review"], design, finished),
+		fmt.Sprintf("#%d Plan review: %s %s Second opinion finished", commitments["Plan review"], second, diff),
+		fmt.Sprintf("#%d Queue fixes: %s  Queue fixes working", commitments["Queue fixes"], working),
 	}; !slices.Equal(lines, want) {
 		t.Fatalf("owed =\n%s\nwant\n%s", strings.Join(lines, "\n"), strings.Join(want, "\n"))
 	}
@@ -550,7 +553,7 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		t.Fatal(err)
 	}
 	if slices.ContainsFunc(delivered.Owed, func(task Owed) bool { return task.ID == commitments["Plan review"] }) || !slices.ContainsFunc(delivered.Items, func(item Activity) bool {
-		return item.Kind == "task" && item.Status == storage.CommitmentDone && item.Task.ID == commitments["Plan review"] && item.Task.Threads[0].ID == finished
+		return item.Kind == "task" && item.Status == storage.CommitmentDone && item.Task.ID == commitments["Plan review"] && len(item.Task.Threads) == 4 && item.Task.Threads[0].ID == finished
 	}) || slices.ContainsFunc(delivered.Items, func(item Activity) bool { return item.ThreadID == finished }) {
 		t.Fatalf("delivered work did not move from tasks to history as its task: %+v", delivered)
 	}
@@ -704,6 +707,112 @@ func TestActivityListsTheNewestThirtyShownRowsAcrossDays(t *testing.T) {
 	}
 	if len(view.Owed) != 1 || view.Owed[0].ID != open || len(view.Owed[0].Threads) != 1 || len(view.Started[chats[0]]) != 1 {
 		t.Fatalf("the open task or what a side chat started went missing: %+v, %+v", view.Owed, view.Started)
+	}
+}
+
+func TestActivityIncludesConnectedTaskThreadsBeyondTheActivityWindow(t *testing.T) {
+	service, store, _ := newHomeService(t)
+	bot, err := service.Create(t.Context(), CreateBot{Name: "Research"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().UTC().Add(-45 * 24 * time.Hour).Truncate(time.Millisecond)
+	recent := time.Now().UTC().Add(-time.Hour).Truncate(time.Millisecond)
+	finishAt := func(id string, at time.Time) {
+		t.Helper()
+		if err := store.StartSessionTurn(id, storage.Turn{StartedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.FinishSessionTurn(id, storage.StatusIdle, "", at, nil); err != nil {
+			t.Fatal(err)
+		}
+		session, err := store.LoadSession(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !session.UpdatedAt.Equal(at) {
+			t.Fatalf("updated_at = %v, want %v", session.UpdatedAt, at)
+		}
+	}
+
+	openTask, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Name: "Long-running audit", Request: "Audit long-running threads"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldWorker, err := store.CreateSession(storage.CreateSession{Slug: "old-worker", Title: "Old worker", ParentID: bot.ID, SourceType: storage.SourceBotWorker, SourceID: bot.ID, Commitment: openTask.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishAt(oldWorker.ID, old)
+	oldChild, err := store.CreateSession(storage.CreateSession{Slug: "old-child", Title: "Old child", ParentID: oldWorker.ID, SourceType: storage.SourceBotWorker, SourceID: bot.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishAt(oldChild.ID, old.Add(time.Minute))
+	recentGrandchild, err := store.CreateSession(storage.CreateSession{Slug: "recent-grandchild", Title: "Recent grandchild", ParentID: oldChild.ID, SourceType: storage.SourceBotWorker, SourceID: bot.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishAt(recentGrandchild.ID, recent)
+
+	closedTask, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Name: "Completed audit", Request: "Finish older audit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedWorker, err := store.CreateSession(storage.CreateSession{Slug: "closed-worker", Title: "Closed worker", ParentID: bot.ID, SourceType: storage.SourceBotWorker, SourceID: bot.ID, Commitment: closedTask.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishAt(closedWorker.ID, old)
+	closedChild, err := store.CreateSession(storage.CreateSession{Slug: "closed-child", Title: "Closed child", ParentID: closedWorker.ID, SourceType: storage.SourceBotWorker, SourceID: bot.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishAt(closedChild.ID, old.Add(2*time.Minute))
+	if _, err := service.Commit(bot.ID, Commit{ID: closedTask.ID, Status: storage.CommitmentDone, Message: "Delivered"}); err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := service.Activity(bot.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Owed) != 1 {
+		t.Fatalf("owed = %+v, want 1 open task", view.Owed)
+	}
+	wantOpen := []OwedThread{
+		{ID: oldWorker.ID, Title: "Old worker", State: "finished"},
+		{ID: oldChild.ID, ParentID: oldWorker.ID, Title: "Old child", State: "finished"},
+		{ID: recentGrandchild.ID, ParentID: oldChild.ID, Title: "Recent grandchild", State: "finished"},
+	}
+	if !slices.Equal(view.Owed[0].Threads, wantOpen) {
+		t.Fatalf("open task threads = %+v, want %+v", view.Owed[0].Threads, wantOpen)
+	}
+	if len(view.Started[oldWorker.ID]) != 1 || view.Started[oldWorker.ID][0].ThreadID != oldChild.ID {
+		t.Fatalf("started[oldWorker] = %+v, want [%s]", view.Started[oldWorker.ID], oldChild.ID)
+	}
+	if len(view.Started[oldChild.ID]) != 1 || view.Started[oldChild.ID][0].ThreadID != recentGrandchild.ID {
+		t.Fatalf("started[oldChild] = %+v, want [%s]", view.Started[oldChild.ID], recentGrandchild.ID)
+	}
+	if slices.ContainsFunc(view.Items, func(item Activity) bool { return item.Kind == "side_chat" }) {
+		t.Fatalf("descendant thread leaked as top-level side_chat: %+v", view.Items)
+	}
+	if len(view.Items) != 1 || view.Items[0].Kind != "task" || view.Items[0].Task == nil {
+		t.Fatalf("items = %+v, want 1 closed task", view.Items)
+	}
+	wantClosed := []OwedThread{
+		{ID: closedWorker.ID, Title: "Closed worker", State: "finished"},
+		{ID: closedChild.ID, ParentID: closedWorker.ID, Title: "Closed child", State: "finished"},
+	}
+	if !slices.Equal(view.Items[0].Task.Threads, wantClosed) {
+		t.Fatalf("closed task threads = %+v, want %+v", view.Items[0].Task.Threads, wantClosed)
+	}
+	if len(view.Started[closedWorker.ID]) != 1 || view.Started[closedWorker.ID][0].ThreadID != closedChild.ID {
+		t.Fatalf("started[closedWorker] = %+v, want [%s]", view.Started[closedWorker.ID], closedChild.ID)
+	}
+	tasks, err := service.Tasks(bot.ID)
+	if err != nil || len(tasks) != 1 || !slices.Equal(tasks[0].Threads, wantOpen) {
+		t.Fatalf("Tasks() = %+v, %v; want %+v", tasks, err, wantOpen)
 	}
 }
 

@@ -62,9 +62,10 @@ type Owed struct {
 // OwedThread is a thread serving a commitment and how far it has got:
 // working, background, finished, failed, idle or gone.
 type OwedThread struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	State string `json:"state"`
+	ID       string `json:"id"`
+	ParentID string `json:"parent_id,omitempty"`
+	Title    string `json:"title"`
+	State    string `json:"state"`
 }
 
 // ActivityView is what a bot owes, oldest first, and what it is doing and
@@ -92,6 +93,8 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 	}
 	view := ActivityView{Owed: make([]Owed, 0, len(open)), Started: map[string][]Activity{}}
 	tasked := map[string]bool{}
+	taskParents := map[string]bool{}
+	shownCommitments := make([]storage.Commitment, 0, len(open))
 	for _, commitment := range open {
 		owed, err := s.taskView(commitment)
 		if err != nil {
@@ -99,8 +102,10 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 		}
 		for _, thread := range commitment.Threads {
 			tasked[thread.ID] = true
+			taskParents[thread.ID] = true
 		}
 		view.Owed = append(view.Owed, owed)
+		shownCommitments = append(shownCommitments, commitment)
 	}
 	closed, err := s.store.ListClosedCommitments(botID, since)
 	if err != nil {
@@ -110,6 +115,7 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 	for i, commitment := range closed {
 		for _, thread := range commitment.Threads {
 			tasked[thread.ID] = tasked[thread.ID] || thread.State != "working" && thread.State != "background"
+			taskParents[thread.ID] = true
 		}
 		// Older closed tasks cannot make the cut, but still keep their threads
 		// out of the list.
@@ -121,6 +127,7 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 			return ActivityView{}, err
 		}
 		out = append(out, Activity{Kind: "task", At: commitment.ClosedAt, Title: cmp.Or(task.Name, task.Request), Status: commitment.Status, Task: &task})
+		shownCommitments = append(shownCommitments, commitment)
 	}
 	var chats []storage.Session
 	for _, archived := range []bool{false, true} {
@@ -134,19 +141,52 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 	for _, chat := range chats {
 		listed[chat.ID] = true
 	}
+	for id := range taskParents {
+		listed[id] = true
+	}
+	startedSeen := map[string]map[string]bool{}
+	addStarted := func(parentID string, item Activity) {
+		if startedSeen[parentID] == nil {
+			startedSeen[parentID] = map[string]bool{}
+		}
+		if startedSeen[parentID][item.ThreadID] {
+			return
+		}
+		startedSeen[parentID][item.ThreadID] = true
+		view.Started[parentID] = append(view.Started[parentID], item)
+	}
 	for _, chat := range chats {
-		item := Activity{Kind: "side_chat", At: cmp.Or(chat.CompletedAt, chat.UpdatedAt), Title: chat.Title, Status: chat.Status, ThreadID: chat.ID}
+		item := Activity{Kind: "side_chat", At: cmp.Or(chat.CompletedAt, chat.UpdatedAt), Title: cmp.Or(chat.Title, chat.Slug), Status: chat.Status, ThreadID: chat.ID}
 		if chat.Status == storage.StatusRunning && chat.Turn != nil {
 			item.Running, item.At = true, cmp.Or(chat.Turn.StartedAt, chat.UpdatedAt)
 		}
 		if listed[chat.ParentID] {
-			view.Started[chat.ParentID] = append(view.Started[chat.ParentID], item)
+			addStarted(chat.ParentID, item)
 			continue
 		}
 		if tasked[chat.ID] {
 			continue
 		}
 		out = append(out, item)
+	}
+	for _, commitment := range shownCommitments {
+		inTask := make(map[string]bool, len(commitment.Threads))
+		for _, thread := range commitment.Threads {
+			inTask[thread.ID] = true
+		}
+		for _, thread := range commitment.Threads {
+			if thread.ParentID == "" || thread.ParentID == thread.ID || !inTask[thread.ParentID] {
+				continue
+			}
+			addStarted(thread.ParentID, Activity{
+				Kind:     "side_chat",
+				At:       cmp.Or(thread.CompletedAt, thread.UpdatedAt),
+				Running:  thread.State == "working",
+				Title:    cmp.Or(thread.Title, thread.Slug),
+				Status:   thread.Status,
+				ThreadID: thread.ID,
+			})
+		}
 	}
 	for _, started := range view.Started {
 		slices.SortStableFunc(started, func(a, b Activity) int { return a.At.Compare(b.At) })
@@ -212,8 +252,16 @@ func (s *Service) taskView(commitment storage.Commitment) (Owed, error) {
 	task := Owed{ID: commitment.ID, Name: commitment.Name, Request: commitment.Request, For: name, Next: commitment.Note,
 		Status: commitment.Status, ReplySeq: commitment.ReplySeq, CheckAt: commitment.CheckAt, QuestionSeq: commitment.QuestionSeq, Question: commitment.Question, OpeningSeq: commitment.OpeningSeq, DependsOn: commitment.DependsOn,
 		Blocked: commitment.Blocked, Moving: commitment.Moving, Stalled: commitment.Stalled, OpenedAt: commitment.OpenedAt}
+	inTask := make(map[string]bool, len(commitment.Threads))
 	for _, thread := range commitment.Threads {
-		task.Threads = append(task.Threads, OwedThread{ID: thread.ID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State})
+		inTask[thread.ID] = true
+	}
+	for _, thread := range commitment.Threads {
+		parentID := ""
+		if thread.ParentID != thread.ID && inTask[thread.ParentID] {
+			parentID = thread.ParentID
+		}
+		task.Threads = append(task.Threads, OwedThread{ID: thread.ID, ParentID: parentID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State})
 	}
 	return task, nil
 }

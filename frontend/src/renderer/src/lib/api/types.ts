@@ -720,18 +720,24 @@ export interface BotOwed {
   id: number
   name?: string
   request: string
+  for?: string
+  next?: string
   status: 'pending' | 'in_progress' | 'waiting_for_user' | 'stopped' | 'completed' | 'cancelled'
+  check_at?: string
   question_seq?: number
   opening_seq?: number
+  depends_on?: number[]
   blocked?: boolean
   moving?: boolean
   stalled?: boolean
-  // Threads in linking order, oldest first.
+  opened_at?: string
+  // Connected threads (direct links and worker descendants), oldest first.
   threads?: BotOwedThread[]
 }
 
 export interface BotOwedThread {
   id: string
+  parent_id?: string
   title: string
   state: 'working' | 'background' | 'finished' | 'failed' | 'idle' | 'gone'
 }
