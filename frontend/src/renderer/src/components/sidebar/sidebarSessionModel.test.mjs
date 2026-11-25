@@ -168,3 +168,63 @@ test('shows project groups only when they contain visible unpinned sessions', ()
   expect(removed.groups).toEqual([])
   expect(removed.ungrouped.map((entry) => entry.session.id)).toEqual(['thread'])
 })
+
+describe('unified cloud & local sidebar grouping, sorting, and filtering', () => {
+  test('groups Cloud projects and Local projects in the same Project view while preserving empty Cloud projects', () => {
+    const spaces = [
+      { id: 'sp_1', name: 'rockstars', visibility: 'team' },
+      { id: 'sp_empty', name: 'Q4', visibility: 'private' },
+    ]
+    const localProjects = [{ path: '/repo/jaz', name: 'jaz' }]
+    const sessions = [
+      { id: 'c1', space_id: 'sp_1', backend: 'cloud', updated_at: '2026-11-25T09:00:00Z', last_attention_at: '2026-11-25T09:00:00Z' },
+      { id: 'c_loose', backend: 'cloud', updated_at: '2026-11-25T08:00:00Z', last_attention_at: '2026-11-25T08:00:00Z' },
+      { id: 'l1', runtime_ref: { project_path: '/repo/jaz' }, updated_at: '2026-11-25T07:00:00Z', last_attention_at: '2026-11-25T07:00:00Z' },
+    ]
+    const sections = sidebarSessionSections(sessions, localProjects, { spaces, groupBy: 'project' })
+    expect(sections.groups.map((g) => [g.key, g.kind, g.items.map((i) => i.session.id)])).toEqual([
+      ['sp_1', 'cloud', ['c1']],
+      ['sp_empty', 'cloud', []],
+      ['/repo/jaz', 'local', ['l1']],
+    ])
+    expect(sections.ungrouped.map((i) => i.session.id)).toEqual(['c_loose'])
+  })
+
+  test('supports Date, Status, Environment grouping, Created sorting, and Show filters', () => {
+    const now = new Date('2026-11-25T12:00:00Z')
+    const sessions = [
+      { id: 'run', status: 'running', backend: 'cloud', created_at: '2026-11-20T10:00:00Z', updated_at: '2026-11-25T11:00:00Z', last_attention_at: '2026-11-25T11:00:00Z' },
+      { id: 'unread', status: 'idle', unread: true, backend: 'local', created_at: '2026-11-24T10:00:00Z', updated_at: '2026-11-24T11:00:00Z', last_attention_at: '2026-11-24T11:00:00Z' },
+      { id: 'old', status: 'idle', backend: 'cloud', created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-01T10:00:00Z', last_attention_at: '2026-10-01T10:00:00Z' },
+    ]
+
+    const byDate = sidebarSessionSections(sessions, [], { groupBy: 'date', now })
+    expect(byDate.groups.map((g) => [g.label, g.items.map((i) => i.session.id)])).toEqual([
+      ['Today', ['run']],
+      ['Yesterday', ['unread']],
+      ['Older', ['old']],
+    ])
+
+    const byStatus = sidebarSessionSections(sessions, [], { groupBy: 'status' })
+    expect(byStatus.groups.map((g) => [g.label, g.items.map((i) => i.session.id)])).toEqual([
+      ['Running', ['run']],
+      ['Unread', ['unread']],
+      ['Idle', ['old']],
+    ])
+
+    const byEnv = sidebarSessionSections(sessions, [], { groupBy: 'environment' })
+    expect(byEnv.groups.map((g) => [g.label, g.items.map((i) => i.session.id)])).toEqual([
+      ['Cloud', ['run', 'old']],
+      ['Local', ['unread']],
+    ])
+
+    const byCreated = sidebarSessionSections(sessions, [], { groupBy: 'none', sortBy: 'created' })
+    expect(byCreated.recentItems.map((i) => i.session.id)).toEqual(['unread', 'run', 'old'])
+
+    const onlyUnread = sidebarSessionSections(sessions, [], { groupBy: 'none', show: 'unread' })
+    expect(onlyUnread.recentItems.map((i) => i.session.id)).toEqual(['unread'])
+
+    const onlyActive = sidebarSessionSections(sessions, [], { groupBy: 'none', show: 'active' })
+    expect(onlyActive.recentItems.map((i) => i.session.id)).toEqual(['run', 'unread'])
+  })
+})
