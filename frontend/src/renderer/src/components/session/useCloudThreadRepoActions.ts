@@ -1,9 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useToast } from '@/components/ui/toast'
 import {
   attachCloudThreadRepo,
   createCloudThreadRepoPR,
+  githubRepoWebUrl,
+  openSafeGitHubUrl,
   parseGitHubConnectError,
   pushCloudThreadRepo,
   useCloudGitHubOAuth,
@@ -12,7 +14,6 @@ import {
 } from '@/lib/api/cloudGitHub'
 import { isCloudApiSession } from '@/lib/api/client'
 import type { Session } from '@/lib/api/types'
-import { openExternal } from '@/lib/clientRuntime'
 import { useIsCloudViewer } from '@/lib/cloudSession'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
@@ -28,6 +29,11 @@ export function useCloudThreadRepoActions(session: Session) {
   const [busy, setBusy] = useState<CloudRepoBusy>(null)
   const [connectRequired, setConnectRequired] = useState(false)
   const [compareUrl, setCompareUrl] = useState('')
+
+  useEffect(() => {
+    setConnectRequired(false)
+    setCompareUrl('')
+  }, [session.id])
 
   const query = useCloudThreadRepo(session.id, isCloudSession)
   const info = query.data
@@ -45,11 +51,19 @@ export function useCloudThreadRepoActions(session: Session) {
   const prState = info?.pr_state ?? ''
   const checksStatus = info?.checks_status ?? ''
   const attached = Boolean(info?.attached && repoFull)
-  const webUrl = repoFull ? `https://github.com/${repoFull}` : ''
+  const webUrl = githubRepoWebUrl(repoFull)
   const onBaseBranch = Boolean(branch) && Boolean(baseBranch) && branch === baseBranch
 
   const invalidateRepo = () => {
     void queryClient.invalidateQueries({ queryKey: keys.cloudThreadRepo(session.id) })
+  }
+
+  const openUrl = (url: string) => {
+    try {
+      openSafeGitHubUrl(url)
+    } catch (error) {
+      toast((error as Error).message || 'Invalid GitHub URL', 'danger')
+    }
   }
 
   const attachRepo = async (gitRepo: string, gitBaseBranch?: string): Promise<boolean> => {
@@ -103,7 +117,7 @@ export function useCloudThreadRepoActions(session: Session) {
   const createOrOpenPR = async (input: CloudThreadRepoPRInput = {}): Promise<boolean> => {
     if (!attached) return false
     if (prUrl) {
-      openExternal(prUrl)
+      openUrl(prUrl)
       return true
     }
     if (isViewer) return false
@@ -113,7 +127,7 @@ export function useCloudThreadRepoActions(session: Session) {
       if (result.connect_required && result.compare_url) {
         setConnectRequired(true)
         setCompareUrl(result.compare_url)
-        openExternal(result.compare_url)
+        openUrl(result.compare_url)
         toast('Opened GitHub compare page — connect GitHub for 1-click PR creation')
         return true
       }
@@ -121,7 +135,7 @@ export function useCloudThreadRepoActions(session: Session) {
         setConnectRequired(false)
         setCompareUrl('')
         invalidateRepo()
-        openExternal(result.pr_url)
+        openUrl(result.pr_url)
         toast(result.pr_number ? `Pull request #${result.pr_number} ready` : 'Pull request ready')
         return true
       }
@@ -148,7 +162,7 @@ export function useCloudThreadRepoActions(session: Session) {
   }
 
   const prHint = prUrl
-    ? `Open pull request #${prNumber}`
+    ? prNumber > 0 ? `Open pull request #${prNumber}` : 'Open pull request'
     : !branch
       ? 'No branch available yet'
       : onBaseBranch
@@ -187,6 +201,6 @@ export function useCloudThreadRepoActions(session: Session) {
     push,
     createOrOpenPR,
     connectGitHub,
-    openUrl: openExternal,
+    openUrl,
   }
 }

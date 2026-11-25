@@ -1,5 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, GitBranch, LoaderCircle, Lock, LogIn, Search, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { MenuRow, Popover } from '@/components/ui/Popover'
@@ -11,6 +12,39 @@ import {
   useCloudGitHubStatus,
 } from '@/lib/api/cloudGitHub'
 import { useIsCloudViewer } from '@/lib/cloudSession'
+import { keys } from '@/lib/query/keys'
+
+function useGitHubPickerData({
+  enabled,
+  loadRepos,
+  repo,
+  includePersonal,
+}: {
+  enabled: boolean
+  loadRepos: boolean
+  repo: string
+  includePersonal: boolean
+}) {
+  const toast = useToast()
+  const queryClient = useQueryClient()
+  const oauth = useCloudGitHubOAuth({
+    onStarted: () => toast('Finish GitHub sign-in in your browser'),
+    onError: (err) => toast(err.message || 'Could not start GitHub sign-in', 'danger'),
+  })
+  const status = useCloudGitHubStatus(enabled, oauth.polling)
+  const configured = Boolean(status.data?.configured)
+  const repos = useCloudGitHubRepos({ includePersonal, enabled: loadRepos && configured })
+  const branches = useCloudGitHubBranches(repo, loadRepos && configured && Boolean(repo))
+
+  useEffect(() => {
+    if (oauth.polling && status.data?.user_linked) {
+      oauth.stopPolling()
+      void queryClient.invalidateQueries({ queryKey: keys.cloudGitHubRoot })
+    }
+  }, [oauth, queryClient, status.data?.user_linked])
+
+  return { status, repos, branches, oauth }
+}
 
 // Compact shelf/inline repository + base-branch selector for New Thread,
 // Project New Chat, and attaching a repo to an existing Cloud thread.
@@ -34,22 +68,18 @@ export function ThreadRepoPicker({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const isViewer = useIsCloudViewer()
-  const toast = useToast()
 
-  const status = useCloudGitHubStatus(!disabled)
-  const repos = useCloudGitHubRepos({ includePersonal, enabled: open && Boolean(status.data?.configured) })
-  const branches = useCloudGitHubBranches(repo, open && Boolean(repo))
-
-  const oauth = useCloudGitHubOAuth({
-    onStarted: () => toast('Finish GitHub sign-in in your browser'),
-    onError: (err) => toast(err.message || 'Could not start GitHub sign-in', 'danger'),
+  const { status, repos, branches, oauth } = useGitHubPickerData({
+    enabled: !disabled,
+    loadRepos: open,
+    repo,
+    includePersonal,
   })
 
   const filteredRepos = useMemo(() => {
     const items = repos.data?.repos ?? []
     const q = search.trim().toLowerCase()
-    if (!q) return items
-    return items.filter((item) => item.full_name.toLowerCase().includes(q))
+    return q ? items.filter((item) => item.full_name.toLowerCase().includes(q)) : items
   }, [repos.data?.repos, search])
 
   const selectedRepoMeta = repos.data?.repos.find(
@@ -60,6 +90,7 @@ export function ThreadRepoPicker({
   const label = repo ? (effectiveBranch ? `${shortRepo}:${effectiveBranch}` : shortRepo) : placeholder
 
   const selectRepo = (fullName: string, defaultBranch: string) => {
+    setSearch('')
     onChange({ repo: fullName, baseBranch: defaultBranch })
     if (!fullName) setOpen(false)
   }
@@ -126,11 +157,7 @@ export function ThreadRepoPicker({
             </div>
 
             <div className="max-h-[190px] overflow-y-auto">
-              <MenuRow
-                role="menuitemradio"
-                selected={!repo}
-                onClick={() => selectRepo('', '')}
-              >
+              <MenuRow role="menuitemradio" selected={!repo} onClick={() => selectRepo('', '')}>
                 No repository
               </MenuRow>
               {repos.isPending ? (
@@ -170,7 +197,10 @@ export function ThreadRepoPicker({
                     <select
                       aria-label="Base branch"
                       value={baseBranch}
-                      onChange={(e) => onChange({ repo, baseBranch: e.target.value })}
+                      onChange={(e) => {
+                        onChange({ repo, baseBranch: e.target.value })
+                        setOpen(false)
+                      }}
                       className="h-7 w-full rounded-control border border-border bg-bg px-2 text-[12px] text-ink focus:border-primary focus:outline-none"
                     >
                       {!branches.data.branches.some((b) => b.name === baseBranch) && baseBranch ? (
@@ -206,22 +236,21 @@ export function GitHubRepoField({
   repo,
   baseBranch,
   disabled,
+  includePersonal = true,
   onChange,
 }: {
   repo: string
   baseBranch: string
   disabled?: boolean
+  includePersonal?: boolean
   onChange: (next: { repo: string; baseBranch: string }) => void
 }) {
   const isViewer = useIsCloudViewer()
-  const toast = useToast()
-  const status = useCloudGitHubStatus(true)
-  const repos = useCloudGitHubRepos({ includePersonal: true, enabled: Boolean(status.data?.configured) })
-  const branches = useCloudGitHubBranches(repo, Boolean(repo) && Boolean(status.data?.configured))
-
-  const oauth = useCloudGitHubOAuth({
-    onStarted: () => toast('Finish GitHub sign-in in your browser'),
-    onError: (err) => toast(err.message || 'Could not start GitHub sign-in', 'danger'),
+  const { status, repos, branches, oauth } = useGitHubPickerData({
+    enabled: true,
+    loadRepos: true,
+    repo,
+    includePersonal,
   })
 
   if (!status.isLoading && !status.data?.configured && !repo) {

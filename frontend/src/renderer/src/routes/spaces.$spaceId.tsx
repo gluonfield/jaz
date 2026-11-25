@@ -236,6 +236,7 @@ function SpaceProjectPage() {
                   baseBranch={effectiveGitBaseBranch}
                   placement={controlPlacement}
                   disabled={creating}
+                  includePersonal={space.visibility === 'private'}
                   onChange={setRepoChoice}
                 />
               </div>

@@ -10,7 +10,7 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Button } from '@/components/ui/Button'
 import { Collapse } from '@/components/ui/Collapse'
@@ -21,6 +21,8 @@ import {
   DEFAULT_GITHUB_APP_NAME,
   deleteCloudGitHubInstallation,
   disconnectCloudGitHubAccount,
+  isValidGitHubSegment,
+  openSafeGitHubUrl,
   patchCloudGitHubInstallation,
   splitRepoFullName,
   startCloudGitHubInstall,
@@ -31,7 +33,6 @@ import {
   useCloudGitHubStatus,
   type CloudGitHubInstallation,
 } from '@/lib/api/cloudGitHub'
-import { openExternal } from '@/lib/clientRuntime'
 import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
@@ -45,7 +46,7 @@ function parseLineList(raw: string): string[] {
 export function CloudGitHubSettings() {
   const cloud = useCloudSession()
   const isViewer = useIsCloudViewer()
-  const isAdmin = !isViewer && cloud.user?.role === 'admin'
+  const isAdmin = !isViewer && (cloud.user?.role ?? '').trim().toLowerCase() === 'admin'
   const queryClient = useQueryClient()
   const toast = useToast()
 
@@ -53,16 +54,41 @@ export function CloudGitHubSettings() {
   const statusQuery = useCloudGitHubStatus(cloud.active, authRefresh.polling)
   const status = statusQuery.data
 
+  // Stop 2s polling as soon as an expected GitHub setup transition completes.
+  const prevStateRef = useRef<{ configured: boolean; linked: boolean; count: number } | null>(null)
+  useEffect(() => {
+    if (!status) return
+    const next = {
+      configured: status.configured,
+      linked: status.user_linked,
+      count: status.installations.length,
+    }
+    const prev = prevStateRef.current
+    prevStateRef.current = next
+    if (
+      prev &&
+      authRefresh.polling &&
+      ((!prev.configured && next.configured) || (!prev.linked && next.linked) || next.count > prev.count)
+    ) {
+      authRefresh.stop()
+    }
+  }, [authRefresh, status])
+
   const [appName, setAppName] = useState(DEFAULT_GITHUB_APP_NAME)
   const [githubOrg, setGithubOrg] = useState('')
   const [showAdvancedManifest, setShowAdvancedManifest] = useState(false)
 
   const startManifest = useMutation({
-    mutationFn: () =>
-      startCloudGitHubManifest({
+    mutationFn: () => {
+      const org = githubOrg.trim()
+      if (org && !isValidGitHubSegment(org)) {
+        return Promise.reject(new Error('GitHub organization slug contains invalid characters'))
+      }
+      return startCloudGitHubManifest({
         app_name: appName.trim() || DEFAULT_GITHUB_APP_NAME,
-        github_org: githubOrg.trim() || undefined,
-      }),
+        github_org: org || undefined,
+      })
+    },
     onSuccess: (res) => {
       submitGitHubManifestForm(res.action_url, res.manifest)
       authRefresh.start()
@@ -76,8 +102,8 @@ export function CloudGitHubSettings() {
   const startInstall = useMutation({
     mutationFn: (scope: 'org' | 'user') => startCloudGitHubInstall(scope),
     onSuccess: (res) => {
+      openSafeGitHubUrl(res.install_url)
       authRefresh.start()
-      openExternal(res.install_url)
       toast('Complete installation in GitHub')
     },
     onError: (err: Error) => {
@@ -198,7 +224,7 @@ export function CloudGitHubSettings() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => openExternal(status.install_manage_url!)}
+                      onClick={() => openSafeGitHubUrl(status.install_manage_url!)}
                     >
                       Manage on GitHub
                       <ExternalLink size={12} />
@@ -322,13 +348,19 @@ export function CloudGitHubSettings() {
                   No GitHub App installations yet. Install the app on your organization or personal account above.
                 </SettingsCard>
               ) : (
-                status.installations.map((installation) => (
-                  <InstallationRow
-                    key={installation.installation_id}
-                    installation={installation}
-                    canManage={!isViewer && (installation.scope === 'user' || isAdmin)}
-                  />
-                ))
+                status.installations.map((installation) => {
+                  const isOwnPersonal =
+                    installation.scope === 'user' &&
+                    (!installation.installed_by_user_id || installation.installed_by_user_id === cloud.user?.id)
+                  const canManage = !isViewer && (installation.scope === 'org' ? isAdmin : isOwnPersonal)
+                  return (
+                    <InstallationRow
+                      key={installation.installation_id}
+                      installation={installation}
+                      canManage={canManage}
+                    />
+                  )
+                })
               )}
             </div>
           ) : null}

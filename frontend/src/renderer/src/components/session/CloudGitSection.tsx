@@ -90,6 +90,7 @@ export function CloudGitSection({
   const reduceMotion = useReducedMotion()
 
   const branchLabel = repo.branch || repo.baseBranch || 'main'
+  const allowPersonal = session.visibility !== 'space' || Boolean(session.personal_sources_enabled)
 
   useEffect(() => {
     setCopied(false)
@@ -128,6 +129,7 @@ export function CloudGitSection({
             placement="below"
             placeholder="Attach repository"
             disabled={repo.busy !== null}
+            includePersonal={allowPersonal}
             onChange={({ repo: nextRepo, baseBranch }) => {
               if (nextRepo) void repo.attachRepo(nextRepo, baseBranch)
             }}
@@ -232,6 +234,7 @@ export function CloudGitSection({
               placement="below"
               placeholder="Change repository"
               disabled={repo.busy !== null}
+              includePersonal={allowPersonal}
               onChange={({ repo: nextRepo, baseBranch }) => {
                 if (nextRepo !== repo.repo || baseBranch !== repo.baseBranch) {
                   void repo.attachRepo(nextRepo, baseBranch)
@@ -254,7 +257,7 @@ export function CloudGitSection({
             hint={repo.prHint}
             onClick={() => void repo.createOrOpenPR()}
           >
-            {`Open pull request #${repo.prNumber}`}
+            {repo.prNumber > 0 ? `Open pull request #${repo.prNumber}` : 'Open pull request'}
           </CloudRepoActionRow>
         ) : !repo.isViewer ? (
           <CloudRepoActionRow

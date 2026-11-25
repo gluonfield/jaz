@@ -279,6 +279,7 @@ export function SpaceModal({
             repo={defaultGitRepo}
             baseBranch={defaultGitBranch}
             disabled={!canEdit}
+            includePersonal={visibility === 'private'}
             onChange={({ repo, baseBranch }) => {
               setDefaultGitRepo(repo)
               setDefaultGitBranch(baseBranch)

@@ -292,3 +292,22 @@ test('thread repo endpoints, compare-URL PR fallback, space defaults, and thread
   expect(session.git_repo).toBe('acme/app')
   expect(session.git_base_branch).toBe('develop')
 })
+
+test('GitHub URL and segment guards reject unsafe schemes and invalid org/repo names', async () => {
+  const api = setupCloudApi()
+  const opened = []
+  window.open = (url) => opened.push(url)
+
+  expect(api.isValidGitHubSegment('acme-corp')).toBe(true)
+  expect(api.isValidGitHubSegment('..')).toBe(false)
+  expect(api.isValidGitHubSegment('bad/org')).toBe(false)
+  expect(api.githubRepoWebUrl('acme/app.js')).toBe('https://github.com/acme/app.js')
+  expect(api.githubRepoWebUrl('acme/../evil')).toBe('')
+
+  expect(() => api.openSafeGitHubUrl('javascript:alert(1)')).toThrow()
+  expect(() => api.openSafeGitHubUrl('http://github.com/acme/app')).toThrow()
+  api.openSafeGitHubUrl('https://github.com/acme/app/pull/42')
+  expect(opened).toEqual(['https://github.com/acme/app/pull/42'])
+
+  await expect(api.startCloudGitHubManifest({ github_org: 'bad/org' })).rejects.toThrow()
+})

@@ -1,5 +1,5 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '@/lib/api/response'
 import { openExternal } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
@@ -82,9 +82,7 @@ export interface CloudGitHubReposResult {
 export interface CloudGitHubBranch {
   name: string
   protected: boolean
-  commit?: {
-    sha: string
-  }
+  commit?: { sha: string }
 }
 
 export interface CloudGitHubBranchesResult {
@@ -190,31 +188,37 @@ export interface GitHubConnectRequiredError {
 
 const REPO_SEGMENT_RE = /^[A-Za-z0-9._-]+$/
 
+export function isValidGitHubSegment(value: string): boolean {
+  const trimmed = value.trim()
+  return Boolean(trimmed && trimmed !== '.' && trimmed !== '..' && REPO_SEGMENT_RE.test(trimmed))
+}
+
 export function splitRepoFullName(fullName: string): { owner: string; repo: string } | null {
-  const trimmed = fullName.trim()
-  const parts = trimmed.split('/')
+  const parts = fullName.trim().split('/')
   if (parts.length !== 2) return null
   const [owner, repo] = parts
-  if (
-    !owner ||
-    !repo ||
-    owner === '.' ||
-    owner === '..' ||
-    repo === '.' ||
-    repo === '..' ||
-    !REPO_SEGMENT_RE.test(owner) ||
-    !REPO_SEGMENT_RE.test(repo)
-  ) {
-    return null
-  }
+  if (!isValidGitHubSegment(owner) || !isValidGitHubSegment(repo)) return null
   return { owner, repo }
+}
+
+export function githubRepoWebUrl(fullName: string): string {
+  const parsed = splitRepoFullName(fullName)
+  if (!parsed) return ''
+  return `https://github.com/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}`
+}
+
+export function openSafeGitHubUrl(url: string): void {
+  const trimmed = url.trim()
+  if (!trimmed || !secureBackendConnection(trimmed)) {
+    throw new Error('GitHub URL must use HTTPS or loopback')
+  }
+  openExternal(trimmed)
 }
 
 export function parseGitHubConnectError(error: unknown): GitHubConnectRequiredError | null {
   if (!(error instanceof ApiError)) return null
   const body = error.body && typeof error.body === 'object' ? (error.body as Record<string, unknown>) : null
-  const connectRequired = error.status === 428 || body?.connect_required === true
-  if (!connectRequired) return null
+  if (error.status !== 428 && body?.connect_required !== true) return null
   const link = typeof body?.connect_link === 'string' && body.connect_link.trim()
     ? body.connect_link.trim()
     : GITHUB_CONNECT_LINK
@@ -275,21 +279,23 @@ export async function getCloudGitHubStatus(signal?: AbortSignal): Promise<CloudG
   }
 }
 
-export async function startCloudGitHubManifest(
+export function startCloudGitHubManifest(
   input: CloudGitHubManifestStartInput = {},
 ): Promise<CloudGitHubManifestStartResult> {
   const appName = input.app_name?.trim() || DEFAULT_GITHUB_APP_NAME
   const githubOrg = input.github_org?.trim() || ''
-  const payload: CloudGitHubManifestStartInput = {
+  if (githubOrg && !isValidGitHubSegment(githubOrg)) {
+    return Promise.reject(new Error('GitHub organization name contains invalid characters'))
+  }
+  return post<CloudGitHubManifestStartResult>('/v1/github/manifest/start', {
     app_name: appName,
     ...(githubOrg ? { github_org: githubOrg } : {}),
     ...(input.public !== undefined ? { public: input.public } : {}),
     ...(input.redirect_to?.trim() ? { redirect_to: input.redirect_to.trim() } : {}),
-  }
-  return post<CloudGitHubManifestStartResult>('/v1/github/manifest/start', payload)
+  })
 }
 
-export async function startCloudGitHubInstall(
+export function startCloudGitHubInstall(
   scope: 'org' | 'user' = 'org',
   redirectTo?: string,
 ): Promise<CloudGitHubInstallStartResult> {
@@ -299,7 +305,7 @@ export async function startCloudGitHubInstall(
   })
 }
 
-export async function startCloudGitHubOAuth(redirectTo?: string): Promise<CloudGitHubOAuthStartResult> {
+export function startCloudGitHubOAuth(redirectTo?: string): Promise<CloudGitHubOAuthStartResult> {
   return post<CloudGitHubOAuthStartResult>('/v1/github/oauth/start', {
     ...(redirectTo?.trim() ? { redirect_to: redirectTo.trim() } : {}),
   })
@@ -316,9 +322,9 @@ export async function listCloudConnectors(signal?: AbortSignal): Promise<CloudCo
 export async function disconnectCloudGitHubAccount(): Promise<{ disconnected: number }> {
   const connectors = await listCloudConnectors()
   const githubAccounts = connectors.filter((item) => item.server_id === 'github' && item.id)
-  for (const account of githubAccounts) {
-    await del<{ ok?: boolean }>(`/v1/connectors/${encodeURIComponent(account.id)}`)
-  }
+  await Promise.all(
+    githubAccounts.map((account) => del<{ ok?: boolean }>(`/v1/connectors/${encodeURIComponent(account.id)}`)),
+  )
   return { disconnected: githubAccounts.length }
 }
 
@@ -327,22 +333,22 @@ export async function listCloudGitHubInstallations(signal?: AbortSignal): Promis
     '/v1/github/installations',
     { signal },
   )
-  const items = Array.isArray(response) ? response : (response.installations ?? [])
-  return items.map(normalizeInstallation)
+  return (Array.isArray(response) ? response : (response.installations ?? [])).map(normalizeInstallation)
 }
 
 export async function patchCloudGitHubInstallation(
   installationId: number,
   input: { allowed_repos?: string[]; protected_refs?: string[] },
 ): Promise<CloudGitHubInstallation> {
-  const updated = await patch<CloudGitHubInstallation>(
-    `/v1/github/installations/${encodeURIComponent(String(installationId))}`,
-    input,
+  return normalizeInstallation(
+    await patch<CloudGitHubInstallation>(
+      `/v1/github/installations/${encodeURIComponent(String(installationId))}`,
+      input,
+    ),
   )
-  return normalizeInstallation(updated)
 }
 
-export async function deleteCloudGitHubInstallation(
+export function deleteCloudGitHubInstallation(
   installationId: number,
 ): Promise<{ deleted: boolean; installation_id: number }> {
   return del<{ deleted: boolean; installation_id: number }>(
@@ -379,22 +385,17 @@ export async function listCloudGitHubBranches(
       `/v1/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`,
       { signal },
     )
-    const branches = Array.isArray(raw) ? raw : (raw.branches ?? [])
-    return { branches, connect_required: false }
+    return { branches: Array.isArray(raw) ? raw : (raw.branches ?? []), connect_required: false }
   } catch (error) {
     const connect = parseGitHubConnectError(error)
     if (connect) {
-      return {
-        branches: [],
-        connect_required: true,
-        connect_link: connect.connectLink,
-      }
+      return { branches: [], connect_required: true, connect_link: connect.connectLink }
     }
     throw error
   }
 }
 
-export async function getCloudThreadRepo(threadId: string, signal?: AbortSignal): Promise<CloudThreadRepo> {
+export function getCloudThreadRepo(threadId: string, signal?: AbortSignal): Promise<CloudThreadRepo> {
   return get<CloudThreadRepo>(`/v1/threads/${encodeURIComponent(threadId)}/repo`, { signal })
 }
 
@@ -405,10 +406,7 @@ export async function getCloudThreadRepoChanges(
   const raw = await get<CloudThreadRepoChanges>(`/v1/threads/${encodeURIComponent(threadId)}/repo/changes`, {
     signal,
   })
-  return {
-    ...raw,
-    changes: Array.isArray(raw.changes) ? raw.changes : [],
-  }
+  return { ...raw, changes: Array.isArray(raw.changes) ? raw.changes : [] }
 }
 
 export async function getCloudThreadRepoDiff(
@@ -422,38 +420,33 @@ export async function getCloudThreadRepoDiff(
   const raw = await get<CloudThreadRepoDiff>(`/v1/threads/${encodeURIComponent(threadId)}/repo/diff${suffix}`, {
     signal,
   })
-  return {
-    ...raw,
-    diffs: Array.isArray(raw.diffs) ? raw.diffs : [],
-  }
+  return { ...raw, diffs: Array.isArray(raw.diffs) ? raw.diffs : [] }
 }
 
-export async function pushCloudThreadRepo(
+export function pushCloudThreadRepo(
   threadId: string,
   input: CloudThreadRepoPushInput = {},
 ): Promise<CloudThreadRepoPushResult> {
-  const payload: CloudThreadRepoPushInput = {
+  return post<CloudThreadRepoPushResult>(`/v1/threads/${encodeURIComponent(threadId)}/repo/push`, {
     ...(input.branch?.trim() ? { branch: input.branch.trim() } : {}),
     ...(input.commit_message?.trim() ? { commit_message: input.commit_message.trim() } : {}),
-  }
-  return post<CloudThreadRepoPushResult>(`/v1/threads/${encodeURIComponent(threadId)}/repo/push`, payload)
+  })
 }
 
-export async function createCloudThreadRepoPR(
+export function createCloudThreadRepoPR(
   threadId: string,
   input: CloudThreadRepoPRInput = {},
 ): Promise<CloudThreadRepoPRResult> {
-  const payload: CloudThreadRepoPRInput = {
+  return post<CloudThreadRepoPRResult>(`/v1/threads/${encodeURIComponent(threadId)}/repo/pr`, {
     ...(input.title?.trim() ? { title: input.title.trim() } : {}),
     ...(input.body !== undefined ? { body: input.body } : {}),
     ...(input.head?.trim() ? { head: input.head.trim() } : {}),
     ...(input.base?.trim() ? { base: input.base.trim() } : {}),
     ...(input.draft !== undefined ? { draft: input.draft } : {}),
-  }
-  return post<CloudThreadRepoPRResult>(`/v1/threads/${encodeURIComponent(threadId)}/repo/pr`, payload)
+  })
 }
 
-export async function attachCloudThreadRepo(
+export function attachCloudThreadRepo(
   threadId: string,
   input: { git_repo: string; git_base_branch?: string; git_branch?: string },
 ): Promise<CloudThread> {
@@ -520,13 +513,6 @@ export function useCloudGitHubStatus(enabled = true, pollActive = false) {
   })
 }
 
-export function useCloudGitHubInstallations(enabled = true) {
-  return useQuery({
-    ...cloudGitHubInstallationsQuery,
-    enabled,
-  })
-}
-
 export function useCloudGitHubRepos(options: { query?: string; includePersonal?: boolean; enabled?: boolean } = {}) {
   const query = options.query?.trim() ?? ''
   const includePersonal = options.includePersonal !== false
@@ -567,38 +553,50 @@ export function useCloudThreadRepoDiff(threadId: string, path = '', enabled = tr
 
 export function useCloudGitHubAuthRefresh(durationMs = 90_000) {
   const queryClient = useQueryClient()
-  const [pollUntil, setPollUntil] = useState(0)
+  const [polling, setPolling] = useState(false)
+  const timerRef = useRef<number | null>(null)
 
   const refreshNow = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: keys.cloudGitHubRoot })
     void queryClient.invalidateQueries({ queryKey: keys.plugins })
   }, [queryClient])
 
+  const stop = useCallback(() => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    setPolling(false)
+  }, [])
+
   const start = useCallback(() => {
-    setPollUntil(Date.now() + durationMs)
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current)
+    }
+    setPolling(true)
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null
+      setPolling(false)
+    }, durationMs)
   }, [durationMs])
 
   useEffect(() => {
-    if (pollUntil === 0) return
+    if (!polling) return
     const onFocus = () => {
       if (document.visibilityState === 'hidden') return
       refreshNow()
     }
-    const timeout = window.setTimeout(() => setPollUntil(0), Math.max(0, pollUntil - Date.now()))
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onFocus)
     return () => {
-      window.clearTimeout(timeout)
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onFocus)
     }
-  }, [pollUntil, refreshNow])
+  }, [polling, refreshNow])
 
-  return {
-    polling: pollUntil > Date.now(),
-    start,
-    refreshNow,
-  }
+  useEffect(() => stop, [stop])
+
+  return { polling, start, stop, refreshNow }
 }
 
 export function useCloudGitHubOAuth(options: {
@@ -613,8 +611,13 @@ export function useCloudGitHubOAuth(options: {
         options.onError?.(new Error('GitHub authorization URL was not returned'))
         return
       }
+      try {
+        openSafeGitHubUrl(res.auth_url)
+      } catch (err) {
+        options.onError?.(err instanceof Error ? err : new Error('Invalid GitHub authorization URL'))
+        return
+      }
       authRefresh.start()
-      openExternal(res.auth_url)
       options.onStarted?.()
     },
     onError: (error: Error) => {
@@ -624,5 +627,6 @@ export function useCloudGitHubOAuth(options: {
   return {
     ...mutation,
     polling: authRefresh.polling,
+    stopPolling: authRefresh.stop,
   }
 }

@@ -16,10 +16,9 @@ import { useEffect, useState } from 'react'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { isCloudApiSession } from '@/lib/api/client'
-import { useCloudThreadRepo } from '@/lib/api/cloudGitHub'
+import { openSafeGitHubUrl, useCloudThreadRepo } from '@/lib/api/cloudGitHub'
 import { spacesQuery, updateThreadUserState } from '@/lib/api/cloudSpaces'
 import type { Session } from '@/lib/api/types'
-import { openExternal } from '@/lib/clientRuntime'
 import { useHasCloud, useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
@@ -131,7 +130,13 @@ export function CloudThreadControls({
       {prUrl && prNumber > 0 ? (
         <button
           type="button"
-          onClick={() => openExternal(prUrl)}
+          onClick={() => {
+            try {
+              openSafeGitHubUrl(prUrl)
+            } catch (err) {
+              toast(err instanceof Error ? err.message : 'Invalid pull request URL', 'danger')
+            }
+          }}
           title={`Open PR #${prNumber}${repoInfo?.pr_state ? ` (${repoInfo.pr_state})` : ''}${checks ? ` · checks ${checks}` : ''}`}
           className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-2 ring-1 ring-border/70 transition-colors hover:bg-surface-2 hover:text-ink"
         >

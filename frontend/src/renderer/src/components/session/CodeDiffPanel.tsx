@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, FolderGit2, LoaderCircle, RefreshCw } from 'lucide-react'
-import { memo, useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   useCloudThreadRepo,
   useCloudThreadRepoChanges,
@@ -20,193 +20,58 @@ export const CodeDiffPanel = memo(function CodeDiffPanel({
   visible: boolean
   isCloud?: boolean
 }) {
-  if (isCloud) {
-    return <CloudCodeDiffPanel sessionId={sessionId} visible={visible} />
-  }
-  return <LocalCodeDiffPanel sessionId={sessionId} visible={visible} />
+  return isCloud
+    ? <CloudCodeDiffPanel sessionId={sessionId} visible={visible} />
+    : <LocalCodeDiffPanel sessionId={sessionId} visible={visible} />
 })
 
-function LocalCodeDiffPanel({ sessionId, visible }: { sessionId: string; visible: boolean }) {
-  const changes = useQuery({ ...sessionRepoChangesQuery(sessionId), enabled: visible })
-  const repo = useQuery({ ...sessionRepoQuery(sessionId), enabled: visible })
-  const data = changes.isError ? undefined : changes.data
-  const firstKey = data?.files[0] ? fileKey(data.files[0]) : ''
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-
-  useEffect(() => setExpanded({}), [sessionId])
-  useEffect(() => {
-    if (!firstKey) return
-    setExpanded((current) => (Object.keys(current).length ? current : { [firstKey]: true }))
-  }, [firstKey])
-
-  const summary = useMemo(() => {
-    if (!data) return 'Code diff'
-    const files = `${data.files.length} ${data.files.length === 1 ? 'file' : 'files'}`
-    return `${files} · +${data.total_added} −${data.total_deleted}`
-  }, [data])
-  const base = data?.base_kind === 'head' ? `HEAD ${shortRef(data.base || '')}`
-    : data?.base_kind === 'fork' ? `Merge base ${shortRef(data.base || '')}`
-      : data?.base_kind === 'empty' ? 'Empty tree'
-        : data?.base ? `Base ${shortRef(data.base)}` : 'Base unknown'
-
+function DiffPanelShell({
+  title,
+  subtitle,
+  subtitleTitle,
+  summary,
+  children,
+}: {
+  title: string
+  subtitle: string
+  subtitleTitle?: string
+  summary?: string
+  children: ReactNode
+}) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <FolderGit2 size={15} className="shrink-0 text-ink-3" aria-hidden />
         <div className="min-w-0 flex-1 space-y-0.5">
-          <p className="truncate text-[12px] text-ink-2">{repo.data?.is_worktree ? 'Worktree' : repo.data?.git ? 'Local checkout' : 'Checkout'}{repo.data?.branch ? ` · ${repo.data.branch}` : ''}</p>
-          <p className="truncate text-[11px] text-ink-3" title={data?.base}>{base} → working tree</p>
+          <p className="truncate text-[12px] text-ink-2">{title}</p>
+          <p className="truncate text-[11px] text-ink-3" title={subtitleTitle}>{subtitle}</p>
         </div>
-        <span className="hidden shrink-0 font-mono text-[11px] text-ink-3 tabular-nums sm:inline">{summary}</span>
-      </div>
-      <div className="scrollbar-quiet min-h-0 flex-1 overflow-y-auto">
-        {changes.isError ? (
-          <div className="space-y-2 px-3 py-4 text-[12px] text-danger">
-            <p>Couldn’t check code changes: {changes.error.message}</p>
-            <button type="button" onClick={() => void changes.refetch()} className="inline-flex cursor-pointer items-center gap-1.5 hover:underline"><RefreshCw size={12} aria-hidden />Retry code changes</button>
-          </div>
-        ) : null}
-        {changes.isPending ? (
-          <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
-            <LoaderCircle size={13} className="animate-spin" aria-hidden />
-            Loading changes…
-          </div>
-        ) : null}
-        {data && data.files.length === 0 ? (
-          <div className="px-3 py-4 text-[12px] text-ink-3">{data.base_kind === 'head' ? 'No uncommitted changes in this checkout.' : 'No changes against this base in this checkout.'}</div>
-        ) : null}
-        {data?.files.length
-          ? data.files.map((file) => {
-              const key = fileKey(file)
-              return (
-                <DiffFileSection
-                  key={key}
-                  sessionId={sessionId}
-                  base={data.base}
-                  file={file}
-                  expanded={Boolean(expanded[key])}
-                  visible={visible}
-                  onToggle={() =>
-                    setExpanded((current) => ({ ...current, [key]: !current[key] }))
-                  }
-                />
-              )
-            })
-          : null}
-      </div>
-    </div>
-  )
-}
-
-function CloudCodeDiffPanel({ sessionId, visible }: { sessionId: string; visible: boolean }) {
-  const repo = useCloudThreadRepo(sessionId, visible)
-  const attached = Boolean(repo.data?.attached && repo.data?.repo)
-  const changes = useCloudThreadRepoChanges(sessionId, visible && attached)
-  const data = changes.isError ? undefined : changes.data
-  const firstPath = data?.changes[0]?.path ?? ''
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-
-  useEffect(() => setExpanded({}), [sessionId])
-  useEffect(() => {
-    if (!firstPath) return
-    setExpanded((current) => (Object.keys(current).length ? current : { [firstPath]: true }))
-  }, [firstPath])
-
-  const summary = useMemo(() => {
-    if (!data) return 'Code diff'
-    const files = `${data.changes.length} ${data.changes.length === 1 ? 'file' : 'files'}`
-    const added = data.changes.reduce((acc, item) => acc + (item.additions ?? 0), 0)
-    const deleted = data.changes.reduce((acc, item) => acc + (item.deletions ?? 0), 0)
-    return added || deleted ? `${files} · +${added} −${deleted}` : files
-  }, [data])
-
-  const repoTitle = data?.repo || repo.data?.repo || 'Cloud repository'
-  const baseBranch = data?.base_branch || repo.data?.base_branch || 'main'
-  const branch = data?.branch || repo.data?.branch || baseBranch
-
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        <FolderGit2 size={15} className="shrink-0 text-ink-3" aria-hidden />
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <p className="truncate text-[12px] text-ink-2">
-            {repoTitle}
-            {attached && branch ? ` · ${branch}` : ''}
-          </p>
-          <p className="truncate text-[11px] text-ink-3">
-            {attached ? `${baseBranch} → ${branch}` : 'No repository attached'}
-          </p>
-        </div>
-        {attached ? (
+        {summary ? (
           <span className="hidden shrink-0 font-mono text-[11px] text-ink-3 tabular-nums sm:inline">{summary}</span>
         ) : null}
       </div>
-      <div className="scrollbar-quiet min-h-0 flex-1 overflow-y-auto">
-        {repo.isPending ? (
-          <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
-            <LoaderCircle size={13} className="animate-spin" aria-hidden />
-            Loading repository…
-          </div>
-        ) : repo.isError ? (
-          <div className="space-y-2 px-3 py-4 text-[12px] text-danger">
-            <p>Couldn’t load repository status: {repo.error.message}</p>
-            <button type="button" onClick={() => void repo.refetch()} className="inline-flex cursor-pointer items-center gap-1.5 hover:underline">
-              <RefreshCw size={12} aria-hidden />
-              Retry
-            </button>
-          </div>
-        ) : !attached ? (
-          <div className="px-3 py-4 text-[12px] text-ink-3">
-            No repository is attached to this Cloud thread. Attach one in Overview or when starting a new thread.
-          </div>
-        ) : changes.isError ? (
-          <div className="space-y-2 px-3 py-4 text-[12px] text-danger">
-            <p>Couldn’t load code changes: {changes.error.message}</p>
-            <button type="button" onClick={() => void changes.refetch()} className="inline-flex cursor-pointer items-center gap-1.5 hover:underline">
-              <RefreshCw size={12} aria-hidden />
-              Retry code changes
-            </button>
-          </div>
-        ) : changes.isPending ? (
-          <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
-            <LoaderCircle size={13} className="animate-spin" aria-hidden />
-            Loading changes…
-          </div>
-        ) : data && data.changes.length === 0 ? (
-          <div className="px-3 py-4 text-[12px] text-ink-3">No changes against {baseBranch} yet.</div>
-        ) : (
-          data?.changes.map((change) => (
-            <CloudDiffFileSection
-              key={`${change.source}:${change.path}`}
-              sessionId={sessionId}
-              change={change}
-              expanded={Boolean(expanded[change.path])}
-              visible={visible}
-              onToggle={() =>
-                setExpanded((current) => ({ ...current, [change.path]: !current[change.path] }))
-              }
-            />
-          ))
-        )}
-      </div>
+      <div className="scrollbar-quiet min-h-0 flex-1 overflow-y-auto">{children}</div>
     </div>
   )
 }
 
-function CloudDiffFileSection({
-  sessionId,
-  change,
+function CollapsibleDiffSection({
+  label,
+  title,
+  badge,
+  meta,
   expanded,
-  visible,
   onToggle,
+  children,
 }: {
-  sessionId: string
-  change: CloudThreadRepoChange
+  label: string
+  title: string
+  badge?: ReactNode
+  meta?: ReactNode
   expanded: boolean
-  visible: boolean
   onToggle: () => void
+  children: ReactNode
 }) {
-  const hasCounts = Boolean(change.additions || change.deletions)
   return (
     <section className="border-t border-border first:border-t-0">
       <button
@@ -222,27 +87,207 @@ function CloudDiffFileSection({
           className={`shrink-0 text-ink-3 transition-transform duration-200 ease-out ${expanded ? '' : '-rotate-90'}`}
           aria-hidden
         />
-        <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink-2" title={change.path}>
-          {change.path}
+        <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink-2" title={title}>
+          {label}
         </span>
-        {change.source === 'workspace' ? (
-          <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-ink-3">workspace</span>
-        ) : change.status && change.status !== 'modified' ? (
-          <span className="shrink-0 text-[11px] text-ink-3">{change.status}</span>
-        ) : null}
-        {hasCounts ? (
-          <span className="shrink-0 font-mono text-[11px] tabular-nums">
-            {change.additions ? <span className="text-ok">+{change.additions}</span> : null}
-            {change.additions && change.deletions ? ' ' : null}
-            {change.deletions ? <span className="text-danger">−{change.deletions}</span> : null}
-          </span>
-        ) : change.size ? (
-          <span className="shrink-0 font-mono text-[11px] text-ink-3 tabular-nums">{formatBytes(change.size)}</span>
-        ) : null}
+        {badge}
+        {meta}
       </button>
-      {expanded ? <CloudFileDiffBody sessionId={sessionId} path={change.path} visible={visible} /> : null}
+      {expanded ? children : null}
     </section>
   )
+}
+
+function DiffLoadingRow({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
+      <LoaderCircle size={13} className="animate-spin" aria-hidden />
+      {label}
+    </div>
+  )
+}
+
+function DiffErrorBlock({
+  message,
+  retryLabel,
+  onRetry,
+}: {
+  message: string
+  retryLabel: string
+  onRetry: () => void
+}) {
+  return (
+    <div className="space-y-2 px-3 py-4 text-[12px] text-danger">
+      <p>{message}</p>
+      <button type="button" onClick={onRetry} className="inline-flex cursor-pointer items-center gap-1.5 hover:underline">
+        <RefreshCw size={12} aria-hidden />
+        {retryLabel}
+      </button>
+    </div>
+  )
+}
+
+function useAutoExpandFirst(sessionId: string, firstKey: string) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  useEffect(() => setExpanded({}), [sessionId])
+  useEffect(() => {
+    if (!firstKey) return
+    setExpanded((current) => (Object.keys(current).length ? current : { [firstKey]: true }))
+  }, [firstKey])
+  const toggle = (key: string) => setExpanded((current) => ({ ...current, [key]: !current[key] }))
+  return { expanded, toggle }
+}
+
+function LocalCodeDiffPanel({ sessionId, visible }: { sessionId: string; visible: boolean }) {
+  const changes = useQuery({ ...sessionRepoChangesQuery(sessionId), enabled: visible })
+  const repo = useQuery({ ...sessionRepoQuery(sessionId), enabled: visible })
+  const data = changes.isError ? undefined : changes.data
+  const { expanded, toggle } = useAutoExpandFirst(sessionId, data?.files[0] ? fileKey(data.files[0]) : '')
+
+  const summary = useMemo(() => {
+    if (!data) return 'Code diff'
+    const files = `${data.files.length} ${data.files.length === 1 ? 'file' : 'files'}`
+    return `${files} · +${data.total_added} −${data.total_deleted}`
+  }, [data])
+  const base = data?.base_kind === 'head' ? `HEAD ${shortRef(data.base || '')}`
+    : data?.base_kind === 'fork' ? `Merge base ${shortRef(data.base || '')}`
+      : data?.base_kind === 'empty' ? 'Empty tree'
+        : data?.base ? `Base ${shortRef(data.base)}` : 'Base unknown'
+  const title = `${repo.data?.is_worktree ? 'Worktree' : repo.data?.git ? 'Local checkout' : 'Checkout'}${repo.data?.branch ? ` · ${repo.data.branch}` : ''}`
+
+  return (
+    <DiffPanelShell title={title} subtitle={`${base} → working tree`} subtitleTitle={data?.base} summary={summary}>
+      {changes.isError ? (
+        <DiffErrorBlock
+          message={`Couldn’t check code changes: ${changes.error.message}`}
+          retryLabel="Retry code changes"
+          onRetry={() => void changes.refetch()}
+        />
+      ) : changes.isPending ? (
+        <DiffLoadingRow label="Loading changes…" />
+      ) : data && data.files.length === 0 ? (
+        <div className="px-3 py-4 text-[12px] text-ink-3">
+          {data.base_kind === 'head' ? 'No uncommitted changes in this checkout.' : 'No changes against this base in this checkout.'}
+        </div>
+      ) : (
+        data?.files.map((file) => {
+          const key = fileKey(file)
+          const status = STATUS_LABEL[file.status]
+          return (
+            <CollapsibleDiffSection
+              key={key}
+              label={`${file.old_path ? `${file.old_path} → ` : ''}${file.path}`}
+              title={file.path}
+              badge={status ? <span className="shrink-0 text-[11px] text-ink-3">{status}</span> : null}
+              meta={<FileCounts file={file} />}
+              expanded={Boolean(expanded[key])}
+              onToggle={() => toggle(key)}
+            >
+              {file.binary ? (
+                <div className="border-t border-border">
+                  <DiffView patch="" path={file.path} binary />
+                </div>
+              ) : (
+                <FileDiffBody sessionId={sessionId} base={data.base} file={file} visible={visible} />
+              )}
+            </CollapsibleDiffSection>
+          )
+        })
+      )}
+    </DiffPanelShell>
+  )
+}
+
+function CloudCodeDiffPanel({ sessionId, visible }: { sessionId: string; visible: boolean }) {
+  const repo = useCloudThreadRepo(sessionId, visible)
+  const attached = Boolean(repo.data?.attached && repo.data?.repo)
+  const changes = useCloudThreadRepoChanges(sessionId, visible && attached)
+  const data = changes.isError ? undefined : changes.data
+  const { expanded, toggle } = useAutoExpandFirst(sessionId, data?.changes[0]?.path ?? '')
+
+  const summary = useMemo(() => {
+    if (!data) return 'Code diff'
+    const files = `${data.changes.length} ${data.changes.length === 1 ? 'file' : 'files'}`
+    const added = data.changes.reduce((acc, item) => acc + (item.additions ?? 0), 0)
+    const deleted = data.changes.reduce((acc, item) => acc + (item.deletions ?? 0), 0)
+    return added || deleted ? `${files} · +${added} −${deleted}` : files
+  }, [data])
+
+  const repoTitle = data?.repo || repo.data?.repo || 'Cloud repository'
+  const baseBranch = data?.base_branch || repo.data?.base_branch || 'main'
+  const branch = data?.branch || repo.data?.branch || baseBranch
+
+  return (
+    <DiffPanelShell
+      title={`${repoTitle}${attached && branch ? ` · ${branch}` : ''}`}
+      subtitle={attached ? `${baseBranch} → ${branch}` : 'No repository attached'}
+      summary={attached ? summary : undefined}
+    >
+      {repo.isPending ? (
+        <DiffLoadingRow label="Loading repository…" />
+      ) : repo.isError ? (
+        <DiffErrorBlock
+          message={`Couldn’t load repository status: ${repo.error.message}`}
+          retryLabel="Retry"
+          onRetry={() => void repo.refetch()}
+        />
+      ) : !attached ? (
+        <div className="px-3 py-4 text-[12px] text-ink-3">
+          No repository is attached to this Cloud thread. Attach one in Overview or when starting a new thread.
+        </div>
+      ) : changes.isError ? (
+        <DiffErrorBlock
+          message={`Couldn’t load code changes: ${changes.error.message}`}
+          retryLabel="Retry code changes"
+          onRetry={() => void changes.refetch()}
+        />
+      ) : changes.isPending ? (
+        <DiffLoadingRow label="Loading changes…" />
+      ) : data && data.changes.length === 0 ? (
+        <div className="px-3 py-4 text-[12px] text-ink-3">No changes against {baseBranch} yet.</div>
+      ) : (
+        data?.changes.map((change) => (
+          <CollapsibleDiffSection
+            key={`${change.source}:${change.path}`}
+            label={change.path}
+            title={change.path}
+            badge={cloudChangeBadge(change)}
+            meta={cloudChangeMeta(change)}
+            expanded={Boolean(expanded[change.path])}
+            onToggle={() => toggle(change.path)}
+          >
+            <CloudFileDiffBody sessionId={sessionId} path={change.path} visible={visible} />
+          </CollapsibleDiffSection>
+        ))
+      )}
+    </DiffPanelShell>
+  )
+}
+
+function cloudChangeBadge(change: CloudThreadRepoChange): ReactNode {
+  if (change.source === 'workspace') {
+    return <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-ink-3">workspace</span>
+  }
+  if (change.status && change.status !== 'modified') {
+    return <span className="shrink-0 text-[11px] text-ink-3">{change.status}</span>
+  }
+  return null
+}
+
+function cloudChangeMeta(change: CloudThreadRepoChange): ReactNode {
+  if (change.additions || change.deletions) {
+    return (
+      <span className="shrink-0 font-mono text-[11px] tabular-nums">
+        {change.additions ? <span className="text-ok">+{change.additions}</span> : null}
+        {change.additions && change.deletions ? ' ' : null}
+        {change.deletions ? <span className="text-danger">−{change.deletions}</span> : null}
+      </span>
+    )
+  }
+  if (change.size) {
+    return <span className="shrink-0 font-mono text-[11px] text-ink-3 tabular-nums">{formatBytes(change.size)}</span>
+  }
+  return null
 }
 
 function CloudFileDiffBody({
@@ -303,54 +348,6 @@ const STATUS_LABEL: Record<RepoFileChange['status'], string> = {
   deleted: 'deleted',
   renamed: 'renamed',
   modified: '',
-}
-
-function DiffFileSection({
-  sessionId,
-  base,
-  file,
-  expanded,
-  visible,
-  onToggle,
-}: {
-  sessionId: string
-  base?: string
-  file: RepoFileChange
-  expanded: boolean
-  visible: boolean
-  onToggle: () => void
-}) {
-  const status = STATUS_LABEL[file.status]
-  return (
-    <section className="border-t border-border first:border-t-0">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={onToggle}
-        className={`flex min-h-10 w-full cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-2 ${
-          expanded ? 'bg-surface-2/70' : 'bg-surface'
-        }`}
-      >
-        <ChevronDown
-          size={13}
-          className={`shrink-0 text-ink-3 transition-transform duration-200 ease-out ${expanded ? '' : '-rotate-90'}`}
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink-2" title={file.path}>
-          {file.old_path ? `${file.old_path} → ` : ''}
-          {file.path}
-        </span>
-        {status ? <span className="shrink-0 text-[11px] text-ink-3">{status}</span> : null}
-        <FileCounts file={file} />
-      </button>
-      {expanded && file.binary ? (
-        <div className="border-t border-border">
-          <DiffView patch="" path={file.path} binary />
-        </div>
-      ) : null}
-      {expanded && !file.binary ? <FileDiffBody sessionId={sessionId} base={base} file={file} visible={visible} /> : null}
-    </section>
-  )
 }
 
 function FileDiffBody({

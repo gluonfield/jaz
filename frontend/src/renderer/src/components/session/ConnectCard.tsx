@@ -1,4 +1,5 @@
 import { Check, GitBranch, LoaderCircle } from 'lucide-react'
+import { useEffect } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
@@ -11,15 +12,17 @@ import { useHasCloud, useIsCloudViewer } from '@/lib/cloudSession'
 
 export function ConnectCard({ plugin: pluginID }: { plugin: string }) {
   const hasCloud = useHasCloud()
+  if (hasCloud && pluginID === 'github') {
+    return <CloudGitHubConnectCard />
+  }
+  return <PluginConnectCard plugin={pluginID} />
+}
+
+function PluginConnectCard({ plugin: pluginID }: { plugin: string }) {
   const signIn = usePluginSignIn()
   if (signIn.catalog.isPending) return <Skeleton className="my-2 h-15 max-w-md rounded-card" />
   const plugin = signIn.plugins.find((item) => item.id === pluginID)
-  if (!plugin) {
-    if (hasCloud && pluginID === 'github') {
-      return <CloudGitHubConnectCard />
-    }
-    return <p>jaz://plugin/{pluginID}/connect</p>
-  }
+  if (!plugin) return <p>jaz://plugin/{pluginID}/connect</p>
   const connected = Boolean(plugin.auth?.connected)
   const subtitle = connected ? accountsSummary(plugin) : plugin.description
   return (
@@ -61,9 +64,14 @@ function CloudGitHubConnectCard() {
     onError: (err) => toast(err.message || 'Could not start GitHub sign-in', 'danger'),
   })
   const statusQuery = useCloudGitHubStatus(true, oauth.polling)
+  const connected = Boolean(statusQuery.data?.user_linked)
+
+  useEffect(() => {
+    if (oauth.polling && connected) oauth.stopPolling()
+  }, [connected, oauth])
+
   if (statusQuery.isPending) return <Skeleton className="my-2 h-15 max-w-md rounded-card" />
   const status = statusQuery.data
-  const connected = Boolean(status?.user_linked)
   const configured = Boolean(status?.configured)
   const subtitle = connected
     ? status?.github_login

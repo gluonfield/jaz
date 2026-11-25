@@ -277,6 +277,7 @@ function NewSessionPage() {
             baseBranch={gitBaseBranch}
             placement={controlPlacement}
             disabled={creating || readOnly}
+            includePersonal={!selectedSpace || selectedSpace.visibility === 'private'}
             onChange={setRepoOverride}
           />
           <span className="flex-1" />
