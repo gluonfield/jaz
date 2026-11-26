@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { CloudSessionExpiredCard } from '@/components/settings/CloudSessionExpiredCard'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
-import { PeekCollapse } from '@/components/ui/PeekCollapse'
+import { PeekList } from '@/components/ui/PeekList'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { SearchField } from '@/components/ui/SearchField'
 import { SkeletonRows } from '@/components/ui/Skeleton'
@@ -37,7 +37,7 @@ import { CLOUD_GITHUB_ACCOUNT_ID, useCloudGitHubPlugin } from './useCloudGitHubP
 import { usePluginSignIn } from './usePluginSignIn'
 
 const CONNECTED_PREVIEW_LIMIT = 4
-const PLUGIN_GRID = 'grid grid-cols-1 gap-x-8 gap-y-0.5 sm:grid-cols-2'
+const PLUGIN_GRID = 'grid grid-cols-1 gap-x-8 sm:grid-cols-2'
 
 export function PluginsSettings({
   selectedPlugin,
@@ -190,9 +190,6 @@ export function PluginsSettings({
     const available = filtered.filter((plugin) => !isActivePlugin(plugin) || Boolean(plugin.auth?.multi_account))
     return groupCatalogPlugins(available)
   }, [filtered])
-
-  const connectedPreviewCount = query.trim() ? connectedPlugins.length : CONNECTED_PREVIEW_LIMIT
-  const overflowConnected = connectedPlugins.slice(connectedPreviewCount)
 
   const selected = useMemo(
     () => allPlugins.find((plugin) => plugin.id === selectedID) ?? null,
@@ -348,14 +345,11 @@ export function PluginsSettings({
           {connectedPlugins.length > 0 ? (
             <section className="space-y-2">
               <h3 className="text-[13px] font-semibold text-ink">Connected</h3>
-              <div>
-                <div className={PLUGIN_GRID}>{connectedPlugins.slice(0, connectedPreviewCount).map(renderConnectedRow)}</div>
-                {overflowConnected.length > 0 ? (
-                  <PeekCollapse hiddenCount={overflowConnected.length}>
-                    <div className={`${PLUGIN_GRID} pt-0.5`}>{overflowConnected.map(renderConnectedRow)}</div>
-                  </PeekCollapse>
-                ) : null}
-              </div>
+              <PeekList
+                items={connectedPlugins.map(renderConnectedRow)}
+                limit={query.trim() ? Infinity : CONNECTED_PREVIEW_LIMIT}
+                className={PLUGIN_GRID}
+              />
             </section>
           ) : null}
 
