@@ -6,11 +6,11 @@ import {
   ExternalLink,
   GitBranch,
   LoaderCircle,
-  LogIn,
   Plus,
   Trash2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { CloudSessionExpiredCard } from '@/components/settings/CloudSessionExpiredCard'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Button } from '@/components/ui/Button'
 import { Collapse } from '@/components/ui/Collapse'
@@ -27,10 +27,8 @@ import {
   type CloudGitHubInstallation,
   type CloudGitHubStatus,
 } from '@/lib/api/cloudGitHub'
-import { attachCloudSignIn } from '@/lib/cloudAccount'
-import { useCloudSession, useIsCloudOnly, useIsCloudViewer } from '@/lib/cloudSession'
-import { activeCloudWorkspace, workspaceDisplayName } from '@/lib/cloudWorkspaceDisplay'
-import { startCloudSignIn } from '@/lib/connection'
+import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
+import { activeCloudWorkspace } from '@/lib/cloudWorkspaceDisplay'
 import { keys } from '@/lib/query/keys'
 
 function parseLineList(raw: string): string[] {
@@ -56,32 +54,10 @@ export function CloudGitHubPluginSection({
   onInstallStarted?: () => void
 }) {
   const cloud = useCloudSession()
-  const isCloudOnly = useIsCloudOnly()
   const isViewer = useIsCloudViewer()
   const workspace = activeCloudWorkspace(cloud)
   const isAdmin = !isViewer && (cloud.user?.role ?? '').trim().toLowerCase() === 'admin'
   const toast = useToast()
-
-  const [signingInCloud, setSigningInCloud] = useState(false)
-
-  const signInToCloud = async () => {
-    if (!workspace || signingInCloud) return
-    setSigningInCloud(true)
-    try {
-      const loginUrl = workspace.oidc_login_url || cloud.oidcLoginUrl || undefined
-      const err =
-        cloud.source === 'primary' || isCloudOnly
-          ? await startCloudSignIn(workspace.url, loginUrl)
-          : await attachCloudSignIn(workspace.url, loginUrl)
-      if (err) {
-        toast(err, 'danger')
-      }
-    } catch (caught) {
-      toast(caught instanceof Error ? caught.message : 'Could not start Jaz Cloud sign-in', 'danger')
-    } finally {
-      setSigningInCloud(false)
-    }
-  }
 
   const startInstall = useMutation({
     mutationFn: (scope: 'org' | 'user') => startCloudGitHubInstall(scope),
@@ -108,25 +84,11 @@ export function CloudGitHubPluginSection({
 
   if (authExpired) {
     return (
-      <SettingsCard className="p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <h3 className="text-[14px] font-semibold text-ink">Sign in to Jaz Cloud</h3>
-            <p className="mt-0.5 text-[12.5px] text-ink-3">
-              Your session for {workspaceDisplayName(workspace)} has expired. Sign in again to manage GitHub access.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" disabled={signingInCloud} onClick={() => void statusQuery.refetch()}>
-              Retry
-            </Button>
-            <Button variant="primary" size="sm" disabled={signingInCloud} onClick={() => void signInToCloud()}>
-              {signingInCloud ? <LoaderCircle size={13} className="animate-spin" /> : <LogIn size={13} />}
-              Sign in
-            </Button>
-          </div>
-        </div>
-      </SettingsCard>
+      <CloudSessionExpiredCard
+        workspace={workspace}
+        description="Sign in again to manage GitHub access."
+        onRetry={statusQuery.refetch}
+      />
     )
   }
 

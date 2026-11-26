@@ -19,7 +19,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ThreadRepoPicker } from '@/components/cloud/GitHubRepoPicker'
-import { CLOUD_GITHUB_PLUGIN_ID } from '@/lib/api/cloudGitHub'
+import { withGitHubPluginSearch } from '@/lib/api/cloudGitHub'
 import type { Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
 import { SectionHeader } from './OverviewRuns'
@@ -92,11 +92,7 @@ export function CloudGitSection({
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reduceMotion = useReducedMotion()
-  const openGitHubPlugin = () =>
-    void navigate({
-      to: '.',
-      search: (prev) => ({ ...prev, settings: 'plugins', plugin: CLOUD_GITHUB_PLUGIN_ID }),
-    })
+  const openGitHubPlugin = () => void navigate({ to: '.', search: withGitHubPluginSearch })
 
   const branchLabel = repo.branch || repo.baseBranch || 'main'
   const allowPersonal = session.visibility !== 'space' || Boolean(session.personal_sources_enabled)

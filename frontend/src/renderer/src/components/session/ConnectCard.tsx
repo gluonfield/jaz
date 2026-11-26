@@ -8,7 +8,7 @@ import { ConnectionQRModal } from '@/components/settings/ConnectionQRModal'
 import { PluginAvatar } from '@/components/settings/PluginVisuals'
 import { accountsSummary, pluginActionLabel, pluginCanConnect } from '@/components/settings/pluginFormatting'
 import { usePluginSignIn } from '@/components/settings/usePluginSignIn'
-import { CLOUD_GITHUB_PLUGIN_ID, useCloudGitHubOAuth, useCloudGitHubStatus } from '@/lib/api/cloudGitHub'
+import { useCloudGitHubOAuth, useCloudGitHubStatus, withGitHubPluginSearch } from '@/lib/api/cloudGitHub'
 import { useHasCloud, useIsCloudViewer } from '@/lib/cloudSession'
 
 export function ConnectCard({ plugin: pluginID }: { plugin: string }) {
@@ -67,11 +67,7 @@ function CloudGitHubConnectCard() {
   })
   const statusQuery = useCloudGitHubStatus(true, oauth.polling)
   const connected = Boolean(statusQuery.data?.user_linked)
-  const openGitHubPlugin = () =>
-    void navigate({
-      to: '.',
-      search: (prev) => ({ ...prev, settings: 'plugins', plugin: CLOUD_GITHUB_PLUGIN_ID }),
-    })
+  const openGitHubPlugin = () => void navigate({ to: '.', search: withGitHubPluginSearch })
 
   useEffect(() => {
     if (oauth.polling && connected) oauth.stopPolling()

@@ -120,6 +120,12 @@ test('buildCloudGitHubPlugin maps configured, linked, viewer, unconfigured, and 
   const expired = api.buildCloudGitHubPlugin({ authExpired: true })
   expect(expired.auth).toMatchObject({ status: 'unavailable', connected: false })
   expect(expired.auth.reason).toContain('Sign in to Jaz Cloud')
+
+  expect(api.withGitHubPluginSearch({ space: 'sp_1' })).toEqual({
+    space: 'sp_1',
+    settings: 'plugins',
+    plugin: 'github',
+  })
 })
 
 test('disconnectCloudGitHubAccount deletes only github connector accounts', async () => {

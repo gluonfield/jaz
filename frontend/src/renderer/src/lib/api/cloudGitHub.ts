@@ -11,6 +11,12 @@ export const DEFAULT_GITHUB_APP_NAME = 'Jaz'
 export const CLOUD_GITHUB_PLUGIN_ID = 'github'
 export const GITHUB_CONNECT_LINK = 'jaz://plugin/github/connect'
 
+export function withGitHubPluginSearch<T extends Record<string, unknown>>(
+  prev: T,
+): T & { settings: 'plugins'; plugin: string } {
+  return { ...prev, settings: 'plugins', plugin: CLOUD_GITHUB_PLUGIN_ID }
+}
+
 export interface CloudGitHubInstallation {
   org_id: string
   installation_id: number

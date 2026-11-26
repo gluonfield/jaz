@@ -7,11 +7,11 @@ import { Input } from '@/components/ui/Input'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
 import {
-  CLOUD_GITHUB_PLUGIN_ID,
   useCloudGitHubBranches,
   useCloudGitHubOAuth,
   useCloudGitHubRepos,
   useCloudGitHubStatus,
+  withGitHubPluginSearch,
 } from '@/lib/api/cloudGitHub'
 import { useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
@@ -73,10 +73,7 @@ export function ThreadRepoPicker({
   const navigate = useNavigate()
   const openGitHubPlugin = () => {
     setOpen(false)
-    void navigate({
-      to: '.',
-      search: (prev) => ({ ...prev, settings: 'plugins', plugin: CLOUD_GITHUB_PLUGIN_ID }),
-    })
+    void navigate({ to: '.', search: withGitHubPluginSearch })
   }
 
   const { status, repos, branches, oauth } = useGitHubPickerData({
@@ -280,11 +277,7 @@ export function GitHubRepoField({
 }) {
   const isViewer = useIsCloudViewer()
   const navigate = useNavigate()
-  const openGitHubPlugin = () =>
-    void navigate({
-      to: '.',
-      search: (prev) => ({ ...prev, settings: 'plugins', plugin: CLOUD_GITHUB_PLUGIN_ID }),
-    })
+  const openGitHubPlugin = () => void navigate({ to: '.', search: withGitHubPluginSearch })
   const { status, repos, branches, oauth } = useGitHubPickerData({
     enabled: true,
     loadRepos: true,

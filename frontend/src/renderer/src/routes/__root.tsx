@@ -141,8 +141,15 @@ function RootLayout() {
   useEffect(
     () =>
       onWorkspaceChange(() => {
-        const nextRoute = workspaceSwitchNavigation(router.state.location)
-        if (nextRoute) void navigate(nextRoute)
+        const location = router.state.location
+        const nextRoute = workspaceSwitchNavigation(location)
+        if (nextRoute) {
+          void navigate(nextRoute)
+          return
+        }
+        if ((location.search as RootSearch | undefined)?.plugin) {
+          void navigate({ to: '.', search: (prev) => ({ ...prev, plugin: undefined }), replace: true })
+        }
       }),
     [navigate, router],
   )
