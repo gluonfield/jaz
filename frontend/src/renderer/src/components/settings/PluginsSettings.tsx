@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Loader2, MoreHorizontal, Plus, RefreshCw, Settings2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Loader2, MoreHorizontal, Plus, RefreshCw, Settings2 } from 'lucide-react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { CloudSessionExpiredCard } from '@/components/settings/CloudSessionExpiredCard'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
+import { PeekCollapse } from '@/components/ui/PeekCollapse'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { SearchField } from '@/components/ui/SearchField'
 import { SkeletonRows } from '@/components/ui/Skeleton'
@@ -36,6 +37,7 @@ import { CLOUD_GITHUB_ACCOUNT_ID, useCloudGitHubPlugin } from './useCloudGitHubP
 import { usePluginSignIn } from './usePluginSignIn'
 
 const CONNECTED_PREVIEW_LIMIT = 4
+const PLUGIN_GRID = 'grid grid-cols-1 gap-x-8 gap-y-0.5 sm:grid-cols-2'
 
 export function PluginsSettings({
   selectedPlugin,
@@ -55,7 +57,6 @@ export function PluginsSettings({
   const [localSelectedID, setLocalSelectedID] = useState<string | null>(selectedPlugin ?? null)
   const [addMode, setAddMode] = useState<AddPluginMode | null>(null)
   const [managingSources, setManagingSources] = useState(false)
-  const [showAllConnected, setShowAllConnected] = useState(false)
 
   const selectedID = onSelectPlugin ? (selectedPlugin ?? null) : localSelectedID
   const setSelectedID = (next: string | null) => {
@@ -190,13 +191,8 @@ export function PluginsSettings({
     return groupCatalogPlugins(available)
   }, [filtered])
 
-  const hasHiddenConnected = !query.trim() && connectedPlugins.length > CONNECTED_PREVIEW_LIMIT
-  const visibleConnected = hasHiddenConnected && !showAllConnected
-    ? connectedPlugins.slice(0, CONNECTED_PREVIEW_LIMIT)
-    : connectedPlugins
-  const hiddenConnected = hasHiddenConnected && !showAllConnected
-    ? connectedPlugins.slice(CONNECTED_PREVIEW_LIMIT)
-    : []
+  const connectedPreviewCount = query.trim() ? connectedPlugins.length : CONNECTED_PREVIEW_LIMIT
+  const overflowConnected = connectedPlugins.slice(connectedPreviewCount)
 
   const selected = useMemo(
     () => allPlugins.find((plugin) => plugin.id === selectedID) ?? null,
@@ -247,6 +243,40 @@ export function PluginsSettings({
   }
 
   const disconnectingAccountID = disconnect.isPending ? disconnect.variables : undefined
+
+  const renderConnectedRow = (plugin: Plugin) => {
+    const githubPlugin = isCloudGitHub(plugin)
+    const accounts = plugin.auth?.accounts ?? []
+    const singleAccount = accounts.length === 1 ? accounts[0] : null
+    const hasSkillsOrViews = (plugin.skills?.length ?? 0) > 0 || (plugin.views?.length ?? 0) > 0
+    const canRemove =
+      canManageOrgPlugins &&
+      plugin.installed &&
+      plugin.origin !== 'builtin' &&
+      (!plugin.auth || hasSkillsOrViews)
+    return (
+      <ConnectedPluginRow
+        key={plugin.id}
+        plugin={plugin}
+        busy={
+          (githubPlugin && cloudGitHub.disconnecting) ||
+          Boolean(!githubPlugin && singleAccount && disconnectingAccountID === singleAccount.id) ||
+          (remove.isPending && remove.variables === plugin.id) ||
+          (update.isPending && update.variables === plugin.id)
+        }
+        onOpen={() => setSelectedID(plugin.id)}
+        onAddAccount={!isViewer && plugin.auth?.multi_account && pluginCanConnect(plugin) ? () => signIn.start(plugin) : undefined}
+        onDisconnect={
+          singleAccount && !isViewer
+            ? () => (githubPlugin ? cloudGitHub.disconnect() : disconnect.mutate(singleAccount.id))
+            : undefined
+        }
+        onRemove={canRemove ? () => remove.mutate(plugin.id) : undefined}
+        onUpdate={canManageOrgPlugins && !isCloudActive && plugin.installed && plugin.source ? () => update.mutate(plugin.id) : undefined}
+      />
+    )
+  }
+
   const catalogAuthExpired = catalog.isError && isCloudAuthExpiredError(catalog.error)
   const selectedIsCloudGitHub = isCloudGitHub(selected)
 
@@ -316,70 +346,23 @@ export function PluginsSettings({
       ) : (
         <div className="space-y-8">
           {connectedPlugins.length > 0 ? (
-            <section className="space-y-1">
-              <div className="flex items-center justify-between pb-1">
-                <h3 className="text-[13px] font-semibold text-ink">Connected</h3>
-                {hasHiddenConnected ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllConnected((prev) => !prev)}
-                    className="inline-flex cursor-pointer items-center gap-1 text-[13px] text-ink-2 transition-colors hover:text-ink"
-                  >
-                    {showAllConnected ? 'Show less' : 'Show all'}
-                    {!showAllConnected ? <ArrowRight size={13} /> : null}
-                  </button>
+            <section className="space-y-2">
+              <h3 className="text-[13px] font-semibold text-ink">Connected</h3>
+              <div>
+                <div className={PLUGIN_GRID}>{connectedPlugins.slice(0, connectedPreviewCount).map(renderConnectedRow)}</div>
+                {overflowConnected.length > 0 ? (
+                  <PeekCollapse hiddenCount={overflowConnected.length}>
+                    <div className={`${PLUGIN_GRID} pt-0.5`}>{overflowConnected.map(renderConnectedRow)}</div>
+                  </PeekCollapse>
                 ) : null}
               </div>
-              <div className="divide-y divide-border/50">
-                {visibleConnected.map((plugin) => {
-                  const githubPlugin = isCloudGitHub(plugin)
-                  const accounts = plugin.auth?.accounts ?? []
-                  const singleAccount = accounts.length === 1 ? accounts[0] : null
-                  const hasSkillsOrViews = (plugin.skills?.length ?? 0) > 0 || (plugin.views?.length ?? 0) > 0
-                  const canRemove =
-                    canManageOrgPlugins &&
-                    plugin.installed &&
-                    plugin.origin !== 'builtin' &&
-                    (!plugin.auth || hasSkillsOrViews)
-                  return (
-                    <ConnectedPluginRow
-                      key={plugin.id}
-                      plugin={plugin}
-                      busy={
-                        (githubPlugin && cloudGitHub.disconnecting) ||
-                        Boolean(!githubPlugin && singleAccount && disconnectingAccountID === singleAccount.id) ||
-                        (remove.isPending && remove.variables === plugin.id) ||
-                        (update.isPending && update.variables === plugin.id)
-                      }
-                      onOpen={() => setSelectedID(plugin.id)}
-                      onAddAccount={!isViewer && plugin.auth?.multi_account && pluginCanConnect(plugin) ? () => signIn.start(plugin) : undefined}
-                      onDisconnect={
-                        singleAccount && !isViewer
-                          ? () => (githubPlugin ? cloudGitHub.disconnect() : disconnect.mutate(singleAccount.id))
-                          : undefined
-                      }
-                      onRemove={canRemove ? () => remove.mutate(plugin.id) : undefined}
-                      onUpdate={canManageOrgPlugins && !isCloudActive && plugin.installed && plugin.source ? () => update.mutate(plugin.id) : undefined}
-                    />
-                  )
-                })}
-              </div>
-              {hiddenConnected.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setShowAllConnected(true)}
-                  className="cursor-pointer pt-2 pl-[42px] text-left text-[12.5px] text-ink-3 transition-colors hover:text-ink-2"
-                >
-                  {hiddenConnectedSummary(hiddenConnected)}
-                </button>
-              ) : null}
             </section>
           ) : null}
 
           {catalogGroups.map((group) => (
             <section key={group.label} className="space-y-2">
               <h3 className="text-[13px] font-semibold text-ink">{group.label}</h3>
-              <div className="grid grid-cols-1 gap-x-8 gap-y-0.5 sm:grid-cols-2">
+              <div className={PLUGIN_GRID}>
                 {group.plugins.map((plugin) => {
                   const busy =
                     (isCloudGitHub(plugin) && cloudGitHub.connecting) ||
@@ -494,7 +477,6 @@ function ConnectedPluginRow({
   onUpdate?: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const summary = pluginSummary(plugin)
   const multipleAccounts = (plugin.auth?.accounts?.length ?? 0) > 1
   const hasTopActions = Boolean(onUpdate || onAddAccount)
   const hasDestructive = Boolean(onDisconnect || onRemove || multipleAccounts)
@@ -506,22 +488,7 @@ function ConnectedPluginRow({
   }
 
   return (
-    <div className="flex items-center gap-3 py-3.5">
-      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 text-left">
-        <PluginAvatar plugin={plugin} size="md" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="truncate text-[14px] font-medium text-ink">{plugin.display_name}</p>
-            {plugin.source?.update_available ? (
-              <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                Update
-              </span>
-            ) : null}
-          </div>
-          {summary ? <p className="mt-0.5 truncate text-[12.5px] text-ink-2">{summary}</p> : null}
-        </div>
-      </button>
-
+    <PluginRow plugin={plugin} subtitle={pluginSummary(plugin)} onOpen={onOpen}>
       {hasMenuActions ? (
         <Popover
           open={menuOpen}
@@ -571,7 +538,7 @@ function ConnectedPluginRow({
           </div>
         </Popover>
       ) : null}
-    </div>
+    </PluginRow>
   )
 }
 
@@ -592,16 +559,7 @@ function CatalogPluginRow({
       ? `Enable ${plugin.display_name}`
       : `Install ${plugin.display_name}`
   return (
-    <div className="flex items-center gap-3 rounded-[10px] px-2 py-2.5 transition-colors hover:bg-surface">
-      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 text-left">
-        <PluginAvatar plugin={plugin} size="md" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] font-medium text-ink">{plugin.display_name}</p>
-          {plugin.description ? (
-            <p className="mt-0.5 truncate text-[12.5px] text-ink-2">{plugin.description}</p>
-          ) : null}
-        </div>
-      </button>
+    <PluginRow plugin={plugin} subtitle={plugin.description} onOpen={onOpen}>
       {onAdd ? (
         <IconButton
           variant="ghost"
@@ -614,16 +572,40 @@ function CatalogPluginRow({
           {busy ? <Loader2 size={15} className="animate-spin" /> : <Plus size={16} />}
         </IconButton>
       ) : null}
-    </div>
+    </PluginRow>
   )
 }
 
-function hiddenConnectedSummary(plugins: Plugin[]): string {
-  const names = plugins.map((plugin) => plugin.display_name)
-  if (names.length <= 3) return names.join(', ')
-  const shown = names.slice(0, 3).join(', ')
-  const extra = names.length - 3
-  return `${shown} and ${extra} more`
+function PluginRow({
+  plugin,
+  subtitle,
+  onOpen,
+  children,
+}: {
+  plugin: Plugin
+  subtitle?: string
+  onOpen: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-[10px] px-2 py-2.5 transition-colors hover:bg-surface">
+      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 text-left">
+        <PluginAvatar plugin={plugin} size="md" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="truncate text-[13.5px] font-medium text-ink">{plugin.display_name}</p>
+            {plugin.source?.update_available ? (
+              <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                Update
+              </span>
+            ) : null}
+          </div>
+          {subtitle ? <p className="mt-0.5 truncate text-[12.5px] text-ink-2">{subtitle}</p> : null}
+        </div>
+      </button>
+      {children}
+    </div>
+  )
 }
 
 function isActivePlugin(plugin: Plugin): boolean {
