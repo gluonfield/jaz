@@ -63,6 +63,7 @@ type ConnectRequest struct {
 	Code         string `json:"code,omitempty"`
 	CodeVerifier string `json:"code_verifier,omitempty"`
 	Token        string `json:"token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
 type CreateThreadRequest struct {

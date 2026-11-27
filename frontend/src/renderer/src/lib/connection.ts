@@ -7,8 +7,10 @@ import {
   logoutCloudSession,
   parseOidcCallbackUrl,
   peekPendingOidcLogin,
+  refreshCloudSession,
   validateOidcCallback,
 } from '@/lib/api/cloudAuth'
+import { ApiError } from '@/lib/api/response'
 import { completeAttachedOidcCallback, refreshCloudAccountStatus, resetCloudAccountState } from '@/lib/cloudAccount'
 import type {
   CloudUser,
@@ -18,19 +20,24 @@ import type {
 } from '@/lib/api/serverTypes'
 import {
   apiBaseUrl,
+  apiRefreshGeneration,
   cachedApiAuthToken,
+  cachedApiRefreshToken,
   clearApiSession,
   isLocalBackendUrl,
   localBaseUrl,
   normalizeBaseUrl,
   onApiAuthRejected,
   parseBackendConnectUrl,
+  refreshActiveApiSession,
   rememberApiAuthToken,
-  restoreApiAuthToken,
+  restoreApiCredential,
+  rotateApiSessionTokens,
   secureBackendConnection,
   setApiAuthToken,
   setApiBaseUrl,
   setApiServerMode,
+  setApiSessionRefresher,
   setResourceTicket,
 } from '@/lib/api/client'
 import { rememberBackend, removeKnownBackend, updateBackendMetadata } from '@/lib/backends'
@@ -63,11 +70,18 @@ type ServerMeta = {
   oidcLoginUrl: string
   capabilities: ServerCapabilities
 }
-type Candidate = VerifiedSession & { ticket?: ResourceTicket; user?: CloudUser; meta?: ServerMeta }
-type SavedCredential = { token: string }
+type Candidate = VerifiedSession & {
+  refreshToken?: string
+  ticket?: ResourceTicket
+  user?: CloudUser
+  meta?: ServerMeta
+  persistRotated?: boolean
+}
+type SavedCredential = { token: string; refreshToken?: string }
 type DiscoverySuccess = Extract<ServerDiscovery, { ok: true }>
 type ProbeOptions = {
   explicitToken?: string
+  explicitRefreshToken?: string
   resolveSaved?: () => Promise<SavedCredential>
   onSavedError?: () => string
   remembered: boolean
@@ -266,7 +280,7 @@ function activate(value: Attempt, candidate: Candidate): void {
     value.revision = authoritative.revision
   }
   setApiServerMode(meta.mode)
-  setApiAuthToken(candidate.url, candidate.token, candidate.ticket)
+  setApiAuthToken(candidate.url, candidate.token, candidate.ticket, candidate.refreshToken)
   if (meta.mode === 'local' && clientRuntime.capabilities.localBackend) {
     void refreshCloudAccountStatus()
   } else {
@@ -294,8 +308,19 @@ function activate(value: Attempt, candidate: Candidate): void {
       })
       if (candidate.remembered) {
         savePreference({ mode: 'remote', remoteUrl: candidate.url })
+        if (candidate.persistRotated && candidate.token) {
+          if (clientRuntime.kind === 'web') {
+            void saveBrowserCredential(candidate.url, candidate.token, () => current(value), candidate.refreshToken).catch(() => undefined)
+          } else {
+            try {
+              rememberApiAuthToken(candidate.url, () => current(value))
+            } catch {
+              // Preserve the refreshed live session if secure storage is temporarily locked.
+            }
+          }
+        }
       } else if (clientRuntime.kind === 'web' && candidate.token) {
-        void saveBrowserCredential(candidate.url, candidate.token, () => current(value)).then(() => {
+        void saveBrowserCredential(candidate.url, candidate.token, () => current(value), candidate.refreshToken).then(() => {
           if (current(value)) savePreference({ mode: 'remote', remoteUrl: candidate.url })
         }, () => {
           if (current(value)) setState({ error: 'Connected for this session. Could not save the login in this browser. Check site storage access.' })
@@ -322,7 +347,7 @@ async function savedCredential(url: string): Promise<SavedCredential> {
   if (clientRuntime.kind === 'web') {
     return await loadBrowserCredential(url) || { token: '' }
   }
-  return { token: restoreApiAuthToken(url) }
+  return restoreApiCredential(url)
 }
 
 async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<string | null> {
@@ -352,6 +377,7 @@ async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<st
     }
 
     let token = options.explicitToken ?? ''
+    let refreshToken = options.explicitRefreshToken ?? ''
     let remembered = options.remembered
     if (!token && options.resolveSaved) {
       try {
@@ -359,6 +385,7 @@ async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<st
           cachedSaved = await options.resolveSaved()
         }
         token = cachedSaved.token
+        refreshToken = cachedSaved.refreshToken ?? ''
         remembered = remembered || Boolean(token)
       } catch (error) {
         if (!current(value)) return null
@@ -374,6 +401,7 @@ async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<st
         }
         cachedSaved = { token: '' }
         token = ''
+        refreshToken = ''
       }
       if (!current(value)) return null
     }
@@ -393,6 +421,26 @@ async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<st
           })
           return null
         }
+        if (!cookieAccess.recoverable && cookieAccess.code === 'oidc_required') {
+          try {
+            const refreshed = await refreshCloudSession(value.url, {
+              credentials: 'include',
+              signal: value.controller.signal,
+            })
+            if (!current(value)) return null
+            activate(value, {
+              url: value.url,
+              token: '',
+              ticket: refreshed.ticket,
+              user: refreshed.user,
+              remembered,
+              meta,
+            })
+            return null
+          } catch {
+            if (!current(value)) return null
+          }
+        }
       }
       const error = options.missingCredentialError
         ? options.missingCredentialError(meta)
@@ -408,6 +456,46 @@ async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<st
       return null
     }
     if (!access.ok) {
+      if (!access.recoverable && meta.auth === 'oidc' && access.code === 'oidc_required' && refreshToken) {
+        try {
+          const refreshed = await refreshCloudSession(value.url, {
+            refreshToken,
+            signal: value.controller.signal,
+          })
+          if (!current(value)) return null
+          const nextRefresh = refreshed.refreshToken ?? refreshToken
+          cachedSaved = { token: refreshed.token, refreshToken: nextRefresh }
+          activate(value, {
+            url: value.url,
+            token: refreshed.token,
+            refreshToken: nextRefresh,
+            ticket: refreshed.ticket,
+            user: refreshed.user,
+            remembered,
+            persistRotated: true,
+            meta,
+          })
+          return null
+        } catch (error) {
+          if (!current(value)) return null
+          if (error instanceof ApiError && error.status === 401) {
+            if (clientRuntime.kind === 'web') {
+              void forgetBrowserCredential(value.url).catch(() => undefined)
+            }
+            block('Session expired. Sign in again.', false, meta)
+            return 'Session expired. Sign in again.'
+          }
+          const recoverable = !(error instanceof ApiError) || error.status >= 500
+          const message = error instanceof Error ? error.message : 'Cloud session refresh failed'
+          if (options.retryOnRecoverable && recoverable) {
+            setState({ status: 'disconnected', error: message })
+            pollTimer = setTimeout(() => void run(false), 5000)
+            return message
+          }
+          block(message, false, meta)
+          return message
+        }
+      }
       if (options.retryOnRecoverable && access.recoverable) {
         setState({ status: 'disconnected', error: access.error })
         pollTimer = setTimeout(() => void run(false), 5000)
@@ -419,6 +507,7 @@ async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<st
     activate(value, {
       url: value.url,
       token,
+      refreshToken: refreshToken || undefined,
       ticket: access.ticket,
       user: access.user,
       remembered,
@@ -442,14 +531,41 @@ function schedulePoll(value: Attempt, candidate: Candidate, missed = false): voi
       return
     }
     const meta = discovery.ok ? discoveryMeta(discovery) : (candidate.meta ?? DEFAULT_META)
-    const needsAuthCheck = discovery.ok && (candidate.token || meta.auth === 'oidc')
+    const activeToken = cachedApiAuthToken(value.url)
+    const sentRefreshGen = apiRefreshGeneration(value.url)
+    const needsAuthCheck = discovery.ok && (Boolean(activeToken) || meta.auth === 'oidc')
     const access = needsAuthCheck
-      ? await verifyCandidate(value.url, candidate.token, meta, value.controller.signal)
+      ? await verifyCandidate(value.url, activeToken, meta, value.controller.signal)
       : discovery
     if (!current(value)) {
       return
     }
     if (!access.ok) {
+      if (!access.recoverable && meta.auth === 'oidc' && access.code === 'oidc_required') {
+        const outcome = await refreshActiveApiSession(
+          value.url,
+          activeToken,
+          sentRefreshGen,
+          !activeToken && clientRuntime.kind === 'web',
+        )
+        if (!current(value)) {
+          return
+        }
+        if (outcome === 'refreshed') {
+          setState({ status: 'connected', error: null })
+          schedulePoll(value, { ...candidate, token: cachedApiAuthToken(value.url), meta }, false)
+          return
+        }
+        if (outcome === 'error') {
+          if (missed) {
+            setState({ status: 'reconnecting', error: 'Cloud auth refresh temporarily unavailable' })
+          }
+          schedulePoll(value, { ...candidate, token: cachedApiAuthToken(value.url), meta }, true)
+          return
+        }
+        block('Session expired. Sign in again.', false, meta)
+        return
+      }
       if (!access.recoverable) {
         block(access.error, false, meta)
         return
@@ -464,7 +580,7 @@ function schedulePoll(value: Attempt, candidate: Candidate, missed = false): voi
       const nextUser = 'user' in access && access.user ? access.user : state.user
       setState({ status: 'connected', error: null, user: nextUser })
     }
-    schedulePoll(value, { ...candidate, meta }, !access.ok)
+    schedulePoll(value, { ...candidate, token: cachedApiAuthToken(value.url), meta }, !access.ok)
   }, 5000)
 }
 
@@ -539,6 +655,7 @@ export async function completeOidcCallback(
       activate(value, {
         url: validated.server,
         token: exchanged.token,
+        refreshToken: exchanged.refreshToken,
         ticket: exchanged.ticket,
         user: exchanged.user,
         remembered: false,
@@ -572,12 +689,14 @@ export async function connectRemote(input: string): Promise<string | null> {
     return 'Remote connections require HTTPS'
   }
   const cached = cachedApiAuthToken(url)
+  const cachedRefresh = !parsed.key ? cachedApiRefreshToken(url) : ''
   const remembered = !parsed.key && authoritative?.session?.url === url && authoritative.session.token === cached && authoritative.session.remembered === true
   const value = begin(url)
   clearConnectionPreference()
   try {
     return await probeAndVerify(value, {
       explicitToken: parsed.key || cached,
+      explicitRefreshToken: cachedRefresh || undefined,
       resolveSaved: () => savedCredential(url),
       remembered,
       allowWebCookie: true,
@@ -637,7 +756,7 @@ export async function startLocal(): Promise<string | null> {
 
 export function disconnectBackend(): void {
   if (state.status === 'connected' && state.mode === 'cloud' && state.auth === 'oidc' && state.url) {
-    void logoutCloudSession(state.url, cachedApiAuthToken(state.url))
+    void logoutCloudSession(state.url, cachedApiAuthToken(state.url), cachedApiRefreshToken(state.url))
   }
   block(null)
 }
@@ -823,6 +942,66 @@ if (clientRuntime.kind === 'electron' && ownsConnection && clientRuntime.onOidcC
 
 bridge?.subscribe((snapshot) => {
   void hydrate(snapshot)
+})
+setApiSessionRefresher(async ({ origin, mode, refreshToken, signal }) => {
+  const value = attempt
+  if (!value || !current(value) || state.url !== origin || state.mode !== 'cloud' || state.auth !== 'oidc') {
+    return 'unavailable'
+  }
+  try {
+    const refreshed = await refreshCloudSession(
+      origin,
+      mode === 'cookie' ? { credentials: 'include', signal } : { refreshToken, signal },
+    )
+    if (!current(value) || state.url !== origin) {
+      return 'error'
+    }
+    if (mode === 'cookie') {
+      rotateApiSessionTokens(origin, { ticket: refreshed.ticket })
+      setState({ user: refreshed.user, error: null })
+      return 'refreshed'
+    }
+    const nextRefresh = refreshed.refreshToken ?? refreshToken
+    rotateApiSessionTokens(origin, {
+      token: refreshed.token,
+      refreshToken: nextRefresh,
+      ticket: refreshed.ticket,
+    })
+    const wasRemembered = Boolean(
+      authoritative?.session?.remembered ||
+      (connectionPreference()?.mode === 'remote' && connectionPreference()?.remoteUrl === origin),
+    )
+    if (ownsConnection && bridge && desktop) {
+      authoritative = bridge.update({
+        operation: 'commit',
+        document: desktop.document,
+        revision: value.revision,
+        session: { url: origin, token: refreshed.token, remembered: wasRemembered },
+      })
+      value.revision = authoritative.revision
+    }
+    setState({ user: refreshed.user, error: null })
+    if (ownsConnection) {
+      if (clientRuntime.kind === 'web') {
+        void saveBrowserCredential(origin, refreshed.token, () => current(value), nextRefresh).catch(() => undefined)
+      } else if (wasRemembered) {
+        try {
+          rememberApiAuthToken(origin, () => current(value))
+        } catch {
+          // Preserve the live refreshed session if secure storage is temporarily locked.
+        }
+      }
+    }
+    return 'refreshed'
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      if (clientRuntime.kind === 'web' && mode === 'bearer') {
+        void forgetBrowserCredential(origin).catch(() => undefined)
+      }
+      return 'unauthorized'
+    }
+    return 'error'
+  }
 })
 onApiAuthRejected(() => {
   if (state.mode === 'cloud' && state.auth === 'oidc') {

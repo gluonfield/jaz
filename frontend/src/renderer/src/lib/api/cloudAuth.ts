@@ -41,9 +41,14 @@ export interface AuthMeResult {
 
 export interface AuthExchangeResult {
   token: string
+  refreshToken?: string
+  expiresAt?: string
+  refreshExpiresAt?: string
   user: CloudUser
   ticket?: ResourceTicket
 }
+
+export type AuthRefreshResult = AuthExchangeResult
 
 function base64UrlEncode(bytes: Uint8Array): string {
   let binary = ''
@@ -399,8 +404,34 @@ export async function fetchAuthMe(
 
 type RawExchangeResponse = {
   token?: string
+  expires_at?: string
+  refresh_token?: string
+  refresh_expires_at?: string
   user?: RawAuthMe
   resource_ticket?: RawResourceTicket
+}
+
+function parseTokenResponse(raw: RawExchangeResponse): {
+  token: string
+  refreshToken?: string
+  expiresAt?: string
+  refreshExpiresAt?: string
+  ticket?: ResourceTicket
+} {
+  const token = raw.token?.trim() ?? ''
+  if (!token) {
+    throw new Error('Cloud server did not return a session token')
+  }
+  const refreshToken = raw.refresh_token?.trim() || undefined
+  const expiresAt = raw.expires_at?.trim() || undefined
+  const refreshExpiresAt = raw.refresh_expires_at?.trim() || undefined
+  return {
+    token,
+    ...(refreshToken ? { refreshToken } : {}),
+    ...(expiresAt ? { expiresAt } : {}),
+    ...(refreshExpiresAt ? { refreshExpiresAt } : {}),
+    ticket: extractResourceTicket(raw),
+  }
 }
 
 export async function exchangeOidcCode(
@@ -432,32 +463,65 @@ export async function exchangeOidcCode(
     signal,
   })
   const raw = await readAPIResponse<RawExchangeResponse>(response)
-  const token = raw.token?.trim() ?? ''
-  if (!token) {
-    throw new Error('Cloud server did not return a session token')
-  }
+  const parsed = parseTokenResponse(raw)
   const user = raw.user
     ? normalizeCloudUser(raw.user)
-    : (await fetchAuthMe(origin, { token, signal })).user
-  return {
-    token,
-    user,
-    ticket: extractResourceTicket(raw),
-  }
+    : (await fetchAuthMe(origin, { token: parsed.token, signal })).user
+  return { ...parsed, user }
 }
 
-export async function logoutCloudSession(baseUrl: string, token?: string): Promise<void> {
+export async function refreshCloudSession(
+  baseUrl: string,
+  options: { refreshToken?: string; signal?: AbortSignal; credentials?: RequestCredentials } = {},
+): Promise<AuthRefreshResult> {
+  const origin = normalizeBaseUrl(baseUrl)
+  if (!secureBackendConnection(origin)) {
+    throw new Error('Remote connections require HTTPS')
+  }
+  const refreshToken = options.refreshToken?.trim() ?? ''
+  const response = await backendFetch(`${origin}/v1/auth/refresh`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM,
+    },
+    body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
+    credentials: options.credentials ?? (refreshToken ? undefined : 'include'),
+    redirect: 'error',
+    signal: options.signal,
+  })
+  const raw = await readAPIResponse<RawExchangeResponse>(response)
+  const parsed = parseTokenResponse(raw)
+  const user = raw.user
+    ? normalizeCloudUser(raw.user)
+    : (await fetchAuthMe(origin, {
+        token: refreshToken ? parsed.token : undefined,
+        credentials: refreshToken ? undefined : (options.credentials ?? 'include'),
+        signal: options.signal,
+      })).user
+  return { ...parsed, user }
+}
+
+export async function logoutCloudSession(baseUrl: string, token?: string, refreshToken?: string): Promise<void> {
   const origin = normalizeBaseUrl(baseUrl)
   if (!secureBackendConnection(origin)) return
   const headers = new Headers({ [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM })
-  if (token?.trim()) {
-    headers.set('Authorization', `Bearer ${token.trim()}`)
+  const trimmedToken = token?.trim() ?? ''
+  const trimmedRefresh = refreshToken?.trim() ?? ''
+  if (trimmedToken) {
+    headers.set('Authorization', `Bearer ${trimmedToken}`)
+  }
+  let body: string | undefined
+  if (trimmedRefresh) {
+    headers.set('Content-Type', 'application/json')
+    body = JSON.stringify({ refresh_token: trimmedRefresh })
   }
   try {
     await backendFetch(`${origin}/v1/auth/logout`, {
       method: 'POST',
       headers,
-      credentials: !token?.trim() && typeof window !== 'undefined' ? 'include' : undefined,
+      body,
+      credentials: !trimmedToken && !trimmedRefresh && typeof window !== 'undefined' ? 'include' : undefined,
       redirect: 'error',
       signal: AbortSignal.timeout(3000),
     })

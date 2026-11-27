@@ -6,14 +6,26 @@ import type { ServerMode } from './serverTypes'
 
 export { ApiError } from '@/lib/api/response'
 
+export type SessionRefreshOutcome = 'refreshed' | 'unauthorized' | 'error' | 'unavailable'
+export type SessionRefresher = (params: {
+  origin: string
+  mode: 'cookie' | 'bearer'
+  refreshToken: string
+  signal: AbortSignal
+}) => Promise<SessionRefreshOutcome>
+
 const AUTH_KEY_PREFIX = 'jaz.backendAuth.'
 const authTokens = new Map<string, string>()
+const refreshTokens = new Map<string, string>()
+const refreshGenerations = new Map<string, number>()
 const resourceTickets = new Map<string, ResourceTicket>()
 let serverMode: ServerMode = 'local'
 let credentialRevision = 0
 const sessionListeners = new Set<() => void>()
 let sessionRequests = new AbortController()
 const rejectionListeners = new Set<() => void>()
+let sessionRefresher: SessionRefresher | null = null
+let inFlightRefresh: { origin: string; revision: number; promise: Promise<SessionRefreshOutcome> } | null = null
 // The port the local backend always runs on; a loopback host on this port is
 // "this machine", any other loopback port is a tunnel to a remote backend.
 export const DEFAULT_LOCAL_PORT = new URL(DEFAULT_API_BASE_URL).port
@@ -119,41 +131,104 @@ export function cachedApiAuthToken(url = apiBaseUrl()): string {
   return authTokens.get(authStorageKey(url)) ?? ''
 }
 
-export function restoreApiAuthToken(url: string): string {
+export function cachedApiRefreshToken(url = apiBaseUrl()): string {
+  return refreshTokens.get(authStorageKey(url)) ?? ''
+}
+
+export function apiRefreshGeneration(url = apiBaseUrl()): number {
+  return refreshGenerations.get(normalizeBaseUrl(url)) ?? 0
+}
+
+export function restoreApiCredential(url: string): { token: string; refreshToken?: string } {
   const stored = localStorage.getItem(authStorageKey(url))?.trim() ?? ''
   if (!stored) {
-    return ''
+    return { token: '' }
   }
   if (!stored.startsWith('enc:v1:') || !clientRuntime.decryptCredential) {
     throw new Error('Saved connection is not securely encrypted')
   }
-  return clientRuntime.decryptCredential(stored.slice(7))
+  const decrypted = clientRuntime.decryptCredential(stored.slice(7))
+  if (decrypted.startsWith('{"v":2,')) {
+    try {
+      const parsed = JSON.parse(decrypted) as { v?: unknown; token?: unknown; refreshToken?: unknown }
+      if (parsed.v === 2 && typeof parsed.token === 'string') {
+        const refreshToken = typeof parsed.refreshToken === 'string' && parsed.refreshToken.trim()
+          ? parsed.refreshToken.trim()
+          : undefined
+        return refreshToken ? { token: parsed.token, refreshToken } : { token: parsed.token }
+      }
+    } catch {
+      // Fall back to legacy plain token string.
+    }
+  }
+  return { token: decrypted }
+}
+
+export function restoreApiAuthToken(url: string): string {
+  return restoreApiCredential(url).token
 }
 
 export function rememberApiAuthToken(url: string, current: () => boolean): void {
   const token = cachedApiAuthToken(url)
+  const refreshToken = cachedApiRefreshToken(url)
   const revision = credentialRevision
   if (!token || !clientRuntime.encryptCredential || !current()) {
     throw new Error('Secure credential storage is unavailable')
   }
-  const ciphertext = clientRuntime.encryptCredential(token)
-  if (revision !== credentialRevision || token !== cachedApiAuthToken(url) || !current()) {
+  const payload = refreshToken ? JSON.stringify({ v: 2, token, refreshToken }) : token
+  const ciphertext = clientRuntime.encryptCredential(payload)
+  if (revision !== credentialRevision || token !== cachedApiAuthToken(url) || refreshToken !== cachedApiRefreshToken(url) || !current()) {
     throw new Error('Connection changed before it could be remembered')
   }
   localStorage.setItem(authStorageKey(url), 'enc:v1:' + ciphertext)
 }
 
-export function setApiAuthToken(url: string, token?: string | null, ticket?: ResourceTicket): void {
+export function setApiAuthToken(
+  url: string,
+  token?: string | null,
+  ticket?: ResourceTicket,
+  refreshToken?: string | null,
+): void {
   const key = authStorageKey(url)
+  const origin = normalizeBaseUrl(url)
   if (token) {
     authTokens.set(key, token)
+    if (refreshToken) {
+      refreshTokens.set(key, refreshToken)
+    } else if (refreshToken === null || refreshToken === '') {
+      refreshTokens.delete(key)
+    }
   } else {
     authTokens.delete(key)
+    refreshTokens.delete(key)
   }
+  refreshGenerations.delete(origin)
   setResourceTicket(url, ticket)
-  if (normalizeBaseUrl(url) === baseUrl) {
+  if (origin === baseUrl) {
     notifySessionChange()
   }
+}
+
+export function rotateApiSessionTokens(
+  url: string,
+  update: { token?: string; refreshToken?: string; ticket?: ResourceTicket },
+): void {
+  const key = authStorageKey(url)
+  const origin = normalizeBaseUrl(url)
+  if (update.token) {
+    authTokens.set(key, update.token)
+  }
+  if (update.refreshToken !== undefined) {
+    if (update.refreshToken) {
+      refreshTokens.set(key, update.refreshToken)
+    } else {
+      refreshTokens.delete(key)
+    }
+  }
+  if (update.ticket) {
+    setResourceTicket(origin, update.ticket)
+  }
+  refreshGenerations.set(origin, (refreshGenerations.get(origin) ?? 0) + 1)
 }
 
 export function apiServerMode(): ServerMode {
@@ -170,7 +245,10 @@ export function setApiServerMode(mode: ServerMode): void {
 
 export function clearApiSession(): void {
   authTokens.clear()
+  refreshTokens.clear()
+  refreshGenerations.clear()
   resourceTickets.clear()
+  inFlightRefresh = null
   serverMode = 'local'
   notifySessionChange()
 }
@@ -194,8 +272,75 @@ export function onApiAuthRejected(handler: () => void): () => void {
   return () => rejectionListeners.delete(handler)
 }
 
+export function setApiSessionRefresher(handler: SessionRefresher | null): void {
+  sessionRefresher = handler
+}
+
+function notifyAuthRejected(revision: number, origin: string): void {
+  if (revision !== credentialRevision || origin !== apiBaseUrl()) {
+    return
+  }
+  for (const handler of rejectionListeners) {
+    handler()
+  }
+}
+
+export function refreshActiveApiSession(
+  origin: string,
+  sentToken: string,
+  sentRefreshGen: number,
+  cookieAuthed: boolean,
+): Promise<SessionRefreshOutcome> {
+  const normalized = normalizeBaseUrl(origin)
+  const revision = credentialRevision
+  if (cookieAuthed) {
+    if (apiRefreshGeneration(normalized) > sentRefreshGen) {
+      return Promise.resolve('refreshed')
+    }
+  } else {
+    const currentToken = cachedApiAuthToken(normalized)
+    if (currentToken && currentToken !== sentToken) {
+      return Promise.resolve('refreshed')
+    }
+  }
+  if (!sessionRefresher) {
+    return Promise.resolve('unavailable')
+  }
+  const refreshToken = cookieAuthed ? '' : cachedApiRefreshToken(normalized)
+  if (!cookieAuthed && !refreshToken) {
+    return Promise.resolve('unavailable')
+  }
+  if (inFlightRefresh && inFlightRefresh.origin === normalized && inFlightRefresh.revision === revision) {
+    return inFlightRefresh.promise
+  }
+  const refresher = sessionRefresher
+  const flight: { origin: string; revision: number; promise: Promise<SessionRefreshOutcome> } = {
+    origin: normalized,
+    revision,
+    promise: Promise.resolve('unavailable'),
+  }
+  flight.promise = Promise.resolve()
+    .then(() =>
+      refresher({
+        origin: normalized,
+        mode: cookieAuthed ? 'cookie' : 'bearer',
+        refreshToken,
+        signal: sessionRequests.signal,
+      }),
+    )
+    .catch(() => 'error' as const)
+    .finally(() => {
+      if (inFlightRefresh === flight) {
+        inFlightRefresh = null
+      }
+    })
+  inFlightRefresh = flight
+  return flight.promise
+}
+
 function notifySessionChange(): void {
   credentialRevision += 1
+  inFlightRefresh = null
   sessionRequests.abort()
   sessionRequests = new AbortController()
   for (const handler of sessionListeners) {
@@ -234,26 +379,65 @@ function appendAuthQuery(rawUrl: string, url = apiBaseUrl()): string {
   return parsed.toString()
 }
 
+function isAuthLifecyclePath(targetUrl: string): boolean {
+  try {
+    const pathname = new URL(targetUrl).pathname
+    return pathname === '/v1/auth/refresh' || pathname === '/v1/auth/logout' || pathname === '/v1/auth/exchange'
+  } catch {
+    return false
+  }
+}
+
+function isReplayableBody(body: BodyInit | null | undefined): boolean {
+  return !(typeof ReadableStream !== 'undefined' && body instanceof ReadableStream)
+}
+
 export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): Promise<Response> {
   const targetUrl = resolveBackendUrl(path, url, 'apiFetch')
   const origin = normalizeBaseUrl(url)
   const signal = init?.signal ? AbortSignal.any([init.signal, sessionRequests.signal]) : sessionRequests.signal
   const revision = credentialRevision
+  const sentToken = cachedApiAuthToken(origin)
+  const sentRefreshGen = apiRefreshGeneration(origin)
   const options = withAPIHeaders({ ...init, signal }, origin)
   const bearer = new Headers(options.headers).get('Authorization')
-  const cookieAuthed = !bearer && !cachedApiAuthToken(origin) && options.credentials === 'include'
+  const usedSessionBearer = Boolean(sentToken) && bearer === `Bearer ${sentToken}`
+  const usedSessionCookie = !bearer && !sentToken && options.credentials === 'include'
+  const usedSessionAuth = usedSessionBearer || usedSessionCookie
+
   return backendFetch(targetUrl, options).then(async (response) => {
-    const authMatchesSession = bearer
-      ? bearer === `Bearer ${cachedApiAuthToken(origin)}`
-      : cookieAuthed
-    if ((response.status === 401 || response.status === 403) && authMatchesSession) {
-      const body = await response.clone().json().catch(() => null) as { code?: string } | null
-      if (revision === credentialRevision && origin === apiBaseUrl() && body?.code === 'unauthorized') {
-        for (const handler of rejectionListeners) {
-          handler()
+    if ((response.status !== 401 && response.status !== 403) || !usedSessionAuth) {
+      return response
+    }
+    const body = await response.clone().json().catch(() => null) as { code?: string } | null
+    if (revision !== credentialRevision || origin !== apiBaseUrl() || body?.code !== 'unauthorized') {
+      return response
+    }
+    if (response.status === 401 && isCloudApiSession() && !isAuthLifecyclePath(targetUrl)) {
+      const outcome = await refreshActiveApiSession(origin, sentToken, sentRefreshGen, usedSessionCookie)
+      if (outcome === 'refreshed') {
+        if (revision !== credentialRevision || origin !== apiBaseUrl() || init?.signal?.aborted) {
+          return response
         }
+        if (!isReplayableBody(init?.body)) {
+          return response
+        }
+        const retrySignal = init?.signal ? AbortSignal.any([init.signal, sessionRequests.signal]) : sessionRequests.signal
+        const retryOptions = withAPIHeaders({ ...init, signal: retrySignal }, origin)
+        const retryResponse = await backendFetch(targetUrl, retryOptions)
+        if (retryResponse.status === 401) {
+          const retryBody = await retryResponse.clone().json().catch(() => null) as { code?: string } | null
+          if (retryBody?.code === 'unauthorized') {
+            notifyAuthRejected(revision, origin)
+          }
+        }
+        return retryResponse
+      }
+      if (outcome === 'error') {
+        return response
       }
     }
+    notifyAuthRejected(revision, origin)
     return response
   })
 }

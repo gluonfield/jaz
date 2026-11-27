@@ -27,7 +27,7 @@ func (s *Service) PutACPProfileForWorkspace(ctx context.Context, workspaceID, ag
 	if active != workspaceID {
 		return nil, 0, ErrWorkspaceChanged
 	}
-	raw, status, err := s.client.doJSON(ctx, http.MethodPut, acc.BaseURL, "/v1/acp/profiles/"+url.PathEscape(agent), acc.Token, body)
+	raw, status, err := s.doAccountJSON(ctx, acc, http.MethodPut, "/v1/acp/profiles/"+url.PathEscape(agent), body)
 	if err == nil && status < 300 {
 		s.InvalidateModelsCache()
 	}

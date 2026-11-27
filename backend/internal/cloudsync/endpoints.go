@@ -38,7 +38,7 @@ func (s *Service) fetchCachedEndpoint(ctx context.Context, path string, ttl time
 	if ttl > 0 && len(cached.raw) > 0 && time.Since(cached.at) < ttl {
 		return cached.raw, nil
 	}
-	raw, _, err := s.client.doJSON(ctx, http.MethodGet, acc.BaseURL, path, acc.Token, nil)
+	raw, _, err := s.doAccountJSON(ctx, acc, http.MethodGet, path, nil)
 	if err != nil {
 		if len(cached.raw) > 0 && s.isGeneration(gen) {
 			return cached.raw, nil
@@ -67,7 +67,9 @@ func (s *Service) ListSpaces(ctx context.Context) ([]storage.CloudSpace, error) 
 		return []storage.CloudSpace{}, nil
 	}
 	if acc.Token != "" {
-		if remote, err := s.client.listSpaces(ctx, acc.BaseURL, acc.Token); err == nil {
+		if remote, err := withAccountRefresh(ctx, s, acc, func(token string) ([]storage.CloudSpace, error) {
+			return s.client.listSpaces(ctx, acc.BaseURL, token)
+		}); err == nil {
 			if s.isGeneration(gen) {
 				_ = s.store.ReplaceCloudSpaces(ctx, acc.ID, remote)
 			}
@@ -86,7 +88,9 @@ func (s *Service) CreateSpace(ctx context.Context, req CreateSpaceRequest) (stor
 	if !ok || acc.Token == "" {
 		return storage.CloudSpace{}, ErrNotConnected
 	}
-	created, err := s.client.createSpace(ctx, acc.BaseURL, acc.Token, req)
+	created, err := withAccountRefresh(ctx, s, acc, func(token string) (storage.CloudSpace, error) {
+		return s.client.createSpace(ctx, acc.BaseURL, token, req)
+	})
 	if err != nil {
 		return storage.CloudSpace{}, err
 	}
@@ -105,7 +109,7 @@ func (s *Service) PatchSpace(ctx context.Context, spaceID string, body json.RawM
 	if !ok || acc.Token == "" {
 		return nil, 0, ErrNotConnected
 	}
-	raw, status, err := s.client.doJSON(ctx, http.MethodPatch, acc.BaseURL, "/v1/spaces/"+url.PathEscape(spaceID), acc.Token, body)
+	raw, status, err := s.doAccountJSON(ctx, acc, http.MethodPatch, "/v1/spaces/"+url.PathEscape(spaceID), body)
 	if err != nil {
 		return nil, status, err
 	}
@@ -133,7 +137,7 @@ func (s *Service) DeleteSpace(ctx context.Context, spaceID string) (json.RawMess
 	if !ok || acc.Token == "" {
 		return nil, 0, ErrNotConnected
 	}
-	raw, status, err := s.client.doJSON(ctx, http.MethodDelete, acc.BaseURL, "/v1/spaces/"+url.PathEscape(spaceID), acc.Token, nil)
+	raw, status, err := s.doAccountJSON(ctx, acc, http.MethodDelete, "/v1/spaces/"+url.PathEscape(spaceID), nil)
 	if err != nil {
 		return nil, status, err
 	}
@@ -157,7 +161,9 @@ func (s *Service) OpenSpaceSourceContent(ctx context.Context, spaceID, sourceID 
 	if err != nil {
 		return nil, err
 	}
-	return s.client.openSpaceSourceContent(ctx, acc.BaseURL, acc.Token, spaceID, sourceID)
+	return s.doAccountHTTP(ctx, acc, func(token string) (*http.Response, error) {
+		return s.client.openSpaceSourceContent(ctx, acc.BaseURL, token, spaceID, sourceID)
+	})
 }
 
 func (s *Service) GetInstruction(ctx context.Context, scope, scopeID, kind string) (storage.CloudInstruction, error) {
@@ -169,7 +175,9 @@ func (s *Service) GetInstruction(ctx context.Context, scope, scopeID, kind strin
 }
 
 func (s *Service) getInstructionForAccount(ctx context.Context, acc storage.CloudAccount, gen uint64, scope, scopeID, kind string) (storage.CloudInstruction, error) {
-	doc, err := s.client.getInstruction(ctx, acc.BaseURL, acc.Token, scope, scopeID, kind)
+	doc, err := withAccountRefresh(ctx, s, acc, func(token string) (storage.CloudInstruction, error) {
+		return s.client.getInstruction(ctx, acc.BaseURL, token, scope, scopeID, kind)
+	})
 	if err != nil {
 		if cached, found, cacheErr := s.store.GetCloudInstruction(ctx, acc.ID, acc.OrgID, scope, scopeID, kind); cacheErr == nil && found {
 			return cached, nil
@@ -194,7 +202,9 @@ func (s *Service) SaveInstruction(ctx context.Context, scope, scopeID, kind, bod
 }
 
 func (s *Service) saveInstructionForAccount(ctx context.Context, acc storage.CloudAccount, gen uint64, scope, scopeID, kind, bodyMD, expectedVersion string) (storage.CloudInstruction, error) {
-	saved, err := s.client.saveInstruction(ctx, acc.BaseURL, acc.Token, scope, scopeID, kind, bodyMD, expectedVersion)
+	saved, err := withAccountRefresh(ctx, s, acc, func(token string) (storage.CloudInstruction, error) {
+		return s.client.saveInstruction(ctx, acc.BaseURL, token, scope, scopeID, kind, bodyMD, expectedVersion)
+	})
 	if err != nil {
 		return storage.CloudInstruction{}, err
 	}
@@ -220,5 +230,7 @@ func (s *Service) OpenRunFile(ctx context.Context, runID, relpath string) (*http
 	if err != nil {
 		return nil, err
 	}
-	return s.client.openRunFile(ctx, acc.BaseURL, acc.Token, runID, relpath)
+	return s.doAccountHTTP(ctx, acc, func(token string) (*http.Response, error) {
+		return s.client.openRunFile(ctx, acc.BaseURL, token, runID, relpath)
+	})
 }

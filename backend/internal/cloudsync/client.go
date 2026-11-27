@@ -306,14 +306,29 @@ func (r authMeResponse) toUser() CloudUser {
 }
 
 type exchangeResponse struct {
-	Token string         `json:"token"`
-	User  authMeResponse `json:"user"`
+	Token        string         `json:"token"`
+	RefreshToken string         `json:"refresh_token"`
+	User         authMeResponse `json:"user"`
 }
 
 func (c *cloudClient) exchangeOIDC(ctx context.Context, baseURL, code, verifier string) (exchangeResponse, error) {
 	raw, _, err := c.doJSON(ctx, http.MethodPost, baseURL, "/v1/auth/exchange", "", map[string]string{
 		"code":          code,
 		"code_verifier": verifier,
+	})
+	if err != nil {
+		return exchangeResponse{}, err
+	}
+	var out exchangeResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return exchangeResponse{}, err
+	}
+	return out, nil
+}
+
+func (c *cloudClient) refreshToken(ctx context.Context, baseURL, refreshToken string) (exchangeResponse, error) {
+	raw, _, err := c.doJSON(ctx, http.MethodPost, baseURL, "/v1/auth/refresh", "", map[string]string{
+		"refresh_token": refreshToken,
 	})
 	if err != nil {
 		return exchangeResponse{}, err
@@ -337,8 +352,12 @@ func (c *cloudClient) getMe(ctx context.Context, baseURL, token string) (CloudUs
 	return parsed.toUser(), nil
 }
 
-func (c *cloudClient) logout(ctx context.Context, baseURL, token string) error {
-	_, _, err := c.doJSON(ctx, http.MethodPost, baseURL, "/v1/auth/logout", token, nil)
+func (c *cloudClient) logout(ctx context.Context, baseURL, token, refreshToken string) error {
+	var body any
+	if refreshToken != "" {
+		body = map[string]string{"refresh_token": refreshToken}
+	}
+	_, _, err := c.doJSON(ctx, http.MethodPost, baseURL, "/v1/auth/logout", token, body)
 	return err
 }
 

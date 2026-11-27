@@ -43,6 +43,9 @@ type Service struct {
 
 	syncMu sync.Mutex
 	wake   chan struct{}
+
+	refreshMu      sync.Mutex
+	refreshFlights map[string]*refreshFlight
 }
 
 func New(store storage.CloudMirrorStore, logger *log.Logger) *Service {
@@ -57,6 +60,7 @@ func New(store storage.CloudMirrorStore, logger *log.Logger) *Service {
 		activeWorkspaceID: LocalWorkspaceID,
 		endpointCache:     map[string]cachedEndpoint{},
 		wake:              make(chan struct{}, 1),
+		refreshFlights:    map[string]*refreshFlight{},
 	}
 	ctx := context.Background()
 	if accounts, err := store.ListCloudAccounts(ctx); err == nil {
@@ -309,6 +313,7 @@ func (s *Service) Connect(ctx context.Context, req ConnectRequest) (Status, erro
 	}
 	code := strings.TrimSpace(req.Code)
 	token := strings.TrimSpace(req.Token)
+	refreshToken := strings.TrimSpace(req.RefreshToken)
 	if code == "" && token == "" {
 		return Status{}, errors.New("code or token is required")
 	}
@@ -332,6 +337,7 @@ func (s *Service) Connect(ctx context.Context, req ConnectRequest) (Status, erro
 			return Status{}, err
 		}
 		token = exch.Token
+		refreshToken = strings.TrimSpace(exch.RefreshToken)
 		user = exch.User.toUser()
 	}
 	me, err := s.client.getMe(ctx, baseURL, token)
@@ -365,6 +371,7 @@ func (s *Service) Connect(ctx context.Context, req ConnectRequest) (Status, erro
 		ID:               id,
 		BaseURL:          baseURL,
 		Token:            token,
+		RefreshToken:     refreshToken,
 		OIDCLoginURL:     oidcLoginURL,
 		UserID:           user.ID,
 		OrgID:            user.OrgID,
@@ -492,12 +499,12 @@ func (s *Service) Disconnect(ctx context.Context, workspaceID string) error {
 	s.mu.Unlock()
 	s.syncMu.Unlock()
 
-	if prev.BaseURL != "" && prev.Token != "" {
-		go func(baseURL, token string) {
+	if prev.BaseURL != "" && (prev.Token != "" || prev.RefreshToken != "") {
+		go func(baseURL, token, refreshToken string) {
 			logoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			_ = s.client.logout(logoutCtx, baseURL, token)
-		}(prev.BaseURL, prev.Token)
+			_ = s.client.logout(logoutCtx, baseURL, token, refreshToken)
+		}(prev.BaseURL, prev.Token, prev.RefreshToken)
 	}
 	if wasActive {
 		s.notifyAccountChanged(ctx)

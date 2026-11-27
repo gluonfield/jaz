@@ -165,7 +165,7 @@ export function PluginsSettings({
 
   const autoRefreshed = useRef(false)
   useEffect(() => {
-    if (autoRefreshed.current || !catalog.isSuccess) return
+    if (autoRefreshed.current || !catalog.isSuccess || !canManageOrgPlugins) return
     const staleBefore = Date.now() - 60_000
     const isStale =
       sources.length === 0 ||
@@ -177,7 +177,7 @@ export function PluginsSettings({
         queryClient.setQueryData(keys.plugins, updated)
       })
       .catch(() => undefined)
-  }, [catalog.isSuccess, queryClient, sources])
+  }, [canManageOrgPlugins, catalog.isSuccess, queryClient, sources])
 
   const filtered = useMemo(() => filterPlugins(allPlugins, query), [allPlugins, query])
 
@@ -294,18 +294,18 @@ export function PluginsSettings({
             placeholder="Search plugins"
             className="h-8 w-48 max-sm:w-full"
           />
-          <IconButton
-            variant="ghost"
-            size="sm"
-            aria-label="Refresh plugin catalogs"
-            title="Refresh plugin catalogs"
-            disabled={refresh.isPending}
-            onClick={() => refresh.mutate()}
-          >
-            <RefreshCw size={14} className={refresh.isPending ? 'animate-spin' : undefined} />
-          </IconButton>
           {canManageOrgPlugins ? (
             <>
+              <IconButton
+                variant="ghost"
+                size="sm"
+                aria-label="Refresh plugin catalogs"
+                title="Refresh plugin catalogs"
+                disabled={refresh.isPending}
+                onClick={() => refresh.mutate()}
+              >
+                <RefreshCw size={14} className={refresh.isPending ? 'animate-spin' : undefined} />
+              </IconButton>
               <IconButton
                 variant="ghost"
                 size="sm"

@@ -27,6 +27,7 @@ func TestCloudMirrorMultiWorkspaceIsolationAndUsage(t *testing.T) {
 		ID:               "org_a:usr_1@https://a.example.com",
 		BaseURL:          "https://a.example.com",
 		Token:            "secret-jwt-a",
+		RefreshToken:     "rt_secret_a",
 		OIDCLoginURL:     "/v1/auth/login",
 		UserID:           "usr_1",
 		OrgID:            "org_a",
@@ -72,7 +73,7 @@ func TestCloudMirrorMultiWorkspaceIsolationAndUsage(t *testing.T) {
 		t.Fatalf("ListCloudAccounts = %+v err=%v", accounts, err)
 	}
 	loadedA, ok, err := store.LoadCloudAccount(ctx, accA.ID)
-	if err != nil || !ok || loadedA.Token != accA.Token || loadedA.OrgName != "Alpha Org" {
+	if err != nil || !ok || loadedA.Token != accA.Token || loadedA.RefreshToken != accA.RefreshToken || loadedA.OrgName != "Alpha Org" {
 		t.Fatalf("LoadCloudAccount A: %+v ok=%v err=%v", loadedA, ok, err)
 	}
 

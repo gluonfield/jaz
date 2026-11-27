@@ -55,7 +55,7 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, authMe, authExchange, authLogout, cloudConfig, discovery, storedValues = [], sessionStoredValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
+async function fixture({ auth, authMe, authExchange, authRefresh, authLogout, cloudConfig, discovery, storedValues = [], sessionStoredValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
   const stored = new Map(storedValues)
   const sessionStored = new Map(sessionStoredValues)
   const configured = []
@@ -172,6 +172,11 @@ async function fixture({ auth, authMe, authExchange, authLogout, cloudConfig, di
     if (target.pathname === '/v1/auth/exchange' && authExchange) {
       return authExchange(init)
     }
+    if (target.pathname === '/v1/auth/refresh') {
+      return authRefresh
+        ? authRefresh(init)
+        : Response.json({ error: 'refresh_token is required', code: 'unauthorized' }, { status: 401 })
+    }
     if (target.pathname === '/v1/auth/me' && authMe) {
       return authMe(init)
     }
@@ -182,7 +187,7 @@ async function fixture({ auth, authMe, authExchange, authLogout, cloudConfig, di
       return auth(init)
     }
     if (feature) {
-      return feature(init)
+      return feature(init, target)
     }
     throw new Error(`Unexpected request ${url}`)
   })
@@ -191,9 +196,9 @@ async function fixture({ auth, authMe, authExchange, authLogout, cloudConfig, di
     ? { ...React, useSyncExternalStore: (_subscribe, snapshot) => snapshot(), useEffect: (effect) => effect() }
     : name === '@/lib/browserCredentials' ? {
       loadBrowserCredential: loadBrowserCredential || (async (url) => browserCredentials.get(url)),
-      saveBrowserCredential: saveBrowserCredential || (async (url, token, current) => {
+      saveBrowserCredential: saveBrowserCredential || (async (url, token, current, refreshToken) => {
         if (!current()) throw new Error('Connection changed')
-        browserCredentials.set(url, { token })
+        browserCredentials.set(url, refreshToken ? { token, refreshToken } : { token })
       }),
       forgetBrowserCredential: async (url) => browserCredentials.delete(url),
     }
@@ -1069,4 +1074,311 @@ test('hosted cloud web build (VITE_JAZ_LOCAL_ENABLED=false, empty cloudUrl) defa
   expect(mod.exports.clientRuntime.capabilities.localBackend).toBe(false)
   expect(mod.exports.clientRuntime.cloudUrl).toBe('https://jaz-cloud-staging.camadvanced.com')
   expect(mod.exports.clientRuntime.defaultApiBaseUrl()).toBe('https://jaz-cloud-staging.camadvanced.com')
+})
+
+test('concurrent Cloud 401s deduplicate into a single POST /v1/auth/refresh without replay revocation, rotate persisted tokens, and send refresh_token on logout', async () => {
+  const cloudUrl = 'https://jaz-cloud.example'
+  let activeToken = 'jwt_1'
+  let activeRefresh = 'rt_1'
+  const usedRefreshTokens = new Set()
+  let familyRevoked = false
+  let refreshHits = 0
+  let releaseRefresh
+  let refreshStarted
+  const refreshGate = new Promise((resolve) => {
+    releaseRefresh = resolve
+  })
+  const refreshEntered = new Promise((resolve) => {
+    refreshStarted = resolve
+  })
+  let releaseSlowOldRequest
+  const slowOldRequestGate = new Promise((resolve) => {
+    releaseSlowOldRequest = resolve
+  })
+  const logoutPayloads = []
+
+  const pendingState = 'state-refresh-1'
+  const pendingVerifier = 'verifier-refresh-1'
+  const f = await fixture({
+    web: true,
+    locationHref: `https://app.jaz.chat/#code=code-1&state=${pendingState}`,
+    sessionStoredValues: [[
+      'jaz.oidc.pending',
+      JSON.stringify({ server: cloudUrl, state: pendingState, codeVerifier: pendingVerifier, startedAt: Date.now() }),
+    ]],
+    discovery: () => Response.json({
+      ok: true,
+      mode: 'cloud',
+      auth: 'oidc',
+      oidc_login_url: '/v1/auth/login',
+    }),
+    authExchange: () => Response.json({
+      token: 'jwt_1',
+      expires_at: '2099-01-01T00:00:00Z',
+      refresh_token: 'rt_1',
+      refresh_expires_at: '2099-02-01T00:00:00Z',
+      user: { user_id: 'usr_1', org_id: 'org_1', email: 'u@cas.example', display_name: 'User', role: 'member' },
+      resource_ticket: { token: 'ticket_1', expires_at: '2099-01-01T00:00:00Z' },
+    }),
+    authRefresh: async (init) => {
+      refreshHits += 1
+      const body = JSON.parse(String(init?.body || '{}'))
+      if (familyRevoked || usedRefreshTokens.has(body.refresh_token) || body.refresh_token !== activeRefresh) {
+        familyRevoked = true
+        return Response.json({ error: 'refresh token revoked or reused', code: 'unauthorized' }, { status: 401 })
+      }
+      usedRefreshTokens.add(body.refresh_token)
+      refreshStarted()
+      await refreshGate
+      activeToken = 'jwt_2'
+      activeRefresh = 'rt_2'
+      return Response.json({
+        token: activeToken,
+        expires_at: '2099-01-02T00:00:00Z',
+        refresh_token: activeRefresh,
+        refresh_expires_at: '2099-02-02T00:00:00Z',
+        user: { user_id: 'usr_1', org_id: 'org_1', email: 'u@cas.example', display_name: 'User Rotated', role: 'admin' },
+        resource_ticket: { token: 'ticket_2', expires_at: '2099-01-02T00:00:00Z' },
+      })
+    },
+    authLogout: (init) => {
+      logoutPayloads.push({
+        auth: new Headers(init?.headers).get('Authorization'),
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      })
+      return Response.json({ ok: true })
+    },
+    feature: async (init, target) => {
+      const auth = new Headers(init?.headers).get('Authorization')
+      if (target.pathname === '/v1/slow-stale' && auth === 'Bearer jwt_1') {
+        await slowOldRequestGate
+        return Response.json({ error: 'invalid session token', code: 'unauthorized' }, { status: 401 })
+      }
+      if (auth !== `Bearer ${activeToken}`) {
+        return Response.json({ error: 'invalid session token', code: 'unauthorized' }, { status: 401 })
+      }
+      return Response.json({ ok: true, path: target.pathname, auth })
+    },
+  })
+
+  expect(f.connection.useConnection().status).toBe('connected')
+  expect(f.browserCredentials.get(cloudUrl)).toEqual({ token: 'jwt_1', refreshToken: 'rt_1' })
+
+  // Expire jwt_1 on server and launch 4 concurrent requests + 1 slow request that arrives AFTER refresh completes.
+  activeToken = 'expired-on-server'
+  const slowStale = f.connection.apiFetch('/v1/slow-stale')
+  const concurrent = Promise.all([
+    f.connection.apiFetch('/v1/a'),
+    f.connection.apiFetch('/v1/b'),
+    f.connection.apiFetch('/v1/c'),
+    f.connection.apiFetch('/v1/d'),
+  ])
+
+  await refreshEntered
+  releaseRefresh()
+  const results = await concurrent
+  expect(refreshHits).toBe(1)
+  expect(familyRevoked).toBe(false)
+  for (const res of results) {
+    expect(res.ok).toBe(true)
+    expect((await res.json()).auth).toBe('Bearer jwt_2')
+  }
+
+  // Now release the late-arriving 401 that was sent with jwt_1 before refresh started: must NOT trigger a 2nd refresh!
+  releaseSlowOldRequest()
+  const slowRes = await slowStale
+  expect(slowRes.ok).toBe(true)
+  expect((await slowRes.json()).auth).toBe('Bearer jwt_2')
+  expect(refreshHits).toBe(1)
+  expect(familyRevoked).toBe(false)
+
+  await settle()
+  expect(f.connection.cachedApiAuthToken(cloudUrl)).toBe('jwt_2')
+  expect(f.connection.cachedApiRefreshToken(cloudUrl)).toBe('rt_2')
+  expect(f.connection.useConnection().user).toMatchObject({ display_name: 'User Rotated', role: 'admin' })
+  expect(f.connection.apiEmbeddedGetUrl('/v1/runs/r1/files/x.txt')).toContain('ticket=ticket_2')
+  expect(f.browserCredentials.get(cloudUrl)).toEqual({ token: 'jwt_2', refreshToken: 'rt_2' })
+
+  f.connection.disconnectBackend()
+  await settle()
+  expect(logoutPayloads).toEqual([{ auth: 'Bearer jwt_2', body: { refresh_token: 'rt_2' } }])
+})
+
+test('hosted Web cookie mode refreshes seamlessly on startup and deduplicates concurrent 401s while staying on cookies', async () => {
+  const origin = 'https://jaz-cloud-staging.camadvanced.com'
+  let sessionCookieValid = false
+  let refreshCookieValid = true
+  let refreshHits = 0
+  let releaseRefresh
+  let onRefreshStarted
+  let refreshGate = null
+
+  const f = await fixture({
+    web: true,
+    locationHref: `${origin}/`,
+    cloudConfig: () => Response.json({ cloud_url: origin, local_enabled: false }),
+    discovery: () => Response.json({
+      ok: true,
+      mode: 'cloud',
+      auth: 'oidc',
+      oidc_login_url: '/v1/auth/login',
+    }),
+    authMe: (init) => {
+      if (init?.credentials !== 'include' || !sessionCookieValid) {
+        return Response.json({ error: 'invalid session token', code: 'unauthorized' }, { status: 401 })
+      }
+      return Response.json({
+        user_id: 'usr_cookie',
+        org_id: 'org_cas',
+        email: 'cookie@cas.example',
+        display_name: 'Cookie User',
+        role: 'member',
+        resource_ticket: { token: 'rt_me', expires_at: '2099-01-01T00:00:00Z' },
+      })
+    },
+    authRefresh: async (init) => {
+      refreshHits += 1
+      expect(init?.credentials).toBe('include')
+      expect(JSON.parse(String(init?.body || '{}'))).toEqual({})
+      if (!refreshCookieValid) {
+        return Response.json({ error: 'refresh token revoked', code: 'unauthorized' }, { status: 401 })
+      }
+      if (refreshGate) {
+        onRefreshStarted?.()
+        await refreshGate
+      }
+      sessionCookieValid = true
+      return Response.json({
+        token: 'cookie-jwt-unused-in-js',
+        refresh_token: 'rt_cookie_unused_in_js',
+        user: { user_id: 'usr_cookie', org_id: 'org_cas', email: 'cookie@cas.example', display_name: 'Cookie User', role: 'member' },
+        resource_ticket: { token: `rt_cookie_${refreshHits}`, expires_at: '2099-01-01T00:00:00Z' },
+      })
+    },
+    feature: (init) => {
+      expect(init?.credentials).toBe('include')
+      expect(new Headers(init?.headers).get('Authorization')).toBeNull()
+      if (!sessionCookieValid) {
+        return Response.json({ error: 'invalid session token', code: 'unauthorized' }, { status: 401 })
+      }
+      return Response.json({ ok: true })
+    },
+  })
+
+  // Startup recovered from expired 24h session cookie using the 30d refresh cookie without switching to bearer auth.
+  expect(refreshHits).toBe(1)
+  expect(f.connection.useConnection()).toMatchObject({ status: 'connected', url: origin, mode: 'cloud', auth: 'oidc' })
+  expect(f.connection.cachedApiAuthToken(origin)).toBe('')
+  expect(f.connection.apiEmbeddedGetUrl('/v1/runs/r1/files/a.txt')).toContain('ticket=rt_cookie_1')
+
+  // Expire session cookie mid-session and fire 4 concurrent requests -> exactly 1 refresh call.
+  sessionCookieValid = false
+  const started = new Promise((resolve) => { onRefreshStarted = resolve })
+  refreshGate = new Promise((resolve) => { releaseRefresh = resolve })
+  const batch = Promise.all([
+    f.connection.apiFetch('/v1/t1'),
+    f.connection.apiFetch('/v1/t2'),
+    f.connection.apiFetch('/v1/t3'),
+    f.connection.apiFetch('/v1/t4'),
+  ])
+  await started
+  releaseRefresh()
+  const responses = await batch
+  expect(refreshHits).toBe(2)
+  expect(responses.every((r) => r.ok)).toBe(true)
+  expect(f.connection.cachedApiAuthToken(origin)).toBe('')
+  expect(f.connection.apiEmbeddedGetUrl('/v1/runs/r1/files/a.txt')).toContain('ticket=rt_cookie_2')
+})
+
+test('transient 503 refresh error preserves Cloud session while 401 refresh failure cleanly logs out and forgets dead credentials', async () => {
+  const cloudUrl = 'https://jaz-cloud.example'
+  let refreshStatus = 503
+  let refreshHits = 0
+  const pendingState = 'state-err-1'
+
+  const f = await fixture({
+    web: true,
+    locationHref: `https://app.jaz.chat/#code=code-err&state=${pendingState}`,
+    sessionStoredValues: [[
+      'jaz.oidc.pending',
+      JSON.stringify({ server: cloudUrl, state: pendingState, codeVerifier: 'ver-err-1', startedAt: Date.now() }),
+    ]],
+    discovery: () => Response.json({ ok: true, mode: 'cloud', auth: 'oidc', oidc_login_url: '/v1/auth/login' }),
+    authExchange: () => Response.json({
+      token: 'jwt_initial',
+      refresh_token: 'rt_initial',
+      user: { user_id: 'usr_1', org_id: 'org_1', email: 'u@cas.example', display_name: 'User', role: 'member' },
+    }),
+    authRefresh: () => {
+      refreshHits += 1
+      if (refreshStatus === 503) {
+        return Response.json({ error: 'temporarily unavailable' }, { status: 503 })
+      }
+      return Response.json({ error: 'refresh token revoked', code: 'unauthorized' }, { status: 401 })
+    },
+    feature: () => Response.json({ error: 'invalid session token', code: 'unauthorized' }, { status: 401 }),
+  })
+
+  expect(f.connection.useConnection().status).toBe('connected')
+
+  // 503 on /v1/auth/refresh must NOT log the user out or erase the refresh token.
+  const transient = await f.connection.apiFetch('/v1/threads')
+  expect(transient.status).toBe(401)
+  expect(refreshHits).toBe(1)
+  expect(f.connection.useConnection().status).toBe('connected')
+  expect(f.connection.cachedApiRefreshToken(cloudUrl)).toBe('rt_initial')
+  expect(f.browserCredentials.has(cloudUrl)).toBe(true)
+
+  // 401 on /v1/auth/refresh must cleanly log out, clear tokens, forget dead browser credential, and preserve OIDC metadata.
+  refreshStatus = 401
+  const expired = await f.connection.apiFetch('/v1/threads')
+  expect(expired.status).toBe(401)
+  await settle()
+  expect(refreshHits).toBe(2)
+  expect(f.connection.useConnection()).toMatchObject({
+    status: 'disconnected',
+    mode: 'cloud',
+    auth: 'oidc',
+    oidcLoginUrl: '/v1/auth/login',
+    error: 'Session expired. Sign in again.',
+    user: null,
+  })
+  expect(f.connection.cachedApiAuthToken(cloudUrl)).toBe('')
+  expect(f.connection.cachedApiRefreshToken(cloudUrl)).toBe('')
+  expect(f.browserCredentials.has(cloudUrl)).toBe(false)
+})
+
+test('browser restore transparently refreshes an expired saved Cloud access token using its saved refresh token', async () => {
+  const cloudUrl = 'https://jaz-cloud.example'
+  const browserCredentials = new Map([[cloudUrl, { token: 'jwt_old', refreshToken: 'rt_saved_1' }]])
+  let refreshHits = 0
+
+  const f = await fixture({
+    web: true,
+    browserCredentials,
+    storedValues: [['jaz.connection', JSON.stringify({ mode: 'remote', remoteUrl: cloudUrl })]],
+    discovery: () => Response.json({ ok: true, mode: 'cloud', auth: 'oidc', oidc_login_url: '/v1/auth/login' }),
+    authMe: (init) => {
+      if (new Headers(init?.headers).get('Authorization') === 'Bearer jwt_fresh') {
+        return Response.json({ user_id: 'usr_1', org_id: 'org_1', email: 'u@cas.example', display_name: 'User', role: 'member' })
+      }
+      return Response.json({ error: 'token expired', code: 'unauthorized' }, { status: 401 })
+    },
+    authRefresh: (init) => {
+      refreshHits += 1
+      expect(JSON.parse(String(init?.body || '{}'))).toEqual({ refresh_token: 'rt_saved_1' })
+      return Response.json({
+        token: 'jwt_fresh',
+        refresh_token: 'rt_saved_2',
+        user: { user_id: 'usr_1', org_id: 'org_1', email: 'u@cas.example', display_name: 'User', role: 'member' },
+        resource_ticket: { token: 'rt_restored', expires_at: '2099-01-01T00:00:00Z' },
+      })
+    },
+  })
+
+  expect(refreshHits).toBe(1)
+  expect(f.connection.useConnection()).toMatchObject({ status: 'connected', url: cloudUrl, mode: 'cloud', auth: 'oidc' })
+  expect(f.connection.cachedApiAuthToken(cloudUrl)).toBe('jwt_fresh')
+  expect(f.connection.cachedApiRefreshToken(cloudUrl)).toBe('rt_saved_2')
+  expect(browserCredentials.get(cloudUrl)).toEqual({ token: 'jwt_fresh', refreshToken: 'rt_saved_2' })
 })

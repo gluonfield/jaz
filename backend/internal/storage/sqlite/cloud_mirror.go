@@ -51,14 +51,45 @@ func (s *Store) LoadCloudAccount(ctx context.Context, id string) (storage.CloudA
 	return acc, true, nil
 }
 
+type cloudAccountSecretEnvelope struct {
+	V            int    `json:"v"`
+	Token        string `json:"token"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+}
+
+func encodeCloudAccountSecret(token, refreshToken string) string {
+	if refreshToken == "" {
+		return token
+	}
+	raw, err := json.Marshal(cloudAccountSecretEnvelope{
+		V:            2,
+		Token:        token,
+		RefreshToken: refreshToken,
+	})
+	if err != nil {
+		return token
+	}
+	return string(raw)
+}
+
+func decodeCloudAccountSecret(raw string) (string, string) {
+	if strings.HasPrefix(raw, "{") {
+		var env cloudAccountSecretEnvelope
+		if json.Unmarshal([]byte(raw), &env) == nil && env.V == 2 {
+			return env.Token, env.RefreshToken
+		}
+	}
+	return raw, ""
+}
+
 func (s *Store) cloudAccountFromRow(row cloudmirror.CloudAccount) (storage.CloudAccount, error) {
-	var token string
+	var token, refreshToken string
 	if row.TokenEncrypted != "" {
 		raw, err := s.decryptSecret(cloudAccountSecretID, row.TokenEncrypted)
 		if err != nil {
 			return storage.CloudAccount{}, err
 		}
-		token = string(raw)
+		token, refreshToken = decodeCloudAccountSecret(string(raw))
 	}
 	caps := json.RawMessage(row.CapabilitiesJson)
 	if len(caps) == 0 {
@@ -68,6 +99,7 @@ func (s *Store) cloudAccountFromRow(row cloudmirror.CloudAccount) (storage.Cloud
 		ID:               row.ID,
 		BaseURL:          row.BaseUrl,
 		Token:            token,
+		RefreshToken:     refreshToken,
 		OIDCLoginURL:     row.OidcLoginUrl,
 		UserID:           row.UserID,
 		OrgID:            row.OrgID,
@@ -84,9 +116,10 @@ func (s *Store) cloudAccountFromRow(row cloudmirror.CloudAccount) (storage.Cloud
 
 func (s *Store) SaveCloudAccount(ctx context.Context, account storage.CloudAccount) error {
 	var encrypted string
-	if account.Token != "" {
+	if account.Token != "" || account.RefreshToken != "" {
 		var err error
-		encrypted, err = s.encryptSecret(cloudAccountSecretID, []byte(account.Token))
+		payload := encodeCloudAccountSecret(account.Token, account.RefreshToken)
+		encrypted, err = s.encryptSecret(cloudAccountSecretID, []byte(payload))
 		if err != nil {
 			return err
 		}

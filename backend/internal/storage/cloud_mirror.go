@@ -11,6 +11,7 @@ type CloudAccount struct {
 	ID               string
 	BaseURL          string
 	Token            string
+	RefreshToken     string
 	OIDCLoginURL     string
 	UserID           string
 	OrgID            string

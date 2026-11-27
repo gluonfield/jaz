@@ -61,12 +61,18 @@ func (s *Service) SyncNow(ctx context.Context) (Status, error) {
 		s.mu.Unlock()
 	}()
 
-	me, err := s.client.getMe(syncCtx, acc.BaseURL, acc.Token)
+	me, err := withAccountRefresh(syncCtx, s, acc, func(token string) (CloudUser, error) {
+		return s.client.getMe(syncCtx, acc.BaseURL, token)
+	})
 	if err != nil {
 		if s.isGeneration(gen) {
 			s.recordSyncError(syncCtx, gen, acc.ID, acc.LastSyncAt, err.Error())
 		}
 		return s.Status(ctx), err
+	}
+	if latest, ok := s.currentAccountToken(acc.ID); ok && latest.Token != "" {
+		acc.Token = latest.Token
+		acc.RefreshToken = latest.RefreshToken
 	}
 	acc.OrgID = me.OrgID
 	acc.OrgName = me.OrgName
@@ -85,11 +91,15 @@ func (s *Service) SyncNow(ctx context.Context) (Status, error) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		spaces, spErr = s.client.listSpaces(syncCtx, acc.BaseURL, acc.Token)
+		spaces, spErr = withAccountRefresh(syncCtx, s, acc, func(token string) ([]storage.CloudSpace, error) {
+			return s.client.listSpaces(syncCtx, acc.BaseURL, token)
+		})
 	}()
 	go func() {
 		defer wg.Done()
-		threads, thErr = s.client.listThreads(syncCtx, acc.BaseURL, acc.Token)
+		threads, thErr = withAccountRefresh(syncCtx, s, acc, func(token string) ([]storage.CloudThread, error) {
+			return s.client.listThreads(syncCtx, acc.BaseURL, token)
+		})
 	}()
 	wg.Wait()
 	if spErr != nil {
@@ -133,6 +143,10 @@ func (s *Service) SyncNow(ctx context.Context) (Status, error) {
 	if !s.isGeneration(gen) {
 		return s.Status(ctx), context.Canceled
 	}
+	if latest, ok := s.currentAccountToken(acc.ID); ok {
+		acc.Token = latest.Token
+		acc.RefreshToken = latest.RefreshToken
+	}
 	acc.LastSyncAt = time.Now().UTC()
 	acc.LastError = ""
 	if err := s.store.SaveCloudAccount(syncCtx, acc); err != nil {
@@ -140,6 +154,10 @@ func (s *Service) SyncNow(ctx context.Context) (Status, error) {
 	}
 	s.mu.Lock()
 	if s.accountGen == gen {
+		if latest, ok := s.accounts[acc.ID]; ok {
+			acc.Token = latest.Token
+			acc.RefreshToken = latest.RefreshToken
+		}
 		s.accounts[acc.ID] = acc
 	}
 	s.mu.Unlock()
@@ -187,7 +205,9 @@ func (s *Service) syncInstructions(ctx context.Context, gen uint64, acc storage.
 			case <-ctx.Done():
 				return
 			}
-			doc, err := s.client.getInstruction(ctx, acc.BaseURL, acc.Token, t.scope, t.scopeID, t.kind)
+			doc, err := withAccountRefresh(ctx, s, acc, func(token string) (storage.CloudInstruction, error) {
+				return s.client.getInstruction(ctx, acc.BaseURL, token, t.scope, t.scopeID, t.kind)
+			})
 			if err != nil || !s.isGeneration(gen) {
 				return
 			}
@@ -206,7 +226,9 @@ func (s *Service) syncUsageEvents(ctx context.Context, gen uint64, acc storage.C
 		return
 	}
 	for range 10 {
-		events, err := s.client.listUsageEvents(ctx, acc.BaseURL, acc.Token, afterID, 500)
+		events, err := withAccountRefresh(ctx, s, acc, func(token string) ([]storage.CloudUsageEvent, error) {
+			return s.client.listUsageEvents(ctx, acc.BaseURL, token, afterID, 500)
+		})
 		if err != nil || len(events) == 0 || !s.isGeneration(gen) {
 			return
 		}
@@ -231,7 +253,7 @@ func (s *Service) refreshCachedEndpoints(ctx context.Context, gen uint64, acc st
 	for _, path := range paths {
 		go func(p string) {
 			defer wg.Done()
-			if raw, _, err := s.client.doJSON(ctx, http.MethodGet, acc.BaseURL, p, acc.Token, nil); err == nil {
+			if raw, _, err := s.doAccountJSON(ctx, acc, http.MethodGet, p, nil); err == nil {
 				s.storeEndpointCache(gen, p, raw)
 			}
 		}(path)

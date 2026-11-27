@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 const (
@@ -66,7 +68,37 @@ func cloudSessionRejected(w http.ResponseWriter, resp *http.Response) bool {
 	return true
 }
 
-func (s *Service) prepareProxyRequest(w http.ResponseWriter, r *http.Request, sse bool) (*http.Request, bool) {
+type preparedProxy struct {
+	acc    storage.CloudAccount
+	target string
+	raw    []byte
+	sse    bool
+}
+
+func (p preparedProxy) buildRequest(r *http.Request, token string) (*http.Request, error) {
+	var body io.Reader
+	if len(p.raw) > 0 {
+		body = bytes.NewReader(p.raw)
+	}
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, p.target, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	if p.sse {
+		req.Header.Set("Accept", "text/event-stream")
+	} else {
+		if ct := strings.TrimSpace(r.Header.Get("Content-Type")); ct != "" {
+			req.Header.Set("Content-Type", ct)
+		}
+		if accHdr := strings.TrimSpace(r.Header.Get("Accept")); accHdr != "" {
+			req.Header.Set("Accept", accHdr)
+		}
+	}
+	return req, nil
+}
+
+func (s *Service) prepareProxy(w http.ResponseWriter, r *http.Request, sse bool) (*preparedProxy, bool) {
 	if s.ActiveWorkspaceID() == LocalWorkspaceID {
 		return nil, false
 	}
@@ -84,9 +116,9 @@ func (s *Service) prepareProxyRequest(w http.ResponseWriter, r *http.Request, ss
 	if q := sanitizeProxyQuery(r.URL.RawQuery); q != "" {
 		target += "?" + q
 	}
-	var body io.Reader
+	var raw []byte
 	if !sse && r.Body != nil && (r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodDelete) {
-		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxProxyRequestBytes))
+		raw, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxProxyRequestBytes))
 		if err != nil {
 			var maxErr *http.MaxBytesError
 			if errors.As(err, &maxErr) {
@@ -96,40 +128,27 @@ func (s *Service) prepareProxyRequest(w http.ResponseWriter, r *http.Request, ss
 			}
 			return nil, true
 		}
-		if len(raw) > 0 {
-			body = bytes.NewReader(raw)
-		}
 	}
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, target, body)
-	if err != nil {
-		writeProxyJSONError(w, http.StatusBadRequest, "failed to construct upstream request")
-		return nil, true
-	}
-	req.Header.Set("Authorization", "Bearer "+acc.Token)
-	if sse {
-		req.Header.Set("Accept", "text/event-stream")
-	} else {
-		if ct := strings.TrimSpace(r.Header.Get("Content-Type")); ct != "" {
-			req.Header.Set("Content-Type", ct)
-		}
-		if accHdr := strings.TrimSpace(r.Header.Get("Accept")); accHdr != "" {
-			req.Header.Set("Accept", accHdr)
-		}
-	}
-	return req, true
+	return &preparedProxy{acc: acc, target: target, raw: raw, sse: sse}, true
 }
 
 // ProxyActiveWorkspace transparently forwards a request to the active Cloud
 // workspace when one is selected, returning false immediately for Local mode.
 func (s *Service) ProxyActiveWorkspace(w http.ResponseWriter, r *http.Request) bool {
-	req, handled := s.prepareProxyRequest(w, r, false)
+	prepared, handled := s.prepareProxy(w, r, false)
 	if !handled {
 		return false
 	}
-	if req == nil {
+	if prepared == nil {
 		return true
 	}
-	resp, err := s.client.http.Do(req)
+	resp, err := s.doAccountHTTP(r.Context(), prepared.acc, func(token string) (*http.Response, error) {
+		req, err := prepared.buildRequest(r, token)
+		if err != nil {
+			return nil, err
+		}
+		return s.client.http.Do(req)
+	})
 	if err != nil {
 		writeProxyJSONError(w, http.StatusBadGateway, "cloud request failed")
 		return true
@@ -144,7 +163,7 @@ func (s *Service) ProxyActiveWorkspace(w http.ResponseWriter, r *http.Request) b
 			w.Header().Set(hdr, v)
 		}
 	}
-	if isWidgetContentPath(req.URL.Path) {
+	if isWidgetContentPath(r.URL.Path) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -161,14 +180,20 @@ func (s *Service) ProxyActiveWorkspace(w http.ResponseWriter, r *http.Request) b
 // ProxyActiveWorkspaceSSE streams an SSE endpoint from the active Cloud
 // workspace, returning false immediately for Local mode.
 func (s *Service) ProxyActiveWorkspaceSSE(w http.ResponseWriter, r *http.Request) bool {
-	req, handled := s.prepareProxyRequest(w, r, true)
+	prepared, handled := s.prepareProxy(w, r, true)
 	if !handled {
 		return false
 	}
-	if req == nil {
+	if prepared == nil {
 		return true
 	}
-	resp, err := s.client.stream.Do(req)
+	resp, err := s.doAccountHTTP(r.Context(), prepared.acc, func(token string) (*http.Response, error) {
+		req, err := prepared.buildRequest(r, token)
+		if err != nil {
+			return nil, err
+		}
+		return s.client.stream.Do(req)
+	})
 	if err != nil {
 		writeProxyJSONError(w, http.StatusBadGateway, "cloud event stream failed")
 		return true
