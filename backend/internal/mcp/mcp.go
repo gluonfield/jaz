@@ -16,14 +16,12 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/modelcontextprotocol/go-sdk/auth"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/oauthbroker"
 	"github.com/wins/jaz/backend/internal/tools"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
-	"golang.org/x/oauth2"
 )
 
 const (
@@ -201,10 +199,9 @@ func NewManager(store mcpconfig.ServerReader, tokens tokenStore, registry *tools
 }
 
 // backgroundHandler builds a non-interactive OAuth handler that serves stored
-// tokens (refreshing them when possible) but never opens a browser. Returns nil
-// when no token store is configured or the server uses a bearer token.
+// tokens (refreshing them when possible) but never opens a browser.
 func (m *Manager) backgroundHandler(server mcpconfig.Server) *oauthHandler {
-	if m.tokens == nil || server.UsesBearer() || server.Transport == mcpconfig.TransportStdio || server.Transport == mcpconfig.TransportSSE {
+	if m.tokens == nil || server.UsesManualAuthorization() || server.Transport == mcpconfig.TransportStdio || server.Transport == mcpconfig.TransportSSE {
 		return nil
 	}
 	return newOAuthHandler(server, m.tokens, http.DefaultClient, &m.oauthGuard)
@@ -228,7 +225,7 @@ func (m *Manager) RefreshServer(ctx context.Context, id string) mcpconfig.Server
 	if err := m.refresh(ctx, func(server mcpconfig.Server) bool {
 		return server.ID == id
 	}); err != nil {
-		return connectErrorStatus(nil, err)
+		return connectErrorStatus(err)
 	}
 	return m.Status(id)
 }
@@ -316,7 +313,9 @@ func (m *Manager) refreshServerList(ctx context.Context, servers []mcpconfig.Ser
 				preserved.tools = slices.Clone(previous.tools)
 				results[i].session = &preserved
 			}
-			results[i].status = m.Status(server.ID)
+			m.mu.RLock()
+			results[i].status = m.statuses[server.ID]
+			m.mu.RUnlock()
 			continue
 		}
 		wg.Add(1)
@@ -326,19 +325,14 @@ func (m *Manager) refreshServerList(ctx context.Context, servers []mcpconfig.Ser
 			defer cancel()
 			key, err := m.connectionKey(sessionCtx, server)
 			if err != nil {
-				results[index].status = connectErrorStatus(nil, err)
+				results[index].status = connectErrorStatus(err)
 				return
 			}
-			if previous := old[server.ID]; previous != nil && previous.key == key {
-				if updated, err := previous.loadCatalog(sessionCtx, server); err == nil {
-					updated.key = key
-					results[index].session = updated
-					results[index].status = connectedStatus(updated.tools)
-					return
-				}
+			previous := old[server.ID]
+			if previous != nil && previous.key != key {
+				previous = nil
 			}
-			handler := m.backgroundHandler(server)
-			result, err := m.connectForStatus(sessionCtx, server, handler)
+			result, err := m.connectForStatus(sessionCtx, server, previous)
 			if result.session != nil {
 				result.session.key = key
 			}
@@ -448,7 +442,11 @@ func closeSession(ss *serverSession) {
 func (m *Manager) Status(id string) mcpconfig.ServerStatus {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.statuses[id]
+	status := m.statuses[id]
+	if ss := m.sessions[id]; status.Status == "connected" && ss != nil && ss.oauth != nil && ss.oauth.needsAuthorization() {
+		status.Status, status.Error = "needs_auth", signInRequired
+	}
+	return status
 }
 
 func (m *Manager) setServerStatus(id string, status mcpconfig.ServerStatus) {
@@ -468,8 +466,7 @@ func (m *Manager) Test(ctx context.Context, server mcpconfig.Server) mcpconfig.S
 	}
 	sessionCtx, cancel := context.WithTimeout(ctx, remoteStatusTimeout)
 	defer cancel()
-	handler := m.backgroundHandler(server)
-	result, err := m.connectForStatus(sessionCtx, server, handler)
+	result, err := m.connectForStatus(sessionCtx, server, nil)
 	if err != nil {
 		return result.status
 	}
@@ -479,23 +476,21 @@ func (m *Manager) Test(ctx context.Context, server mcpconfig.Server) mcpconfig.S
 	return result.status
 }
 
-// asOAuthHandler converts a possibly-nil *oauthHandler to the interface without
-// producing a non-nil interface wrapping a nil pointer.
-func asOAuthHandler(h *oauthHandler) auth.OAuthHandler {
-	if h == nil {
-		return nil
+func (m *Manager) connectForStatus(ctx context.Context, server mcpconfig.Server, previous *serverSession) (connectResult, error) {
+	var ss *serverSession
+	if previous != nil {
+		ss, _ = previous.loadCatalog(ctx, server)
 	}
-	return h
-}
-
-func (m *Manager) connectForStatus(ctx context.Context, server mcpconfig.Server, handler *oauthHandler) (connectResult, error) {
-	ss, err := m.connect(ctx, server, asOAuthHandler(handler))
-	if err != nil {
-		return connectResult{status: connectErrorStatus(handler, err)}, err
+	if ss == nil {
+		var err error
+		ss, err = m.connect(ctx, server, m.backgroundHandler(server))
+		if err != nil {
+			return connectResult{status: connectErrorStatus(err)}, err
+		}
 	}
-	if status, ok := oauthGateStatus(ctx, server, handler, ss.tools); ok {
+	if err := ss.checkOAuth(ctx, server); err != nil {
 		closeSession(ss)
-		return connectResult{status: status}, nil
+		return connectResult{status: statusWithTools(connectErrorStatus(err), ss.tools)}, nil
 	}
 	return connectResult{session: ss, status: connectedStatus(ss.tools)}, nil
 }
@@ -533,33 +528,15 @@ func serverToolViews(items []remoteTool) []mcpconfig.ServerTool {
 	return out
 }
 
-func connectErrorStatus(handler *oauthHandler, err error) mcpconfig.ServerStatus {
-	var rejected *oauth2.RetrieveError
-	if (handler != nil && handler.needsAuthorization()) || (errors.As(err, &rejected) && rejected.ErrorCode == "invalid_grant") {
-		return mcpconfig.ServerStatus{Status: "needs_auth", Error: "Sign in required", CheckedAt: time.Now().UTC()}
+func connectErrorStatus(err error) mcpconfig.ServerStatus {
+	if errors.Is(err, errNeedsAuthorization) || isRejectedGrant(err) {
+		return mcpconfig.ServerStatus{Status: "needs_auth", Error: signInRequired, CheckedAt: time.Now().UTC()}
 	}
 	var refresh *integrationoauth.RefreshError
 	return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC(), Retryable: !errors.As(err, &refresh)}
 }
 
-func oauthGateStatus(ctx context.Context, server mcpconfig.Server, handler *oauthHandler, items []remoteTool) (mcpconfig.ServerStatus, bool) {
-	if server.UsesBearer() || (strings.TrimSpace(server.OAuth.ClientID) == "" && strings.TrimSpace(server.OAuth.Issuer) == "") {
-		return mcpconfig.ServerStatus{}, false
-	}
-	if handler == nil {
-		return mcpconfig.ServerStatus{Status: "error", Error: "token store is not configured", CheckedAt: time.Now().UTC()}, true
-	}
-	src, err := handler.TokenSource(ctx)
-	if err != nil {
-		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}, true
-	}
-	if src == nil {
-		return statusWithTools(mcpconfig.ServerStatus{Status: "needs_auth", Error: "Sign in required", CheckedAt: time.Now().UTC()}, items), true
-	}
-	return mcpconfig.ServerStatus{}, false
-}
-
-func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler auth.OAuthHandler) (*serverSession, error) {
+func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler *oauthHandler) (*serverSession, error) {
 	if server.LocalServer != nil {
 		return m.connectLocal(ctx, server, server.LocalServer)
 	}
@@ -582,23 +559,26 @@ func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler 
 		}
 	}
 	httpClient := &http.Client{Transport: transport}
+	streamable := &mcpsdk.StreamableClientTransport{
+		Endpoint:             server.URL,
+		HTTPClient:           httpClient,
+		MaxRetries:           -1,
+		DisableStandaloneSSE: true,
+	}
+	if handler != nil {
+		streamable.OAuthHandler = handler
+	}
 	dial := func(ctx context.Context) (*mcpsdk.ClientSession, error) {
 		if server.Transport == mcpconfig.TransportSSE {
 			return client.Connect(ctx, sseTransport{mcpsdk.SSEClientTransport{Endpoint: server.URL, HTTPClient: httpClient}}, nil)
 		}
-		return client.Connect(ctx, &mcpsdk.StreamableClientTransport{
-			Endpoint:             server.URL,
-			HTTPClient:           httpClient,
-			MaxRetries:           -1,
-			DisableStandaloneSSE: true,
-			OAuthHandler:         handler,
-		}, nil)
+		return client.Connect(ctx, streamable, nil)
 	}
 	session, err := dial(ctx)
 	if err != nil {
 		return nil, err
 	}
-	connection := &serverConnection{session: session, redial: dial}
+	connection := &serverConnection{session: session, redial: dial, oauth: handler}
 	ss, err := connection.loadCatalog(ctx, server)
 	if err != nil {
 		connection.close()

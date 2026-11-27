@@ -9,6 +9,7 @@ import (
 	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/modelcontextprotocol/go-sdk/oauthex"
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
@@ -16,6 +17,7 @@ import (
 type serverConnection struct {
 	session      *mcpsdk.ClientSession
 	localSession *mcpsdk.ServerSession
+	oauth        *oauthHandler
 	// redial opens a fresh session to the same server; nil for local servers,
 	// whose sessions live in process.
 	redial   func(context.Context) (*mcpsdk.ClientSession, error)
@@ -47,9 +49,38 @@ func (c *serverConnection) acquire() (func(), error) {
 }
 
 func (c *serverConnection) callTool(ctx context.Context, params *mcpsdk.CallToolParams) (*mcpsdk.CallToolResult, error) {
-	return use(ctx, c, func(session *mcpsdk.ClientSession) (*mcpsdk.CallToolResult, error) {
+	result, err := use(ctx, c, func(session *mcpsdk.ClientSession) (*mcpsdk.CallToolResult, error) {
 		return session.CallTool(ctx, params)
 	})
+	if c.oauth != nil {
+		if challenges := toolAuthChallenges(result); len(challenges) > 0 || isRejectedGrant(err) {
+			c.oauth.markAuthorizationRequired(challenges)
+			return nil, errNeedsAuthorization
+		}
+	}
+	return result, err
+}
+
+func toolAuthChallenges(result *mcpsdk.CallToolResult) []oauthex.Challenge {
+	if result == nil || !result.IsError {
+		return nil
+	}
+	raw, ok := result.Meta["mcp/www_authenticate"]
+	if !ok {
+		return nil
+	}
+	headers, ok := raw.([]any)
+	if !ok {
+		headers = []any{raw}
+	}
+	var challenges []oauthex.Challenge
+	for _, value := range headers {
+		if text, ok := value.(string); ok {
+			parsed, _ := bearerChallenges([]string{text})
+			challenges = append(challenges, parsed...)
+		}
+	}
+	return challenges
 }
 
 func (c *serverConnection) readResource(ctx context.Context, uri string) (*mcpsdk.ReadResourceResult, error) {

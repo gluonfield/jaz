@@ -111,15 +111,8 @@ func (m *Manager) runAuthorize(ctx context.Context, server mcpconfig.Server, red
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
-	ss, err := m.connect(sessionCtx, server, handler)
-	if err != nil {
+	if err := m.authorizeServer(sessionCtx, server, handler); err != nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
-	}
-	closeSessions(map[string]*serverSession{server.ID: ss})
-	if !handler.didAuthorize() {
-		if err := handler.AuthorizeFromMetadata(sessionCtx); err != nil {
-			return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
-		}
 	}
 	if err := m.runAuthorizationHook(sessionCtx, server.ID, onAuthorized); err != nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
@@ -130,6 +123,26 @@ func (m *Manager) runAuthorize(ctx context.Context, server mcpconfig.Server, red
 		return mcpconfig.ServerStatus{Status: "error", Error: "The signed-in server is no longer available", CheckedAt: time.Now().UTC()}
 	}
 	return status
+}
+
+func (m *Manager) authorizeServer(ctx context.Context, server mcpconfig.Server, handler *oauthHandler) error {
+	if ss := m.session(server.ID); ss != nil && ss.oauth != nil {
+		previous := ss.oauth
+		if previous.serverURL == handler.serverURL && previous.oauth == handler.oauth && previous.tokenID == handler.tokenID {
+			if challenges, required := previous.authorizationChallenge(); required {
+				return handler.authorizeChallenge(ctx, challenges)
+			}
+		}
+	}
+	ss, err := m.connect(ctx, server, handler)
+	if err != nil {
+		return err
+	}
+	closeSession(ss)
+	if handler.didAuthorize() {
+		return nil
+	}
+	return handler.AuthorizeFromMetadata(ctx)
 }
 
 func (m *Manager) runAuthorizationHook(ctx context.Context, serverID string, onAuthorized AuthorizationHook) error {

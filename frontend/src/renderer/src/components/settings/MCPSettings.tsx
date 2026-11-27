@@ -127,6 +127,8 @@ export function MCPSettings() {
     onSuccess: (status) => {
       if (status.status === 'connected') {
         toast(`Connected, ${mcpToolCountLabel(status.tool_count)}`)
+      } else if (status.status === 'needs_auth') {
+        toast('Sign in required')
       } else {
         toast(status.error ? `Connection failed: ${status.error}` : 'Connection failed', 'danger')
       }
@@ -358,7 +360,6 @@ function MCPServerRow({
   const needsAuth = server.status === 'needs_auth'
   const oauthConfigured = Boolean(server.oauth?.client_id || server.oauth?.issuer)
   const canAuthorize = needsAuth || (oauthConfigured && server.status !== 'connected')
-  const showTools = server.status === 'connected' || server.tool_count > 0
   const statusText = authorizing ? 'Waiting for sign-in…' : mcpStatusText(server)
   return (
     <div className="flex items-center gap-3 rounded-card px-3 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface">
@@ -377,7 +378,7 @@ function MCPServerRow({
         </p>
       </div>
       <div className="hidden min-w-0 max-w-[40%] sm:block">
-        {showTools && !authorizing ? (
+        {server.status === 'connected' && !authorizing ? (
           <button
             type="button"
             className="flex h-7 cursor-pointer items-center rounded-full px-2 text-[12px] text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"

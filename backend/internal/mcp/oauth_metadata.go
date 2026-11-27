@@ -7,10 +7,37 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 )
+
+func (c *serverConnection) checkOAuth(ctx context.Context, server mcpconfig.Server) error {
+	configured := server.OAuth.StaticClientID() != "" || server.OAuth.Issuer != ""
+	if c.oauth == nil {
+		if configured && !server.UsesManualAuthorization() && c.localSession == nil {
+			return errors.New("OAuth sign-in is unavailable for this MCP server")
+		}
+		return nil
+	}
+	if c.oauth.needsAuthorization() {
+		return nil
+	}
+	if source, err := c.oauth.TokenSource(ctx); err != nil || source != nil {
+		return err
+	}
+	if configured {
+		return errNeedsAuthorization
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if _, err := c.oauth.protectedResourceMetadata(probeCtx, nil, discoveryProactive); err == nil {
+		return errNeedsAuthorization
+	}
+	return nil
+}
 
 type authorizationMetadata struct {
 	*oauthex.AuthServerMeta

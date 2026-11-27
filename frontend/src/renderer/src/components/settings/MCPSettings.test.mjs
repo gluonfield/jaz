@@ -18,7 +18,7 @@ test('MCP Settings manages custom servers while preserving the shared runtime in
   const { MCPSettings } = await import('@/components/settings/MCPSettings')
   const client = new QueryClient()
   const servers = [
-    { id: 'custom', name: 'Custom fixture' },
+    { id: 'custom', name: 'Custom fixture', status: 'needs_auth' },
     { id: 'connection', name: 'Connected fixture', source: 'connection' },
     { id: 'plugin', name: 'Plugin fixture', source: 'plugin' },
   ].map((server) => ({
@@ -34,6 +34,9 @@ test('MCP Settings manages custom servers while preserving the shared runtime in
   client.setQueryData(keys.mcpServers, { servers, oauth_redirect_url: 'https://jaz.chat/oauth/callback' })
   const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(MCPSettings)))
   expect(html).toContain('Custom fixture')
+  expect(html).toContain('Sign in required')
+  expect(html).toContain('Sign in to MCP server')
+  expect(html).not.toContain('Show Custom fixture tools')
   expect(html).not.toContain('Connected fixture')
   expect(html).not.toContain('Plugin fixture')
   expect(html).toContain('Manage connected apps in Connections')

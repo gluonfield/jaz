@@ -211,9 +211,15 @@ func TestRunAuthorizationCompletesFlow(t *testing.T) {
 		Body: io.NopCloser(strings.NewReader("")),
 	}
 
-	tok, err := handler.runAuthorization(context.Background(), resp)
+	if err := handler.Authorize(t.Context(), nil, resp); err != nil {
+		t.Fatalf("Authorize: %v", err)
+	}
+	tok, ok, err := store.LoadToken(t.Context(), server.TokenID())
 	if err != nil {
-		t.Fatalf("runAuthorization: %v", err)
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("authorization did not save the token")
 	}
 	if tok.AccessToken != "access-token-123" {
 		t.Errorf("access token = %q", tok.AccessToken)

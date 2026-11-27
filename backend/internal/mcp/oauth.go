@@ -21,10 +21,14 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// errNeedsAuthorization is returned by a non-interactive handler when the server
-// demands authorization but we have no usable token. It lets the manager mark the
-// server as needing the user to sign in rather than reporting a generic error.
-var errNeedsAuthorization = errors.New("authorization required")
+const signInRequired = "Sign in required"
+
+var errNeedsAuthorization = errors.New("MCP sign-in required. Open Settings → MCP to sign in")
+
+func isRejectedGrant(err error) bool {
+	var rejected *oauth2.RetrieveError
+	return errors.As(err, &rejected) && rejected.ErrorCode == "invalid_grant"
+}
 
 // oauthHandler implements auth.OAuthHandler for a single MCP server. It is backed
 // by the persistent token store: TokenSource serves stored (refreshing) tokens, and
@@ -42,9 +46,10 @@ type oauthHandler struct {
 	broker      oauthbroker.Broker
 	fetch       codeFetcher
 
-	mu    sync.Mutex
-	mode  oauthMode
-	state authorizationState
+	mu         sync.Mutex
+	mode       oauthMode
+	state      authorizationState
+	challenges []oauthex.Challenge
 }
 
 // codeFetcher directs the user through the authorization URL (e.g. opens a browser)
@@ -112,31 +117,37 @@ func (h *oauthHandler) TokenSource(ctx context.Context) (oauth2.TokenSource, err
 	return src, err
 }
 
-func (h *oauthHandler) Authorize(ctx context.Context, req *http.Request, resp *http.Response) error {
-	defer resp.Body.Close()
-	defer io.Copy(io.Discard, resp.Body)
-
-	if h.mode != oauthModeInteractive {
-		h.markAuthorizationRequired()
-		return errNeedsAuthorization
-	}
+func (h *oauthHandler) Authorize(ctx context.Context, _ *http.Request, resp *http.Response) error {
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	_ = resp.Body.Close()
 	if h.didAuthorize() {
 		return errors.New("MCP server rejected the new OAuth grant")
 	}
-
-	tok, err := h.runAuthorization(ctx, resp)
+	headers := resp.Header.Values("WWW-Authenticate")
+	challenges, err := bearerChallenges(headers)
 	if err != nil {
 		return err
 	}
-	return h.saveToken(ctx, tok)
+	if len(challenges) == 0 && (len(headers) != 0 || resp.StatusCode != http.StatusUnauthorized) {
+		return fmt.Errorf("MCP server returned HTTP %d without an OAuth challenge", resp.StatusCode)
+	}
+	return h.authorizeChallenge(ctx, challenges)
 }
 
 func (h *oauthHandler) AuthorizeFromMetadata(ctx context.Context) error {
+	return h.authorize(ctx, nil, discoveryProactive)
+}
+
+func (h *oauthHandler) authorizeChallenge(ctx context.Context, challenges []oauthex.Challenge) error {
+	return h.authorize(ctx, challenges, discoveryFromChallenge)
+}
+
+func (h *oauthHandler) authorize(ctx context.Context, challenges []oauthex.Challenge, discovery metadataDiscovery) error {
 	if h.mode != oauthModeInteractive {
-		h.markAuthorizationRequired()
+		h.markAuthorizationRequired(challenges)
 		return errNeedsAuthorization
 	}
-	tok, err := h.runAuthorizationWithChallenges(ctx, nil, discoveryProactive)
+	tok, err := h.runAuthorization(ctx, challenges, discovery)
 	if err != nil {
 		return err
 	}
@@ -158,12 +169,15 @@ func (h *oauthHandler) saveToken(ctx context.Context, tok integrationoauth.Token
 	return nil
 }
 
-// needsAuthorization reports whether a failed connect was due to the server
-// requiring an authorization the non-interactive handler could not provide.
 func (h *oauthHandler) needsAuthorization() bool {
+	_, required := h.authorizationChallenge()
+	return required
+}
+
+func (h *oauthHandler) authorizationChallenge() ([]oauthex.Challenge, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.state == authorizationRequired
+	return h.challenges, h.state == authorizationRequired
 }
 
 func (h *oauthHandler) didAuthorize() bool {
@@ -172,25 +186,19 @@ func (h *oauthHandler) didAuthorize() bool {
 	return h.state == authorizationComplete
 }
 
-func (h *oauthHandler) markAuthorizationRequired() {
+func (h *oauthHandler) markAuthorizationRequired(challenges []oauthex.Challenge) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.state = authorizationRequired
-	h.mu.Unlock()
+	if len(challenges) > 0 {
+		h.challenges = challenges
+	}
 }
 
 // runAuthorization performs the OAuth 2.0 authorization-code flow with PKCE.
 // It uses configured client credentials when present and otherwise follows MCP
 // client registration: a client ID metadata document, then dynamic registration.
-func (h *oauthHandler) runAuthorization(ctx context.Context, resp *http.Response) (integrationoauth.Token, error) {
-	var zero integrationoauth.Token
-	challenges, err := oauthex.ParseWWWAuthenticate(resp.Header[http.CanonicalHeaderKey("WWW-Authenticate")])
-	if err != nil {
-		return zero, fmt.Errorf("parse WWW-Authenticate: %w", err)
-	}
-	return h.runAuthorizationWithChallenges(ctx, challenges, discoveryFromChallenge)
-}
-
-func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, challenges []oauthex.Challenge, discovery metadataDiscovery) (integrationoauth.Token, error) {
+func (h *oauthHandler) runAuthorization(ctx context.Context, challenges []oauthex.Challenge, discovery metadataDiscovery) (integrationoauth.Token, error) {
 	var zero integrationoauth.Token
 	prm, err := h.protectedResourceMetadata(ctx, challenges, discovery)
 	if err != nil {
@@ -452,12 +460,29 @@ func protectedResourceMetadataURLs(metadataURL, resourceURL string) []prmCandida
 		return out
 	}
 	mu := *ru
-	mu.Path = "/.well-known/oauth-protected-resource/" + strings.TrimLeft(ru.Path, "/")
-	out = append(out, prmCandidate{url: mu.String(), resource: resourceURL})
-	mu.Path = "/.well-known/oauth-protected-resource"
-	ru.Path = ""
-	out = append(out, prmCandidate{url: mu.String(), resource: ru.String()})
+	mu.RawPath, mu.RawQuery, mu.Fragment = "", "", ""
+	mu.ForceQuery = false
+	const wellKnown = "/.well-known/oauth-protected-resource"
+	for _, path := range []string{wellKnown + strings.TrimRight(ru.Path, "/"), wellKnown} {
+		mu.Path = path
+		candidate := prmCandidate{url: mu.String(), resource: resourceURL}
+		if !slices.Contains(out, candidate) {
+			out = append(out, candidate)
+		}
+	}
+	origin := (&url.URL{Scheme: ru.Scheme, Host: ru.Host}).String()
+	if resourceURL != origin {
+		out = append(out, prmCandidate{url: mu.String(), resource: origin})
+	}
 	return out
+}
+
+func bearerChallenges(headers []string) ([]oauthex.Challenge, error) {
+	challenges, err := oauthex.ParseWWWAuthenticate(headers)
+	if err != nil {
+		return nil, fmt.Errorf("parse WWW-Authenticate: %w", err)
+	}
+	return slices.DeleteFunc(challenges, func(c oauthex.Challenge) bool { return c.Scheme != "bearer" }), nil
 }
 
 func resourceMetadataURLFromChallenges(cs []oauthex.Challenge) string {

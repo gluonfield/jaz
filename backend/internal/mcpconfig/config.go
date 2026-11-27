@@ -67,10 +67,10 @@ type Server struct {
 	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
-// UsesBearer reports whether the server authenticates with a bearer token,
-// which takes the place of OAuth sign-in.
-func (s Server) UsesBearer() bool {
-	return s.BearerToken != "" || s.BearerTokenEnvVar != ""
+func (s Server) UsesManualAuthorization() bool {
+	return s.BearerToken != "" || s.BearerTokenEnvVar != "" || slices.ContainsFunc(s.Headers, func(h Header) bool {
+		return strings.EqualFold(h.Name, "Authorization")
+	})
 }
 
 type ServerInput struct {
