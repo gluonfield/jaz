@@ -14,7 +14,8 @@ void main() {
 // A frame of light drawn over the live window. `gather` takes it from the
 // window's rim (0) down to the name tile (1), trailing echoes, while a scrim
 // dims the page beneath. With `open` set the frame's inside is clear, and
-// `bloom` raises a nebula and sparks around it as it grows back.
+// `bloom` raises a nebula and sparks around it that `spread` carries outwards
+// as it grows back.
 const FRAGMENT = `
 precision highp float;
 uniform vec2 size;
@@ -26,6 +27,7 @@ uniform vec3 echoes;
 uniform float open;
 uniform float glow;
 uniform float bloom;
+uniform float spread;
 
 const vec3 WARM = vec3(1.0, 0.7, 0.48);
 const vec3 WHITE = vec3(1.0, 0.96, 0.9);
@@ -94,11 +96,11 @@ void main() {
   q += 0.7 * vec2(fbm(q * 1.3 + vec2(0.0, time * 0.2)), fbm(q * 1.3 + vec2(5.2, -time * 0.17))) - 0.35;
   float cloud = fbm(q * 2.1);
   float wisps = 1.0 - abs(2.0 * fbm(q * 4.3 + 3.0) - 1.0);
-  float near = exp(-outside / 120.0);
+  float near = exp(-outside / mix(14.0, 130.0, spread));
   float smoke = smoothstep(0.3, 0.8, cloud) * (0.3 + 0.7 * wisps * wisps) * near;
   color += mix(VIOLET, WARM, smoothstep(0.15, 0.6, smoke)) * smoke * 1.3 * bloom * step(0.0, edge);
   float dust = sparks(point, 15.0, 71.0) + sparks(point, 23.0, 0.0) + sparks(point, 37.0, 19.0) + 0.6 * sparks(point, 61.0, 43.0);
-  color += WHITE * dust * exp(-outside / 260.0) * lit * step(0.0, edge);
+  color += WHITE * dust * exp(-outside / mix(80.0, 300.0, spread)) * lit * step(0.0, edge);
 
   float sweep = pow(0.5 + 0.5 * cos(angle - time * 5.5), 8.0);
   float line = exp(-edge * edge / 1.1);
@@ -142,7 +144,7 @@ export function runPassage(canvas: HTMLCanvasElement, tile: [number, number]) {
   gl.uniform2f(at('size'), window.innerWidth, window.innerHeight)
   gl.uniform2f(at('tile'), ...tile)
   gl.uniform1f(at('density'), window.devicePixelRatio)
-  const uniforms = { time: at('time'), gather: at('gather'), echoes: at('echoes'), open: at('open'), glow: at('glow'), bloom: at('bloom') }
+  const uniforms = { time: at('time'), gather: at('gather'), echoes: at('echoes'), open: at('open'), glow: at('glow'), bloom: at('bloom'), spread: at('spread') }
 
   const since = performance.now()
   let arrived = 0
@@ -157,6 +159,7 @@ export function runPassage(canvas: HTMLCanvasElement, tile: [number, number]) {
     gl.uniform1f(uniforms.open, arrived ? 1 : 0)
     gl.uniform1f(uniforms.glow, clamp((now - since) / LIGHT_MS) * (1 - clamp((out - 0.8) / 0.2)))
     gl.uniform1f(uniforms.bloom, clamp(out / 0.2) * (1 - clamp((out - 0.5) / 0.45)))
+    gl.uniform1f(uniforms.spread, 1 - (1 - clamp(out / 0.7)) ** 2)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
     frame = requestAnimationFrame(draw)
   }
