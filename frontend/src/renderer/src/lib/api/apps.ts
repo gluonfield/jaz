@@ -413,3 +413,9 @@ export function callAppTool(
 export function updateOrgAppPolicy(input: Partial<OrgAppPolicy>): Promise<OrgAppPolicy> {
   return put<OrgAppPolicy>('/v1/org/app-policies', input)
 }
+
+export function formatAppBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`
+}

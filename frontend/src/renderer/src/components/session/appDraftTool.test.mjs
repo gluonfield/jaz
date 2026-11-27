@@ -1,8 +1,14 @@
 import { describe, expect, test } from 'bun:test'
-import { isAppDraftToolCall, isAppDraftToolName, parseAppDraftToolOutput } from './appDraftTool.ts'
+import {
+  extractAppDraftToolError,
+  isAppDraftExpired,
+  isAppDraftToolCall,
+  isAppDraftToolName,
+  parseAppDraftToolOutput,
+} from './appDraftTool.ts'
 
 describe('prepare_app_draft tool call parsing', () => {
-  test('matches direct, prefixed, and deferred call_tool prepare_app_draft invocations', () => {
+  test('matches direct, prefixed, and deferred call_tool prepare_app_draft invocations without false positives', () => {
     expect(isAppDraftToolName('prepare_app_draft')).toBe(true)
     expect(isAppDraftToolName('mcp.jaztools.prepare_app_draft')).toBe(true)
     expect(isAppDraftToolName('mcp__jaztools__prepare_app_draft')).toBe(true)
@@ -15,9 +21,17 @@ describe('prepare_app_draft tool call parsing', () => {
       }),
     ).toBe(true)
     expect(isAppDraftToolCall({ title: 'mcp.jaztools.prepare_app_draft' })).toBe(true)
+
+    // Unrelated tools that happen to carry a `name` argument must NOT be matched.
+    expect(
+      isAppDraftToolCall({
+        tool_name: 'write_file',
+        raw_input: { name: 'prepare_app_draft' },
+      }),
+    ).toBe(false)
   })
 
-  test('parses staged AppDraft from raw JSON, Codex MCP text envelope, and structuredContent', () => {
+  test('parses staged AppDraft, rejects error envelopes, surfaces error messages, and detects expiry', () => {
     const payload = {
       draft_id: 'adraft_123',
       bundle_sha256: 'a'.repeat(64),
@@ -54,6 +68,14 @@ describe('prepare_app_draft tool call parsing', () => {
     })
     expect(fromStructured?.file_count).toBe(1)
 
-    expect(parseAppDraftToolOutput({ error: 'failed' })).toBeNull()
+    expect(parseAppDraftToolOutput({ error: 'bundle exceeds limit' })).toBeNull()
+    expect(parseAppDraftToolOutput({ isError: true, content: [{ type: 'text', text: 'missing entry' }] })).toBeNull()
+    expect(extractAppDraftToolError({ error: { message: 'bundle exceeds limit' } })).toBe('bundle exceeds limit')
+    expect(extractAppDraftToolError({ result: { content: [{ type: 'text', text: 'invalid manifest' }] } })).toBe(
+      'invalid manifest',
+    )
+
+    expect(isAppDraftExpired('2026-11-27T16:00:00Z', Date.parse('2026-11-27T17:00:00Z'))).toBe(true)
+    expect(isAppDraftExpired('2026-11-27T18:00:00Z', Date.parse('2026-11-27T17:00:00Z'))).toBe(false)
   })
 })

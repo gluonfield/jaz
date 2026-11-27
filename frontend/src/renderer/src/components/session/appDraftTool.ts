@@ -1,6 +1,8 @@
 import type { AppBundleFile, AppDraft, AppExternalURL, AppKind } from '@/lib/api/apps'
 import type { ACPToolCall } from '@/lib/api/types'
 
+const MAX_EXTRACT_DEPTH = 6
+
 export function isAppDraftToolName(name?: string): boolean {
   if (!name) return false
   return (
@@ -13,9 +15,22 @@ export function isAppDraftToolName(name?: string): boolean {
   )
 }
 
+function isDeferredCallToolName(name?: string): boolean {
+  if (!name) return false
+  return (
+    name === 'call_tool' ||
+    name.endsWith('.call_tool') ||
+    name.endsWith('__call_tool') ||
+    name.endsWith('_call_tool')
+  )
+}
+
 export function isAppDraftToolCall(call: Pick<ACPToolCall, 'tool_name' | 'title' | 'raw_input'>): boolean {
   if (isAppDraftToolName(call.tool_name) || isAppDraftToolName(call.title)) {
     return true
+  }
+  if (!isDeferredCallToolName(call.tool_name) && !isDeferredCallToolName(call.title)) {
+    return false
   }
   const input = call.raw_input
   if (input && typeof input === 'object' && 'name' in input) {
@@ -39,39 +54,74 @@ function parseJsonString(raw: string): unknown {
   }
 }
 
-function extractDraftCandidate(raw: unknown): Record<string, unknown> | null {
+function extractDraftCandidate(raw: unknown, depth = 0): Record<string, unknown> | null {
+  if (depth > MAX_EXTRACT_DEPTH || raw == null) return null
   if (typeof raw === 'string') {
     const parsed = parseJsonString(raw)
-    return parsed ? extractDraftCandidate(parsed) : null
+    return parsed ? extractDraftCandidate(parsed, depth + 1) : null
   }
   const obj = asRecord(raw)
   if (!obj) return null
+  if (obj.isError === true || (obj.error != null && obj.error !== '' && obj.error !== false)) {
+    return null
+  }
 
   if (typeof obj.draft_id === 'string' && typeof obj.bundle_sha256 === 'string') {
     return obj
   }
-  if (obj.draft) {
-    const nested = extractDraftCandidate(obj.draft)
-    if (nested) return nested
-  }
-  if (obj.structuredContent) {
-    const nested = extractDraftCandidate(obj.structuredContent)
-    if (nested) return nested
-  }
-  if (obj.result) {
-    const nested = extractDraftCandidate(obj.result)
-    if (nested) return nested
+  for (const key of ['draft', 'structuredContent', 'result'] as const) {
+    if (obj[key] != null) {
+      const nested = extractDraftCandidate(obj[key], depth + 1)
+      if (nested) return nested
+    }
   }
   if (Array.isArray(obj.content)) {
     for (const part of obj.content) {
       const rec = asRecord(part)
       if (rec && typeof rec.text === 'string') {
-        const nested = extractDraftCandidate(rec.text)
+        const nested = extractDraftCandidate(rec.text, depth + 1)
         if (nested) return nested
       }
     }
   }
   return null
+}
+
+export function extractAppDraftToolError(rawOutput: unknown, depth = 0): string {
+  if (depth > MAX_EXTRACT_DEPTH || rawOutput == null) return ''
+  if (typeof rawOutput === 'string') {
+    const trimmed = rawOutput.trim()
+    if (!trimmed) return ''
+    const parsed = parseJsonString(trimmed)
+    if (parsed && typeof parsed === 'object') {
+      return extractAppDraftToolError(parsed, depth + 1)
+    }
+    return trimmed
+  }
+  const obj = asRecord(rawOutput)
+  if (!obj) return ''
+  if (typeof obj.error === 'string' && obj.error.trim()) return obj.error.trim()
+  const errRec = asRecord(obj.error)
+  if (errRec && typeof errRec.message === 'string' && errRec.message.trim()) return errRec.message.trim()
+  if (obj.result != null) {
+    const nested = extractAppDraftToolError(obj.result, depth + 1)
+    if (nested) return nested
+  }
+  if (Array.isArray(obj.content)) {
+    const texts = obj.content
+      .map((part) => asRecord(part))
+      .filter((part): part is Record<string, unknown> => Boolean(part && typeof part.text === 'string'))
+      .map((part) => String(part.text).trim())
+      .filter(Boolean)
+    if (texts.length > 0) return texts.join(' ')
+  }
+  return ''
+}
+
+export function isAppDraftExpired(expiresAt?: string, nowMs = Date.now()): boolean {
+  if (!expiresAt) return false
+  const parsed = Date.parse(expiresAt)
+  return Number.isFinite(parsed) && parsed <= nowMs
 }
 
 export function parseAppDraftToolOutput(rawOutput: unknown): AppDraft | null {

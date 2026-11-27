@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/toast'
 import {
   createAppDraft,
+  formatAppBytes,
   publishApp,
   type AppDraft,
   type AppKind,
@@ -24,12 +25,6 @@ const CAPABILITY_OPTIONS = [
   { id: 'ai:complete', label: 'AI completions (viewer-billed)' },
   { id: 'tools:call', label: 'Allowlisted MCP tools' },
 ] as const
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`
-}
 
 export function PublishAppModal({
   open,
@@ -137,7 +132,8 @@ export function PublishAppModal({
     },
     onSuccess: ({ app }) => {
       void queryClient.invalidateQueries({ queryKey: keys.appsRoot })
-      toast(targetApp ? `Published v${app.current_version} of ${app.title}` : `Published "${app.title}"`)
+      const isUpdate = Boolean(targetApp || draft?.target_app_id)
+      toast(isUpdate ? `Published v${app.current_version} of ${app.title}` : `Published "${app.title}"`)
       onPublished?.(app)
       onClose()
     },
@@ -169,7 +165,13 @@ export function PublishAppModal({
       open={open}
       onClose={onClose}
       size="lg"
-      title={targetApp ? `Publish update · ${targetApp.title}` : 'Publish Jaz App'}
+      title={
+        targetApp
+          ? `Publish update · ${targetApp.title}`
+          : draft?.target_app_id
+            ? `Publish update · ${draft.title}`
+            : 'Publish Jaz App'
+      }
       description="Stage a validated jaz-app/1 bundle, inspect its preflight audit and SHA-256 digest, and choose authenticated sharing access."
       footer={
         <>
@@ -356,7 +358,7 @@ export function PublishAppModal({
                 Preflight Audit Card
               </span>
               <span className="rounded bg-bg px-2 py-0.5 font-mono text-[11px] text-ink-2">
-                {draft.file_count} files · {formatBytes(draft.size_bytes)}
+                {draft.file_count} files · {formatAppBytes(draft.size_bytes)}
               </span>
             </div>
 
@@ -369,7 +371,7 @@ export function PublishAppModal({
                       <FileCode size={12} className="shrink-0 text-ink-3" />
                       {f.path}
                     </span>
-                    <span className="shrink-0 text-ink-3">{formatBytes(f.size_bytes)}</span>
+                    <span className="shrink-0 text-ink-3">{formatAppBytes(f.size_bytes)}</span>
                   </li>
                 ))}
               </ul>
