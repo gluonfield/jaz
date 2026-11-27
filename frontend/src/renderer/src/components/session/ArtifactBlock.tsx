@@ -1,6 +1,6 @@
 import { PanelRight, Share2 } from 'lucide-react'
-import { memo, use, useCallback, useMemo, useState } from 'react'
-import { PublishAppModal } from '@/components/apps/PublishAppModal'
+import { memo, use, useCallback, useMemo } from 'react'
+import { useSaveApp } from '@/components/apps/useSaveApp'
 import { ArtifactFrame } from '@/components/artifacts/ArtifactFrame'
 import { IconButton } from '@/components/ui/IconButton'
 import { ArtifactPanelContext } from '@/lib/artifactPanel'
@@ -37,7 +37,7 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
 }) {
   const files = useFileLinks()
   const panel = use(ArtifactPanelContext)
-  const [publishOpen, setPublishOpen] = useState(false)
+  const saveApp = useSaveApp(panel?.openPublishedApp)
   const openLink = useCallback((href: string) => {
     if (onOpenFile) return onOpenFile(href)
     if (!files) return false
@@ -60,7 +60,7 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
       {canPublish ? (
         <div className="flex h-8 items-center gap-0.5">
           <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-3">{input.title}</span>
-          <IconButton size="sm" aria-label="Publish as app" title="Publish as app" onClick={() => setPublishOpen(true)}>
+          <IconButton size="sm" aria-label="Save as app" title="Save as app" disabled={saveApp.isPending} onClick={() => saveApp.mutate({ title: input.title, kind: 'artifact', html: input.code})}>
             <Share2 size={14} />
           </IconButton>
           {panel ? (
@@ -71,16 +71,6 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
         </div>
       ) : null}
       <ArtifactFrame input={input} data={data} agentState={agentState} viewState={viewState} pluginView={pluginView} assetOrigin={assetOrigin} pending={pending} executionError={execError} onSendPrompt={onSendPrompt} onOpenLink={openLink} onOpenView={onOpenView} onViewState={onViewState} onResolveAsset={onResolveAsset} />
-      {publishOpen ? (
-        <PublishAppModal
-          open
-          onClose={() => setPublishOpen(false)}
-          initialTitle={input.title}
-          kind="artifact"
-          html={input.code}
-          onPublished={panel?.openPublishedApp}
-        />
-      ) : null}
     </div>
   )
 })

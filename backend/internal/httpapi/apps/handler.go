@@ -50,6 +50,7 @@ func writeAppError(w http.ResponseWriter, err error) {
 	case errors.Is(err, storage.ErrAppNotFound):
 		httpapi.WriteError(w, http.StatusNotFound, err)
 	case errors.Is(err, storage.ErrAppForbidden),
+		errors.Is(err, storage.ErrAppApprovalRequired),
 		errors.Is(err, appscore.ErrSharedKVDisabled),
 		errors.Is(err, appscore.ErrCapabilityDenied),
 		errors.Is(err, appscore.ErrToolNotAllowed):
@@ -233,10 +234,9 @@ func (h *Handler) CreateDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusCreated, map[string]any{
-		"draft":                      draft,
-		"draft_id":                   draft.ID,
-		"bundle_sha256":              draft.BundleSHA256,
-		"requires_user_confirmation": true,
+		"draft":         draft,
+		"draft_id":      draft.ID,
+		"bundle_sha256": draft.BundleSHA256,
 	})
 }
 
@@ -302,26 +302,45 @@ func (h *Handler) publish(w http.ResponseWriter, r *http.Request, requestedID st
 		return
 	}
 	var body struct {
+		createDraftBody
 		DraftID      string `json:"draft_id"`
 		BundleSHA256 string `json:"bundle_sha256"`
-		Title        string `json:"title"`
-		Description  string `json:"description"`
 		Visibility   string `json:"visibility"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxDraftBodyBytes)).Decode(&body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, errors.New("invalid json"))
 		return
 	}
-	app, ver, isNew, err := h.service.PublishFromDraft(r.Context(), appscore.PublishInput{
-		RequestedID:  requestedID,
-		DraftID:      body.DraftID,
-		BundleSHA256: body.BundleSHA256,
-		Title:        body.Title,
-		Description:  body.Description,
-		Visibility:   body.Visibility,
-	})
+	var (
+		app   storage.App
+		ver   storage.AppVersion
+		isNew bool
+		err   error
+	)
+	if strings.TrimSpace(body.DraftID) == "" {
+		bundle, packErr := packDraftBody(body.createDraftBody)
+		if packErr != nil {
+			writeBundleError(w, packErr)
+			return
+		}
+		targetID := requestedID
+		if targetID == "new" {
+			targetID = ""
+		}
+		app, ver, isNew, err = h.service.PublishBundle(r.Context(), bundle, targetID, strings.TrimSpace(body.SourceThreadID))
+	} else {
+		app, ver, isNew, err = h.service.PublishFromDraft(r.Context(), appscore.PublishInput{
+			RequestedID:  requestedID,
+			DraftID:      body.DraftID,
+			BundleSHA256: body.BundleSHA256,
+			Title:        body.Title,
+			Description:  body.Description,
+			Visibility:   body.Visibility,
+		})
+	}
 	if err != nil {
 		if errors.Is(err, storage.ErrAppNotFound) || errors.Is(err, storage.ErrAppForbidden) ||
+			errors.Is(err, storage.ErrAppApprovalRequired) ||
 			errors.Is(err, storage.ErrAppDraftConsumed) || errors.Is(err, storage.ErrAppDraftMismatch) {
 			writeAppError(w, err)
 			return

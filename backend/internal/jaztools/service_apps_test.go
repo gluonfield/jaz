@@ -17,12 +17,13 @@ import (
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
 
-func TestSetAppsSyncsAfterServerInitAndStagesDraft(t *testing.T) {
+func TestAppToolsSaveDirectlyAndStageElevatedApps(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(root)
 	if err != nil {
@@ -54,7 +55,7 @@ func TestSetAppsSyncsAfterServerInitAndStagesDraft(t *testing.T) {
 
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
 
-	// Initialize the server slot BEFORE SetApps is called to verify late wiring still exposes prepare_app_draft.
+	// The server slot exists before SetApps, so late wiring must still expose the app tools.
 	srv := service.Server()
 	appsSvc := apps.NewService(store, store, nil, nil, root, t.TempDir())
 	service.SetApps(appsSvc)
@@ -62,40 +63,39 @@ func TestSetAppsSyncsAfterServerInitAndStagesDraft(t *testing.T) {
 	session, closeSession := connectClient(t, srv)
 	defer closeSession()
 
-	listed, err := session.ListTools(context.Background(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, tool := range listed.Tools {
-		if tool.Name == "prepare_app_draft" {
-			found = true
-			break
+	call := func(tool string, args map[string]any) (map[string]any, bool) {
+		t.Helper()
+		res, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: tool, Arguments: args})
+		if err != nil || len(res.Content) == 0 {
+			t.Fatalf("%s call failed: res=%#v err=%v", tool, res, err)
 		}
-	}
-	if !found {
-		t.Fatal("expected prepare_app_draft to be registered even when SetApps runs after Server()")
+		var payload map[string]any
+		_ = json.Unmarshal([]byte(res.Content[0].(*mcp.TextContent).Text), &payload)
+		return payload, res.IsError
 	}
 
-	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "prepare_app_draft",
-		Arguments: map[string]any{
-			"title": "World Clock",
-			"html":  "<div><h1>Clock</h1></div>",
-		},
-	})
-	if err != nil || res.IsError || len(res.Content) == 0 {
-		t.Fatalf("prepare_app_draft call failed: res=%#v err=%v", res, err)
+	saved, failed := call("publish_app", map[string]any{"title": "World Clock", "html": "<div><h1>Clock</h1></div>"})
+	appID, _ := saved["app_id"].(string)
+	app, version, err := appsSvc.GetApp(context.Background(), appID)
+	if failed || err != nil || version == nil || app.Title != "World Clock" || app.Visibility != storage.AppVisibilityPrivate || app.CurrentVersion != 1 {
+		t.Fatalf("publish_app payload = %#v, app = %#v, version = %#v, err = %v", saved, app, version, err)
 	}
-	tc, ok := res.Content[0].(*mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[0])
+
+	updated, failed := call("publish_app", map[string]any{"title": "World Clock", "html": "<div>v2</div>", "target_app_id": appID})
+	if failed || updated["app_id"] != appID || updated["version"] != float64(2) {
+		t.Fatalf("publish_app with target_app_id must save version 2 of the same app: %#v", updated)
 	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(tc.Text), &payload); err != nil {
-		t.Fatalf("unmarshal payload: %v", err)
+
+	elevated := map[string]any{"title": "Summariser", "html": "<div>Summarise</div>", "capabilities": []string{"ai:complete"}}
+	if _, failed := call("publish_app", elevated); !failed {
+		t.Fatal("publish_app must refuse an app that spends viewer AI credits")
 	}
-	if payload["draft_id"] == "" || payload["bundle_sha256"] == "" || payload["requires_user_confirmation"] != true {
-		t.Fatalf("unexpected prepare_app_draft payload: %#v", payload)
+	draft, failed := call("prepare_app_draft", elevated)
+	if failed || draft["draft_id"] == "" || draft["requires_user_confirmation"] != true || draft["app_id"] != nil {
+		t.Fatalf("elevated app must wait for approval: %#v", draft)
+	}
+	all, err := appsSvc.ListApps(context.Background(), storage.AppListFilter{})
+	if err != nil || len(all) != 1 {
+		t.Fatalf("only the approved-free app is saved, got %d (err %v)", len(all), err)
 	}
 }

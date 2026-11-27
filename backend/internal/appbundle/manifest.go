@@ -58,6 +58,18 @@ var validCapabilities = map[string]bool{
 	CapDesktopFullAccess:  true,
 }
 
+// RequiresPublishApproval reports whether an app asks for more than sandboxed
+// storage: AI credits, MCP tools or desktop privileges, which the user approves
+// on a staged bundle.
+func RequiresPublishApproval(capabilities []string) bool {
+	for _, capability := range capabilities {
+		if capability != CapStoragePersonal && capability != CapStorageShared {
+			return true
+		}
+	}
+	return false
+}
+
 var allowlistedCDNHosts = map[string]bool{
 	"cdnjs.cloudflare.com": true,
 	"esm.sh":               true,

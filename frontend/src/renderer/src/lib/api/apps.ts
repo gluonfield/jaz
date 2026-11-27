@@ -81,35 +81,22 @@ export interface AppVersion {
   created_at: string
 }
 
-export interface AppDraft {
+// A staged draft as saving it needs it.
+export interface PendingAppDraft {
   draft_id: string
-  org_id?: string
-  owner_user_id?: string
-  target_app_id?: string
-  source_thread_id?: string
-  title: string
-  description?: string
-  icon?: AppIconSpec
-  kind: AppKind
   bundle_sha256: string
-  entry_path: string
-  size_bytes: number
-  file_count: number
+  target_app_id?: string
+  title: string
+  kind: AppKind
   capabilities: string[]
   allowed_tools: string[]
-  external_urls: AppExternalURL[]
-  warnings: string[]
-  files: AppBundleFile[]
   expires_at: string
-  consumed_at?: string
-  created_at: string
 }
 
-export interface AppDraftResponse {
-  draft: AppDraft
-  draft_id: string
-  bundle_sha256: string
-  requires_user_confirmation: boolean
+// Capabilities the user approves before an app is saved: anything beyond
+// sandboxed storage, such as viewer AI credits, MCP tools or desktop privileges.
+export function elevatedCapabilities(capabilities: string[]): string[] {
+  return capabilities.filter((cap) => !cap.startsWith('storage:'))
 }
 
 export interface AppTicketResponse {
@@ -242,8 +229,7 @@ export const orgAppPolicyQuery = queryOptions({
   queryFn: () => get<OrgAppPolicy>('/v1/org/app-policies'),
 })
 
-export interface CreateAppDraftInput {
-  target_app_id?: string
+export interface AppBundleInput {
   source_thread_id?: string
   title: string
   description?: string
@@ -251,33 +237,22 @@ export interface CreateAppDraftInput {
   entry?: string
   html?: string
   markdown?: string
-  content?: string
-  capabilities?: string[]
-  allowed_tools?: string[]
-  icon?: AppIconSpec
-  files?: { path: string; content: string; encoding?: 'utf8' | 'base64' }[]
 }
 
-export function createAppDraft(input: CreateAppDraftInput): Promise<AppDraftResponse> {
-  return post<AppDraftResponse>('/v1/apps/drafts', input)
+// Saves a staged draft the user approved, as a private app or as the next
+// version of its target, which keeps the sharing it already has.
+export async function saveAppDraft(draft: PendingAppDraft): Promise<JazApp> {
+  const body = { draft_id: draft.draft_id, bundle_sha256: draft.bundle_sha256 }
+  const saved = draft.target_app_id
+    ? put<{ app: JazApp }>(`/v1/apps/${encodeURIComponent(draft.target_app_id)}`, body)
+    : post<{ app: JazApp }>('/v1/apps', body)
+  return (await saved).app
 }
 
-export interface PublishAppInput {
-  draft_id: string
-  bundle_sha256: string
-  title?: string
-  description?: string
-  visibility?: AppVisibility
-  space_id?: string | null
-  member_user_ids?: string[]
-  members?: AppMemberInput[]
-}
-
-export function publishApp(idOrNew: string, input: PublishAppInput): Promise<{ app: JazApp; version: AppVersion }> {
-  if (!idOrNew || idOrNew === 'new') {
-    return post<{ app: JazApp; version: AppVersion }>('/v1/apps', input)
-  }
-  return put<{ app: JazApp; version: AppVersion }>(`/v1/apps/${encodeURIComponent(idOrNew)}`, input)
+// Saves an artifact or document as a private app in one request, with its own
+// sandboxed storage and nothing that needs approval.
+export async function saveApp(input: AppBundleInput): Promise<JazApp> {
+  return (await post<{ app: JazApp }>('/v1/apps', { ...input, capabilities: ['storage:personal'] })).app
 }
 
 export function patchApp(

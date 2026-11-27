@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { FileText, LoaderCircle, Share2, X } from 'lucide-react'
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { PublishAppModal } from '@/components/apps/PublishAppModal'
+import { useSaveApp } from '@/components/apps/useSaveApp'
 import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/session/HighlightedCode'
 import { DocumentEditor, DocumentHeader, isEditableDocument } from '@/components/document/DocumentEditor'
 import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
@@ -66,9 +66,21 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) && !runId })
   const [draft, setDraft] = useState(filePath)
   const [inputError, setInputError] = useState('')
-  const [publishOpen, setPublishOpen] = useState(false)
+  const saveApp = useSaveApp()
   const isHtmlOrSvg = /\.(html?|svg)$/i.test(filePath)
-  const canPublish = Boolean((markdown || isHtmlOrSvg) && file.data && !file.data.binary && typeof file.data.content === 'string')
+  const content = file.data?.binary ? undefined : file.data?.content
+  const canPublish = (markdown || isHtmlOrSvg) && content !== undefined && !saveApp.isPending
+  const publish = () => {
+    if (content === undefined) return
+    saveApp.mutate({
+      title: markdown ? markdownDocumentTitle(content, filePath) : (filePath.split(/[\\/]/).at(-1) ?? 'App'),
+      kind: markdown ? 'document' : 'artifact',
+      entry: markdown ? 'index.md' : filePath.toLowerCase().endsWith('.svg') ? 'index.svg' : 'index.html',
+      markdown: markdown ? content : undefined,
+      html: markdown ? undefined : content,
+      source_thread_id: sessionId,
+    })
+  }
 
   useEffect(() => {
     setDraft(filePath)
@@ -93,7 +105,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
       {markdown ? (
         <DocumentHeader title={markdownDocumentTitle(file.data?.content ?? '', filePath)} onClose={onClose}>
           {canPublish ? (
-            <Button size="sm" variant="ghost" onClick={() => setPublishOpen(true)} title="Publish as Jaz App">
+            <Button size="sm" variant="ghost" onClick={publish} title="Save to Apps">
               <Share2 size={12} />
               Publish
             </Button>
@@ -116,7 +128,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
         />
         {canPublish ? (
-          <Button size="sm" variant="ghost" type="button" onClick={() => setPublishOpen(true)} title="Publish as Jaz App">
+          <Button size="sm" variant="ghost" type="button" onClick={publish} title="Save to Apps">
             <Share2 size={12} />
             Publish
           </Button>
@@ -182,18 +194,6 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           />
         )}
       </div>
-      {publishOpen && file.data?.content !== undefined ? (
-        <PublishAppModal
-          open
-          onClose={() => setPublishOpen(false)}
-          initialTitle={markdown ? markdownDocumentTitle(file.data.content, filePath) : (filePath.split(/[\\/]/).at(-1) ?? 'App')}
-          kind={markdown ? 'document' : 'artifact'}
-          entry={markdown ? 'index.md' : filePath.toLowerCase().endsWith('.svg') ? 'index.svg' : 'index.html'}
-          markdown={markdown ? file.data.content : undefined}
-          html={markdown ? undefined : file.data.content}
-          sourceThreadId={sessionId}
-        />
-      ) : null}
     </div>
   )
 })

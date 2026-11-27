@@ -237,6 +237,23 @@ func (s *Service) StageDraft(ctx context.Context, bundle appbundle.Bundle, targe
 	return draft, nil
 }
 
+// PublishBundle saves a bundle at once as a private app, or as the next version
+// of targetAppID. A bundle with elevated capabilities is staged for approval instead.
+func (s *Service) PublishBundle(ctx context.Context, bundle appbundle.Bundle, targetAppID, sourceThreadID string) (storage.App, storage.AppVersion, bool, error) {
+	if appbundle.RequiresPublishApproval(bundle.Manifest.Capabilities) {
+		return storage.App{}, storage.AppVersion{}, false, storage.ErrAppApprovalRequired
+	}
+	draft, err := s.StageDraft(ctx, bundle, targetAppID, sourceThreadID)
+	if err != nil {
+		return storage.App{}, storage.AppVersion{}, false, err
+	}
+	return s.PublishFromDraft(ctx, PublishInput{
+		RequestedID:  draft.TargetAppID,
+		DraftID:      draft.ID,
+		BundleSHA256: draft.BundleSHA256,
+	})
+}
+
 type PublishInput struct {
 	RequestedID  string
 	DraftID      string

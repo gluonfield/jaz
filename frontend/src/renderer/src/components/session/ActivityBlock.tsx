@@ -15,8 +15,6 @@ import { Collapse } from '@/components/ui/Collapse'
 import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
 import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
 import { ACPEventHeader } from './ACPEventHeader'
-import { AppDraftCard } from './AppDraftCard'
-import { isAppDraftToolCall } from './appDraftTool'
 import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
@@ -149,8 +147,6 @@ export const ActivityBlock = memo(function ActivityBlock({
     let row: ReactElement
     if (entry.kind === 'thought') {
       row = <ThinkingBlock key={entry.key} text={entry.text} pending={rowActive} findActive={findActive} />
-    } else if (isAppDraftToolCall(entry.call)) {
-      row = <AppDraftCard key={entry.key} call={entry.call} active={rowActive} />
     } else if (inlineDiffs && hasInlineDiff(entry.call)) {
       row = <EditDiffBlock key={entry.key} call={entry.call} />
     } else if (inlineShell && hasInlineShellCommand(entry.call)) {

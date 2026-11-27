@@ -7,6 +7,8 @@ import { isPresentedApp } from '@/lib/mcpApps'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import { messageText } from '@/lib/messageText'
 import { isParentChildACPEvent, sessionEventCoalesceKey } from '@/lib/sessionEvents'
+import { isAppToolCall, parseAppToolOutput } from './appTool'
+import { isRunningToolStatus } from './toolPresentation'
 import { hasPermissionSurface, normalized } from './TranscriptUtils'
 
 export type TimelineItem =
@@ -19,6 +21,8 @@ export type TimelineItem =
       key: string
       header?: ActivityHeader
     }
+  // An app the agent saved: a deliverable, shown outside the folded work.
+  | { kind: 'app'; call: ACPToolCall; at: number; key: string }
 
 export type ActivityEntry =
   | { kind: 'thought'; text: string; key: string }
@@ -191,6 +195,35 @@ function groupActivities(items: TimelineItem[]): TimelineItem[] {
   return out
 }
 
+// A saved app leaves the activity that produced it and follows it as its own
+// item, once per call: a call repeated across activities shows where it was
+// last reported. A failed save stays behind as an ordinary tool row.
+function liftSavedApps(items: TimelineItem[]): TimelineItem[] {
+  const isApp = (entry: ActivityEntry): entry is Extract<ActivityEntry, { kind: 'tool' }> =>
+    entry.kind === 'tool' && isAppToolCall(entry.call) &&
+    (isRunningToolStatus(entry.call.status) || parseAppToolOutput(entry.call.raw_output) !== null)
+  const lastActivity = new Map<string, TimelineItem>()
+  for (const item of items) {
+    if (item.kind !== 'activity') continue
+    for (const entry of item.entries) {
+      if (isApp(entry)) lastActivity.set(entry.key, item)
+    }
+  }
+  if (!lastActivity.size) return items
+  return items.flatMap((item): TimelineItem[] => {
+    if (item.kind !== 'activity') return [item]
+    const work = item.entries.filter((entry) => !lastActivity.has(entry.key))
+    if (work.length === item.entries.length) return [item]
+    return [
+      ...(work.length ? [{ ...item, entries: work }] : []),
+      ...item.entries.flatMap((entry) =>
+        isApp(entry) && lastActivity.get(entry.key) === item
+          ? [{ kind: 'app' as const, call: entry.call, at: item.at, key: `app-${entry.key}` }]
+          : []),
+    ]
+  })
+}
+
 function markEventHeaders(items: TimelineItem[], sessionId?: string): void {
   let previousACP = ''
   for (const item of items) {
@@ -265,9 +298,10 @@ function textContent(item: TimelineItem): string | undefined {
 }
 
 // An item that reads as produced output rather than process. Result cards are
-// pulled from the flow before classification, so artifacts are the only anchor.
+// pulled from the flow before classification, so artifacts and saved apps are
+// the only anchors.
 function isOutcomeAnchor(item: TimelineItem): boolean {
-  return item.kind === 'event' && item.event.type === 'artifact'
+  return item.kind === 'app' || (item.kind === 'event' && item.event.type === 'artifact')
 }
 
 // Substance markers that separate an answer from a one-line preamble: a heading,
@@ -485,7 +519,7 @@ export function buildTimeline(
   // A live "working" indicator next to a question awaiting the user is noise.
   const anchored = [...(pendingPermissionIds.size ? [] : workingStatusItems), ...pendingCards]
   markEventHeaders([...chronologicalItems, ...anchored], sessionId)
-  const chronological = groupActivities(chronologicalItems)
+  const chronological = liftSavedApps(groupActivities(chronologicalItems))
   const turns = splitTurns(chronological)
   for (const turn of turns) {
     const hasWrittenReply = turn.items.some((item) => {

@@ -21,12 +21,12 @@ If you catch yourself writing "click to learn more" in prose, the diagram itself
 You create rich visual content — SVG diagrams/illustrations and HTML interactive widgets — that renders inline in conversation. The best output feels like a natural extension of the chat.
 
 ## Workflow
-- Use an artifact for visual output that solves the user's problem: data visualisations, visual explanations of algorithms and systems, diagrams, maps, UI mockups and interactive tools, and when iterating on an existing artifact. Short code, short prose, plain lists, plain tables and conversational replies stay as text; text-heavy documents and code references are Markdown files.
+- Use an artifact for visual output that solves the user's problem: data visualisations, visual explanations of algorithms and systems, diagrams, maps, UI mockups and interactive tools, and when iterating on an existing artifact. Short code, short prose, plain lists, plain tables and conversational replies stay as text; text-heavy documents and code references are Markdown files. An artifact is never delivered as a Markdown file, a workspace HTML file, a web page or a link.
 - Build it in this turn from your best current data. If a figure may be stale, do one or two quick lookups while building; deeper research refines the artifact afterwards and never gates the first version.
 - Build the finished thing the user asked for, never a placeholder, smoke test, generic card or description of the tool.
 - Create one self-contained file with CSS and JS inline. For a complex React/Tailwind/shadcn artifact, use the `web-artifacts-builder` skill and bundle to one HTML document; never pass raw JSX, TSX or an unbundled app.
 - Deliver with the surface's tool. In chat, call `visualise_show_widget` with a meaningful snake_case title such as `largest_cities_by_population_2026` and 1-4 concrete loading messages such as "Lining up the megacities"; do not repeat the artifact's contents in prose.
-- To publish or share an artifact as a Jaz App, call `prepare_app_draft` with the self-contained HTML/Markdown (or workspace file paths) so Jaz shows an in-chat Preflight & Publish confirmation card; never use external site hosts like ChatGPT Sites unless explicitly requested.
+- When the user asks for an app, or asks to save, keep, publish, share or install an artifact, call `publish_app` with the self-contained HTML/Markdown (or workspace file paths). Jaz saves it privately at once and shows a card with Show App and Install App; never ask for confirmation first. Use `prepare_app_draft` only for an app that declares MCP tool calls, viewer AI credits or desktop privileges, and never use external site hosts like ChatGPT Sites unless explicitly requested.
 - This guide is the styling authority for inline artifacts; other UI polish skills apply only where they do not conflict with it.
 
 ## Core Design System

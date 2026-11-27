@@ -80,6 +80,24 @@ func TestHTTPAppsDraftPublishTicketContentAndKV(t *testing.T) {
 	}
 	appID := pubResp.App.ID
 
+	directRec := httptest.NewRecorder()
+	mux.ServeHTTP(directRec, httptest.NewRequest(http.MethodPost, "/v1/apps", strings.NewReader(`{"title":"Notes","markdown":"# Notes"}`)))
+	var direct struct {
+		App struct {
+			Kind       string `json:"kind"`
+			Visibility string `json:"visibility"`
+		} `json:"app"`
+	}
+	_ = json.Unmarshal(directRec.Body.Bytes(), &direct)
+	if directRec.Code != http.StatusCreated || direct.App.Kind != "document" || direct.App.Visibility != "private" {
+		t.Fatalf("direct publish status=%d body=%s", directRec.Code, directRec.Body.String())
+	}
+	elevatedRec := httptest.NewRecorder()
+	mux.ServeHTTP(elevatedRec, httptest.NewRequest(http.MethodPost, "/v1/apps", strings.NewReader(`{"title":"Bot","html":"<p>hi</p>","capabilities":["tools:call"],"allowed_tools":["crm_search"]}`)))
+	if elevatedRec.Code != http.StatusForbidden {
+		t.Fatalf("direct publish of an elevated app must be refused, got %d body=%s", elevatedRec.Code, elevatedRec.Body.String())
+	}
+
 	// Ticket + /app-content sandbox CSP & Service-Worker denial.
 	tRec := httptest.NewRecorder()
 	mux.ServeHTTP(tRec, httptest.NewRequest(http.MethodPost, "/v1/apps/"+appID+"/ticket", nil))

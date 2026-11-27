@@ -32,13 +32,14 @@ const (
 )
 
 var (
-	ErrAppNotFound        = errors.New("app not found")
-	ErrAppForbidden       = errors.New("forbidden")
-	ErrAppConflict        = errors.New("conflict")
-	ErrAppKVQuotaExceeded = errors.New("app kv storage quota exceeded")
-	ErrAppKVConflict      = errors.New("app kv revision conflict")
-	ErrAppDraftConsumed   = errors.New("app draft already consumed or expired")
-	ErrAppDraftMismatch   = errors.New("app draft bundle_sha256 mismatch")
+	ErrAppNotFound         = errors.New("app not found")
+	ErrAppForbidden        = errors.New("forbidden")
+	ErrAppConflict         = errors.New("conflict")
+	ErrAppKVQuotaExceeded  = errors.New("app kv storage quota exceeded")
+	ErrAppKVConflict       = errors.New("app kv revision conflict")
+	ErrAppDraftConsumed    = errors.New("app draft already consumed or expired")
+	ErrAppDraftMismatch    = errors.New("app draft bundle_sha256 mismatch")
+	ErrAppApprovalRequired = errors.New("elevated app capabilities require explicit approval of a staged bundle")
 )
 
 type AppMember struct {

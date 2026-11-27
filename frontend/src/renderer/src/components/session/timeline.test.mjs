@@ -250,3 +250,29 @@ describe('ACP activity timeline', () => {
     expect(chronological[0].key).not.toBe(chronological[2].key)
   })
 })
+
+test('a saved app stands outside the folded work once per call, and a failed save stays inside it', () => {
+  const saved = JSON.stringify({ app_id: 'a'.repeat(26), title: 'World Clock', kind: 'artifact', version: 1 })
+  const read = { id: 'read', title: 'Read file', status: 'completed' }
+  const failed = { id: 'failed', tool_name: 'publish_app', status: 'failed', raw_output: { error: 'missing entry' } }
+  const running = { id: 'save', tool_name: 'publish_app', status: 'in_progress' }
+  const done = { ...running, status: 'completed', raw_output: saved }
+  const user = (seq, second) => ({ seq, role: 'user', content: 'Save it', created_at: new Date(second * 1000).toISOString() })
+  const timeline = buildTimeline(
+    [user(1, 0)],
+    [
+      acpEvent('thread', 'acp_tool', 1, { tool_calls: [read, failed, running] }),
+      { ...acpEvent('thread', 'acp_message', 2), content: 'Saving the clock now.' },
+      acpEvent('thread', 'acp_tool', 3, { tool_calls: [done] }),
+      { ...acpEvent('thread', 'acp_message', 4), content: 'Saved.' },
+    ].map((event, index) => ({ ...event, seq: index + 1 })),
+    'thread',
+    true,
+  )
+  const apps = timeline.chronological.filter((item) => item.kind === 'app')
+  expect(apps.map((item) => item.call)).toEqual([done])
+
+  const { workItems, resultItems } = classifyTurnItems(timeline.turns[0].items, new Set(), new Map())
+  expect(workItems.flatMap((item) => item.entries?.map((entry) => entry.call.id) ?? [])).toEqual(['read', 'failed'])
+  expect(resultItems.map((item) => item.kind === 'app' ? 'app' : item.event.content)).toEqual(['Saving the clock now.', 'app', 'Saved.'])
+})
