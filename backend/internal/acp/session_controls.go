@@ -180,6 +180,9 @@ func (m *Manager) setSessionConfig(ctx context.Context, job *jobState, id, value
 	if modelChange && agentPolicyForAgent(job.ACPAgent).modelMetaKey != "" {
 		return fmt.Errorf("agent %q drops Jaz's instructions when its model changes mid-session; start a new thread to use %s", CanonicalAgentName(job.ACPAgent), value)
 	}
+	if !m.sessionProcessCurrent(job) {
+		return fmt.Errorf("agent connection is unavailable")
+	}
 	peer := m.peer(job.ID)
 	if peer == nil {
 		return fmt.Errorf("agent connection is unavailable")

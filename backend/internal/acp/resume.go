@@ -246,17 +246,23 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 				return "", ModeState{}, false, err
 			}
 			ac.state.initial = raw
-			modes, err := m.configuredModeState(ctx, ac, agentName, newACPSessionInfo(raw, acpschema.NewSessionResponse{
+			var modes ModeState
+			modes, err = m.configuredModeState(ctx, ac, agentName, newACPSessionInfo(raw, acpschema.NewSessionResponse{
 				SessionID: acpschema.SessionID(storedID),
 				Modes:     resp.Modes,
 			}), cfg)
-			return storedID, modes, true, err
+			if !isMissingACPSession(err) {
+				return storedID, modes, true, err
+			}
 		}
-		replaceable, inspectErr := m.replaceableUnmaterializedSession(session, agentName, cfg, err)
+		replaceable, inspectErr := m.replaceableMissingSession(session, agentName, cfg, err)
 		if inspectErr != nil {
 			return "", ModeState{}, false, inspectErr
 		}
 		if !replaceable {
+			if isMissingACPSession(err) {
+				return "", ModeState{}, false, fmt.Errorf("cannot resume ACP session %s: the agent no longer has its conversation history", storedID)
+			}
 			return "", ModeState{}, false, withSignInHint(fmt.Errorf("resume ACP session %s: %w", storedID, err))
 		}
 		m.log.Warn("replacing unmaterialized agent session", "agent", agentName, "session", session.ID, "acp_session", storedID)
@@ -269,10 +275,9 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	return string(acpSession.response.SessionID), modes, false, err
 }
 
-func (m *Manager) replaceableUnmaterializedSession(session storage.Session, agentName string, cfg AgentConfig, loadErr error) (bool, error) {
-	var rpcErr *jsonrpc.Error
-	if !sessionMaterializesOnPrompt(agentName, cfg) ||
-		!errors.As(loadErr, &rpcErr) || rpcErr.Code != int(acpschema.ErrorCode32002) {
+func (m *Manager) replaceableMissingSession(session storage.Session, agentName string, cfg AgentConfig, loadErr error) (bool, error) {
+	rpcErr, ok := errors.AsType[*jsonrpc.Error](loadErr)
+	if !isMissingACPSession(loadErr) && (!ok || rpcErr.Code != int(acpschema.ErrorCode32002) || !sessionMaterializesOnPrompt(agentName, cfg)) {
 		return false, nil
 	}
 	hasTranscript, err := m.store.HasAgentTranscript(session.ID)
@@ -280,4 +285,13 @@ func (m *Manager) replaceableUnmaterializedSession(session storage.Session, agen
 		return false, fmt.Errorf("inspect ACP session transcript: %w", err)
 	}
 	return !hasTranscript, nil
+}
+
+func isMissingACPSession(err error) bool {
+	rpcErr, ok := errors.AsType[*jsonrpc.Error](err)
+	if !ok || rpcErr.Code != int(acpschema.ErrorCode32602) {
+		return false
+	}
+	message, _, _ := strings.Cut(rpcErr.Message, ":")
+	return strings.EqualFold(message, "Session not found")
 }

@@ -160,6 +160,13 @@ func (m *Manager) acquireSessionProcess(ctx context.Context, job *jobState) (*jo
 	}
 }
 
+func (m *Manager) sessionProcessCurrent(job *jobState) bool {
+	job.mu.RLock()
+	retired := job.retired
+	job.mu.RUnlock()
+	return !retired && m.jobByID(job.ID) == job
+}
+
 func (m *Manager) teardown(id string) {
 	if job := m.jobByID(id); job != nil {
 		m.withACPTranscriptBarrier(job.eventView(), nil)
