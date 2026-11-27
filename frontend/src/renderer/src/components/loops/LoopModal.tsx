@@ -27,7 +27,7 @@ import {
 const STEPS = [
   { label: 'Prompt', description: 'What should this loop do on each run?' },
   { label: 'Schedule', description: 'How often should it run?' },
-  { label: 'Boards', description: 'Show its latest run as a live widget on your boards.' },
+  { label: 'Boards', description: 'Show its latest run as a live app on your boards.' },
 ]
 const LAST_STEP = STEPS.length - 1
 

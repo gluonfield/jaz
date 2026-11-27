@@ -1,11 +1,13 @@
 package widgets
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type fakeMCPPublisher struct {
@@ -13,15 +15,19 @@ type fakeMCPPublisher struct {
 	input     PublishInput
 }
 
-func (f *fakeMCPPublisher) PublishForSession(sessionID string, input PublishInput) (Widget, []string, error) {
+func (f *fakeMCPPublisher) PublishForSession(_ context.Context, sessionID string, input PublishInput) (Published, error) {
 	f.sessionID = sessionID
 	f.input = input
-	return Widget{ID: "widget-1", Title: "Inbox", CurrentVersion: 4, SizeHint: "2x2"}, []string{"tighten layout"}, nil
+	return Published{
+		App:      storage.App{ID: "app-1", Title: "Inbox", Kind: storage.AppKindArtifact, CurrentVersion: 4},
+		SizeHint: "2x2",
+		Warnings: []string{"tighten layout"},
+	}, nil
 }
 
 func TestMCPPublishUsesSessionHeader(t *testing.T) {
 	publisher := &fakeMCPPublisher{}
-	result, out, err := publish(publisher, &mcp.CallToolRequest{
+	out, err := publish(context.Background(), publisher, &mcp.CallToolRequest{
 		Extra: &mcp.RequestExtra{Header: mcpsession.Header("thread-1")},
 	}, MCPPublishInput{Title: "Inbox", SizeHint: "2x2", HTML: "<p>hi</p>"})
 	if err != nil {
@@ -33,23 +39,16 @@ func TestMCPPublishUsesSessionHeader(t *testing.T) {
 	if publisher.input.Title != "Inbox" || publisher.input.SizeHint != "2x2" || publisher.input.HTML != "<p>hi</p>" {
 		t.Fatalf("input = %#v", publisher.input)
 	}
-	if out.WidgetID != "widget-1" || out.Version != 4 || len(out.Warnings) != 1 {
+	if out.AppID != "app-1" || out.Version != 4 || out.SizeHint != "2x2" || len(out.Warnings) != 1 {
 		t.Fatalf("output = %#v", out)
 	}
-	if len(result.Content) != 1 {
-		t.Fatalf("content = %d", len(result.Content))
-	}
-	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok || !strings.Contains(text.Text, "Published widget") || !strings.Contains(text.Text, "Host-rendering warnings") {
-		t.Fatalf("content = %#v", result.Content[0])
-	}
-	if strings.Contains(text.Text, "Lint warnings") {
-		t.Fatalf("publish output should not frame advisory host feedback as lint: %q", text.Text)
+	if !strings.Contains(out.Note, "warnings") {
+		t.Fatalf("note should point at the warnings: %q", out.Note)
 	}
 }
 
 func TestMCPPublishRequiresSessionHeader(t *testing.T) {
-	_, _, err := publish(&fakeMCPPublisher{}, &mcp.CallToolRequest{}, MCPPublishInput{})
+	_, err := publish(context.Background(), &fakeMCPPublisher{}, &mcp.CallToolRequest{}, MCPPublishInput{})
 	if err == nil || !strings.Contains(err.Error(), mcpsession.HeaderName) {
 		t.Fatalf("err = %v", err)
 	}

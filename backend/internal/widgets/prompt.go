@@ -9,19 +9,18 @@ import (
 	"github.com/wins/jaz/backend/internal/templates/widgetprompt"
 )
 
-func PromptSection(loop loops.Loop, widget *Widget) string {
-	data := widgetprompt.Data{
-		FilePath: WidgetFilePath(loop),
-	}
-	if widget != nil {
-		data.Published = true
-		data.Version = widget.CurrentVersion
-		data.Title = widget.Title
-		data.SizeHint = widget.SizeHint
-		data.LastError = widget.LastError
-		data.LayoutFeedback = layoutFeedback(widget.LastLayout, widget.CurrentVersion)
-	}
-	return widgetprompt.Render(data)
+// PromptSection describes the board app a loop run must publish. version is
+// the published version the tile shows now, zero before the first publish.
+func PromptSection(loop loops.Loop, widget Widget, version int) string {
+	return widgetprompt.Render(widgetprompt.Data{
+		FilePath:       WidgetFilePath(loop),
+		Published:      version > 0,
+		Version:        version,
+		Title:          widget.Title,
+		SizeHint:       widget.SizeHint,
+		LastError:      widget.LastError,
+		LayoutFeedback: layoutFeedback(widget.LastLayout, version),
+	})
 }
 
 // layoutReport mirrors the bridge's jaz:artifact-layout measurement payload.
@@ -33,7 +32,7 @@ type layoutReport struct {
 }
 
 // layoutFeedback turns stored telemetry into actionable prompt text; empty
-// when the layout is healthy so healthy widgets cost no tokens.
+// when the layout is healthy so healthy tiles cost no tokens.
 func layoutFeedback(payload string, version int) string {
 	if strings.TrimSpace(payload) == "" {
 		return ""

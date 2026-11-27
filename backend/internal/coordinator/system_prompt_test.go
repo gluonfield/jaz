@@ -119,9 +119,9 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"## AGENTS.md\n\nalways cite sources",
 		"## Jaz threads",
 		"create_thread",
-		"## Board widget",
+		"## Board app",
 		"artifact_guide",
-		"deliver it with `publish_widget`",
+		"deliver it with `publish_app`",
 		"## memory/LONG_TERM.md",
 		"<name>deploy</name>",
 	} {
@@ -129,7 +129,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 			t.Fatalf("widget ACP extension missing shared section %q:\n%s", want, widgetACP)
 		}
 	}
-	for _, reject := range []string{"show_artifact", "publish_app", "## Board Widget Runtime"} {
+	for _, reject := range []string{"show_artifact", "## Board App Runtime"} {
 		if strings.Contains(widgetACP, reject) {
 			t.Fatalf("widget ACP base extension must leave output details to the loop widget extension; found %q:\n%s", reject, widgetACP)
 		}

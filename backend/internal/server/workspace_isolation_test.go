@@ -299,20 +299,18 @@ func TestWorkspaceHTTPHandlerIsolation(t *testing.T) {
 		t.Fatalf("loopRunSpawn workspace_id = %q, want cloudA", spawn.WorkspaceID)
 	}
 
-	var widgetList struct {
-		Widgets []widgets.Widget `json:"widgets"`
+	var cloudABoardDetail struct {
+		Items []widgets.BoardItem `json:"items"`
 	}
-	rec = doJSON(http.MethodGet, "/v1/widgets", nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &widgetList)
-	if len(widgetList.Widgets) != 1 || widgetList.Widgets[0].LoopID != cloudALoop.ID {
-		t.Fatalf("cloudA widgets = %+v", widgetList.Widgets)
+	rec = doJSON(http.MethodGet, "/v1/boards/"+cloudABoard.ID, nil)
+	_ = json.Unmarshal(rec.Body.Bytes(), &cloudABoardDetail)
+	if len(cloudABoardDetail.Items) != 1 || cloudABoardDetail.Items[0].LoopID != cloudALoop.ID {
+		t.Fatalf("cloudA board items = %+v", cloudABoardDetail.Items)
 	}
 
 	cloud.active = "cloudB"
-	rec = doJSON(http.MethodGet, "/v1/widgets", nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &widgetList)
-	if len(widgetList.Widgets) != 0 {
-		t.Fatalf("cloudB leaked widgets: %+v", widgetList.Widgets)
+	if cross := doJSON(http.MethodGet, "/v1/boards/"+cloudABoard.ID, nil); cross.Code != http.StatusNotFound {
+		t.Fatalf("cloudB GET cloudA board status=%d, want 404", cross.Code)
 	}
 
 	// --- 3. Custom MCP Servers isolation ---

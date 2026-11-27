@@ -23,7 +23,7 @@ export interface LoopDraft {
   model: string
   reasoningEffort: string
   schedule: ScheduleDraft
-  // Boards the loop's widget lives on; assignment is the widget enablement.
+  // Boards the loop's app lives on; assignment is what lets the loop publish one.
   boardIds: string[]
 }
 
@@ -107,7 +107,7 @@ export function loopDraftToInput(
     model: draft.model,
     reasoning_effort: draft.reasoningEffort,
     directory: draft.directory || undefined,
-    // Always sent: an empty list unassigns the widget from every board.
+    // Always sent: an empty list takes the loop off every board.
     board_ids: draft.boardIds,
   }
 }

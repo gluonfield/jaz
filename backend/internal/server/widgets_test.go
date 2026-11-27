@@ -1,13 +1,16 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/apps"
 	"github.com/wins/jaz/backend/internal/loops"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/widgets"
@@ -15,12 +18,13 @@ import (
 
 func newWidgetTestServer(t *testing.T) (*Server, *sqlitestore.Store, *widgets.Service) {
 	t.Helper()
-	store, err := sqlitestore.New(t.TempDir())
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	service := widgets.NewService(store, nil)
+	service := widgets.NewService(store, nil).WithApps(apps.NewService(store, store, nil, nil, root, root))
 	executor := &fakeLoopExecutor{started: make(chan loops.Run, 1)}
 	srv := &Server{Store: store, Widgets: service, Loops: newLoopServiceForTest(store, executor)}
 	return srv, store, service
@@ -156,13 +160,25 @@ func TestWidgetContentAndErrorsAPI(t *testing.T) {
 	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
 		t.Fatal(err)
 	}
-	widget, _, err := service.Publish(loop, "run-1", widgets.PublishInput{HTML: `<p id="hello">hi</p>`})
+	widget, _, _, err := service.StateForLoop(loop.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// HTML published before tiles became apps stays readable until the loop
+	// publishes its app.
+	widget.CurrentVersion = 1
+	if err := store.SaveWidget(widget); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(store.RootDir(), "jaz.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`INSERT INTO widget_versions (widget_id, version, html, created_at_ms) VALUES (?, 1, '<p id="hello">hi</p>', 1)`, widget.ID); err != nil {
+		t.Fatal(err)
+	}
 
-	// The content endpoint serves the raw fragment; the board wraps it in the
-	// shared artifact document client-side, so no host chrome leaks here.
 	res := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/widgets/"+widget.ID+"/content", nil))
 	if res.Code != http.StatusOK {

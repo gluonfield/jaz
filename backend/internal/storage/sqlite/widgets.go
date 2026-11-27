@@ -16,7 +16,8 @@ func (s *Store) NewWidgetID() string {
 
 // PurgeOrphanWidgets removes widgets (and their versions and placements)
 // whose loop is gone or soft-deleted. Orphan placements are invisible on the
-// board but still occupy grid cells, blocking placement and drags.
+// board but still occupy grid cells, blocking placement and drags. The app
+// such a loop published stays in the library as an ordinary app.
 func (s *Store) PurgeOrphanWidgets() (int, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -27,6 +28,9 @@ func (s *Store) PurgeOrphanWidgets() (int, error) {
 		return 0, err
 	}
 	if err := q.DeleteOrphanWidgetVersions(ctx, deleted); err != nil {
+		return 0, err
+	}
+	if err := q.ReleaseOrphanLoopApps(ctx, deleted); err != nil {
 		return 0, err
 	}
 	removed, err := q.DeleteOrphanWidgets(ctx, deleted)
@@ -56,22 +60,6 @@ func (s *Store) LoadWidgetByLoop(loopID string) (widgets.Widget, bool, error) {
 	return widgetFromDB(row), true, nil
 }
 
-func (s *Store) ListWidgets() ([]widgets.Widget, error) {
-	return s.ListWidgetsForWorkspace("")
-}
-
-func (s *Store) ListWidgetsForWorkspace(workspaceID string) ([]widgets.Widget, error) {
-	rows, err := widgetdb.New(s.db).ListWidgets(context.Background(), workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]widgets.Widget, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, widgetFromDB(row))
-	}
-	return out, nil
-}
-
 func (s *Store) SaveWidget(widget widgets.Widget) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -90,44 +78,7 @@ func upsertWidgetParams(widget widgets.Widget) widgetdb.UpsertWidgetParams {
 		CreatedAtMs:    timeToMs(widget.CreatedAt),
 		UpdatedAtMs:    timeToMs(widget.UpdatedAt),
 		WorkspaceID:    firstNonEmpty(widget.WorkspaceID, storage.LocalWorkspaceID),
-	}
-}
-
-func (s *Store) InsertWidgetVersion(version widgets.Version) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	return widgetdb.New(s.db).InsertWidgetVersion(context.Background(), insertWidgetVersionParams(version))
-}
-
-// SaveWidgetWithVersion persists the bumped widget row and its new version
-// snapshot in one transaction: a widget must never point at a version that
-// was not written.
-func (s *Store) SaveWidgetWithVersion(widget widgets.Widget, version widgets.Version) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	ctx := context.Background()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	q := widgetdb.New(tx)
-	if err := q.UpsertWidget(ctx, upsertWidgetParams(widget)); err != nil {
-		return err
-	}
-	if err := q.InsertWidgetVersion(ctx, insertWidgetVersionParams(version)); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-func insertWidgetVersionParams(version widgets.Version) widgetdb.InsertWidgetVersionParams {
-	return widgetdb.InsertWidgetVersionParams{
-		WidgetID:        version.WidgetID,
-		Version:         int64(version.Version),
-		Html:            version.HTML,
-		ProducedByRunID: nullDBString(version.ProducedByRunID),
-		CreatedAtMs:     timeToMs(version.CreatedAt),
+		PublishedRunID: widget.PublishedRunID,
 	}
 }
 
@@ -140,21 +91,17 @@ func (s *Store) LoadWidgetVersion(widgetID string, version int) (widgets.Version
 		return widgets.Version{}, err
 	}
 	return widgets.Version{
-		WidgetID:        row.WidgetID,
-		Version:         int(row.Version),
-		HTML:            row.Html,
-		ProducedByRunID: row.ProducedByRunID.String,
-		CreatedAt:       msToTime(row.CreatedAtMs),
+		WidgetID:  row.WidgetID,
+		Version:   int(row.Version),
+		HTML:      row.Html,
+		CreatedAt: msToTime(row.CreatedAtMs),
 	}, nil
 }
 
-func (s *Store) PruneOldWidgetVersions(widgetID string, currentVersion, keepOld int) error {
+func (s *Store) DeleteWidgetVersions(widgetID string) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	return widgetdb.New(s.db).PruneWidgetVersions(context.Background(), widgetdb.PruneWidgetVersionsParams{
-		WidgetID:       widgetID,
-		MaxKeepVersion: int64(currentVersion - keepOld - 1),
-	})
+	return widgetdb.New(s.db).DeleteWidgetVersions(context.Background(), widgetID)
 }
 
 func (s *Store) SaveBoard(board widgets.Board) error {
@@ -314,19 +261,18 @@ func (s *Store) ListBoardItems(boardID string) ([]widgets.BoardItem, error) {
 				H:        int(row.H),
 				PlacedBy: row.PlacedBy,
 			},
-			WidgetKind:        row.WidgetKind,
 			AppID:             row.AppID,
 			AppKind:           row.AppKind,
 			LoopID:            row.LoopID,
 			LoopName:          row.LoopName,
 			LoopStatus:        row.LoopStatus,
-			LoopLastRunStatus: row.LoopLastRunStatus.String,
+			LoopLastRunStatus: row.LoopLastRunStatus,
 			LoopLastRunAt:     msToTime(row.LoopLastRunAtMs),
 			Title:             row.Title,
 			CurrentVersion:    int(row.CurrentVersion),
 			SizeHint:          row.SizeHint,
-			LastError:         row.LastError.String,
-			WidgetUpdatedAt:   msToTime(row.WidgetUpdatedAtMs),
+			LastError:         row.LastError,
+			WidgetUpdatedAt:   msToTime(row.UpdatedAtMs),
 		})
 	}
 	return out, nil
@@ -342,6 +288,7 @@ func widgetFromDB(row widgetdb.Widget) widgets.Widget {
 		SizeHint:       row.SizeHint,
 		LastError:      row.LastError.String,
 		LastLayout:     row.LastLayout,
+		PublishedRunID: row.PublishedRunID,
 		CreatedAt:      msToTime(row.CreatedAtMs),
 		UpdatedAt:      msToTime(row.UpdatedAtMs),
 	}

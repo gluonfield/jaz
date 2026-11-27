@@ -47,6 +47,8 @@ export interface JazApp {
   owner_email?: string
   space_id?: string | null
   source_thread_id?: string
+  // The loop that publishes this app onto its boards.
+  loop_id?: string
   title: string
   description?: string
   icon?: AppIconSpec
@@ -231,6 +233,8 @@ export const orgAppPolicyQuery = queryOptions({
 
 export interface AppBundleInput {
   source_thread_id?: string
+  // The loop that publishes this app onto its boards.
+  loop_id?: string
   title: string
   description?: string
   kind?: AppKind

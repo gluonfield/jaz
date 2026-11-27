@@ -128,7 +128,7 @@ export function ScheduleStep({
   )
 }
 
-// Step 3 — which boards carry the loop's live widget.
+// Step 3 — which boards carry the loop's live app.
 export function BoardsStep({
   draft,
   disabled,
@@ -147,7 +147,7 @@ export function BoardsStep({
       <span className="text-[12px] text-ink-3">Loading boards…</span>
     ) : boards.isError || (boards.data ?? []).length === 0 ? (
       <p className="text-[12px] text-ink-3">
-        No boards yet — create one on the Boards page to give this loop a live widget.
+        No boards yet — create one on the Boards page to give this loop a live app.
       </p>
     ) : (
       <BoardAssignmentPicker

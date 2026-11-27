@@ -418,7 +418,6 @@ export interface Board {
 export interface BoardItem {
   board_id: string
   widget_id: string
-  widget_kind?: 'loop' | 'app'
   x: number
   y: number
   w: number
@@ -436,17 +435,6 @@ export interface BoardItem {
   size_hint?: string
   last_error?: string
   widget_updated_at: string
-}
-
-export interface WidgetSummary {
-  id: string
-  loop_id: string
-  title: string
-  current_version: number
-  size_hint?: string
-  last_error?: string
-  created_at: string
-  updated_at: string
 }
 
 export interface ToolCallJSON {

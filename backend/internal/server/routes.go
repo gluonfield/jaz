@@ -28,7 +28,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/boards", s.handleListBoards)
 	mux.HandleFunc("POST /v1/boards", s.handleCreateBoard)
 	mux.HandleFunc("/v1/boards/", s.handleBoardAction)
-	mux.HandleFunc("GET /v1/widgets", s.handleListWidgets)
 	mux.HandleFunc("/v1/widgets/", s.handleWidgetAction)
 	mux.HandleFunc("GET /v1/onboarding/state", s.handleOnboardingState)
 	mux.HandleFunc("/v1/onboarding", s.handleOnboarding)

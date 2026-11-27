@@ -15,6 +15,7 @@ type Querier interface {
 	DeleteAppRow(ctx context.Context, id string) error
 	GetApp(ctx context.Context, id string) (GetAppRow, error)
 	GetAppDraft(ctx context.Context, id string) (AppDraft, error)
+	GetAppIDByLoop(ctx context.Context, loopID string) (string, error)
 	GetAppKV(ctx context.Context, arg GetAppKVParams) (AppKv, error)
 	GetAppVersion(ctx context.Context, arg GetAppVersionParams) (AppVersion, error)
 	GetAppVersionMax(ctx context.Context, id string) (GetAppVersionMaxRow, error)

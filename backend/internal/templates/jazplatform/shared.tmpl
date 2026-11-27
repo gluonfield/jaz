@@ -83,9 +83,9 @@ For each page you edit, decide what it should show now, then edit toward that. F
 {{ template "canvas_format" . }}
 {{- else if eq .ArtifactSurface "widget" }}
 
-## Board widget
+## Board app
 
-This loop run keeps one board widget up to date: a self-contained HTML tile on the user's Jaz board. Call `artifact_guide` for the design rules before building it, build it from your best current data, and deliver it with `publish_widget`.
+This loop run keeps one app up to date: a self-contained HTML tile on the user's Jaz board, also listed in their Apps. Call `artifact_guide` for the design rules before building it, build it from your best current data, and deliver it with `publish_app`.
 {{- else }}
 
 ## Artifacts, apps and documents

@@ -179,22 +179,6 @@ func (s *Server) handlePatchBoard(w http.ResponseWriter, r *http.Request, boardI
 	writeJSON(w, http.StatusOK, board)
 }
 
-func (s *Server) handleListWidgets(w http.ResponseWriter, r *http.Request) {
-	if s.proxyCloud(w, r) {
-		return
-	}
-	if s.Widgets == nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("widgets are not configured"))
-		return
-	}
-	items, err := s.Widgets.ListWidgets()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"widgets": items})
-}
-
 func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
 	if s.proxyCloud(w, r) {
 		return
@@ -272,9 +256,9 @@ func (s *Server) handleWidgetContent(w http.ResponseWriter, r *http.Request, wid
 		writeError(w, http.StatusNotFound, err)
 		return
 	}
-	// Serve the raw fragment. The board wraps it in the shared artifact document
-	// (theme, color-scheme, CSP, bridge) client-side, identical to inline
-	// artifacts — so theme and zoom are applied by the host, not baked here.
+	// HTML a routine published before tiles became apps, served until its next
+	// run publishes the app. The board wraps the raw fragment in the shared
+	// artifact document client-side.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte(snapshot.HTML))

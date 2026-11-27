@@ -24,10 +24,9 @@ import { loopDetailQuery } from '@/lib/api/loops'
 import { clientRuntime, popOutBoard } from '@/lib/clientRuntime'
 import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
-import { useTheme } from '@/lib/theme'
 
 export const Route = createFileRoute('/boards/$boardId')({
-  // ?add=1 opens the widget picker on arrival (set by BoardModal after create).
+  // ?add=1 opens the tile picker on arrival (set by BoardModal after create).
   validateSearch: (search): { add?: boolean } => (search.add ? { add: true } : {}),
   component: BoardPage,
 })
@@ -40,11 +39,10 @@ function BoardPage() {
   const cloud = useCloudSession()
   const isViewer = useIsCloudViewer()
   const queryClient = useQueryClient()
-  const { resolved } = useTheme()
   const scaleTimer = useRef<number | null>(null)
   const isBoardWindow = clientRuntime.windowKind === 'board'
   const boards = useQuery({ ...boardsQuery, enabled: isBoardWindow })
-  // "Add widget" opens a picker of existing loops first; "New loop" inside it
+  // "Add tile" opens a picker of existing loops first; "New loop" inside it
   // hands off to the loop modal. Either way the board stays put and scrolls
   // the fresh tile into view once it appears.
   const [modal, setModal] = useState<'add' | 'new-loop' | null>(null)
@@ -267,8 +265,8 @@ function BoardPage() {
           <IconButton
             variant="ghost"
             size="xs"
-            aria-label="Smaller widget text"
-            title="Smaller widget text"
+            aria-label="Smaller tile text"
+            title="Smaller tile text"
             disabled={scale <= 0.7}
             onClick={() => stepScale(-0.1)}
           >
@@ -277,7 +275,7 @@ function BoardPage() {
           {scale !== 1 ? (
             <button
               type="button"
-              title="Reset widget text size"
+              title="Reset tile text size"
               onClick={() => applyScale(1)}
               className="rounded-full px-1 text-[11px] tabular-nums text-ink-3 transition-colors duration-150 hover:text-ink"
             >
@@ -287,8 +285,8 @@ function BoardPage() {
           <IconButton
             variant="ghost"
             size="xs"
-            aria-label="Larger widget text"
-            title="Larger widget text"
+            aria-label="Larger tile text"
+            title="Larger tile text"
             disabled={scale >= 2}
             onClick={() => stepScale(0.1)}
           >
@@ -300,11 +298,11 @@ function BoardPage() {
         <EmptyState title="Nothing on this board yet">
           {canEdit ? (
             <>
-              <p>Widgets are live tiles your loops keep up to date. Add one to get started.</p>
+              <p>Tiles show the apps your loops keep up to date, and any app you pin. Add one to get started.</p>
               <div className="mt-3 flex flex-wrap justify-center gap-2">
                 <Button variant="primary" size="sm" onClick={() => setModal('add')}>
                   <Plus size={13} />
-                  Add widget
+                  Add tile
                 </Button>
                 {cloud.active ? (
                   <Button variant="secondary" size="sm" onClick={() => setSharing(true)}>
@@ -331,7 +329,6 @@ function BoardPage() {
           <BoardGrid
             board={board}
             items={items}
-            theme={resolved}
             scale={scale}
             onLayoutChange={canEdit ? (entry) => layoutMutation.mutate(entry) : undefined}
             onRemove={canEdit ? (widgetId) => removeMutation.mutate(widgetId) : undefined}

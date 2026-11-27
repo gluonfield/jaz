@@ -25,13 +25,13 @@ func (t PublishTool) Definition() tools.Definition {
 
 func (t PublishTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
 	if t.Publisher == nil {
-		return tools.Result{}, fmt.Errorf("widget publisher is not configured")
+		return tools.Result{}, fmt.Errorf("board app publisher is not configured")
 	}
 	sessionID := strings.TrimSpace(sessioncontext.SessionID(ctx))
 	if sessionID == "" {
 		return tools.Result{}, fmt.Errorf("%s requires a session", widgets.PublishMCPToolName)
 	}
-	widget, warnings, err := t.Publisher.PublishForSession(sessionID, widgets.PublishInput{
+	published, err := t.Publisher.PublishForSession(ctx, sessionID, widgets.PublishInput{
 		Title:    tools.StringInput(inputs, "title"),
 		SizeHint: tools.StringInput(inputs, "size_hint"),
 		HTML:     tools.StringInput(inputs, "html"),
@@ -39,11 +39,5 @@ func (t PublishTool) Execute(ctx context.Context, inputs map[string]any) (tools.
 	if err != nil {
 		return tools.Result{}, err
 	}
-	return tools.JSONResult(widgets.MCPPublishOutput{
-		WidgetID: widget.ID,
-		Title:    widget.Title,
-		Version:  widget.CurrentVersion,
-		SizeHint: widget.SizeHint,
-		Warnings: warnings,
-	})
+	return tools.JSONResult(widgets.PublishOutput(published))
 }

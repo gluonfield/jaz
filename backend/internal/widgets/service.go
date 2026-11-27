@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -21,9 +22,16 @@ const (
 	WidgetFileName = "index.html"
 )
 
+// LoopApps publishes the app a routine keeps on its boards.
+type LoopApps interface {
+	PublishLoopApp(ctx context.Context, loopID, title, html, sourceThreadID string) (storage.App, error)
+	LoopApp(ctx context.Context, loopID string) (storage.App, error)
+}
+
 type Service struct {
 	Repo      Repository
 	Log       *log.Logger
+	apps      LoopApps
 	Now       func() time.Time
 	workspace func() string
 	mu        sync.Mutex
@@ -34,6 +42,13 @@ func NewService(repo Repository, logger *log.Logger) *Service {
 		logger = log.Default()
 	}
 	return &Service{Repo: repo, Log: logger.WithPrefix("widgets")}
+}
+
+// WithApps is set after construction: the apps service is built from the
+// agent runtime, which is built from this service.
+func (s *Service) WithApps(apps LoopApps) *Service {
+	s.apps = apps
+	return s
 }
 
 func (s *Service) WithWorkspace(fn func() string) *Service {
@@ -77,26 +92,6 @@ func (s *Service) ListBoards() ([]Board, error) {
 	return out, nil
 }
 
-func (s *Service) ListWidgets() ([]Widget, error) {
-	ws := s.ActiveWorkspaceID()
-	if wsRepo, ok := s.Repo.(interface {
-		ListWidgetsForWorkspace(string) ([]Widget, error)
-	}); ok {
-		return wsRepo.ListWidgetsForWorkspace(ws)
-	}
-	items, err := s.Repo.ListWidgets()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]Widget, 0, len(items))
-	for _, item := range items {
-		if normalizeWorkspaceID(item.WorkspaceID) == ws {
-			out = append(out, item)
-		}
-	}
-	return out, nil
-}
-
 func (s *Service) LoadBoard(id string) (Board, error) {
 	board, err := s.Repo.LoadBoard(id)
 	if err != nil {
@@ -132,14 +127,17 @@ type PublishInput struct {
 	HTML     string
 }
 
-type RunPublishState struct {
-	Widget    Widget
-	Enabled   bool
-	Published bool
+// Published is the app a routine run saved for its board tile. Warnings are
+// non-fatal lint findings for the publish channel to relay so the agent can
+// fix them in the same run.
+type Published struct {
+	App      storage.App
+	SizeHint string
+	Warnings []string
 }
 
-// WidgetDir returns the loop's widget codebase directory, derived from the
-// memory path so the widget lives next to memory.md.
+// WidgetDir returns the directory holding the loop's app source, derived from
+// the memory path so it lives next to memory.md.
 func WidgetDir(loop loops.Loop) string {
 	memory := strings.TrimSpace(loop.MemoryPath)
 	if memory == "" {
@@ -156,44 +154,36 @@ func WidgetFilePath(loop loops.Loop) string {
 	return filepath.Join(dir, WidgetFileName)
 }
 
-// Publish validates and snapshots a new widget version for the loop. When
-// input.HTML is empty the widget file is read from the loop's widget dir.
-// A widget only exists by being assigned to a board, so publishing requires
-// an assignment. The returned warnings are non-fatal lint findings for the
-// publish channel to relay so the agent can fix them in the same run.
-func (s *Service) Publish(loop loops.Loop, runID string, input PublishInput) (Widget, []string, error) {
+// Publish saves the HTML as the next version of the loop's app, which its
+// board tiles show. When input.HTML is empty the file in the loop's widget dir
+// is read. A loop has a tile only while it is assigned to a board, so
+// publishing requires an assignment.
+func (s *Service) Publish(ctx context.Context, loop loops.Loop, runID, sessionID string, input PublishInput) (Published, error) {
 	html := input.HTML
 	if strings.TrimSpace(html) == "" {
 		path := WidgetFilePath(loop)
 		if path == "" {
-			return Widget{}, nil, fmt.Errorf("loop %s has no widget directory; provide html inline", loop.ID)
+			return Published{}, fmt.Errorf("loop %s has no app directory; provide html inline", loop.ID)
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return Widget{}, nil, fmt.Errorf("read widget file %s: %w", path, err)
+			return Published{}, fmt.Errorf("read app file %s: %w", path, err)
 		}
 		html = string(data)
 	}
 	if err := ValidateHTML(html); err != nil {
-		return Widget{}, nil, err
+		return Published{}, err
 	}
 
 	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	widget, found, err := s.Repo.LoadWidgetByLoop(loop.ID)
+	widget, boards, found, err := s.StateForLoop(loop.ID)
 	if err != nil {
-		return Widget{}, nil, err
+		return Published{}, err
 	}
-	if !found {
-		return Widget{}, nil, fmt.Errorf("loop %s is not assigned to any board; the user assigns loops to boards", loop.ID)
-	}
-	boards, err := s.Repo.ListBoardsForWidget(widget.ID)
-	if err != nil {
-		return Widget{}, nil, err
-	}
-	if len(boards) == 0 {
-		return Widget{}, nil, fmt.Errorf("loop %s is not assigned to any board; the user assigns loops to boards", loop.ID)
+	if !found || len(boards) == 0 {
+		return Published{}, fmt.Errorf("loop %s is not assigned to any board; the user assigns loops to boards", loop.ID)
 	}
 	if title := strings.TrimSpace(input.Title); title != "" {
 		widget.Title = title
@@ -201,30 +191,32 @@ func (s *Service) Publish(loop loops.Loop, runID string, input PublishInput) (Wi
 	if widget.Title == "" {
 		widget.Title = loop.Name
 	}
+	app, err := s.apps.PublishLoopApp(ctx, loop.ID, widget.Title, html, sessionID)
+	if err != nil {
+		return Published{}, err
+	}
 	if hint := normalizeSizeHint(input.SizeHint); hint != "" {
 		widget.SizeHint = hint
 	}
-	widget.CurrentVersion++
+	legacy := widget.CurrentVersion > 0
+	widget.CurrentVersion = 0
+	widget.PublishedRunID = runID
 	widget.LastError = ""
 	widget.LastLayout = ""
 	widget.UpdatedAt = now
-	if err := s.Repo.SaveWidgetWithVersion(widget, Version{
-		WidgetID:        widget.ID,
-		Version:         widget.CurrentVersion,
-		HTML:            html,
-		ProducedByRunID: runID,
-		CreatedAt:       now,
-	}); err != nil {
-		return Widget{}, nil, err
+	if err := s.Repo.SaveWidget(widget); err != nil {
+		return Published{}, err
 	}
-	if err := s.Repo.PruneOldWidgetVersions(widget.ID, widget.CurrentVersion, MaxOldVersions); err != nil {
-		s.Log.Warn("pruning widget versions failed", "widget", widget.ID, "error", err)
+	if legacy {
+		if err := s.Repo.DeleteWidgetVersions(widget.ID); err != nil {
+			s.Log.Warn("deleting replaced widget versions failed", "widget", widget.ID, "error", err)
+		}
 	}
 	s.applySizeHintLocked(widget, boards, now)
-	return widget, LintHTML(html), nil
+	return Published{App: app, SizeHint: widget.SizeHint, Warnings: LintHTML(html)}, nil
 }
 
-// StateForLoop reports the loop's widget and assigned boards.
+// StateForLoop reports the loop's tile and assigned boards.
 func (s *Service) StateForLoop(loopID string) (Widget, []string, bool, error) {
 	widget, found, err := s.Repo.LoadWidgetByLoop(loopID)
 	if err != nil || !found {
@@ -242,49 +234,27 @@ func (s *Service) LoopPromptExtra(loop loops.Loop, _ loops.Run) string {
 	if err != nil || !found || len(boards) == 0 {
 		return ""
 	}
-	return PromptSection(loop, &widget)
+	version := widget.CurrentVersion
+	if app, err := s.apps.LoopApp(context.Background(), loop.ID); err == nil {
+		version = app.CurrentVersion
+	}
+	return PromptSection(loop, widget, version)
 }
 
 func (s *Service) LoopArtifactSurface(loop loops.Loop, _ loops.Run) string {
-	if s.WidgetEnabled(loop.ID) {
+	if _, boards, found, err := s.StateForLoop(loop.ID); err == nil && found && len(boards) > 0 {
 		return string(visualize.SurfaceWidget)
 	}
 	return ""
 }
 
-func (s *Service) WidgetEnabled(loopID string) bool {
-	_, boards, found, err := s.StateForLoop(loopID)
-	return err == nil && found && len(boards) > 0
-}
-
-func (s *Service) RunPublishState(loopID, runID string) (RunPublishState, error) {
-	widget, found, err := s.Repo.LoadWidgetByLoop(loopID)
-	if err != nil || !found {
-		return RunPublishState{}, err
-	}
-	boards, err := s.Repo.ListBoardsForWidget(widget.ID)
-	if err != nil {
-		return RunPublishState{}, err
-	}
-	state := RunPublishState{Widget: widget, Enabled: len(boards) > 0}
-	if !state.Enabled || widget.CurrentVersion <= 0 {
-		return state, nil
-	}
-	version, err := s.Repo.LoadWidgetVersion(widget.ID, widget.CurrentVersion)
-	if err != nil {
-		return RunPublishState{}, err
-	}
-	state.Published = strings.TrimSpace(version.ProducedByRunID) == strings.TrimSpace(runID)
-	return state, nil
-}
-
 func (s *Service) RequireRunPublished(loop loops.Loop, run loops.Run) error {
-	state, err := s.RunPublishState(loop.ID, run.ID)
-	if err != nil || !state.Enabled || state.Published {
+	widget, boards, found, err := s.StateForLoop(loop.ID)
+	if err != nil || !found || len(boards) == 0 || widget.PublishedRunID == run.ID {
 		return err
 	}
-	err = fmt.Errorf("widget was not published by this run; call publish_widget after writing widget/index.html")
-	s.reportPublishError(state.Widget.ID, err)
+	err = fmt.Errorf("this run did not publish the board app; call %s with the finished HTML", PublishMCPToolName)
+	s.reportPublishError(widget.ID, err)
 	return err
 }
 
@@ -335,21 +305,21 @@ func (s *Service) ReportLayout(widgetID, payload string) error {
 func ValidateHTML(html string) error {
 	trimmed := strings.TrimSpace(html)
 	if trimmed == "" {
-		return fmt.Errorf("widget html is empty")
+		return fmt.Errorf("app html is empty")
 	}
 	if len(html) > MaxHTMLBytes {
-		return fmt.Errorf("widget html is %d bytes; the limit is %d", len(html), MaxHTMLBytes)
+		return fmt.Errorf("app html is %d bytes; the limit is %d", len(html), MaxHTMLBytes)
 	}
 	if strings.ContainsRune(html, 0) {
-		return fmt.Errorf("widget html contains a null byte")
+		return fmt.Errorf("app html contains a null byte")
 	}
 	lower := strings.ToLower(trimmed)
 	if !strings.Contains(lower, "<") {
-		return fmt.Errorf("widget html does not look like markup")
+		return fmt.Errorf("app html does not look like markup")
 	}
 	for _, tag := range []string{"<!doctype", "<html", "<head", "<body"} {
 		if strings.Contains(lower, tag) {
-			return fmt.Errorf("widget html must be a fragment: remove the %s tag (Jaz wraps the fragment in its own document)", tag+">")
+			return fmt.Errorf("a board app must be an HTML fragment: remove the %s tag (Jaz wraps the fragment in its own document)", tag+">")
 		}
 	}
 	return nil

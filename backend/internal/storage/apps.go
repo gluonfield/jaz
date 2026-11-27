@@ -118,6 +118,7 @@ type App struct {
 	OwnerEmail       string          `json:"owner_email,omitempty"`
 	SpaceID          *string         `json:"space_id,omitempty"`
 	SourceThreadID   string          `json:"source_thread_id,omitempty"`
+	LoopID           string          `json:"loop_id,omitempty"`
 	Title            string          `json:"title"`
 	Description      string          `json:"description,omitempty"`
 	IconJSON         json.RawMessage `json:"icon,omitempty"`
@@ -197,6 +198,7 @@ type PublishAppDraftParams struct {
 	Visibility     string
 	Version        int
 	StorageDir     string
+	LoopID         string
 }
 
 type AppStore interface {
@@ -206,6 +208,7 @@ type AppStore interface {
 	PublishAppFromDraft(ctx context.Context, params PublishAppDraftParams) (App, AppVersion, error)
 	ListApps(ctx context.Context, workspaceID string, filter AppListFilter) ([]App, error)
 	GetApp(ctx context.Context, appID string) (App, error)
+	GetAppByLoop(ctx context.Context, loopID string) (App, error)
 	GetAppVersion(ctx context.Context, appID string, version int) (AppVersion, error)
 	ListAppVersions(ctx context.Context, appID string) ([]AppVersion, error)
 	UpdateApp(ctx context.Context, appID string, patch AppPatch) (App, error)

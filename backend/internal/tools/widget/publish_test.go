@@ -2,9 +2,11 @@ package widget
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/tools"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -14,10 +16,14 @@ type fakePublisher struct {
 	input     widgets.PublishInput
 }
 
-func (p *fakePublisher) PublishForSession(sessionID string, input widgets.PublishInput) (widgets.Widget, []string, error) {
+func (p *fakePublisher) PublishForSession(_ context.Context, sessionID string, input widgets.PublishInput) (widgets.Published, error) {
 	p.sessionID = sessionID
 	p.input = input
-	return widgets.Widget{ID: "widget-1", Title: "Inbox", CurrentVersion: 2, SizeHint: "2x2"}, []string{"tight spacing"}, nil
+	return widgets.Published{
+		App:      storage.App{ID: "app-1", Title: "Inbox", CurrentVersion: 2},
+		SizeHint: "2x2",
+		Warnings: []string{"tight spacing"},
+	}, nil
 }
 
 func TestPublishToolPublishesForSession(t *testing.T) {
@@ -40,7 +46,11 @@ func TestPublishToolPublishesForSession(t *testing.T) {
 	if publisher.input.Title != "Inbox" || publisher.input.SizeHint != "2x2" || publisher.input.HTML == "" {
 		t.Fatalf("input = %#v", publisher.input)
 	}
-	if result.Content == "" || result.Content == "{}" {
-		t.Fatalf("result content = %q", result.Content)
+	var out widgets.MCPPublishOutput
+	if err := json.Unmarshal([]byte(result.Content), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.AppID != "app-1" || out.Version != 2 || out.SizeHint != "2x2" || len(out.Warnings) != 1 {
+		t.Fatalf("result = %#v", out)
 	}
 }

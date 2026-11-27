@@ -68,7 +68,7 @@ WHERE id = sqlc.arg(id)
 SELECT
   a.id, a.workspace_id, a.source_thread_id, a.title, a.description,
   a.icon_json, a.kind, a.visibility, a.current_version, a.status,
-  a.created_at_ms, a.updated_at_ms,
+  a.created_at_ms, a.updated_at_ms, a.loop_id,
   COALESCE(v.bundle_sha256, '') AS bundle_sha256,
   COALESCE(v.entry_path, '') AS entry_path,
   COALESCE(v.capabilities_json, '[]') AS capabilities_json,
@@ -77,6 +77,13 @@ FROM apps a
 LEFT JOIN app_versions v ON v.app_id = a.id AND v.version = a.current_version
 WHERE a.id = sqlc.arg(id)
   AND a.status = 'active'
+LIMIT 1;
+
+-- name: GetAppIDByLoop :one
+SELECT id
+FROM apps
+WHERE loop_id = sqlc.arg(loop_id)
+  AND status = 'active'
 LIMIT 1;
 
 -- name: GetAppVersionMax :one
@@ -94,7 +101,7 @@ WHERE app_id = sqlc.arg(app_id);
 SELECT
   a.id, a.workspace_id, a.source_thread_id, a.title, a.description,
   a.icon_json, a.kind, a.visibility, a.current_version, a.status,
-  a.created_at_ms, a.updated_at_ms,
+  a.created_at_ms, a.updated_at_ms, a.loop_id,
   COALESCE(v.bundle_sha256, '') AS bundle_sha256,
   COALESCE(v.entry_path, '') AS entry_path,
   COALESCE(v.capabilities_json, '[]') AS capabilities_json,
@@ -110,12 +117,12 @@ ORDER BY a.updated_at_ms DESC, a.id ASC;
 -- name: InsertApp :exec
 INSERT INTO apps (
   id, workspace_id, source_thread_id, title, description, icon_json,
-  kind, visibility, current_version, status, created_at_ms, updated_at_ms
+  kind, visibility, current_version, status, created_at_ms, updated_at_ms, loop_id
 ) VALUES (
   sqlc.arg(id), sqlc.arg(workspace_id), sqlc.arg(source_thread_id),
   sqlc.arg(title), sqlc.arg(description), sqlc.arg(icon_json),
   sqlc.arg(kind), sqlc.arg(visibility), sqlc.arg(current_version),
-  'active', sqlc.arg(created_at_ms), sqlc.arg(updated_at_ms)
+  'active', sqlc.arg(created_at_ms), sqlc.arg(updated_at_ms), sqlc.arg(loop_id)
 );
 
 -- name: UpdateAppPublished :exec

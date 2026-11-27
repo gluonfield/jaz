@@ -9,7 +9,8 @@ INSERT INTO widgets (
   last_layout,
   created_at_ms,
   updated_at_ms,
-  workspace_id
+  workspace_id,
+  published_run_id
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(loop_id),
@@ -20,7 +21,8 @@ INSERT INTO widgets (
   sqlc.arg(last_layout),
   sqlc.arg(created_at_ms),
   sqlc.arg(updated_at_ms),
-  sqlc.arg(workspace_id)
+  sqlc.arg(workspace_id),
+  sqlc.arg(published_run_id)
 )
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
@@ -31,40 +33,20 @@ ON CONFLICT(id) DO UPDATE SET
   last_layout = excluded.last_layout,
   created_at_ms = excluded.created_at_ms,
   updated_at_ms = excluded.updated_at_ms,
-  workspace_id = excluded.workspace_id;
+  workspace_id = excluded.workspace_id,
+  published_run_id = excluded.published_run_id;
 
 -- name: GetWidget :one
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
+SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id, published_run_id
 FROM widgets
 WHERE id = sqlc.arg(id)
 LIMIT 1;
 
 -- name: GetWidgetByLoop :one
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
+SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id, published_run_id
 FROM widgets
 WHERE loop_id = sqlc.arg(loop_id)
 LIMIT 1;
-
--- name: ListWidgets :many
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
-FROM widgets
-WHERE (CAST(sqlc.arg(filter_workspace_id) AS TEXT) = '' OR workspace_id = sqlc.arg(filter_workspace_id))
-ORDER BY updated_at_ms DESC;
-
--- name: InsertWidgetVersion :exec
-INSERT INTO widget_versions (
-  widget_id,
-  version,
-  html,
-  produced_by_run_id,
-  created_at_ms
-) VALUES (
-  sqlc.arg(widget_id),
-  sqlc.arg(version),
-  sqlc.arg(html),
-  sqlc.narg(produced_by_run_id),
-  sqlc.arg(created_at_ms)
-);
 
 -- name: GetWidgetVersion :one
 SELECT widget_id, version, html, produced_by_run_id, created_at_ms
@@ -72,10 +54,9 @@ FROM widget_versions
 WHERE widget_id = sqlc.arg(widget_id) AND version = sqlc.arg(version)
 LIMIT 1;
 
--- name: PruneWidgetVersions :exec
+-- name: DeleteWidgetVersions :exec
 DELETE FROM widget_versions
-WHERE widget_id = sqlc.arg(widget_id)
-  AND version <= sqlc.arg(max_keep_version);
+WHERE widget_id = sqlc.arg(widget_id);
 
 -- name: UpsertBoard :exec
 INSERT INTO boards (
@@ -185,58 +166,30 @@ WHERE widget_id = sqlc.arg(widget_id);
 SELECT
   bw.board_id,
   bw.widget_id,
-  CAST('loop' AS TEXT) AS widget_kind,
-  CAST('' AS TEXT) AS app_id,
-  CAST('' AS TEXT) AS app_kind,
+  CAST(COALESCE(a.id, '') AS TEXT) AS app_id,
+  CAST(COALESCE(a.kind, '') AS TEXT) AS app_kind,
   bw.x,
   bw.y,
   bw.w,
   bw.h,
   bw.placed_by,
-  w.loop_id,
-  w.title,
-  w.current_version,
-  w.size_hint,
-  w.last_error,
-  w.updated_at_ms AS widget_updated_at_ms,
-  l.name AS loop_name,
-  l.status AS loop_status,
-  l.last_run_status AS loop_last_run_status,
-  l.last_run_at_ms AS loop_last_run_at_ms
+  CAST(COALESCE(l.id, '') AS TEXT) AS loop_id,
+  CAST(COALESCE(a.title, w.title, '') AS TEXT) AS title,
+  CAST(COALESCE(a.current_version, w.current_version, 0) AS INTEGER) AS current_version,
+  CAST(COALESCE(w.size_hint, '') AS TEXT) AS size_hint,
+  CAST(COALESCE(w.last_error, '') AS TEXT) AS last_error,
+  CAST(COALESCE(a.updated_at_ms, w.updated_at_ms, 0) AS INTEGER) AS updated_at_ms,
+  CAST(COALESCE(l.name, '') AS TEXT) AS loop_name,
+  CAST(COALESCE(l.status, '') AS TEXT) AS loop_status,
+  CAST(COALESCE(l.last_run_status, '') AS TEXT) AS loop_last_run_status,
+  CAST(COALESCE(l.last_run_at_ms, 0) AS INTEGER) AS loop_last_run_at_ms
 FROM board_widgets bw
-JOIN widgets w ON w.id = bw.widget_id
-JOIN loops l ON l.id = w.loop_id
+LEFT JOIN widgets w ON bw.app_id IS NULL AND w.id = bw.widget_id
+LEFT JOIN loops l ON l.id = w.loop_id AND l.status <> sqlc.arg(deleted_status)
+LEFT JOIN apps a ON a.status = 'active' AND (a.id = bw.app_id OR a.loop_id = l.id)
 WHERE bw.board_id = sqlc.arg(board_id)
-  AND bw.app_id IS NULL
-  AND l.status <> sqlc.arg(deleted_status)
-UNION ALL
-SELECT
-  bw.board_id,
-  bw.widget_id,
-  CAST('app' AS TEXT) AS widget_kind,
-  a.id AS app_id,
-  a.kind AS app_kind,
-  bw.x,
-  bw.y,
-  bw.w,
-  bw.h,
-  bw.placed_by,
-  CAST('' AS TEXT) AS loop_id,
-  a.title,
-  a.current_version,
-  CAST('' AS TEXT) AS size_hint,
-  NULL AS last_error,
-  a.updated_at_ms AS widget_updated_at_ms,
-  CAST('' AS TEXT) AS loop_name,
-  CAST('' AS TEXT) AS loop_status,
-  NULL AS loop_last_run_status,
-  0 AS loop_last_run_at_ms
-FROM board_widgets bw
-JOIN apps a ON a.id = bw.app_id
-WHERE bw.board_id = sqlc.arg(board_id)
-  AND bw.app_id IS NOT NULL
-  AND a.status = 'active'
-ORDER BY y ASC, x ASC;
+  AND (l.id IS NOT NULL OR a.id IS NOT NULL)
+ORDER BY bw.y ASC, bw.x ASC;
 
 -- name: ListAllPlacements :many
 SELECT board_id, widget_id, x, y, w, h, placed_by, created_at_ms, updated_at_ms
@@ -262,3 +215,8 @@ DELETE FROM widgets WHERE id IN (
   SELECT w.id FROM widgets w
   LEFT JOIN loops l ON l.id = w.loop_id
   WHERE l.id IS NULL OR l.status = sqlc.arg(deleted_status));
+
+-- name: ReleaseOrphanLoopApps :exec
+UPDATE apps SET loop_id = ''
+WHERE loop_id <> ''
+  AND loop_id NOT IN (SELECT l.id FROM loops l WHERE l.status <> sqlc.arg(deleted_status));

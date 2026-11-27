@@ -163,12 +163,11 @@ func ToolDefinitionsForSurface(registry *tools.Registry, surface string) []tools
 }
 
 func includeToolForArtifactSurface(name, surface string) bool {
-	switch visualize.NormalizeSurface(surface) {
-	case visualize.SurfaceWidget:
-		return !matchesToolName(name, visualize.ShowArtifactMCPToolName)
-	default:
-		return !matchesToolName(name, widgets.PublishMCPToolName)
+	onBoard := visualize.NormalizeSurface(surface) == visualize.SurfaceWidget
+	if name == widgets.PublishMCPToolName {
+		return onBoard
 	}
+	return !onBoard || !matchesToolName(name, visualize.ShowArtifactMCPToolName) && !matchesToolName(name, widgets.PublishMCPToolName)
 }
 
 func matchesToolName(name, candidate string) bool {

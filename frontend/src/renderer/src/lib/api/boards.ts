@@ -103,8 +103,8 @@ export function reportWidgetLayout(
   return post<{ ok: boolean }>(`/v1/widgets/${widgetId}/layout`, layout)
 }
 
-// The endpoint serves the raw widget fragment; the board wraps it in the shared
-// artifact document client-side, so theme and zoom are applied by the host.
+// HTML a loop published before board tiles became apps, as a raw fragment the
+// board wraps in the shared artifact document.
 export function widgetContentPath(widgetId: string, version: number): string {
   return `/v1/widgets/${encodeURIComponent(widgetId)}/content?version=${version}`
 }

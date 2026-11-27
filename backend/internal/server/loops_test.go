@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/apps"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
@@ -359,20 +361,20 @@ func TestTurnEndFailsAWidgetRunThatPublishedNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "publish_widget") {
+	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "publish_app") {
 		t.Fatalf("run = %+v", stored)
 	}
 	widget, _, _, err := widgetService.StateForLoop(loop.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(widget.LastError, "publish_widget") {
+	if !strings.Contains(widget.LastError, "publish_app") {
 		t.Fatalf("widget last error = %q", widget.LastError)
 	}
 }
 
 func TestTurnEndFailsAWidgetRunThatOnlyWroteTheFile(t *testing.T) {
-	srv, widgetService, store, loop, run := newWidgetLoopFinishTest(t, "thread-file-without-publish")
+	srv, _, store, loop, run := newWidgetLoopFinishTest(t, "thread-file-without-publish")
 	path := widgets.WidgetFilePath(loop)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
@@ -387,21 +389,17 @@ func TestTurnEndFailsAWidgetRunThatOnlyWroteTheFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "publish_widget") {
+	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "publish_app") {
 		t.Fatalf("run = %+v", stored)
 	}
-	state, err := widgetService.RunPublishState(loop.ID, run.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.Published || state.Widget.CurrentVersion != 0 {
-		t.Fatalf("publish state = %+v", state)
+	if _, err := store.GetAppByLoop(context.Background(), loop.ID); !errors.Is(err, storage.ErrAppNotFound) {
+		t.Fatalf("writing the file alone published an app: %v", err)
 	}
 }
 
 func TestTurnEndAcceptsAWidgetRunThatPublished(t *testing.T) {
 	srv, widgetService, store, loop, run := newWidgetLoopFinishTest(t, "thread-published")
-	if _, _, err := widgetService.Publish(loop, run.ID, widgets.PublishInput{HTML: "<p>ok</p>"}); err != nil {
+	if _, err := widgetService.Publish(context.Background(), loop, run.ID, run.ThreadID, widgets.PublishInput{HTML: "<p>ok</p>"}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 
@@ -462,7 +460,7 @@ func newWidgetLoopFinishTest(t *testing.T, threadID string) (*Server, *widgets.S
 	if err := store.StartSessionTurn(session.ID, storage.Turn{Output: &storage.TurnOutput{Run: run.ID}}); err != nil {
 		t.Fatal(err)
 	}
-	widgetService := widgets.NewService(store, nil)
+	widgetService := widgets.NewService(store, nil).WithApps(apps.NewService(store, store, nil, nil, store.RootDir(), store.RootDir()))
 	board, err := widgetService.CreateBoard("Desk")
 	if err != nil {
 		t.Fatal(err)

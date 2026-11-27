@@ -88,7 +88,7 @@ const getApp = `-- name: GetApp :one
 SELECT
   a.id, a.workspace_id, a.source_thread_id, a.title, a.description,
   a.icon_json, a.kind, a.visibility, a.current_version, a.status,
-  a.created_at_ms, a.updated_at_ms,
+  a.created_at_ms, a.updated_at_ms, a.loop_id,
   COALESCE(v.bundle_sha256, '') AS bundle_sha256,
   COALESCE(v.entry_path, '') AS entry_path,
   COALESCE(v.capabilities_json, '[]') AS capabilities_json,
@@ -113,6 +113,7 @@ type GetAppRow struct {
 	Status           string `json:"status"`
 	CreatedAtMs      int64  `json:"created_at_ms"`
 	UpdatedAtMs      int64  `json:"updated_at_ms"`
+	LoopID           string `json:"loop_id"`
 	BundleSha256     string `json:"bundle_sha256"`
 	EntryPath        string `json:"entry_path"`
 	CapabilitiesJson string `json:"capabilities_json"`
@@ -135,6 +136,7 @@ func (q *Queries) GetApp(ctx context.Context, id string) (GetAppRow, error) {
 		&i.Status,
 		&i.CreatedAtMs,
 		&i.UpdatedAtMs,
+		&i.LoopID,
 		&i.BundleSha256,
 		&i.EntryPath,
 		&i.CapabilitiesJson,
@@ -183,6 +185,21 @@ func (q *Queries) GetAppDraft(ctx context.Context, id string) (AppDraft, error) 
 		&i.CreatedAtMs,
 	)
 	return i, err
+}
+
+const getAppIDByLoop = `-- name: GetAppIDByLoop :one
+SELECT id
+FROM apps
+WHERE loop_id = ?1
+  AND status = 'active'
+LIMIT 1
+`
+
+func (q *Queries) GetAppIDByLoop(ctx context.Context, loopID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getAppIDByLoop, loopID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getAppKV = `-- name: GetAppKV :one
@@ -283,12 +300,12 @@ func (q *Queries) GetAppVersionMax(ctx context.Context, id string) (GetAppVersio
 const insertApp = `-- name: InsertApp :exec
 INSERT INTO apps (
   id, workspace_id, source_thread_id, title, description, icon_json,
-  kind, visibility, current_version, status, created_at_ms, updated_at_ms
+  kind, visibility, current_version, status, created_at_ms, updated_at_ms, loop_id
 ) VALUES (
   ?1, ?2, ?3,
   ?4, ?5, ?6,
   ?7, ?8, ?9,
-  'active', ?10, ?11
+  'active', ?10, ?11, ?12
 )
 `
 
@@ -304,6 +321,7 @@ type InsertAppParams struct {
 	CurrentVersion int64  `json:"current_version"`
 	CreatedAtMs    int64  `json:"created_at_ms"`
 	UpdatedAtMs    int64  `json:"updated_at_ms"`
+	LoopID         string `json:"loop_id"`
 }
 
 func (q *Queries) InsertApp(ctx context.Context, arg InsertAppParams) error {
@@ -319,6 +337,7 @@ func (q *Queries) InsertApp(ctx context.Context, arg InsertAppParams) error {
 		arg.CurrentVersion,
 		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
+		arg.LoopID,
 	)
 	return err
 }
@@ -606,7 +625,7 @@ const listApps = `-- name: ListApps :many
 SELECT
   a.id, a.workspace_id, a.source_thread_id, a.title, a.description,
   a.icon_json, a.kind, a.visibility, a.current_version, a.status,
-  a.created_at_ms, a.updated_at_ms,
+  a.created_at_ms, a.updated_at_ms, a.loop_id,
   COALESCE(v.bundle_sha256, '') AS bundle_sha256,
   COALESCE(v.entry_path, '') AS entry_path,
   COALESCE(v.capabilities_json, '[]') AS capabilities_json,
@@ -639,6 +658,7 @@ type ListAppsRow struct {
 	Status           string `json:"status"`
 	CreatedAtMs      int64  `json:"created_at_ms"`
 	UpdatedAtMs      int64  `json:"updated_at_ms"`
+	LoopID           string `json:"loop_id"`
 	BundleSha256     string `json:"bundle_sha256"`
 	EntryPath        string `json:"entry_path"`
 	CapabilitiesJson string `json:"capabilities_json"`
@@ -667,6 +687,7 @@ func (q *Queries) ListApps(ctx context.Context, arg ListAppsParams) ([]ListAppsR
 			&i.Status,
 			&i.CreatedAtMs,
 			&i.UpdatedAtMs,
+			&i.LoopID,
 			&i.BundleSha256,
 			&i.EntryPath,
 			&i.CapabilitiesJson,

@@ -160,7 +160,7 @@ func TestLocalAppsLifecycleKVTicketsAIAndBoards(t *testing.T) {
 		t.Fatalf("expected hydrated index.html: %v", err)
 	}
 
-	// Pin onto board & verify ListBoardItems returns it alongside loop widgets.
+	// Pin onto board & verify ListBoardItems returns it as a tile.
 	board, err := store.LoadBoard("missing")
 	_ = board
 	if err := store.SaveBoard(testBoard("board-1")); err != nil {
@@ -170,7 +170,7 @@ func TestLocalAppsLifecycleKVTicketsAIAndBoards(t *testing.T) {
 		t.Fatalf("AssignToBoard: %v", err)
 	}
 	items, err := store.ListBoardItems("board-1")
-	if err != nil || len(items) != 1 || items[0].WidgetKind != "app" || items[0].AppID != app.ID {
+	if err != nil || len(items) != 1 || items[0].AppID != app.ID || items[0].LoopID != "" || items[0].Title != app.Title {
 		t.Fatalf("ListBoardItems: %+v err=%v", items, err)
 	}
 

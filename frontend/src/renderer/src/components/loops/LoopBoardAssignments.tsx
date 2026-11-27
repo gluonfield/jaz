@@ -34,7 +34,7 @@ export function LoopBoardAssignments({ loop, boardIds }: { loop: Loop; boardIds:
   return (
     <section className="mt-8">
       <div className="flex items-baseline justify-between border-b border-border pb-2">
-        <h2 className="text-[13px] font-semibold text-ink">Widget boards</h2>
+        <h2 className="text-[13px] font-semibold text-ink">Boards</h2>
         {allBoards.length > 0 ? (
           <span className="text-[12px] tabular-nums text-ink-3">
             {activeCount} of {allBoards.length} active
@@ -49,7 +49,7 @@ export function LoopBoardAssignments({ loop, boardIds }: { loop: Loop; boardIds:
             Couldn’t load boards: {boards.error.message}
           </p>
         ) : allBoards.length === 0 ? (
-          <p className="text-[13px] text-ink-3">No boards yet. Create a board to show this widget.</p>
+          <p className="text-[13px] text-ink-3">No boards yet. Create a board to show this loop's app.</p>
         ) : (
           <BoardAssignmentPicker
             boards={allBoards}
@@ -58,7 +58,7 @@ export function LoopBoardAssignments({ loop, boardIds }: { loop: Loop; boardIds:
             onChange={(next) => {
               if (!isViewer) assign.mutate(next)
             }}
-            hint="Checked boards show this loop's widget and receive updates on every run."
+            hint="Checked boards show this loop's app and receive updates on every run."
           />
         )}
         {assign.isError ? (

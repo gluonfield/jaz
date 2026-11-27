@@ -26,6 +26,7 @@ const (
 	appIDLength      = 26
 	appIDAlphabet    = "abcdefghijklmnopqrstuvwxyz0123456789"
 	appDraftTTL      = time.Hour
+	loopAppEntry     = "index.html"
 	MaxKVValueBytes  = 2 << 20
 	MaxAIPromptRunes = 64000
 	MaxAISystemRunes = 16000
@@ -243,6 +244,10 @@ func (s *Service) PublishBundle(ctx context.Context, bundle appbundle.Bundle, ta
 	if appbundle.RequiresPublishApproval(bundle.Manifest.Capabilities) {
 		return storage.App{}, storage.AppVersion{}, false, storage.ErrAppApprovalRequired
 	}
+	return s.publishStaged(ctx, bundle, targetAppID, sourceThreadID, "")
+}
+
+func (s *Service) publishStaged(ctx context.Context, bundle appbundle.Bundle, targetAppID, sourceThreadID, loopID string) (storage.App, storage.AppVersion, bool, error) {
 	draft, err := s.StageDraft(ctx, bundle, targetAppID, sourceThreadID)
 	if err != nil {
 		return storage.App{}, storage.AppVersion{}, false, err
@@ -251,7 +256,32 @@ func (s *Service) PublishBundle(ctx context.Context, bundle appbundle.Bundle, ta
 		RequestedID:  draft.TargetAppID,
 		DraftID:      draft.ID,
 		BundleSHA256: draft.BundleSHA256,
+		LoopID:       loopID,
 	})
+}
+
+// PublishLoopApp saves html as the next version of the app a routine keeps on
+// its boards. The first publish creates the app.
+func (s *Service) PublishLoopApp(ctx context.Context, loopID, title, html, sourceThreadID string) (storage.App, error) {
+	bundle, err := appbundle.PackFiles(appbundle.Manifest{
+		Format: appbundle.Format,
+		Title:  title,
+		Kind:   appbundle.KindArtifact,
+		Entry:  loopAppEntry,
+	}, map[string][]byte{loopAppEntry: []byte(html)})
+	if err != nil {
+		return storage.App{}, err
+	}
+	current, err := s.store.GetAppByLoop(ctx, loopID)
+	if err != nil && !errors.Is(err, storage.ErrAppNotFound) {
+		return storage.App{}, err
+	}
+	app, _, _, err := s.publishStaged(ctx, bundle, current.ID, sourceThreadID, loopID)
+	return app, err
+}
+
+func (s *Service) LoopApp(ctx context.Context, loopID string) (storage.App, error) {
+	return s.store.GetAppByLoop(ctx, loopID)
 }
 
 type PublishInput struct {
@@ -261,6 +291,8 @@ type PublishInput struct {
 	Title        string
 	Description  string
 	Visibility   string
+	// LoopID makes a newly created app the one its routine keeps on its boards.
+	LoopID string
 }
 
 func (s *Service) PublishFromDraft(ctx context.Context, input PublishInput) (storage.App, storage.AppVersion, bool, error) {
@@ -345,6 +377,7 @@ func (s *Service) PublishFromDraft(ctx context.Context, input PublishInput) (sto
 		Visibility:     vis,
 		Version:        nextVersion,
 		StorageDir:     dstDir,
+		LoopID:         input.LoopID,
 	})
 	if err != nil {
 		_ = os.RemoveAll(dstDir)

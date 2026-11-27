@@ -58,11 +58,12 @@ func rawJSONOrNil(raw string) json.RawMessage {
 
 func appFromRow(
 	id, workspaceID, sourceThreadID, title, description, iconJSON, kind, visibility string,
-	currentVersion int64, status string, createdAtMs, updatedAtMs int64,
+	currentVersion int64, status string, createdAtMs, updatedAtMs int64, loopID string,
 	bundleSHA, entryPath, capsJSON, toolsJSON string,
 ) storage.App {
 	return storage.App{
 		ID:             id,
+		LoopID:         loopID,
 		WorkspaceID:    firstNonEmpty(workspaceID, storage.LocalWorkspaceID),
 		OwnerUserID:    storage.AppKVLocalOwnerID,
 		SourceThreadID: sourceThreadID,
@@ -277,6 +278,7 @@ func (s *Store) PublishAppFromDraft(ctx context.Context, params storage.PublishA
 			CurrentVersion: int64(params.Version),
 			CreatedAtMs:    nowMs,
 			UpdatedAtMs:    nowMs,
+			LoopID:         params.LoopID,
 		}); err != nil {
 			return storage.App{}, storage.AppVersion{}, err
 		}
@@ -340,7 +342,7 @@ func (s *Store) PublishAppFromDraft(ctx context.Context, params storage.PublishA
 	return appFromRow(
 		appRow.ID, appRow.WorkspaceID, appRow.SourceThreadID, appRow.Title, appRow.Description,
 		appRow.IconJson, appRow.Kind, appRow.Visibility, appRow.CurrentVersion, appRow.Status,
-		appRow.CreatedAtMs, appRow.UpdatedAtMs, appRow.BundleSha256, appRow.EntryPath,
+		appRow.CreatedAtMs, appRow.UpdatedAtMs, appRow.LoopID, appRow.BundleSha256, appRow.EntryPath,
 		appRow.CapabilitiesJson, appRow.AllowedToolsJson,
 	), appVersionFromRow(verRow), nil
 }
@@ -359,7 +361,7 @@ func (s *Store) ListApps(ctx context.Context, workspaceID string, filter storage
 		out = append(out, appFromRow(
 			r.ID, r.WorkspaceID, r.SourceThreadID, r.Title, r.Description,
 			r.IconJson, r.Kind, r.Visibility, r.CurrentVersion, r.Status,
-			r.CreatedAtMs, r.UpdatedAtMs, r.BundleSha256, r.EntryPath,
+			r.CreatedAtMs, r.UpdatedAtMs, r.LoopID, r.BundleSha256, r.EntryPath,
 			r.CapabilitiesJson, r.AllowedToolsJson,
 		))
 	}
@@ -377,9 +379,20 @@ func (s *Store) GetApp(ctx context.Context, appID string) (storage.App, error) {
 	return appFromRow(
 		r.ID, r.WorkspaceID, r.SourceThreadID, r.Title, r.Description,
 		r.IconJson, r.Kind, r.Visibility, r.CurrentVersion, r.Status,
-		r.CreatedAtMs, r.UpdatedAtMs, r.BundleSha256, r.EntryPath,
+		r.CreatedAtMs, r.UpdatedAtMs, r.LoopID, r.BundleSha256, r.EntryPath,
 		r.CapabilitiesJson, r.AllowedToolsJson,
 	), nil
+}
+
+func (s *Store) GetAppByLoop(ctx context.Context, loopID string) (storage.App, error) {
+	id, err := appsdb.New(s.db).GetAppIDByLoop(ctx, loopID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.App{}, storage.ErrAppNotFound
+	}
+	if err != nil {
+		return storage.App{}, err
+	}
+	return s.GetApp(ctx, id)
 }
 
 func (s *Store) GetAppVersion(ctx context.Context, appID string, version int) (storage.AppVersion, error) {

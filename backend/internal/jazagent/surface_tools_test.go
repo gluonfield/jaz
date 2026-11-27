@@ -17,12 +17,12 @@ func TestIncludeToolForArtifactSurface(t *testing.T) {
 		{visualize.ShowArtifactMCPToolName, "", true},
 		{widgets.PublishMCPToolName, "", false},
 		{"mcp_jaztools_show_artifact", "", true},
-		{"mcp_jaztools_publish_widget", "", false},
+		{"mcp_jaztools_publish_app", "", true},
 		{visualize.GuideMCPToolName, string(visualize.SurfaceWidget), true},
 		{visualize.ShowArtifactMCPToolName, string(visualize.SurfaceWidget), false},
 		{widgets.PublishMCPToolName, string(visualize.SurfaceWidget), true},
 		{"mcp_jaztools_show_artifact", string(visualize.SurfaceWidget), false},
-		{"mcp_jaztools_publish_widget", string(visualize.SurfaceWidget), true},
+		{"mcp_jaztools_publish_app", string(visualize.SurfaceWidget), false},
 	}
 	for _, tt := range tests {
 		if got := includeToolForArtifactSurface(tt.name, tt.surface); got != tt.want {

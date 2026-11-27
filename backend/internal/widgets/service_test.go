@@ -1,20 +1,26 @@
 package widgets_test
 
 import (
-	"fmt"
+	"context"
+	"database/sql"
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/apps"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 func newTestService(t *testing.T) (*widgets.Service, *sqlitestore.Store, loops.Loop) {
 	t.Helper()
-	store, err := sqlitestore.New(t.TempDir())
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
@@ -33,7 +39,25 @@ func newTestService(t *testing.T) (*widgets.Service, *sqlitestore.Store, loops.L
 	if err := store.SaveLoop(loop); err != nil {
 		t.Fatalf("save loop: %v", err)
 	}
-	return widgets.NewService(store, nil), store, loop
+	return widgets.NewService(store, nil).WithApps(apps.NewService(store, store, nil, nil, root, root)), store, loop
+}
+
+func publish(t *testing.T, service *widgets.Service, loop loops.Loop, runID string, input widgets.PublishInput) widgets.Published {
+	t.Helper()
+	published, err := service.Publish(context.Background(), loop, runID, "", input)
+	if err != nil {
+		t.Fatalf("publish %s: %v", runID, err)
+	}
+	return published
+}
+
+func loopApp(t *testing.T, store *sqlitestore.Store, loop loops.Loop) storage.App {
+	t.Helper()
+	app, err := store.GetAppByLoop(context.Background(), loop.ID)
+	if err != nil {
+		t.Fatalf("loop app: %v", err)
+	}
+	return app
 }
 
 func makeBoard(t *testing.T, service *widgets.Service, name string) widgets.Board {
@@ -45,11 +69,11 @@ func makeBoard(t *testing.T, service *widgets.Service, name string) widgets.Boar
 	return board
 }
 
-func TestAssignmentEnablesWidget(t *testing.T) {
+func TestAssignedLoopPublishesItsAppOntoTheBoard(t *testing.T) {
 	service, store, loop := newTestService(t)
 
 	// Unassigned loops cannot publish: assignment is the enablement.
-	if _, _, err := service.Publish(loop, "run-0", widgets.PublishInput{HTML: "<p>hi</p>"}); err == nil {
+	if _, err := service.Publish(context.Background(), loop, "run-0", "", widgets.PublishInput{HTML: "<p>hi</p>"}); err == nil {
 		t.Fatal("expected publish to fail without a board assignment")
 	}
 
@@ -58,113 +82,106 @@ func TestAssignmentEnablesWidget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assign: %v", err)
 	}
-	if widget.CurrentVersion != 0 || widget.Title != loop.Name {
-		t.Fatalf("eager widget = %+v", widget)
-	}
-	if _, found, _ := store.LoadPlacement(board.ID, widget.ID); !found {
-		t.Fatal("expected placement on assignment")
+	items, err := service.ListBoardItems(board.ID)
+	if err != nil || len(items) != 1 || items[0].AppID != "" || items[0].CurrentVersion != 0 || items[0].Title != loop.Name {
+		t.Fatalf("tile before the first publish = %+v (%v)", items, err)
 	}
 
-	published, _, err := service.Publish(loop, "run-1", widgets.PublishInput{HTML: "<p>v1</p>", SizeHint: "3x2"})
-	if err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	if published.CurrentVersion != 1 {
-		t.Fatalf("version = %d", published.CurrentVersion)
+	first := publish(t, service, loop, "run-1", widgets.PublishInput{HTML: "<p>v1</p>", SizeHint: "3x2"})
+	if first.App.LoopID != loop.ID || first.App.CurrentVersion != 1 || first.App.Title != loop.Name {
+		t.Fatalf("first app = %+v", first.App)
 	}
 	// Size hint resizes LLM-owned placements.
 	placement, _, _ := store.LoadPlacement(board.ID, widget.ID)
 	if placement.W != 3 || placement.H != 2 {
 		t.Fatalf("placement after hint = %+v", placement)
 	}
+
+	// Every later run publishes the next version of the same app.
+	second := publish(t, service, loop, "run-2", widgets.PublishInput{HTML: "<p>v2</p>", Title: "Open PRs"})
+	if second.App.ID != first.App.ID || second.App.CurrentVersion != 2 {
+		t.Fatalf("second publish = %+v, first app %s", second.App, first.App.ID)
+	}
+	version, err := store.GetAppVersion(context.Background(), second.App.ID, 2)
+	if err != nil {
+		t.Fatalf("app version: %v", err)
+	}
+	html, err := os.ReadFile(filepath.Join(version.StorageDir, version.EntryPath))
+	if err != nil || string(html) != "<p>v2</p>" {
+		t.Fatalf("app content = %q (%v)", html, err)
+	}
+	items, err = service.ListBoardItems(board.ID)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("board items = %+v (%v)", items, err)
+	}
+	if item := items[0]; item.WidgetID != widget.ID || item.AppID != first.App.ID || item.LoopID != loop.ID || item.CurrentVersion != 2 || item.Title != "Open PRs" {
+		t.Fatalf("tile = %+v", item)
+	}
 }
 
-func TestPublishKeepsCurrentAndFiveOldVersions(t *testing.T) {
+func TestPublishReplacesHTMLFromBeforeTilesWereApps(t *testing.T) {
 	service, store, loop := newTestService(t)
 	board := makeBoard(t, service, "Desk")
 	widget, err := service.AssignLoopBoards(loop, []string{board.ID})
 	if err != nil {
 		t.Fatalf("assign: %v", err)
 	}
+	widget.CurrentVersion = 4
+	if err := store.SaveWidget(widget); err != nil {
+		t.Fatalf("save widget: %v", err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(store.RootDir(), "jaz.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`INSERT INTO widget_versions (widget_id, version, html, created_at_ms) VALUES (?, 4, '<p>old</p>', 1)`, widget.ID); err != nil {
+		t.Fatalf("seed version: %v", err)
+	}
 
-	for version := 1; version <= 8; version++ {
-		if _, _, err := service.Publish(loop, fmt.Sprintf("run-%d", version), widgets.PublishInput{HTML: fmt.Sprintf("<p>v%d</p>", version)}); err != nil {
-			t.Fatalf("publish v%d: %v", version, err)
-		}
+	// Until the loop runs again the tile still shows what it published before.
+	items, err := service.ListBoardItems(board.ID)
+	if err != nil || len(items) != 1 || items[0].AppID != "" || items[0].CurrentVersion != 4 {
+		t.Fatalf("tile before the next run = %+v (%v)", items, err)
 	}
-	stored, _ := store.LoadWidget(widget.ID)
-	if stored.CurrentVersion != 8 {
-		t.Fatalf("current version = %d", stored.CurrentVersion)
+	if old, err := store.LoadWidgetVersion(widget.ID, 4); err != nil || old.HTML != "<p>old</p>" {
+		t.Fatalf("old html = %+v (%v)", old, err)
 	}
-	if _, err := store.LoadWidgetVersion(widget.ID, 2); err == nil {
-		t.Fatal("expected versions older than the five-version history to be pruned")
+
+	published := publish(t, service, loop, "run-1", widgets.PublishInput{HTML: "<p>new</p>"})
+	items, err = service.ListBoardItems(board.ID)
+	if err != nil || len(items) != 1 || items[0].AppID != published.App.ID || items[0].CurrentVersion != 1 {
+		t.Fatalf("tile after the next run = %+v (%v)", items, err)
 	}
-	for version := 3; version <= 8; version++ {
-		if _, err := store.LoadWidgetVersion(widget.ID, version); err != nil {
-			t.Fatalf("version %d was pruned: %v", version, err)
-		}
+	if _, err := store.LoadWidgetVersion(widget.ID, 4); err == nil {
+		t.Fatal("replaced html survived the publish")
 	}
 }
 
-func TestRunPublishStateRequiresCurrentVersionFromRun(t *testing.T) {
-	service, _, loop := newTestService(t)
-	state, err := service.RunPublishState(loop.ID, "run-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.Enabled || state.Published {
-		t.Fatalf("unassigned state = %+v", state)
-	}
-	board := makeBoard(t, service, "Desk")
-	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
-		t.Fatalf("assign: %v", err)
-	}
-	state, err = service.RunPublishState(loop.ID, "run-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !state.Enabled || state.Published {
-		t.Fatalf("unpublished state = %+v", state)
-	}
-	if _, _, err := service.Publish(loop, "run-0", widgets.PublishInput{HTML: "<p>old</p>"}); err != nil {
-		t.Fatalf("publish old: %v", err)
-	}
-	state, err = service.RunPublishState(loop.ID, "run-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !state.Enabled || state.Published {
-		t.Fatalf("stale state = %+v", state)
-	}
-	if _, _, err := service.Publish(loop, "run-1", widgets.PublishInput{HTML: "<p>new</p>"}); err != nil {
-		t.Fatalf("publish current: %v", err)
-	}
-	state, err = service.RunPublishState(loop.ID, "run-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !state.Enabled || !state.Published {
-		t.Fatalf("current state = %+v", state)
-	}
-}
-
-func TestRequireRunPublishedRejectsMissingPublishToolCall(t *testing.T) {
-	service, _, loop := newTestService(t)
-	board := makeBoard(t, service, "Desk")
-	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
-		t.Fatalf("assign: %v", err)
-	}
+func TestRequireRunPublishedAcceptsOnlyTheRunThatPublished(t *testing.T) {
+	service, store, loop := newTestService(t)
 	run := loops.Run{ID: "run-1", LoopID: loop.ID, StartedAt: time.Now()}
-	err := service.RequireRunPublished(loop, run)
-	if err == nil || !strings.Contains(err.Error(), "publish_widget") {
+	if err := service.RequireRunPublished(loop, run); err != nil {
+		t.Fatalf("a loop with no board must not be required to publish: %v", err)
+	}
+	board := makeBoard(t, service, "Desk")
+	widget, err := service.AssignLoopBoards(loop, []string{board.ID})
+	if err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	publish(t, service, loop, "run-0", widgets.PublishInput{HTML: "<p>old</p>"})
+
+	err = service.RequireRunPublished(loop, run)
+	if err == nil || !strings.Contains(err.Error(), "publish_app") {
 		t.Fatalf("expected missing-publish error, got %v", err)
 	}
-	state, stateErr := service.RunPublishState(loop.ID, run.ID)
-	if stateErr != nil {
-		t.Fatal(stateErr)
+	if stored, _ := store.LoadWidget(widget.ID); stored.LastError == "" {
+		t.Fatal("the missing publish was not reported on the tile")
 	}
-	if state.Published || state.Widget.LastError == "" {
-		t.Fatalf("state = %+v", state)
+
+	publish(t, service, loop, run.ID, widgets.PublishInput{HTML: "<p>new</p>"})
+	if err := service.RequireRunPublished(loop, run); err != nil {
+		t.Fatalf("published run rejected: %v", err)
 	}
 }
 
@@ -205,38 +222,29 @@ func TestUserPlacementSurvivesPublishAndHint(t *testing.T) {
 		t.Fatalf("save placement: %v", err)
 	}
 
-	if _, _, err := service.Publish(loop, "run-1", widgets.PublishInput{HTML: "<p>v1</p>", SizeHint: "6x4"}); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
+	publish(t, service, loop, "run-1", widgets.PublishInput{HTML: "<p>v1</p>", SizeHint: "6x4"})
 	placement, _, _ = store.LoadPlacement(board.ID, widget.ID)
 	if placement.X != 4 || placement.W != 2 || placement.PlacedBy != widgets.PlacedByUser {
 		t.Fatalf("publish touched a user placement: %+v", placement)
 	}
 }
 
-func TestDeleteBoardDisablesButKeepsWidget(t *testing.T) {
+func TestDeleteBoardDisablesButKeepsTheApp(t *testing.T) {
 	service, store, loop := newTestService(t)
 	board := makeBoard(t, service, "Desk")
-	widget, err := service.AssignLoopBoards(loop, []string{board.ID})
-	if err != nil {
+	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
 		t.Fatalf("assign: %v", err)
 	}
-	if _, _, err := service.Publish(loop, "run-1", widgets.PublishInput{HTML: "<p>v1</p>"}); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
+	first := publish(t, service, loop, "run-1", widgets.PublishInput{HTML: "<p>v1</p>"})
 
 	if err := service.DeleteBoard(board.ID); err != nil {
 		t.Fatalf("delete board: %v", err)
 	}
-	// Widget and history survive; the loop is just disabled until reassigned.
-	stored, found, err := store.LoadWidgetByLoop(loop.ID)
-	if err != nil || !found || stored.CurrentVersion != 1 {
-		t.Fatalf("widget after board delete = %#v (%v)", stored, err)
+	// The app and its history survive; the loop is just disabled until reassigned.
+	if app := loopApp(t, store, loop); app.ID != first.App.ID || app.CurrentVersion != 1 {
+		t.Fatalf("app after board delete = %+v", app)
 	}
-	if _, err := store.LoadWidgetVersion(widget.ID, 1); err != nil {
-		t.Fatalf("version lost on board delete: %v", err)
-	}
-	if _, _, err := service.Publish(loop, "run-2", widgets.PublishInput{HTML: "<p>v2</p>"}); err == nil {
+	if _, err := service.Publish(context.Background(), loop, "run-2", "", widgets.PublishInput{HTML: "<p>v2</p>"}); err == nil {
 		t.Fatal("expected publish to fail once no boards remain")
 	}
 
@@ -245,12 +253,8 @@ func TestDeleteBoardDisablesButKeepsWidget(t *testing.T) {
 	if _, err := service.AssignLoopBoards(loop, []string{next.ID}); err != nil {
 		t.Fatalf("reassign: %v", err)
 	}
-	published, _, err := service.Publish(loop, "run-3", widgets.PublishInput{HTML: "<p>v2</p>"})
-	if err != nil {
-		t.Fatalf("publish after reassign: %v", err)
-	}
-	if published.CurrentVersion != 2 {
-		t.Fatalf("version after reassign = %d", published.CurrentVersion)
+	if again := publish(t, service, loop, "run-3", widgets.PublishInput{HTML: "<p>v2</p>"}); again.App.ID != first.App.ID || again.App.CurrentVersion != 2 {
+		t.Fatalf("app after reassign = %+v", again.App)
 	}
 }
 
@@ -347,12 +351,12 @@ func TestPatchBoardRejectsOverlap(t *testing.T) {
 func TestPurgeOrphansFreesCells(t *testing.T) {
 	service, store, loop := newTestService(t)
 	board := makeBoard(t, service, "Desk")
-	widget, err := service.AssignLoopBoards(loop, []string{board.ID})
-	if err != nil {
+	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
 		t.Fatalf("assign: %v", err)
 	}
+	published := publish(t, service, loop, "run-1", widgets.PublishInput{HTML: "<p>v1</p>"})
 
-	// Soft-delete the loop: its widget becomes an orphan squatting on (0,0).
+	// Soft-delete the loop: its tile becomes an orphan squatting on (0,0).
 	loop.Status = loops.StatusDeleted
 	if err := store.SaveLoop(loop); err != nil {
 		t.Fatalf("delete loop: %v", err)
@@ -365,8 +369,12 @@ func TestPurgeOrphansFreesCells(t *testing.T) {
 	if placements, _ := store.ListPlacements(board.ID); len(placements) != 0 {
 		t.Fatalf("orphan placements survived: %+v", placements)
 	}
-	if _, err := store.LoadWidgetVersion(widget.ID, 1); err == nil {
-		t.Fatal("orphan widget versions survived")
+	// The app the loop published stays in the library as an ordinary app.
+	if _, err := store.GetAppByLoop(context.Background(), loop.ID); !errors.Is(err, storage.ErrAppNotFound) {
+		t.Fatalf("deleted loop still owns an app: %v", err)
+	}
+	if app, err := store.GetApp(context.Background(), published.App.ID); err != nil || app.LoopID != "" {
+		t.Fatalf("released app = %+v (%v)", app, err)
 	}
 
 	// A fresh loop's widget now lands at the top, not below the phantom.
@@ -395,7 +403,7 @@ func TestPublishRejectsFullDocuments(t *testing.T) {
 	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
 		t.Fatalf("assign: %v", err)
 	}
-	_, _, err := service.Publish(loop, "run-1", widgets.PublishInput{HTML: "<!doctype html><html><body>hi</body></html>"})
+	_, err := service.Publish(context.Background(), loop, "run-1", "", widgets.PublishInput{HTML: "<!doctype html><html><body>hi</body></html>"})
 	if err == nil || !strings.Contains(err.Error(), "fragment") {
 		t.Fatalf("expected fragment error, got %v", err)
 	}
@@ -404,65 +412,56 @@ func TestPublishRejectsFullDocuments(t *testing.T) {
 func TestPublishLintsAndClearsLayout(t *testing.T) {
 	service, store, loop := newTestService(t)
 	board := makeBoard(t, service, "Desk")
-	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
+	widget, err := service.AssignLoopBoards(loop, []string{board.ID})
+	if err != nil {
 		t.Fatalf("assign: %v", err)
 	}
-	widget, warnings, err := service.Publish(loop, "run-1", widgets.PublishInput{HTML: `<div style="height:100vh;position:fixed">x</div>`})
-	if err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	if len(warnings) < 2 {
-		t.Fatalf("expected lint warnings for viewport units + fixed position, got %v", warnings)
+	published := publish(t, service, loop, "run-1", widgets.PublishInput{HTML: `<div style="height:100vh;position:fixed">x</div>`})
+	if len(published.Warnings) < 2 {
+		t.Fatalf("expected lint warnings for viewport units + fixed position, got %v", published.Warnings)
 	}
 
-	// Board telemetry lands on the widget and the prompt surfaces hard
+	// Board telemetry lands on the tile and the prompt surfaces hard
 	// rendering failures, but the first version does not yet have a proven
 	// useful tile size, so empty space is not treated as a correction signal.
 	if err := service.ReportLayout(widget.ID, `{"dead_space_pct":40,"overflow_px":0,"clipped":1,"img_errors":2}`); err != nil {
 		t.Fatalf("report layout: %v", err)
 	}
-	stored, _ := store.LoadWidget(widget.ID)
-	section := widgets.PromptSection(loop, &stored)
+	section := service.LoopPromptExtra(loop, loops.Run{})
 	if strings.Contains(section, "40% of the tile is empty") {
-		t.Fatalf("first widget version must not optimize for empty space:\n%s", section)
+		t.Fatalf("first version must not optimize for empty space:\n%s", section)
 	}
-	for _, want := range []string{"clip their content", "2 image(s) failed to load"} {
+	for _, want := range []string{"Current: version 1", "clip their content", "2 image(s) failed to load"} {
 		if !strings.Contains(section, want) {
-			t.Fatalf("prompt missing telemetry %q:\n%s", want, section)
+			t.Fatalf("prompt missing %q:\n%s", want, section)
 		}
 	}
 
 	// …and the next publish clears it.
-	if _, _, err := service.Publish(loop, "run-2", widgets.PublishInput{HTML: "<p>v2</p>"}); err != nil {
-		t.Fatalf("second publish: %v", err)
-	}
-	stored, _ = store.LoadWidget(widget.ID)
-	if stored.LastLayout != "" {
+	publish(t, service, loop, "run-2", widgets.PublishInput{HTML: "<p>v2</p>"})
+	if stored, _ := store.LoadWidget(widget.ID); stored.LastLayout != "" {
 		t.Fatalf("layout telemetry not cleared on publish: %q", stored.LastLayout)
 	}
-	if section := widgets.PromptSection(loop, &stored); strings.Contains(section, "telemetry") {
-		t.Fatalf("healthy widget still carries telemetry text:\n%s", section)
+	if section := service.LoopPromptExtra(loop, loops.Run{}); strings.Contains(section, "Board rendering feedback") {
+		t.Fatalf("healthy tile still carries telemetry text:\n%s", section)
 	}
 
 	if err := service.ReportLayout(widget.ID, `{"dead_space_pct":40,"overflow_px":0,"clipped":0,"img_errors":0}`); err != nil {
 		t.Fatalf("report layout after second publish: %v", err)
 	}
-	stored, _ = store.LoadWidget(widget.ID)
-	if section := widgets.PromptSection(loop, &stored); !strings.Contains(section, "40% of the tile is empty") {
-		t.Fatalf("established widget versions should surface empty-space telemetry:\n%s", section)
+	if section := service.LoopPromptExtra(loop, loops.Run{}); !strings.Contains(section, "40% of the tile is empty") {
+		t.Fatalf("established versions should surface empty-space telemetry:\n%s", section)
 	}
 }
 
 func TestReportErrorClearedByNextPublish(t *testing.T) {
 	service, store, loop := newTestService(t)
 	board := makeBoard(t, service, "Desk")
-	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
+	widget, err := service.AssignLoopBoards(loop, []string{board.ID})
+	if err != nil {
 		t.Fatalf("assign: %v", err)
 	}
-	widget, _, err := service.Publish(loop, "run-1", widgets.PublishInput{HTML: "<p>v1</p>"})
-	if err != nil {
-		t.Fatalf("publish: %v", err)
-	}
+	publish(t, service, loop, "run-1", widgets.PublishInput{HTML: "<p>v1</p>"})
 	if err := service.ReportError(widget.ID, "ReferenceError: foo is not defined"); err != nil {
 		t.Fatalf("report error: %v", err)
 	}
@@ -470,9 +469,7 @@ func TestReportErrorClearedByNextPublish(t *testing.T) {
 	if stored.LastError == "" {
 		t.Fatal("expected last error to be stored")
 	}
-	if _, _, err := service.Publish(loop, "run-2", widgets.PublishInput{HTML: "<p>v2</p>"}); err != nil {
-		t.Fatalf("second publish: %v", err)
-	}
+	publish(t, service, loop, "run-2", widgets.PublishInput{HTML: "<p>v2</p>"})
 	stored, _ = store.LoadWidget(widget.ID)
 	if stored.LastError != "" {
 		t.Fatalf("expected last error cleared, got %q", stored.LastError)
@@ -481,11 +478,11 @@ func TestReportErrorClearedByNextPublish(t *testing.T) {
 
 func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	_, _, loop := newTestService(t)
-	section := widgets.PromptSection(loop, &widgets.Widget{CurrentVersion: 3, Title: "Open PRs", LastError: "boom"})
+	section := widgets.PromptSection(loop, widgets.Widget{Title: "Open PRs", LastError: "boom"}, 3)
 	for _, want := range []string{
-		"## Board Widget Runtime",
+		"## Board App Runtime",
 		widgets.WidgetFilePath(loop),
-		"publish_widget",
+		"publish_app",
 		"A list or feed is fine",
 		"boom",
 	} {
@@ -509,7 +506,7 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 		"compact rows",
 	} {
 		if strings.Contains(section, reject) {
-			t.Fatalf("prompt must expose only the board widget contract; found %q:\n%s", reject, section)
+			t.Fatalf("prompt must expose only the board app contract; found %q:\n%s", reject, section)
 		}
 	}
 	if strings.Contains(section, "AGENTS.md") || strings.Contains(section, "design guide next to it") {
@@ -519,7 +516,3 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 		t.Fatalf("prompt must use the invariant file contract:\n%s", section)
 	}
 }
-
-// Widget documents are now built client-side by the shared artifact renderer;
-// the server returns the raw fragment (see TestWidgetContentServesRawFragment
-// in the server package).

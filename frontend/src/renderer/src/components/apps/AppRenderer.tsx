@@ -70,6 +70,7 @@ export function AppRenderer({
   desktopPermissions,
   desktopPermissionsPaused = false,
   className = '',
+  onReady,
 }: {
   app: JazApp
   version?: number
@@ -77,6 +78,8 @@ export function AppRenderer({
   desktopPermissions?: DesktopAppPermission[]
   desktopPermissionsPaused?: boolean
   className?: string
+  // Fires once the app has something to show, and again when its frame reloads.
+  onReady?: () => void
 }) {
   const themeCSS = useArtifactThemeCSS()
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -211,6 +214,11 @@ export function AppRenderer({
     return () => window.removeEventListener('message', onMessage)
   }, [app, confirmSharedWrite, desktopPermissions, desktopPermissionsPaused, fillHeight, isMarkdownEntry, ticket])
 
+  const shownWithoutFrame = !loading && (isMarkdownEntry || Boolean(error))
+  useEffect(() => {
+    if (shownWithoutFrame) onReady?.()
+  }, [onReady, shownWithoutFrame])
+
   if (loading) {
     return (
       <div className={`flex items-center justify-center gap-2 p-6 text-[13px] text-ink-3 ${className}`}>
@@ -256,6 +264,7 @@ export function AppRenderer({
           sandbox="allow-scripts allow-forms"
           referrerPolicy="no-referrer"
           srcDoc={sandboxDoc}
+          onLoad={onReady}
           style={fillHeight ? undefined : { height }}
           className={`block w-full border-0 bg-transparent ${fillHeight ? 'h-full min-h-0 flex-1' : ''}`}
         />

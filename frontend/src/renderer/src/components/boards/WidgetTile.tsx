@@ -6,13 +6,14 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
 import { AppRenderer } from '@/components/apps/AppRenderer'
 import { IconButton } from '@/components/ui/IconButton'
 import { SCANLINE_BACKGROUND, SCANLINE_MASK } from '@/components/ui/rainbow'
-import { appDetailQuery } from '@/lib/api/apps'
+import { appDetailQuery, type JazApp } from '@/lib/api/apps'
 import {
   fetchWidgetContent,
   reportWidgetError,
@@ -21,9 +22,10 @@ import {
 } from '@/lib/api/boards'
 import { activeRunStatus, loopsQuery, runLoopNow, TONE_DOT } from '@/lib/api/loops'
 import type { BoardItem } from '@/lib/api/types'
-import { buildArtifactDocument, buildArtifactThemeCSS } from '@/lib/artifacts'
+import { buildArtifactDocument } from '@/lib/artifacts'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { hasTime, relativeTime } from '@/lib/format/time'
+import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
 
 function TileStatusDot({ item }: { item: BoardItem }) {
   if (activeRunStatus(item.loop_last_run_status)) {
@@ -35,7 +37,7 @@ function TileStatusDot({ item }: { item: BoardItem }) {
   if (item.last_error) {
     return (
       <span
-        title={`Widget error: ${item.last_error}`}
+        title={`App error: ${item.last_error}`}
         className={`size-1.5 shrink-0 rounded-full ${TONE_DOT.failed}`}
       />
     )
@@ -45,16 +47,69 @@ function TileStatusDot({ item }: { item: BoardItem }) {
 
 interface Layer {
   key: string
-  html: string
+  // Absent for HTML a loop published before board tiles became apps.
+  app?: JazApp
+  version: number
   ready: boolean
-  // Created by a version bump (fresh data), as opposed to a theme/zoom reload.
+  // A version published while the tile was on screen.
   fresh: boolean
+}
+
+function postScale(stack: HTMLElement | null, scale: number) {
+  for (const frame of stack?.querySelectorAll('iframe') ?? []) {
+    frame.contentWindow?.postMessage({ type: 'jaz:scale', scale }, '*')
+  }
 }
 
 const WIPE_DURATION = 0.65
 const WIPE_EASE = [0.65, 0, 0.35, 1] as const
 
-// Ghost preview of the widget to come: skeleton blocks breathing while a wave
+// HTML a loop published before board tiles became apps. It shows until the
+// loop's next run publishes its app.
+function LegacyWidgetFrame({
+  widgetId,
+  version,
+  title,
+  onReady,
+}: {
+  widgetId: string
+  version: number
+  title: string
+  onReady: () => void
+}) {
+  const themeCSS = useArtifactThemeCSS()
+  const [fragment, setFragment] = useState<string | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    void fetchWidgetContent(widgetId, version, controller.signal)
+      .then(setFragment)
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) console.error(err)
+      })
+    return () => controller.abort()
+  }, [widgetId, version])
+  const html = useMemo(
+    () =>
+      fragment === null
+        ? ''
+        : buildArtifactDocument({ title, code: fragment, loadingMessages: [] }, themeCSS, {
+            measureLayout: true,
+          }),
+    [fragment, themeCSS, title],
+  )
+  if (fragment === null) return null
+  return (
+    <iframe
+      title={title}
+      sandbox="allow-scripts"
+      srcDoc={html}
+      onLoad={onReady}
+      className="h-full w-full border-0"
+    />
+  )
+}
+
+// Ghost preview of the app to come: skeleton blocks breathing while a wave
 // rolls through the bars. The dot goes rainbow while the first run is live.
 function FirstRunPlaceholder({
   running,
@@ -111,7 +166,6 @@ function FirstRunPlaceholder({
 
 export function WidgetTile({
   item,
-  theme,
   scale,
   dragging,
   onHeaderPointerDown,
@@ -121,7 +175,6 @@ export function WidgetTile({
   onOpenedInMain,
 }: {
   item: BoardItem
-  theme: 'light' | 'dark'
   scale: number
   dragging?: boolean
   onHeaderPointerDown?: (e: ReactPointerEvent) => void
@@ -135,96 +188,54 @@ export function WidgetTile({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const reduce = useReducedMotion()
-  const isAppTile = item.widget_kind === 'app' || Boolean(item.app_id)
-  const appDetail = useQuery({
-    ...appDetailQuery(item.app_id ?? ''),
-    enabled: isAppTile && Boolean(item.app_id),
-  })
-  // Keyed by version + theme: a new version or theme change builds a fresh
-  // document and crossfades; zoom changes are applied live (postMessage) and
-  // deliberately stay out of the key so they never reload the tile.
-  const contentKey =
-    !isAppTile && item.current_version > 0 ? `${item.widget_id}:${item.current_version}:${theme}` : ''
+  const appDetail = useQuery({ ...appDetailQuery(item.app_id ?? ''), enabled: Boolean(item.app_id) })
+  const { refetch: refetchApp } = appDetail
+  useEffect(() => {
+    if (item.app_id) void refetchApp({ cancelRefetch: false })
+  }, [item.app_id, item.current_version, refetchApp])
+  const app = appDetail.data?.app
+  const version = item.app_id ? (app?.current_version ?? 0) : item.current_version
+  const contentKey = version > 0 ? `${item.app_id ?? item.widget_id}:${version}` : ''
 
-  // Double-buffered content: the old document stays visible until the new one
-  // has loaded. Fresh versions are then wiped in by the rainbow scanline;
-  // theme/zoom reloads quietly crossfade — no blank flash either way.
+  // Double-buffered content: the old version stays visible until the new one
+  // has loaded, then the rainbow scanline wipes the new one in.
   const [layers, setLayers] = useState<Layer[]>([])
-  const framesRef = useRef(new Map<string, HTMLIFrameElement>())
+  const stackRef = useRef<HTMLDivElement>(null)
   // One report per loaded version: a render-loop error would otherwise spam
   // the backend (and the loop's next-run prompt) on every poll.
   const reportedRef = useRef('')
   const layoutReportedRef = useRef('')
-  // A fresh publish (version bump) gets the rainbow sweep once the new
-  // content is actually on screen.
   const lastVersionRef = useRef(item.current_version)
-  const pulsePendingRef = useRef(false)
   const [pulse, setPulse] = useState(0)
 
   useEffect(() => {
-    if (item.current_version > lastVersionRef.current) pulsePendingRef.current = true
-    lastVersionRef.current = item.current_version
-  }, [item.current_version])
-
-  useEffect(() => {
-    if (isAppTile || item.current_version <= 0) {
-      setLayers([])
-      return
-    }
-    const key = contentKey
-    const controller = new AbortController()
-    const fresh = pulsePendingRef.current
-    void fetchWidgetContent(item.widget_id, item.current_version, controller.signal)
-      .then((fragment) => {
-        // Wrap the raw fragment in the shared artifact document — same design
-        // system, theme, and CSP as inline artifacts. measureLayout adds the
-        // tile telemetry bridge.
-        const html = buildArtifactDocument(
-          { title: item.title, code: fragment, loadingMessages: [] },
-          buildArtifactThemeCSS(theme === 'dark'),
-          { measureLayout: true },
-        )
-        setLayers((current) => {
-          const top = current[current.length - 1]
-          if (top && top.key === key) return current
-          return [
-            ...current.filter((layer) => layer.ready),
-            { key, html, ready: false, fresh },
-          ]
-        })
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        console.error(err)
-      })
-    return () => controller.abort()
-  }, [contentKey, item.widget_id, item.current_version, item.title, theme])
-
-  const onLayerLoad = (loaded: string, fresh: boolean) => {
-    // A freshly built document loads at zoom 1; push the board's scale in now.
-    framesRef.current.get(loaded)?.contentWindow?.postMessage({ type: 'jaz:scale', scale }, '*')
+    if (!contentKey) return
+    const fresh = version > lastVersionRef.current
+    lastVersionRef.current = version
     setLayers((current) =>
-      current.map((layer) => (layer.key === loaded ? { ...layer, ready: true } : layer)),
+      current.at(-1)?.key === contentKey
+        ? current
+        : [...current.filter((layer) => layer.ready), { key: contentKey, app, version, ready: false, fresh }],
     )
-    if (fresh) {
-      pulsePendingRef.current = false
-      setPulse((p) => p + 1)
-    }
+  }, [app, contentKey, version])
+
+  // Fires again whenever a layer's document reloads (a theme change), and a
+  // reloaded document is back at zoom 1.
+  const onLayerReady = (layer: Layer) => {
+    postScale(stackRef.current, scale)
+    if (layer.ready) return
+    setLayers((current) =>
+      current.map((entry) => (entry.key === layer.key ? { ...entry, ready: true } : entry)),
+    )
+    if (layer.fresh) setPulse((p) => p + 1)
     window.setTimeout(() => {
       setLayers((current) => (current.length > 1 ? current.slice(-1) : current))
     }, 800)
   }
 
   useEffect(() => {
-    setLayers((current) => {
-      const top = current[current.length - 1]
-      return top && top.key === contentKey ? current : current.filter((layer) => layer.ready)
-    })
-  }, [contentKey])
-
-  useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      const frames = [...framesRef.current.values()]
+      const frames = [...(stackRef.current?.querySelectorAll('iframe') ?? [])]
       if (!frames.some((frame) => frame.contentWindow === event.source)) return
       const msg = event.data as {
         type?: string
@@ -235,9 +246,11 @@ export function WidgetTile({
         clipped?: number
         img_errors?: number
       }
-      if (msg?.type === 'jaz:artifact-link' && typeof msg.href === 'string') {
+      if (!item.app_id && msg?.type === 'jaz:artifact-link' && typeof msg.href === 'string') {
         window.open(msg.href, '_blank')
       }
+      // Only a loop reads rendering feedback, in its next run's prompt.
+      if (!item.loop_id) return
       if (msg?.type === 'jaz:artifact-error' && typeof msg.message === 'string') {
         const key = `${item.widget_id}@${item.current_version}`
         if (reportedRef.current === key) return
@@ -262,18 +275,12 @@ export function WidgetTile({
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [item.widget_id, item.current_version])
+  }, [item.app_id, item.loop_id, item.widget_id, item.current_version])
 
-  // Zoom is applied live to every frame — theme, by contrast, is baked into the
-  // rebuilt document (contentKey), so it needs no message here.
-  useEffect(() => {
-    for (const frame of framesRef.current.values()) {
-      frame.contentWindow?.postMessage({ type: 'jaz:scale', scale }, '*')
-    }
-  }, [scale])
+  useEffect(() => postScale(stackRef.current, scale), [scale])
 
   const updated = hasTime(item.widget_updated_at) ? relativeTime(item.widget_updated_at) : ''
-  // A widget's loop is a bot's routine; open the bot that owns it.
+  // A tile's loop is a bot's routine; open the bot that owns it.
   const openBot = async (e: ReactMouseEvent) => {
     const { clientX, clientY } = e
     const loops = await queryClient.ensureQueryData(loopsQuery)
@@ -307,24 +314,24 @@ export function WidgetTile({
             className="-ml-1 shrink-0 text-ink-3 transition-colors duration-150 group-hover:text-ink-2"
           />
         ) : null}
-        {isAppTile ? (
-          <AppWindow size={12} className="shrink-0 text-primary" aria-hidden />
-        ) : (
+        {item.loop_id ? (
           <TileStatusDot item={item} />
+        ) : (
+          <AppWindow size={12} className="shrink-0 text-primary" aria-hidden />
         )}
-        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink" title={isAppTile ? item.title : item.loop_name}>
+        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink" title={item.loop_name || item.title}>
           {item.title}
         </span>
         <span
           className={`shrink-0 text-[11px] tabular-nums text-ink-3 ${
-            isAppTile || onEdit || onRemove ? 'group-hover:hidden' : ''
+            item.app_id || onEdit || onRemove ? 'group-hover:hidden' : ''
           }`}
         >
           {updated}
         </span>
-        {isAppTile || onEdit || onRemove ? (
+        {item.app_id || onEdit || onRemove ? (
           <div className="hidden shrink-0 items-center group-hover:flex">
-            {isAppTile && item.app_id ? (
+            {item.app_id ? (
               <IconButton
                 variant="ghost"
                 size="xs"
@@ -341,7 +348,8 @@ export function WidgetTile({
               >
                 <ExternalLink size={12} />
               </IconButton>
-            ) : onEdit ? (
+            ) : null}
+            {item.loop_id && onEdit ? (
               <>
                 <IconButton
                   variant="ghost"
@@ -377,25 +385,14 @@ export function WidgetTile({
           </div>
         ) : null}
       </div>
-      {isAppTile ? (
-        <div className={`relative m-2 min-h-0 flex-1 overflow-hidden ${dragging ? 'pointer-events-none' : ''}`}>
-          {appDetail.data?.app ? (
-            <AppRenderer app={appDetail.data.app} fillHeight />
-          ) : appDetail.isError ? (
-            <div className="flex h-full items-center justify-center p-3 text-[12px] text-ink-3">
-              App unavailable
-            </div>
-          ) : (
-            <div className="flex h-full items-center justify-center p-3 text-[12px] text-ink-3">
-              Loading app…
-            </div>
-          )}
-        </div>
-      ) : item.current_version > 0 && layers.length > 0 ? (
-        <div className="relative m-2.5 min-h-0 flex-1">
+      {layers.length > 0 ? (
+        <div
+          ref={stackRef}
+          className={`relative m-2.5 min-h-0 flex-1 ${dragging ? 'pointer-events-none' : ''}`}
+        >
           {layers.map((layer) => {
-            // Fresh data is wiped in left-to-right behind the rainbow
-            // scanline; theme/zoom reloads keep the quiet crossfade.
+            // A fresh version is wiped in left-to-right behind the rainbow
+            // scanline; the first load quietly fades in.
             const wipe = layer.fresh && !reduce
             return (
               <motion.div
@@ -425,17 +422,16 @@ export function WidgetTile({
                       : { duration: 0.4, ease: [0.22, 1, 0.36, 1] }
                 }
               >
-                <iframe
-                  ref={(el) => {
-                    if (el) framesRef.current.set(layer.key, el)
-                    else framesRef.current.delete(layer.key)
-                  }}
-                  title={item.title}
-                  sandbox="allow-scripts"
-                  srcDoc={layer.html}
-                  onLoad={() => onLayerLoad(layer.key, layer.fresh)}
-                  className={`h-full w-full border-0 ${dragging ? 'pointer-events-none' : ''}`}
-                />
+                {layer.app ? (
+                  <AppRenderer app={layer.app} version={layer.version} onReady={() => onLayerReady(layer)} />
+                ) : (
+                  <LegacyWidgetFrame
+                    widgetId={item.widget_id}
+                    version={layer.version}
+                    title={item.title}
+                    onReady={() => onLayerReady(layer)}
+                  />
+                )}
               </motion.div>
             )
           })}
@@ -465,15 +461,19 @@ export function WidgetTile({
             </div>
           ) : null}
         </div>
-      ) : (
+      ) : item.loop_id ? (
         <FirstRunPlaceholder
           onClick={openBot}
           running={
             item.loop_last_run_status === 'running' || item.loop_last_run_status === 'starting'
           }
         />
+      ) : (
+        <div className="flex min-h-0 flex-1 items-center justify-center p-3 text-[12px] text-ink-3">
+          {appDetail.isError ? 'App unavailable' : 'Loading app…'}
+        </div>
       )}
-      {item.last_error ? (
+      {item.last_error && !item.app_id ? (
         <div
           className="shrink-0 truncate bg-danger-soft px-2.5 py-1 text-[11px] text-danger"
           title={item.last_error}

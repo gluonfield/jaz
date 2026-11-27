@@ -173,9 +173,6 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 			t.Fatalf("legacy external-agent tool %s still advertised", name)
 		}
 	}
-	if names["publish_widget"] {
-		t.Fatal("publish_widget must not be advertised on ordinary jaztools sessions")
-	}
 
 	readMeCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "artifact_guide",
@@ -419,9 +416,6 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 
 	base, closeBase := connectClient(t, service.Server())
 	defer closeBase()
-	if hasTool(t, base, "publish_widget") {
-		t.Fatal("base server advertised publish_widget")
-	}
 	if !hasTool(t, base, "create_thread") {
 		t.Fatal("base server did not advertise create_thread")
 	}
@@ -436,8 +430,8 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	if !hasTool(t, widget, "create_thread") {
 		t.Fatal("widget server did not advertise create_thread")
 	}
-	if !hasTool(t, widget, "publish_widget") {
-		t.Fatal("widget server did not advertise publish_widget")
+	if !hasTool(t, widget, widgets.PublishMCPToolName) {
+		t.Fatal("widget server did not advertise publish_app")
 	}
 }
 
@@ -739,7 +733,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 			t.Fatalf("worker server missing %s", name)
 		}
 	}
-	for _, name := range []string{"memory_search", "memory_get_page", "read_thread", "list_threads", "search_threads", "loop_list", "create_thread", "artifact_guide", "show_artifact", "publish_widget"} {
+	for _, name := range []string{"memory_search", "memory_get_page", "read_thread", "list_threads", "search_threads", "loop_list", "create_thread", "artifact_guide", "show_artifact", "publish_app"} {
 		if hasTool(t, worker, name) {
 			t.Fatalf("worker server advertised %s", name)
 		}

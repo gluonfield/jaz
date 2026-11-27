@@ -32,6 +32,7 @@ type Widget struct {
 	UpdatedAtMs    int64          `json:"updated_at_ms"`
 	LastLayout     string         `json:"last_layout"`
 	WorkspaceID    string         `json:"workspace_id"`
+	PublishedRunID string         `json:"published_run_id"`
 }
 
 type WidgetVersion struct {

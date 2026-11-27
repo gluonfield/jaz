@@ -18,8 +18,8 @@ import { keys } from '@/lib/query/keys'
 // modal) only once the list is long enough to need it.
 const SEARCH_THRESHOLD = 8
 
-// The one place loops and published apps get onto a board: pick existing loops
-// or published apps to assign, or hand off to LoopModal via onCreateNew.
+// The one place tiles get onto a board: pick loops, whose apps update on every
+// run, or apps to pin as they are, or hand off to LoopModal via onCreateNew.
 export function AddWidgetModal({
   open,
   onClose,
@@ -92,7 +92,8 @@ export function AddWidgetModal({
   const available = all.filter(
     (loop) => loop.status !== 'deleted' && !assignedLoopIds.includes(loop.id),
   )
-  const availableApps = (apps.data ?? []).filter((app) => !assignedAppIds.includes(app.id))
+  // A loop's own app gets onto a board with its loop.
+  const availableApps = (apps.data ?? []).filter((app) => !app.loop_id && !assignedAppIds.includes(app.id))
   const hasLoops = available.length > 0
   const hasApps = availableApps.length > 0
   const searchable = (sourceTab === 'loops' ? available.length : availableApps.length) >= SEARCH_THRESHOLD
@@ -110,8 +111,8 @@ export function AddWidgetModal({
       open={open}
       onClose={close}
       size="md"
-      title="Add widget or app"
-      description="Pin live loop widgets or published Jaz Apps onto this board."
+      title="Add to board"
+      description="Add a loop to show the app it updates on every run, or pin any of your Jaz Apps."
       footer={
         <>
           <div className="flex min-w-0 items-center gap-2">
@@ -139,8 +140,8 @@ export function AddWidgetModal({
                       ? `Pin ${activeCount} apps`
                       : 'Pin app'
                     : activeCount > 1
-                      ? `Add ${activeCount} widgets`
-                      : 'Add widget'}
+                      ? `Add ${activeCount} loops`
+                      : 'Add loop'}
               </Button>
             ) : null}
           </div>
@@ -214,7 +215,7 @@ export function AddWidgetModal({
         <DashedCta
           onClick={createNew}
           title={all.length > 0 ? 'Every loop is already on this board' : 'Create your first loop'}
-          subtitle="A new loop runs a prompt on a schedule and repaints its widget here on every run."
+          subtitle="A new loop runs a prompt on a schedule and republishes its app here on every run."
         />
       ) : (
         <div className={searchable ? 'min-h-72' : undefined}>

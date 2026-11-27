@@ -237,9 +237,9 @@ func TestRenderWidgetSurfaceNamesOnlyBoardWidgetTools(t *testing.T) {
 		"## Jaz threads",
 		"create_thread",
 		"list_agent_options",
-		"## Board widget",
+		"## Board app",
 		"Call `artifact_guide` for the design rules",
-		"deliver it with `publish_widget`",
+		"deliver it with `publish_app`",
 		"Launching background work is not delivery",
 	} {
 		if !strings.Contains(prompt, want) {
@@ -248,8 +248,7 @@ func TestRenderWidgetSurfaceNamesOnlyBoardWidgetTools(t *testing.T) {
 	}
 	for _, reject := range []string{
 		"show_artifact",
-		"publish_app",
-		"## Board Widget Runtime",
+		"## Board App Runtime",
 	} {
 		if strings.Contains(prompt, reject) {
 			t.Fatalf("widget surface base prompt must leave output details to the loop extension; found %q:\n%s", reject, prompt)

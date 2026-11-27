@@ -13,30 +13,35 @@ const (
 	DefaultGridCols  = 6
 	DefaultRowHeight = 120
 	MaxHTMLBytes     = 1 << 20
-	MaxOldVersions   = 5
 )
 
+// Widget is a routine's tile on its boards. The tile shows the app the routine
+// publishes; Jaz keeps the size, the board's feedback and the run that last
+// published here.
 type Widget struct {
-	ID             string `json:"id"`
-	WorkspaceID    string `json:"workspace_id,omitempty"`
-	LoopID         string `json:"loop_id"`
-	Title          string `json:"title"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	LoopID      string `json:"loop_id"`
+	Title       string `json:"title"`
+	// CurrentVersion counts HTML published before tiles became apps. It is
+	// zero once the routine has published its app.
 	CurrentVersion int    `json:"current_version"`
 	SizeHint       string `json:"size_hint,omitempty"`
 	LastError      string `json:"last_error,omitempty"`
 	// LastLayout holds the board's most recent layout telemetry for the
 	// current version (JSON from the bridge); cleared on publish.
-	LastLayout string    `json:"last_layout,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	LastLayout     string    `json:"last_layout,omitempty"`
+	PublishedRunID string    `json:"-"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
+// Version is HTML a routine published before tiles became apps.
 type Version struct {
-	WidgetID        string    `json:"widget_id"`
-	Version         int       `json:"version"`
-	HTML            string    `json:"html"`
-	ProducedByRunID string    `json:"produced_by_run_id,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
+	WidgetID  string    `json:"widget_id"`
+	Version   int       `json:"version"`
+	HTML      string    `json:"html"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Board struct {
@@ -67,7 +72,6 @@ type Placement struct {
 
 type BoardItem struct {
 	Placement
-	WidgetKind        string    `json:"widget_kind,omitempty"`
 	LoopID            string    `json:"loop_id"`
 	LoopName          string    `json:"loop_name"`
 	LoopStatus        string    `json:"loop_status"`
@@ -87,14 +91,9 @@ type Repository interface {
 	NewBoardID() string
 	LoadWidget(id string) (Widget, error)
 	LoadWidgetByLoop(loopID string) (Widget, bool, error)
-	ListWidgets() ([]Widget, error)
 	SaveWidget(widget Widget) error
-	InsertWidgetVersion(version Version) error
-	// SaveWidgetWithVersion persists both atomically: the widget row must
-	// never point at a version snapshot that failed to write.
-	SaveWidgetWithVersion(widget Widget, version Version) error
 	LoadWidgetVersion(widgetID string, version int) (Version, error)
-	PruneOldWidgetVersions(widgetID string, currentVersion, keepOld int) error
+	DeleteWidgetVersions(widgetID string) error
 	SaveBoard(board Board) error
 	LoadBoard(id string) (Board, error)
 	DefaultBoard() (Board, bool, error)

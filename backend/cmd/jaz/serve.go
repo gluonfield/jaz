@@ -332,7 +332,7 @@ func startServer(
 	loopMemoryPaths := loops.NewMemoryPaths(loops.AutomationsDir(store.RootDir()))
 	loopService := loops.NewService(store, loopRunner, logger,
 		loops.WithMemoryPaths(loopMemoryPaths),
-		// Board assignment is the widget enablement: no boards, no section.
+		// Board assignment is what gives a loop its board app: no boards, no section.
 		loops.WithPromptExtras(bots.RoutineInstructions(store), widgetService.LoopPromptExtra),
 		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
 		loops.WithRunCheck(widgetService.RequireRunPublished),
@@ -351,6 +351,7 @@ func startServer(
 	)
 	jazTools.SetBots(bots.NewMCPTools(botService))
 	jazTools.SetApps(appsService)
+	widgetService.WithApps(appsService)
 	handler.Routes = append(handler.Routes, app.BotRoutes(botsapi.NewHandler(botService, events).WithCloud(cloud))...)
 	handler.PublicRoutes = append(handler.PublicRoutes, app.HookRoute(hooksapi.NewHandler(loopService)))
 	handler.RoutineOwner = botService.RoutineOwner
@@ -360,7 +361,7 @@ func startServer(
 	handler.Loops = loopService
 	handler.Widgets = widgetService
 	manager.PublishWidget = func(req acp.WidgetPublishRequest) (acp.WidgetPublishResult, error) {
-		widget, warnings, err := widgetPublisher.PublishForSession(req.SessionID, widgets.PublishInput{
+		published, err := widgetPublisher.PublishForSession(context.Background(), req.SessionID, widgets.PublishInput{
 			Title:    req.Title,
 			SizeHint: req.SizeHint,
 			HTML:     req.HTML,
@@ -369,11 +370,11 @@ func startServer(
 			return acp.WidgetPublishResult{}, err
 		}
 		return acp.WidgetPublishResult{
-			WidgetID: widget.ID,
-			Title:    widget.Title,
-			Version:  widget.CurrentVersion,
-			SizeHint: widget.SizeHint,
-			Warnings: warnings,
+			WidgetID: published.App.ID,
+			Title:    published.App.Title,
+			Version:  published.App.CurrentVersion,
+			SizeHint: published.SizeHint,
+			Warnings: published.Warnings,
 		}, nil
 	}
 	manager.TurnEnding = botService.TurnEnding

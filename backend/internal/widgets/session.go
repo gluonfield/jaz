@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"context"
 	"errors"
 
 	"github.com/wins/jaz/backend/internal/loops"
@@ -26,12 +27,12 @@ type SessionPublisher struct {
 	Loops    LoopSource
 }
 
-func (p *SessionPublisher) PublishForSession(sessionID string, input PublishInput) (Widget, []string, error) {
+func (p *SessionPublisher) PublishForSession(ctx context.Context, sessionID string, input PublishInput) (Published, error) {
 	loop, run, err := p.resolve(sessionID)
 	if err != nil {
-		return Widget{}, nil, err
+		return Published{}, err
 	}
-	return p.Service.Publish(loop, run.ID, input)
+	return p.Service.Publish(ctx, loop, run.ID, sessionID, input)
 }
 
 func (p *SessionPublisher) WidgetSurfaceForSession(sessionID string) bool {
@@ -44,7 +45,7 @@ func (p *SessionPublisher) WidgetSurfaceForSession(sessionID string) bool {
 		visualize.NormalizeSurface(session.RuntimeRef.ArtifactSurface) == visualize.SurfaceWidget
 }
 
-var errNotLoopRun = errors.New("widget publishing is only available to loop runs")
+var errNotLoopRun = errors.New("publishing a board app is only available to loop runs")
 
 func (p *SessionPublisher) resolve(sessionID string) (loops.Loop, loops.Run, error) {
 	session, err := p.Sessions.LoadSession(sessionID)

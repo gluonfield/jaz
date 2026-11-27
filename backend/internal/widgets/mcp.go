@@ -3,19 +3,18 @@ package widgets
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 )
 
 const (
-	PublishMCPToolName = "publish_widget"
-	PublishDescription = "Publishes this loop run's board widget: the HTML tile this loop keeps up to date on the user's Jaz board. Write the HTML fragment to widget/index.html first, then call this; alternatively pass the fragment inline via html. Invalid fragments fail; host-rendering warnings are advisory."
+	PublishMCPToolName = "publish_app"
+	PublishDescription = "Publishes this loop run's board app: the app this loop keeps up to date as a tile on the user's Jaz board. Write the HTML fragment to the app file first, then call this; alternatively pass the fragment inline via html. Invalid fragments fail; host-rendering warnings are advisory."
 )
 
 type MCPPublisher interface {
-	PublishForSession(sessionID string, input PublishInput) (Widget, []string, error)
+	PublishForSession(ctx context.Context, sessionID string, input PublishInput) (Published, error)
 }
 
 type MCPPublishInput struct {
@@ -24,57 +23,56 @@ type MCPPublishInput struct {
 	HTML     string `json:"html,omitempty"`
 }
 
+// MCPPublishOutput carries the keys every publish_app result has, so clients
+// show a routine's app with the card they show for any other.
 type MCPPublishOutput struct {
-	WidgetID string   `json:"widget_id"`
+	Note     string   `json:"note"`
+	AppID    string   `json:"app_id"`
 	Title    string   `json:"title"`
+	Kind     string   `json:"kind"`
 	Version  int      `json:"version"`
 	SizeHint string   `json:"size_hint,omitempty"`
 	Warnings []string `json:"warnings,omitempty"`
 }
 
+func PublishOutput(published Published) MCPPublishOutput {
+	note := "Saved and shown on the board."
+	if len(published.Warnings) > 0 {
+		note = "Saved and shown on the board. Fix the host-rendering warnings and publish again."
+	}
+	return MCPPublishOutput{
+		Note:     note,
+		AppID:    published.App.ID,
+		Title:    published.App.Title,
+		Kind:     published.App.Kind,
+		Version:  published.App.CurrentVersion,
+		SizeHint: published.SizeHint,
+		Warnings: published.Warnings,
+	}
+}
+
 func AddMCPTools(server *mcp.Server, publisher MCPPublisher) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        PublishMCPToolName,
-		Title:       "Publish board widget",
+		Title:       "Publish board app",
 		Description: PublishDescription,
 		InputSchema: PublishInputSchema(),
-	}, publishMCP(publisher))
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input MCPPublishInput) (*mcp.CallToolResult, MCPPublishOutput, error) {
+		out, err := publish(ctx, publisher, req, input)
+		return nil, out, err
+	})
 }
 
-func publishMCP(publisher MCPPublisher) func(context.Context, *mcp.CallToolRequest, MCPPublishInput) (*mcp.CallToolResult, MCPPublishOutput, error) {
-	return func(_ context.Context, req *mcp.CallToolRequest, input MCPPublishInput) (*mcp.CallToolResult, MCPPublishOutput, error) {
-		return publish(publisher, req, input)
-	}
-}
-
-func publish(publisher MCPPublisher, req *mcp.CallToolRequest, input MCPPublishInput) (*mcp.CallToolResult, MCPPublishOutput, error) {
+func publish(ctx context.Context, publisher MCPPublisher, req *mcp.CallToolRequest, input MCPPublishInput) (MCPPublishOutput, error) {
 	sessionID := mcpsession.SessionID(req)
 	if sessionID == "" {
-		return nil, MCPPublishOutput{}, fmt.Errorf("%s requires %s", PublishMCPToolName, mcpsession.HeaderName)
+		return MCPPublishOutput{}, fmt.Errorf("%s requires %s", PublishMCPToolName, mcpsession.HeaderName)
 	}
-	widget, warnings, err := publisher.PublishForSession(sessionID, PublishInput{
-		Title:    input.Title,
-		SizeHint: input.SizeHint,
-		HTML:     input.HTML,
-	})
+	published, err := publisher.PublishForSession(ctx, sessionID, PublishInput(input))
 	if err != nil {
-		return nil, MCPPublishOutput{}, err
+		return MCPPublishOutput{}, err
 	}
-	out := MCPPublishOutput{
-		WidgetID: widget.ID,
-		Title:    widget.Title,
-		Version:  widget.CurrentVersion,
-		SizeHint: widget.SizeHint,
-		Warnings: warnings,
-	}
-	content := fmt.Sprintf("Published widget %q version %d.", widget.Title, widget.CurrentVersion)
-	if widget.SizeHint != "" {
-		content = fmt.Sprintf("Published widget %q version %d (size %s).", widget.Title, widget.CurrentVersion, widget.SizeHint)
-	}
-	if len(warnings) > 0 {
-		content += "\n\nHost-rendering warnings (published anyway):\n- " + strings.Join(warnings, "\n- ")
-	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: content}}}, out, nil
+	return PublishOutput(published), nil
 }
 
 func PublishInputSchema() map[string]any {
@@ -83,7 +81,7 @@ func PublishInputSchema() map[string]any {
 		"properties": map[string]any{
 			"title": map[string]any{
 				"type":        "string",
-				"description": "Widget title shown on the tile header. Defaults to the loop name.",
+				"description": "App title shown on the tile header and in Apps. Defaults to the loop name.",
 			},
 			"size_hint": map[string]any{
 				"type":        "string",
@@ -91,7 +89,7 @@ func PublishInputSchema() map[string]any {
 			},
 			"html": map[string]any{
 				"type":        "string",
-				"description": "Widget HTML fragment. When omitted, the loop's widget/index.html file is read instead.",
+				"description": "The app as an HTML fragment. When omitted, the loop's app file is read instead.",
 			},
 		},
 	}

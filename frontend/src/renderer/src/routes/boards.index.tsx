@@ -43,7 +43,7 @@ function BoardsPage() {
   const onDelete = (board: Board) => {
     if (
       confirm(
-        `Delete board "${board.name}"? Widgets and their history are kept — loops just stop publishing until you assign them to another board.`,
+        `Delete board "${board.name}"? Apps and their history are kept — loops just stop publishing until you assign them to another board.`,
       )
     ) {
       remove.mutate(board.id)
@@ -85,7 +85,7 @@ function BoardsPage() {
             subtitle={
               cloud.active
                 ? 'Create a personal board or share one with your whole team or selected teammates.'
-                : 'Assign loops to a board and every run rewrites its widgets — counts, lists, charts — from data they just gathered.'
+                : 'Assign loops to a board and every run republishes its app — counts, lists, charts — from data they just gathered.'
             }
           />
         ) : (

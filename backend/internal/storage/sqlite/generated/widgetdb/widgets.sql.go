@@ -76,6 +76,16 @@ func (q *Queries) DeleteOrphanWidgets(ctx context.Context, deletedStatus string)
 	return result.RowsAffected()
 }
 
+const deleteWidgetVersions = `-- name: DeleteWidgetVersions :exec
+DELETE FROM widget_versions
+WHERE widget_id = ?1
+`
+
+func (q *Queries) DeleteWidgetVersions(ctx context.Context, widgetID string) error {
+	_, err := q.db.ExecContext(ctx, deleteWidgetVersions, widgetID)
+	return err
+}
+
 const getBoard = `-- name: GetBoard :one
 SELECT id, name, grid_cols, row_height, window_bounds, is_default, created_at_ms, updated_at_ms, font_scale, workspace_id
 FROM boards
@@ -170,7 +180,7 @@ func (q *Queries) GetDefaultBoard(ctx context.Context, workspaceID string) (Boar
 }
 
 const getWidget = `-- name: GetWidget :one
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
+SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id, published_run_id
 FROM widgets
 WHERE id = ?1
 LIMIT 1
@@ -190,12 +200,13 @@ func (q *Queries) GetWidget(ctx context.Context, id string) (Widget, error) {
 		&i.UpdatedAtMs,
 		&i.LastLayout,
 		&i.WorkspaceID,
+		&i.PublishedRunID,
 	)
 	return i, err
 }
 
 const getWidgetByLoop = `-- name: GetWidgetByLoop :one
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
+SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id, published_run_id
 FROM widgets
 WHERE loop_id = ?1
 LIMIT 1
@@ -215,6 +226,7 @@ func (q *Queries) GetWidgetByLoop(ctx context.Context, loopID string) (Widget, e
 		&i.UpdatedAtMs,
 		&i.LastLayout,
 		&i.WorkspaceID,
+		&i.PublishedRunID,
 	)
 	return i, err
 }
@@ -242,41 +254,6 @@ func (q *Queries) GetWidgetVersion(ctx context.Context, arg GetWidgetVersionPara
 		&i.CreatedAtMs,
 	)
 	return i, err
-}
-
-const insertWidgetVersion = `-- name: InsertWidgetVersion :exec
-INSERT INTO widget_versions (
-  widget_id,
-  version,
-  html,
-  produced_by_run_id,
-  created_at_ms
-) VALUES (
-  ?1,
-  ?2,
-  ?3,
-  ?4,
-  ?5
-)
-`
-
-type InsertWidgetVersionParams struct {
-	WidgetID        string         `json:"widget_id"`
-	Version         int64          `json:"version"`
-	Html            string         `json:"html"`
-	ProducedByRunID sql.NullString `json:"produced_by_run_id"`
-	CreatedAtMs     int64          `json:"created_at_ms"`
-}
-
-func (q *Queries) InsertWidgetVersion(ctx context.Context, arg InsertWidgetVersionParams) error {
-	_, err := q.db.ExecContext(ctx, insertWidgetVersion,
-		arg.WidgetID,
-		arg.Version,
-		arg.Html,
-		arg.ProducedByRunID,
-		arg.CreatedAtMs,
-	)
-	return err
 }
 
 const listAllPlacements = `-- name: ListAllPlacements :many
@@ -334,90 +311,61 @@ const listBoardItems = `-- name: ListBoardItems :many
 SELECT
   bw.board_id,
   bw.widget_id,
-  CAST('loop' AS TEXT) AS widget_kind,
-  CAST('' AS TEXT) AS app_id,
-  CAST('' AS TEXT) AS app_kind,
+  CAST(COALESCE(a.id, '') AS TEXT) AS app_id,
+  CAST(COALESCE(a.kind, '') AS TEXT) AS app_kind,
   bw.x,
   bw.y,
   bw.w,
   bw.h,
   bw.placed_by,
-  w.loop_id,
-  w.title,
-  w.current_version,
-  w.size_hint,
-  w.last_error,
-  w.updated_at_ms AS widget_updated_at_ms,
-  l.name AS loop_name,
-  l.status AS loop_status,
-  l.last_run_status AS loop_last_run_status,
-  l.last_run_at_ms AS loop_last_run_at_ms
+  CAST(COALESCE(l.id, '') AS TEXT) AS loop_id,
+  CAST(COALESCE(a.title, w.title, '') AS TEXT) AS title,
+  CAST(COALESCE(a.current_version, w.current_version, 0) AS INTEGER) AS current_version,
+  CAST(COALESCE(w.size_hint, '') AS TEXT) AS size_hint,
+  CAST(COALESCE(w.last_error, '') AS TEXT) AS last_error,
+  CAST(COALESCE(a.updated_at_ms, w.updated_at_ms, 0) AS INTEGER) AS updated_at_ms,
+  CAST(COALESCE(l.name, '') AS TEXT) AS loop_name,
+  CAST(COALESCE(l.status, '') AS TEXT) AS loop_status,
+  CAST(COALESCE(l.last_run_status, '') AS TEXT) AS loop_last_run_status,
+  CAST(COALESCE(l.last_run_at_ms, 0) AS INTEGER) AS loop_last_run_at_ms
 FROM board_widgets bw
-JOIN widgets w ON w.id = bw.widget_id
-JOIN loops l ON l.id = w.loop_id
-WHERE bw.board_id = ?1
-  AND bw.app_id IS NULL
-  AND l.status <> ?2
-UNION ALL
-SELECT
-  bw.board_id,
-  bw.widget_id,
-  CAST('app' AS TEXT) AS widget_kind,
-  a.id AS app_id,
-  a.kind AS app_kind,
-  bw.x,
-  bw.y,
-  bw.w,
-  bw.h,
-  bw.placed_by,
-  CAST('' AS TEXT) AS loop_id,
-  a.title,
-  a.current_version,
-  CAST('' AS TEXT) AS size_hint,
-  NULL AS last_error,
-  a.updated_at_ms AS widget_updated_at_ms,
-  CAST('' AS TEXT) AS loop_name,
-  CAST('' AS TEXT) AS loop_status,
-  NULL AS loop_last_run_status,
-  0 AS loop_last_run_at_ms
-FROM board_widgets bw
-JOIN apps a ON a.id = bw.app_id
-WHERE bw.board_id = ?1
-  AND bw.app_id IS NOT NULL
-  AND a.status = 'active'
-ORDER BY y ASC, x ASC
+LEFT JOIN widgets w ON bw.app_id IS NULL AND w.id = bw.widget_id
+LEFT JOIN loops l ON l.id = w.loop_id AND l.status <> ?1
+LEFT JOIN apps a ON a.status = 'active' AND (a.id = bw.app_id OR a.loop_id = l.id)
+WHERE bw.board_id = ?2
+  AND (l.id IS NOT NULL OR a.id IS NOT NULL)
+ORDER BY bw.y ASC, bw.x ASC
 `
 
 type ListBoardItemsParams struct {
-	BoardID       string `json:"board_id"`
 	DeletedStatus string `json:"deleted_status"`
+	BoardID       string `json:"board_id"`
 }
 
 type ListBoardItemsRow struct {
-	BoardID           string         `json:"board_id"`
-	WidgetID          string         `json:"widget_id"`
-	WidgetKind        string         `json:"widget_kind"`
-	AppID             string         `json:"app_id"`
-	AppKind           string         `json:"app_kind"`
-	X                 int64          `json:"x"`
-	Y                 int64          `json:"y"`
-	W                 int64          `json:"w"`
-	H                 int64          `json:"h"`
-	PlacedBy          string         `json:"placed_by"`
-	LoopID            string         `json:"loop_id"`
-	Title             string         `json:"title"`
-	CurrentVersion    int64          `json:"current_version"`
-	SizeHint          string         `json:"size_hint"`
-	LastError         sql.NullString `json:"last_error"`
-	WidgetUpdatedAtMs int64          `json:"widget_updated_at_ms"`
-	LoopName          string         `json:"loop_name"`
-	LoopStatus        string         `json:"loop_status"`
-	LoopLastRunStatus sql.NullString `json:"loop_last_run_status"`
-	LoopLastRunAtMs   int64          `json:"loop_last_run_at_ms"`
+	BoardID           string `json:"board_id"`
+	WidgetID          string `json:"widget_id"`
+	AppID             string `json:"app_id"`
+	AppKind           string `json:"app_kind"`
+	X                 int64  `json:"x"`
+	Y                 int64  `json:"y"`
+	W                 int64  `json:"w"`
+	H                 int64  `json:"h"`
+	PlacedBy          string `json:"placed_by"`
+	LoopID            string `json:"loop_id"`
+	Title             string `json:"title"`
+	CurrentVersion    int64  `json:"current_version"`
+	SizeHint          string `json:"size_hint"`
+	LastError         string `json:"last_error"`
+	UpdatedAtMs       int64  `json:"updated_at_ms"`
+	LoopName          string `json:"loop_name"`
+	LoopStatus        string `json:"loop_status"`
+	LoopLastRunStatus string `json:"loop_last_run_status"`
+	LoopLastRunAtMs   int64  `json:"loop_last_run_at_ms"`
 }
 
 func (q *Queries) ListBoardItems(ctx context.Context, arg ListBoardItemsParams) ([]ListBoardItemsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listBoardItems, arg.BoardID, arg.DeletedStatus)
+	rows, err := q.db.QueryContext(ctx, listBoardItems, arg.DeletedStatus, arg.BoardID)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +376,6 @@ func (q *Queries) ListBoardItems(ctx context.Context, arg ListBoardItemsParams) 
 		if err := rows.Scan(
 			&i.BoardID,
 			&i.WidgetID,
-			&i.WidgetKind,
 			&i.AppID,
 			&i.AppKind,
 			&i.X,
@@ -441,7 +388,7 @@ func (q *Queries) ListBoardItems(ctx context.Context, arg ListBoardItemsParams) 
 			&i.CurrentVersion,
 			&i.SizeHint,
 			&i.LastError,
-			&i.WidgetUpdatedAtMs,
+			&i.UpdatedAtMs,
 			&i.LoopName,
 			&i.LoopStatus,
 			&i.LoopLastRunStatus,
@@ -530,60 +477,14 @@ func (q *Queries) ListBoardsForWidget(ctx context.Context, widgetID string) ([]s
 	return items, nil
 }
 
-const listWidgets = `-- name: ListWidgets :many
-SELECT id, loop_id, title, current_version, size_hint, last_error, created_at_ms, updated_at_ms, last_layout, workspace_id
-FROM widgets
-WHERE (CAST(?1 AS TEXT) = '' OR workspace_id = ?1)
-ORDER BY updated_at_ms DESC
+const releaseOrphanLoopApps = `-- name: ReleaseOrphanLoopApps :exec
+UPDATE apps SET loop_id = ''
+WHERE loop_id <> ''
+  AND loop_id NOT IN (SELECT l.id FROM loops l WHERE l.status <> ?1)
 `
 
-func (q *Queries) ListWidgets(ctx context.Context, filterWorkspaceID string) ([]Widget, error) {
-	rows, err := q.db.QueryContext(ctx, listWidgets, filterWorkspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Widget{}
-	for rows.Next() {
-		var i Widget
-		if err := rows.Scan(
-			&i.ID,
-			&i.LoopID,
-			&i.Title,
-			&i.CurrentVersion,
-			&i.SizeHint,
-			&i.LastError,
-			&i.CreatedAtMs,
-			&i.UpdatedAtMs,
-			&i.LastLayout,
-			&i.WorkspaceID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const pruneWidgetVersions = `-- name: PruneWidgetVersions :exec
-DELETE FROM widget_versions
-WHERE widget_id = ?1
-  AND version <= ?2
-`
-
-type PruneWidgetVersionsParams struct {
-	WidgetID       string `json:"widget_id"`
-	MaxKeepVersion int64  `json:"max_keep_version"`
-}
-
-func (q *Queries) PruneWidgetVersions(ctx context.Context, arg PruneWidgetVersionsParams) error {
-	_, err := q.db.ExecContext(ctx, pruneWidgetVersions, arg.WidgetID, arg.MaxKeepVersion)
+func (q *Queries) ReleaseOrphanLoopApps(ctx context.Context, deletedStatus string) error {
+	_, err := q.db.ExecContext(ctx, releaseOrphanLoopApps, deletedStatus)
 	return err
 }
 
@@ -721,7 +622,8 @@ INSERT INTO widgets (
   last_layout,
   created_at_ms,
   updated_at_ms,
-  workspace_id
+  workspace_id,
+  published_run_id
 ) VALUES (
   ?1,
   ?2,
@@ -732,7 +634,8 @@ INSERT INTO widgets (
   ?7,
   ?8,
   ?9,
-  ?10
+  ?10,
+  ?11
 )
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
@@ -743,7 +646,8 @@ ON CONFLICT(id) DO UPDATE SET
   last_layout = excluded.last_layout,
   created_at_ms = excluded.created_at_ms,
   updated_at_ms = excluded.updated_at_ms,
-  workspace_id = excluded.workspace_id
+  workspace_id = excluded.workspace_id,
+  published_run_id = excluded.published_run_id
 `
 
 type UpsertWidgetParams struct {
@@ -757,6 +661,7 @@ type UpsertWidgetParams struct {
 	CreatedAtMs    int64          `json:"created_at_ms"`
 	UpdatedAtMs    int64          `json:"updated_at_ms"`
 	WorkspaceID    string         `json:"workspace_id"`
+	PublishedRunID string         `json:"published_run_id"`
 }
 
 func (q *Queries) UpsertWidget(ctx context.Context, arg UpsertWidgetParams) error {
@@ -771,6 +676,7 @@ func (q *Queries) UpsertWidget(ctx context.Context, arg UpsertWidgetParams) erro
 		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
 		arg.WorkspaceID,
+		arg.PublishedRunID,
 	)
 	return err
 }

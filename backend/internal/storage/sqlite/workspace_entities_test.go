@@ -105,11 +105,8 @@ func TestWorkspaceEntityIsolationInSQLite(t *testing.T) {
 	if got, err := store.ListLoopsForWorkspace("cloudB"); err != nil || len(got) != 0 {
 		t.Fatalf("cloudB loops = %+v, %v", got, err)
 	}
-	if got, err := store.ListWidgetsForWorkspace("cloudA"); err != nil || len(got) != 1 || got[0].ID != "w-a" {
-		t.Fatalf("cloudA widgets = %+v, %v", got, err)
-	}
-	if got, err := store.ListWidgetsForWorkspace("cloudB"); err != nil || len(got) != 0 {
-		t.Fatalf("cloudB widgets = %+v, %v", got, err)
+	if got, err := store.LoadWidget("w-a"); err != nil || got.WorkspaceID != "cloudA" {
+		t.Fatalf("cloudA widget = %+v, %v", got, err)
 	}
 
 	// 4. Custom MCP servers.
