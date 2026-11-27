@@ -82,6 +82,8 @@ export function SidebarWorkspaceSwitcher({
   }
   if (workspaces.length === 0 && !showWithoutCloud) return null
 
+  const switching = workspaces.find((ws) => ws.id === switchingTo)
+  const switchingName = switchingTo === null ? null : switching ? workspaceDisplayName(switching) : 'Local'
   const isLocalActive = localAllowed && !activeCloud
   const closeMenu = () => {
     setOpen(false)
@@ -195,10 +197,7 @@ export function SidebarWorkspaceSwitcher({
           ) : null}
         </div>
       </Popover>
-      <WorkspaceSwitchTransition
-        destination={switchingTo === null ? null : { workspace: workspaces.find((ws) => ws.id === switchingTo) ?? null }}
-        anchor={triggerRef}
-      />
+      <WorkspaceSwitchTransition name={switchingName} />
       <AddCloudWorkspaceModal open={adding} onClose={() => setAdding(false)} />
     </div>
   )

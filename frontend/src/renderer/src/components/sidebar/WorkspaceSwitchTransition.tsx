@@ -1,97 +1,73 @@
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useReducedMotion } from 'motion/react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { CloudWorkspaceSummary } from '@/lib/cloudAccount'
-import { workspaceDisplayName } from '@/lib/cloudWorkspaceDisplay'
-import { WorkspaceMark } from './WorkspaceMark'
-import { LIQUID_LEAVE_MS, runLiquid } from './workspaceSwitchLiquid'
+import { snapshotWindow } from '@/lib/domSnapshot'
+import { runSand, SAND_ARRIVE_MS } from './workspaceSwitchSand'
 
-// Long enough to read as leaving one place for another, however fast the switch itself is.
-const MIN_MS = 1700
-const EASE = [0.16, 1, 0.3, 1] as const
+const FADE_MS = 180
+// Time for the new workspace to draw itself before it is pictured.
+const SETTLE_MS = 120
 
-type Destination = { workspace: CloudWorkspaceSummary | null }
-type Scene = Destination & { x: number; y: number; since: number; leaving: boolean }
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-// The passage between workspaces: a liquid floods the window from the
-// switcher's mark, holds the destination's mark and name while the new
-// workspace loads behind it, then drains away to reveal it.
-export function WorkspaceSwitchTransition({ destination, anchor }: {
-  destination: Destination | null
-  anchor: RefObject<HTMLElement | null>
-}) {
+// The passage between workspaces: the window turns to sand and is blown away,
+// then the new workspace is blown in and settles into place. `name` is the
+// workspace being switched to, null when no switch is under way.
+export function WorkspaceSwitchTransition({ name }: { name: string | null }) {
   const reduce = useReducedMotion()
-  const [scene, setScene] = useState<Scene | null>(null)
-  const [flat, setFlat] = useState(false)
+  const [scene, setScene] = useState<{ name: string; leaving: boolean } | null>(null)
+  const root = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
-  const liquid = useRef<ReturnType<typeof runLiquid>>(null)
+  const sand = useRef<Promise<ReturnType<typeof runSand>>>(Promise.resolve(null))
 
   useEffect(() => {
-    if (destination) {
-      const rect = anchor.current?.getBoundingClientRect()
-      setScene({
-        ...destination,
-        x: rect ? rect.left + rect.width / 2 : 24,
-        y: rect ? rect.top + rect.height / 2 : 24,
-        since: performance.now(),
-        leaving: false,
-      })
+    if (name !== null) {
+      setScene({ name, leaving: false })
       return
     }
-    if (!scene) return
-    const hold = Math.max(0, MIN_MS - (performance.now() - scene.since))
-    const leave = setTimeout(() => setScene((current) => current && { ...current, leaving: true }), hold)
-    const end = setTimeout(() => setScene(null), hold + LIQUID_LEAVE_MS)
+    let cancelled = false
+    void (async () => {
+      const running = await sand.current
+      if (running) {
+        await wait(SETTLE_MS)
+        const picture = await snapshotWindow(window.devicePixelRatio, root.current)
+        if (cancelled) return
+        running.arrive(picture)
+        await wait(SAND_ARRIVE_MS)
+      }
+      if (cancelled) return
+      setScene((current) => current && { ...current, leaving: true })
+      await wait(FADE_MS)
+      if (!cancelled) setScene(null)
+    })()
     return () => {
-      clearTimeout(leave)
-      clearTimeout(end)
+      cancelled = true
     }
-    // The scene only changes here, so depending on it would restart its own timers.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destination, anchor])
+  }, [name])
 
-  const since = scene?.since
+  const shown = scene !== null
   useEffect(() => {
-    if (since === undefined || !canvas.current) return
-    liquid.current = reduce ? null : runLiquid(canvas.current, { x: scene!.x, y: scene!.y })
-    setFlat(!liquid.current)
-    return () => liquid.current?.stop()
-    // A scene's origin is fixed when it starts.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [since, reduce])
-
-  const leaving = scene?.leaving
-  useEffect(() => {
-    if (leaving) liquid.current?.leave()
-  }, [leaving])
+    if (!shown || reduce) return
+    const running = snapshotWindow(window.devicePixelRatio, root.current).then((picture) =>
+      canvas.current ? runSand(canvas.current, picture) : null,
+    )
+    sand.current = running
+    return () => {
+      sand.current = Promise.resolve(null)
+      void running.then((started) => started?.stop())
+    }
+  }, [shown, reduce])
 
   if (typeof document === 'undefined' || !scene) return null
-  const name = scene.workspace ? workspaceDisplayName(scene.workspace) : 'Local'
   return createPortal(
     <div
+      ref={root}
       role="status"
-      aria-label={`Switching to ${name}`}
-      style={{ zIndex: 'calc(var(--z-modal) + 2)' }}
-      className={`fixed inset-0 grid place-items-center transition-opacity duration-300 [-webkit-app-region:no-drag] ${flat ? 'bg-bg' : ''} ${flat && leaving ? 'opacity-0' : ''}`}
+      aria-label={`Switching to ${scene.name}`}
+      style={{ zIndex: 'calc(var(--z-modal) + 2)', transitionDuration: `${FADE_MS}ms` }}
+      className={`fixed inset-0 transition-opacity [-webkit-app-region:no-drag] ${scene.leaving ? 'opacity-0' : ''}`}
     >
-      <canvas ref={canvas} className="absolute inset-0 size-full" />
-      <AnimatePresence>
-        {leaving ? null : (
-          <motion.div
-            className="relative flex flex-col items-center gap-5"
-            initial={{ opacity: 0, scale: 0.86, filter: 'blur(12px)' }}
-            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, scale: 1.12, filter: 'blur(12px)' }}
-            transition={{ duration: 0.5, delay: 0.4, ease: EASE }}
-          >
-            <WorkspaceMark
-              workspace={scene.workspace}
-              className="size-[88px] rounded-[24px] text-[38px] shadow-[0_18px_60px_color-mix(in_oklab,var(--color-primary)_45%,transparent)]"
-            />
-            <p className="max-w-[70vw] truncate text-[22px] font-semibold text-ink">{name}</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <canvas ref={canvas} className="size-full" />
     </div>,
     document.body,
   )
