@@ -140,15 +140,32 @@ export function apiRefreshGeneration(url = apiBaseUrl()): number {
   return refreshGenerations.get(normalizeBaseUrl(url)) ?? 0
 }
 
-export function restoreApiCredential(url: string): { token: string; refreshToken?: string } {
+export function restoreApiCredential(url: string, options?: { allowLegacy?: boolean }): { token: string; refreshToken?: string } {
   const stored = localStorage.getItem(authStorageKey(url))?.trim() ?? ''
   if (!stored) {
     return { token: '' }
   }
-  if (!stored.startsWith('enc:v1:') || !clientRuntime.decryptCredential) {
+  if (!clientRuntime.decryptCredential) {
     throw new Error('Saved connection is not securely encrypted')
   }
-  return decodeStoredCredential(clientRuntime.decryptCredential(stored.slice(7)))
+  if (stored.startsWith('enc:v2:')) {
+    return decodeStoredCredential(clientRuntime.decryptCredential(stored))
+  }
+  if (!stored.startsWith('enc:v1:')) {
+    throw new Error('Saved connection is not securely encrypted')
+  }
+  const plaintext = clientRuntime.decryptCredential(stored.slice(7), options?.allowLegacy)
+  if (clientRuntime.encryptCredential) {
+    try {
+      const upgraded = clientRuntime.encryptCredential(plaintext)
+      if (upgraded.startsWith('enc:v2:')) {
+        localStorage.setItem(authStorageKey(url), upgraded)
+      }
+    } catch {
+      // Keep the restored credential usable even if opportunistic migration fails.
+    }
+  }
+  return decodeStoredCredential(plaintext)
 }
 
 export function restoreApiAuthToken(url: string): string {
@@ -166,7 +183,7 @@ export function rememberApiAuthToken(url: string, current: () => boolean): void 
   if (revision !== credentialRevision || token !== cachedApiAuthToken(url) || refreshToken !== cachedApiRefreshToken(url) || !current()) {
     throw new Error('Connection changed before it could be remembered')
   }
-  localStorage.setItem(authStorageKey(url), 'enc:v1:' + ciphertext)
+  localStorage.setItem(authStorageKey(url), ciphertext.startsWith('enc:v2:') ? ciphertext : 'enc:v1:' + ciphertext)
 }
 
 export function setApiAuthToken(

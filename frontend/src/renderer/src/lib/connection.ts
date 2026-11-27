@@ -333,11 +333,11 @@ async function verifyCandidate(
   return readAccess(url, token, signal)
 }
 
-async function savedCredential(url: string): Promise<SavedCredential> {
+async function savedCredential(url: string, allowLegacy = false): Promise<SavedCredential> {
   if (clientRuntime.kind === 'web') {
     return await loadBrowserCredential(url) || { token: '' }
   }
-  return restoreApiCredential(url)
+  return restoreApiCredential(url, { allowLegacy })
 }
 
 async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<string | null> {
@@ -673,7 +673,7 @@ export async function connectRemote(input: string): Promise<string | null> {
     return await probeAndVerify(value, {
       explicitToken: parsed.key || cached,
       explicitRefreshToken: cachedRefresh || undefined,
-      resolveSaved: () => savedCredential(url),
+      resolveSaved: () => savedCredential(url, true),
       remembered,
       allowWebCookie: true,
       retryOnRecoverable: false,

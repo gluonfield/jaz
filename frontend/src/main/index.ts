@@ -49,7 +49,7 @@ import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 // the renderer mounts so a dark launch doesn't flash white behind the content.
 const DARK_BG = '#141517'
 
-const APP_NAME = 'Jaz'
+const APP_NAME = app.isPackaged ? 'Jaz' : 'Jaz Dev'
 
 app.setName(APP_NAME)
 app.setAppUserModelId('dev.wins.jaz')
@@ -323,7 +323,11 @@ function openBoardWindow(boardId: string): void {
 
 if (singleInstanceLock) {
   app.whenReady().then(() => {
-  configureBrowserSessions(join(__dirname, '../preload/chrome.js'), join(__dirname, '../preload/passkeyFallback.js'))
+  configureBrowserSessions(
+    join(__dirname, '../preload/chrome.js'),
+    join(__dirname, '../preload/passkeyFallback.js'),
+    join(__dirname, '../preload/browserPasswordsFrame.js'),
+  )
   installBrowserDownloads()
   installDroppedFileInspection()
   installFileActions(connectionSession)

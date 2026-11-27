@@ -150,8 +150,8 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
       }
       return result.value
     },
-    decryptCredential: (value: string): string => {
-      const result = ipcRenderer.sendSync('jaz:credential-encryption', 'decrypt', value) as { value?: string; error?: string }
+    decryptCredential: (value: string, allowLegacy?: boolean): string => {
+      const result = ipcRenderer.sendSync('jaz:credential-encryption', 'decrypt', value, allowLegacy === true) as { value?: string; error?: string }
       if (result.error || result.value === undefined) {
         throw new Error(result.error || 'Credential decryption failed')
       }

@@ -1,19 +1,19 @@
-import { ipcMain, safeStorage } from 'electron'
+import { ipcMain } from 'electron'
 import { trustedWindow } from '@main/permissions'
+import { getDesktopSecretStore, type DesktopSecretStore } from '@main/secretStore'
 
-export function installCredentialEncryption(): void {
-  ipcMain.on('jaz:credential-encryption', (event, operation: unknown, value: unknown) => {
+export function installCredentialEncryption(store: DesktopSecretStore = getDesktopSecretStore()): void {
+  ipcMain.on('jaz:credential-encryption', (event, operation: unknown, value: unknown, allowLegacy?: unknown) => {
     try {
       trustedWindow(event)
       if (typeof value !== 'string' || value.length > 16_384 || (operation !== 'encrypt' && operation !== 'decrypt')) {
         throw new Error('Invalid credential request')
       }
-      if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
-        throw new Error('Saved connections require an available system keychain')
+      event.returnValue = {
+        value: operation === 'encrypt'
+          ? store.encryptText(value)
+          : store.decryptText(value, { allowLegacy: allowLegacy === true }).plaintext,
       }
-      event.returnValue = { value: operation === 'encrypt'
-        ? safeStorage.encryptString(value).toString('base64')
-        : safeStorage.decryptString(Buffer.from(value, 'base64')) }
     } catch (error) {
       event.returnValue = { error: (error as Error).message }
     }

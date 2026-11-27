@@ -65,7 +65,7 @@ export function attachPreviewWebviews(host: WebContents, preload: string): void 
   })
 }
 
-export function configureBrowserSessions(chromePreload: string, passkeyFallbackPreload: string): void {
+export function configureBrowserSessions(chromePreload: string, passkeyFallbackPreload: string, browserPasswordsPreload?: string): void {
   const browserApp = app as typeof app & { enableWebAuthnBrowserAuthenticator?: () => boolean }
   browserPasskeyFallback = process.platform === 'darwin' && browserApp.enableWebAuthnBrowserAuthenticator?.() !== true
   const appProduct = `${app.getName().replaceAll(' ', '')}/${app.getVersion()}`
@@ -74,6 +74,9 @@ export function configureBrowserSessions(chromePreload: string, passkeyFallbackP
     .replace(` Electron/${process.versions.electron}`, '')
   const browser = session.fromPartition(PREVIEW_PARTITION)
   browser.registerPreloadScript({ type: 'frame', filePath: chromePreload })
+  if (browserPasswordsPreload) {
+    browser.registerPreloadScript({ type: 'frame', filePath: browserPasswordsPreload })
+  }
   if (browserPasskeyFallback) {
     browser.registerPreloadScript({ type: 'frame', filePath: passkeyFallbackPreload })
     if (!passkeyFallbackListening) {

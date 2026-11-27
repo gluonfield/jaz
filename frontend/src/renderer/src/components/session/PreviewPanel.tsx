@@ -33,7 +33,9 @@ import type { SideBrowser } from '@/lib/sideBrowser'
 import { BrowserMenu } from '@/components/browser/BrowserMenu'
 import { BrowserAddressActions } from '@/components/browser/BrowserAddressActions'
 import { BrowserPasskeyNotice } from '@/components/browser/BrowserPasskeyNotice'
+import { BrowserPasswordBanner } from '@/components/browser/BrowserPasswordBanner'
 import { BrowserProfileImportDialog } from '@/components/browser/BrowserProfileImportDialog'
+import { useBrowserPasswords } from '@/components/browser/useBrowserPasswords'
 import { PREVIEW_PARTITION } from '@shared/preview'
 import { usePreviewFindControls } from './usePreviewFindControls'
 
@@ -298,6 +300,7 @@ export function PreviewPanel({
 
   const canAnnotate = canUseWebview && !!onAddBrowserAnnotation
   const webContentsId = webviewReady && webview ? webview.getWebContentsId() : null
+  const browserPasswords = useBrowserPasswords(webContentsId)
 
   return (
     <SidePanelShell className={visible ? 'pointer-events-auto' : 'pointer-events-none'} onKeyDownCapture={find.handleKeyDownCapture}>
@@ -359,6 +362,7 @@ export function PreviewPanel({
         <BrowserMenu
           webContentsId={webContentsId}
           visible={visible}
+          passwords={browserPasswords}
           onOpenImport={() => setImportOpen(true)}
         />
         {onClose ? <button
@@ -370,6 +374,7 @@ export function PreviewPanel({
           <X size={15} />
         </button> : null}
       </form>
+      <BrowserPasswordBanner passwords={browserPasswords} visible={visible} />
       {window.jaz?.browserPasskeyFallback ? (
         <BrowserPasskeyNotice
           webContentsId={webContentsId}

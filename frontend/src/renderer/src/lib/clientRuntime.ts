@@ -26,7 +26,7 @@ export interface ClientRuntime {
     previewWebview: boolean
   }
   encryptCredential?: (value: string) => string
-  decryptCredential?: (value: string) => string
+  decryptCredential?: (value: string, allowLegacy?: boolean) => string
   defaultApiBaseUrl: () => string
   localBackendTransport?: string
   setNativeTheme?: (source: 'light' | 'dark' | 'system') => void

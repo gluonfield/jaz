@@ -10,5 +10,6 @@
     <!-- voice mode records from the microphone -->
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <!-- keychain-access-groups is merged automatically by scripts/sign-mac.mjs when a macOS provisioning profile is present -->
   </dict>
 </plist>

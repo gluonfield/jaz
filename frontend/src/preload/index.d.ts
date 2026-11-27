@@ -36,7 +36,7 @@ declare global {
       browserPasskeyFallback: boolean
       browserCommand: (request: BrowserCommandRequest) => Promise<unknown>
       encryptCredential: (value: string) => string
-      decryptCredential: (value: string) => string
+      decryptCredential: (value: string, allowLegacy?: boolean) => string
       apiBaseUrl: string
       cloudUrl?: string
       localEnabled?: boolean

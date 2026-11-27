@@ -50,34 +50,52 @@ func claudeAuthFailure(message string) bool {
 
 // claudeProfileAuthAvailable reports whether a Claude profile Jaz can name still
 // holds a usable login. When Anthropic retires a refresh token Claude Code blanks
-// the stored tokens in place and leaves .claude.json's oauthAccount behind, so
-// profile metadata on its own keeps reporting a connected agent over a credential
-// that can no longer authenticate. A credential store Jaz cannot read stays
-// unknown and falls back to that metadata rather than guessing a logout.
+// .credentials.json in place while leaving .claude.json's oauthAccount behind.
+// On macOS, passive probes only check Keychain item metadata (without -w) so Jaz
+// never triggers an ACL password prompt for Anthropic's Keychain entry.
 func claudeProfileAuthAvailable(configDir string) bool {
 	if token, ok := claudeStoredAccessToken(configDir); ok {
 		return token != ""
+	}
+	if exists, known := claudeKeychainItemExists(configDir); known {
+		return exists
 	}
 	return claudeAuthFileAvailable(configDir)
 }
 
 func claudeStoredAccessToken(configDir string) (string, bool) {
-	if data, err := os.ReadFile(filepath.Join(configDir, ".credentials.json")); err == nil {
-		return claudeAccessToken(data)
-	}
-	if runtime.GOOS != "darwin" {
-		return "", false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), claudeCredentialReadLimit)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "/usr/bin/security", "find-generic-password", "-s", claudeKeychainService(configDir), "-w").Output()
-	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == macOSSecurityItemNotFound {
-		return "", true
-	}
+	data, err := os.ReadFile(filepath.Join(configDir, ".credentials.json"))
 	if err != nil {
 		return "", false
 	}
-	return claudeAccessToken(out)
+	return claudeAccessToken(data)
+}
+
+var (
+	claudeKeychainGOOS = func() string { return runtime.GOOS }
+	claudeSecurityRun  = func(ctx context.Context, args ...string) error {
+		return exec.CommandContext(ctx, "/usr/bin/security", args...).Run()
+	}
+)
+
+type exitCoder interface {
+	ExitCode() int
+}
+
+func claudeKeychainItemExists(configDir string) (exists bool, known bool) {
+	if claudeKeychainGOOS() != "darwin" {
+		return false, false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), claudeCredentialReadLimit)
+	defer cancel()
+	err := claudeSecurityRun(ctx, "find-generic-password", "-s", claudeKeychainService(configDir))
+	if err == nil {
+		return true, true
+	}
+	if exitErr, ok := err.(exitCoder); ok && exitErr.ExitCode() == macOSSecurityItemNotFound {
+		return false, true
+	}
+	return false, false
 }
 
 func claudeAccessToken(data []byte) (string, bool) {
