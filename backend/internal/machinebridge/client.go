@@ -63,6 +63,7 @@ type Client struct {
 
 	mu         sync.RWMutex
 	negotiated Capabilities
+	requests   *outboundRequests
 }
 
 func NewClient(cfg ClientConfig) (*Client, error) {
@@ -285,9 +286,17 @@ func (c *Client) connectAndServe(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	requests := &outboundRequests{ctx: sessionCtx, write: writeFrame, cancel: cancelSession, pending: make(map[string]chan Frame)}
 	c.mu.Lock()
 	c.negotiated = negotiated
+	c.requests = requests
 	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		c.negotiated = Capabilities{}
+		c.requests = nil
+		c.mu.Unlock()
+	}()
 	if c.cfg.OnConnect != nil {
 		c.cfg.OnConnect(negotiated)
 	}
@@ -336,6 +345,7 @@ readLoop:
 		}
 		_ = ws.SetReadDeadline(time.Now().Add(c.cfg.PongWait))
 		if frame.Method == "" {
+			requests.reply(frame)
 			continue
 		}
 		switch frame.Method {

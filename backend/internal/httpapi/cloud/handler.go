@@ -99,7 +99,7 @@ func (h *Handler) Sync(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
-	raw, err := h.service.ListModels(r.Context())
+	raw, err := h.service.ListModelsForWorkspace(r.Context(), r.Header.Get(WorkspaceHeader))
 	if err != nil {
 		WriteError(w, err)
 		return
@@ -108,7 +108,7 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListMachines(w http.ResponseWriter, r *http.Request) {
-	raw, err := h.service.ListMachines(r.Context())
+	raw, err := h.service.ListMachinesForWorkspace(r.Context(), r.Header.Get(WorkspaceHeader))
 	if err != nil {
 		WriteError(w, err)
 		return
@@ -395,6 +395,8 @@ func WriteError(w http.ResponseWriter, err error) {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 	case errors.Is(err, cloudsync.ErrNotFound):
 		httpapi.WriteError(w, http.StatusNotFound, err)
+	case errors.Is(err, cloudsync.ErrWorkspaceChanged):
+		httpapi.WriteError(w, http.StatusConflict, err)
 	case errors.Is(err, cloudsync.ErrNotConnected):
 		httpapi.WriteError(w, http.StatusUnauthorized, err)
 	default:

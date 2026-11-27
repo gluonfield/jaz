@@ -6,8 +6,9 @@ import (
 )
 
 type advertisedModelsKey struct {
-	agent    string
-	provider string
+	agent        string
+	provider     string
+	cloudProfile string
 }
 
 // rememberAdvertisedModels keeps the model list from an agent's latest session
@@ -53,5 +54,5 @@ func advertisedModelsKeyFor(agent string, cfg AgentConfig) (advertisedModelsKey,
 	if !agentOwnsModelMetadata(agent, cfg.ModelProvider) || agentPolicyForAgent(agent).unadvertisedModel == unadvertisedModelSent {
 		return advertisedModelsKey{}, false
 	}
-	return advertisedModelsKey{agent: agent, provider: strings.ToLower(strings.TrimSpace(cfg.ModelProvider))}, true
+	return advertisedModelsKey{agent: agent, provider: strings.ToLower(strings.TrimSpace(cfg.ModelProvider)), cloudProfile: cfg.cloudCredentialProfileID}, true
 }

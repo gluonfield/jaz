@@ -1,7 +1,7 @@
 import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { ThreadRepoPicker } from '@/components/cloud/GitHubRepoPicker'
-import type { ExecutionLocation } from '@/components/home/ExecutionLocationPicker'
+import { ExecutionLocationPicker, type ExecutionLocation } from '@/components/home/ExecutionLocationPicker'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { NewThreadOptions } from '@/components/home/NewThreadOptions'
 import { ThreadModeSwitch } from '@/components/home/ThreadModeSwitch'
@@ -17,11 +17,12 @@ import { TaskWorkspaceControl } from '@/components/session/TaskWorkspaceControl'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
 import { spacesQuery } from '@/lib/api/cloudSpaces'
+import { useCloudMachinesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
 import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
-import { useCloudSession, useIsCloudOnly, useIsCloudViewer } from '@/lib/cloudSession'
+import { useCloudCatalogScope, useCloudSession, useIsCloudOnly, useIsCloudViewer } from '@/lib/cloudSession'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useTaskWorkspace } from '@/lib/hooks/useTaskWorkspace'
 import { modelSuggestionLabel } from '@/lib/models'
@@ -76,10 +77,17 @@ function NewSessionPage() {
   const [spaceId, setSpaceId] = useState(() => search.space ?? '')
   const [repoOverride, setRepoOverride] = useState<{ repo: string; baseBranch: string } | null>(null)
 
-  // The active workspace in the sidebar switcher is the single source of truth
-  // for whether new threads run on Local or Cloud.
-  const targetIsCloud = cloudOnly || cloud.active
-  const effectiveLocation: ExecutionLocation = targetIsCloud ? 'cloud' : 'local'
+  const { account } = useCloudCatalogScope()
+  const [execution, setExecution] = useState<{ account: string; location: ExecutionLocation; executor: string }>()
+  const selection = execution?.account === account ? execution : undefined
+  const effectiveLocation = cloudOnly || isViewer ? 'cloud' : cloud.active ? selection?.location ?? 'cloud' : 'local'
+  const targetIsCloud = effectiveLocation === 'cloud'
+  const executor = selection?.executor ?? ''
+  const machines = useQuery({
+    ...useCloudMachinesQuery(),
+    enabled: cloud.active && !isViewer,
+  }).data?.filter((machine) => machine.online) ?? []
+  const executorTarget = machines.find((machine) => machine.device_id === executor)?.device_id
 
   const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !cloudOnly && !targetIsCloud }).data
   const spaces = useQuery({ ...spacesQuery, enabled: targetIsCloud && cloud.active })
@@ -172,6 +180,7 @@ function NewSessionPage() {
         ? {
             ...baseInput,
             ...(spaceId ? { space_id: spaceId } : {}),
+            ...(executorTarget ? { executor_target: executorTarget } : {}),
             ...(gitRepo ? { git_repo: gitRepo } : {}),
             ...(gitRepo && gitBaseBranch ? { git_base_branch: gitBaseBranch } : {}),
           }
@@ -260,6 +269,19 @@ function NewSessionPage() {
   // whether it is a chat or a canvas.
   const setupControls = (
     <>
+      {cloud.active && (
+        <ExecutionLocationPicker
+          location={effectiveLocation}
+          localMachine
+          lockedCloud={cloudOnly || isViewer}
+          machines={machines}
+          executorTarget={executorTarget}
+          onChange={(location) => setExecution({ account, location, executor: '' })}
+          onChangeExecutor={(executor) => setExecution({ account, location: 'cloud', executor })}
+          placement={controlPlacement}
+          disabled={creating || readOnly}
+        />
+      )}
       {targetIsCloud ? (
         <>
           <ThreadVisibilityPicker

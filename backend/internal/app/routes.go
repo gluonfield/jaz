@@ -136,21 +136,16 @@ func NewRoutes(deps routeDeps) server.Routes {
 	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser, deps.Store)
 	routes = appendMCPRoutes(routes, deps.MCP, deps.Cloud)
 	routes = appendAppsRoutes(routes, deps.Apps)
-	routes = appendCloudRoutes(routes, deps.Cloud, deps.MachineBridge, deps.ACP)
+	routes = appendCloudRoutes(routes, deps.Cloud, deps.MachineBridge)
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
 }
 
-func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge machinebridge.Controller, acpMgr *acp.Manager) server.Routes {
+func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge machinebridge.Controller) server.Routes {
 	if cloud == nil {
 		return routes
 	}
 	h := cloudapi.NewHandler(cloud).WithMachineBridge(bridge)
 	projects := cloudapi.NewProjectsHandler(cloud)
-	var cloudLogins *acp.CloudLoginRunner
-	if acpMgr != nil {
-		cloudLogins = acpMgr.CloudLogins()
-	}
-	acpProfiles := cloudapi.NewACPProfileHandler(cloud, cloudLogins)
 	return append(routes,
 		server.Route{Pattern: "GET /v1/cloud/status", Handler: httpHandlerFunc(h.Status)},
 		server.Route{Pattern: "GET /v1/cloud/machine-bridge", Handler: httpHandlerFunc(h.MachineBridgeStatus)},
@@ -159,14 +154,12 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge ma
 		server.Route{Pattern: "POST /v1/cloud/switch", Handler: httpHandlerFunc(h.Switch)},
 		server.Route{Pattern: "POST /v1/cloud/disconnect", Handler: httpHandlerFunc(h.Disconnect)},
 		server.Route{Pattern: "POST /v1/cloud/sync", Handler: httpHandlerFunc(h.Sync)},
-		server.Route{Pattern: "POST /v1/cloud/acp-profiles/{agent}/login", Handler: httpHandlerFunc(acpProfiles.StartDesktopLogin)},
-		server.Route{Pattern: "GET /v1/cloud/acp-profiles/{agent}/login/{id}", Handler: httpHandlerFunc(acpProfiles.GetDesktopLogin)},
-		server.Route{Pattern: "GET /v1/acp/profiles", Handler: httpHandlerFunc(acpProfiles.Proxy)},
-		server.Route{Pattern: "PUT /v1/acp/profiles/{agent}", Handler: httpHandlerFunc(acpProfiles.Proxy)},
-		server.Route{Pattern: "DELETE /v1/acp/profiles/{agent}", Handler: httpHandlerFunc(acpProfiles.Proxy)},
-		server.Route{Pattern: "POST /v1/acp/profiles/{agent}/refresh", Handler: httpHandlerFunc(acpProfiles.Proxy)},
-		server.Route{Pattern: "POST /v1/acp/profiles/{agent}/login", Handler: httpHandlerFunc(acpProfiles.Proxy)},
-		server.Route{Pattern: "GET /v1/acp/profiles/{agent}/login/{id}", Handler: httpHandlerFunc(acpProfiles.Proxy)},
+		server.Route{Pattern: "GET /v1/acp/profiles", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "PUT /v1/acp/profiles/{agent}", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "DELETE /v1/acp/profiles/{agent}", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "POST /v1/acp/profiles/{agent}/refresh", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "POST /v1/acp/profiles/{agent}/login", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "GET /v1/acp/profiles/{agent}/login/{id}", Handler: httpHandlerFunc(h.ACPProfiles)},
 		server.Route{Pattern: "GET /v1/models", Handler: httpHandlerFunc(h.ListModels)},
 		server.Route{Pattern: "GET /v1/machines", Handler: httpHandlerFunc(h.ListMachines)},
 		server.Route{Pattern: "GET /v1/members", Handler: httpHandlerFunc(h.ListMembers)},

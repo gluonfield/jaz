@@ -70,6 +70,10 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 		}
 		cfg.ModelProvider = providerID
 	}
+	cfg, err = nativeProfileConfig(req.ACPAgent, req.CloudCredentialProfileID, cfg)
+	if err != nil {
+		return SpawnRequest{}, AgentConfig{}, "", err
+	}
 	cfg = cfg.NormalizeProviderModel(cfg.ModelProvider)
 	if err := m.validateAgentModelProvider(req.ACPAgent, cfg); err != nil {
 		return SpawnRequest{}, AgentConfig{}, "", err
@@ -232,10 +236,11 @@ func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort 
 		WorkspaceID:     workspaceID,
 		Commitment:      req.Commitment,
 		RuntimeRef: &storage.RuntimeRef{
-			Type:            storage.RuntimeACP,
-			Agent:           req.ACPAgent,
-			ArtifactSurface: req.ArtifactSurface,
-			MCPServerPolicy: req.MCPServerPolicy,
+			Type:                     storage.RuntimeACP,
+			Agent:                    req.ACPAgent,
+			ArtifactSurface:          req.ArtifactSurface,
+			MCPServerPolicy:          req.MCPServerPolicy,
+			CloudCredentialProfileID: req.CloudCredentialProfileID,
 		},
 	})
 }

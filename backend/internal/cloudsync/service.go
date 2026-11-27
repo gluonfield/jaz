@@ -20,7 +20,6 @@ import (
 
 const (
 	defaultSyncInterval = 30 * time.Second
-	cacheTTL            = 30 * time.Second
 )
 
 type cachedEndpoint struct {

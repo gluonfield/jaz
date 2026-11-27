@@ -1,6 +1,8 @@
 import type { UsageWindow } from '@/lib/usageWindow'
 import { ApiError, readAPIResponse } from '@/lib/api/response'
 import { queryOptions } from '@tanstack/react-query'
+import { cloudWorkspaceHeaders } from '@/lib/api/cloudScope'
+import { request } from '@/lib/api/client'
 import { sanitizeAssetOrigin, type ResolvedAsset } from '@/lib/artifacts'
 import { backendTransportUrl } from '@/lib/clientRuntime'
 import type { MessageContextInput } from '@/lib/messageContext'
@@ -68,13 +70,17 @@ export interface CreateSessionInput {
   // Per-session overrides of the Settings > Agents defaults; model_provider
   // applies to ACP agents with provider-backed models.
   model_provider?: string
+  backend?: 'cloud'
   model_profile_id?: string
+  cloud_credential_profile_id?: string
+  cloud_workspace_id?: string
   model?: string
   reasoning_effort?: string
   config_options?: Record<string, string>
   space_id?: string
   visibility?: 'private' | 'space'
   machine_id?: string
+  executor_target?: string
   git_repo?: string
   git_base_branch?: string
   git_branch?: string
@@ -82,21 +88,26 @@ export interface CreateSessionInput {
 
 export async function createSession(input: CreateSessionInput = {}): Promise<Session> {
   if (isCloudApiSession()) {
+    if (input.cloud_credential_profile_id) throw new Error('Native runs must be started from the paired Desktop')
     const thread = await createCloudThread({
       title: input.title,
       space_id: input.space_id,
       model_profile_id: input.model_profile_id,
       model: input.model,
       reasoning_effort: input.reasoning_effort,
-      executor_target: input.machine_id,
+      executor_target: input.executor_target ?? input.machine_id,
       git_repo: input.git_repo,
       git_base_branch: input.git_base_branch,
       git_branch: input.git_branch,
     })
     return cloudThreadToSession(thread)
   }
-  const { config_options, ...request } = input
-  const session = await post<Session>('/v1/sessions', request)
+  const { config_options, cloud_workspace_id, ...payload } = input
+  const session = await request<Session>('/v1/sessions', {
+    method: 'POST',
+    headers: { ...cloudWorkspaceHeaders(cloud_workspace_id), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
   if (session.backend !== 'cloud') {
     for (const [id, value] of Object.entries(config_options ?? {})) {
       await setSessionAgentConfig(session.id, id, value)

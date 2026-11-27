@@ -7,7 +7,7 @@ import { BoardsStep, PromptStep, ScheduleStep } from '@/components/loops/LoopFor
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { boardsQuery } from '@/lib/api/boards'
-import { cloudModelProfilesQuery } from '@/lib/api/cloudThreads'
+import { useCloudModelProfilesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import { createLoop, runLoopNow, updateLoop } from '@/lib/api/loops'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import type { Loop } from '@/lib/api/types'
@@ -57,7 +57,7 @@ export function LoopModal({
   const cloudOnly = useIsCloudOnly()
   const usingCloudProfiles = cloudOnly || cloud.active
   const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles })
-  const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: usingCloudProfiles && cloud.active })
+  const cloudProfilesQuery = useQuery({ ...useCloudModelProfilesQuery(), enabled: usingCloudProfiles && cloud.active })
   const boards = useQuery({ ...boardsQuery, enabled: open && !isEdit })
   const [draft, setDraft] = useState<LoopDraft | null>(null)
   const [step, setStep] = useState(0)

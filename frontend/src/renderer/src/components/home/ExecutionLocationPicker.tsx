@@ -2,6 +2,7 @@ import { ChevronDown, Cloud, Laptop, LoaderCircle } from 'lucide-react'
 import { useState } from 'react'
 import { AddCloudWorkspaceModal } from '@/components/connection/AddCloudWorkspaceModal'
 import { MenuRow, Popover } from '@/components/ui/Popover'
+import type { ConnectedMachine } from '@/lib/api/serverTypes'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { useCloudSession } from '@/lib/cloudSession'
 
@@ -9,12 +10,20 @@ export type ExecutionLocation = 'local' | 'cloud'
 
 export function ExecutionLocationPicker({
   location,
+  machines = [],
+  executorTarget,
+  onChangeExecutor,
+  localMachine = false,
   lockedCloud = false,
   placement,
   disabled,
   onChange,
 }: {
   location: ExecutionLocation
+  machines?: ConnectedMachine[]
+  executorTarget?: string
+  onChangeExecutor?: (deviceId: string) => void
+  localMachine?: boolean
   lockedCloud?: boolean
   placement?: 'above' | 'below'
   disabled?: boolean
@@ -27,10 +36,12 @@ export function ExecutionLocationPicker({
   // Cloud-only packaging has no Local; the Local workspace stays strictly Local
   // while Cloud workspaces are connected, so Cloud threads never leak into it.
   const cloudOnly = lockedCloud || !clientRuntime.capabilities.localBackend
-  const fixed = cloudOnly ? 'cloud' : !cloud.active && cloud.workspaces.length > 0 ? 'local' : null
-  const shown = fixed ?? location
+  const cloudDevice = cloud.active ? machines.find((machine) => machine.device_id === executorTarget) : undefined
+  const fixed = cloudOnly ? (machines.length ? null : 'cloud') : !cloud.active && cloud.workspaces.length > 0 ? 'local' : null
+  const localLabel = localMachine ? 'This machine' : 'Local'
+  const shown = cloudOnly ? 'cloud' : fixed ?? location
   const Icon = shown === 'local' ? Laptop : Cloud
-  const label = shown === 'local' ? 'Local' : 'Cloud'
+  const label = shown === 'local' ? localLabel : cloudDevice ? `Cloud · ${cloudDevice.display_name}` : 'Cloud'
 
   return (
     <>
@@ -62,19 +73,19 @@ export function ExecutionLocationPicker({
           }
         >
           <div role="menu" aria-label="Work in">
-            <MenuRow
+            {!cloudOnly && <MenuRow
               role="menuitemradio"
-              selected={location === 'local'}
+              selected={shown === 'local'}
               onClick={() => {
                 setOpen(false)
                 onChange('local')
               }}
             >
-              Local
-            </MenuRow>
+              {localLabel}
+            </MenuRow>}
             <MenuRow
               role="menuitemradio"
-              selected={location === 'cloud'}
+              selected={shown === 'cloud' && !cloudDevice}
               trailing={
                 cloud.status === 'checking' ? (
                   <LoaderCircle size={12} className="shrink-0 animate-spin text-ink-3" />
@@ -83,11 +94,27 @@ export function ExecutionLocationPicker({
               onClick={() => {
                 setOpen(false)
                 onChange('cloud')
+                onChangeExecutor?.('')
                 if (!cloud.active) setAdding(true)
               }}
             >
               Cloud
             </MenuRow>
+            {machines.map((machine) => (
+              <MenuRow
+                key={machine.device_id}
+                role="menuitemradio"
+                selected={shown === 'cloud' && machine.device_id === cloudDevice?.device_id}
+                onClick={() => {
+                  setOpen(false)
+                  onChange('cloud')
+                  onChangeExecutor?.(machine.device_id)
+                }}
+              >
+                {machine.display_name}
+                <span className="ml-1 text-ink-3">· Cloud with device tools</span>
+              </MenuRow>
+            ))}
           </div>
         </Popover>
       )}

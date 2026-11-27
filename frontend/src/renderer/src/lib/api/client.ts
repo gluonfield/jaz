@@ -449,7 +449,7 @@ export function apiEventSourceUrl(path: string): string {
   return backendTransportUrl(appendAuthQuery(resolveBackendUrl(path, apiBaseUrl(), 'apiEventSourceUrl')))
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return readAPIResponse<T>(await apiFetch(path, init))
 }
 

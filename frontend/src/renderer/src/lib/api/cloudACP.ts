@@ -2,7 +2,8 @@ import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
 import type { ACPAuthLogin } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
-import { del, get, post } from './client'
+import { request } from '@/lib/api/client'
+import { cloudWorkspaceHeaders } from '@/lib/api/cloudScope'
 
 export type CloudACPProfileStatus = 'connected' | 'refreshing' | 'needs_auth' | 'error'
 
@@ -16,6 +17,7 @@ export interface CloudACPAgentSpec {
   efforts?: string[]
   default_effort: string
   executable?: boolean
+  credential_kind: 'oauth_bundle' | 'api_key'
   supports_web_auth: boolean
   web_auth_kind?: string
 }
@@ -49,26 +51,17 @@ export interface CloudACPLoginSession {
   instructions?: string
   error?: string
   expires_at: string
-  viaDesktop?: boolean
 }
 
-const DESKTOP_ISOLATED_LOGIN_AGENTS = new Set(['claude', 'kimi'])
+const profilesPath = '/v1/acp/profiles'
+const loginPath = profilesPath + '/codex/login'
 
-export function supportsDesktopCloudLogin(agent: string): boolean {
-  return DESKTOP_ISOLATED_LOGIN_AGENTS.has(agent.trim().toLowerCase())
-}
-
-function loginBasePath(agent: string, viaDesktop: boolean): string {
-  const prefix = viaDesktop ? '/v1/cloud/acp-profiles' : '/v1/acp/profiles'
-  return `${prefix}/${encodeURIComponent(agent)}/login`
-}
-
-export async function listCloudACPProfiles(signal?: AbortSignal): Promise<CloudACPProfilesResponse> {
+export async function listCloudACPProfiles(signal?: AbortSignal, workspaceID?: string): Promise<CloudACPProfilesResponse> {
   try {
-    const res = await get<{
+    const res = await request<{
       profiles?: CloudACPProfile[] | null
       supported_agents?: CloudACPAgentSpec[] | null
-    }>('/v1/acp/profiles', { signal })
+    }>(profilesPath, { signal, headers: cloudWorkspaceHeaders(workspaceID) })
     return {
       profiles: res.profiles ?? [],
       supported_agents: res.supported_agents ?? [],
@@ -81,37 +74,48 @@ export async function listCloudACPProfiles(signal?: AbortSignal): Promise<CloudA
   }
 }
 
-export const cloudACPProfilesQuery = queryOptions({
-  queryKey: keys.cloudACPProfiles,
-  queryFn: ({ signal }) => listCloudACPProfiles(signal),
+export const cloudACPProfilesQuery = (account: string, workspaceID?: string) => queryOptions({
+  queryKey: keys.cloudACPProfiles(account),
+  queryFn: ({ signal }) => listCloudACPProfiles(signal, workspaceID),
   staleTime: 30_000,
   retry: false,
 })
 
-export async function deleteCloudACPProfile(agent: string): Promise<{ deleted: boolean; agent: string }> {
-  return del<{ deleted: boolean; agent: string }>(`/v1/acp/profiles/${encodeURIComponent(agent)}`)
+export async function saveCloudACPKey(agent: string, apiKey: string, workspaceID: string, signal: AbortSignal) {
+  await request(`${profilesPath}/${encodeURIComponent(agent)}`, {
+    method: 'PUT',
+    headers: { ...cloudWorkspaceHeaders(workspaceID), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: apiKey }),
+    signal,
+  })
 }
 
-export async function startCloudACPLogin(agent: string, viaDesktop = false): Promise<CloudACPLoginSession> {
-  const res = await post<{ session: CloudACPLoginSession }>(loginBasePath(agent, viaDesktop), {})
-  return { ...res.session, viaDesktop }
+export async function deleteCloudACPProfile(agent: string, workspaceID: string, signal?: AbortSignal) {
+  return request<{ deleted: boolean; agent: string }>(`${profilesPath}/${encodeURIComponent(agent)}`, {
+    method: 'DELETE',
+    headers: cloudWorkspaceHeaders(workspaceID),
+    signal,
+  })
 }
 
-export async function getCloudACPLogin(
-  agent: string,
-  sessionId: string,
-  viaDesktop = false,
-  signal?: AbortSignal,
-): Promise<CloudACPLoginSession> {
-  const res = await get<{ session: CloudACPLoginSession }>(
-    `${loginBasePath(agent, viaDesktop)}/${encodeURIComponent(sessionId)}`,
-    { signal },
+export async function startCloudACPLogin(workspaceID: string, signal?: AbortSignal): Promise<CloudACPLoginSession> {
+  const res = await request<{ session: CloudACPLoginSession }>(loginPath, {
+    method: 'POST',
+    headers: cloudWorkspaceHeaders(workspaceID),
+    signal,
+  })
+  return res.session
+}
+
+export async function getCloudACPLogin(sessionId: string, workspaceID: string, signal?: AbortSignal): Promise<CloudACPLoginSession> {
+  const res = await request<{ session: CloudACPLoginSession }>(
+    `${loginPath}/${encodeURIComponent(sessionId)}`,
+    { signal, headers: cloudWorkspaceHeaders(workspaceID) },
   )
-  return { ...res.session, viaDesktop }
+  return res.session
 }
 
-export function toACPAuthLogin(session?: CloudACPLoginSession): ACPAuthLogin | undefined {
-  if (!session) return undefined
+export function toACPAuthLogin(session: CloudACPLoginSession): ACPAuthLogin {
   const status: ACPAuthLogin['status'] =
     session.status === 'completed'
       ? 'succeeded'

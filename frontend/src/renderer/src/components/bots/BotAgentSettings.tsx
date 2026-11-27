@@ -7,7 +7,8 @@ import { Popover } from '@/components/ui/Popover'
 import { Select } from '@/components/ui/Select'
 import { agentLabel } from '@/lib/agentLabel'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
-import { cloudModelProfilesQuery, resolveCloudModelSelection } from '@/lib/api/cloudThreads'
+import { resolveCloudModelSelection } from '@/lib/api/cloudThreads'
+import { useCloudModelProfilesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import { pluginsQuery } from '@/lib/api/plugins'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import type { AgentSessionState, Bot } from '@/lib/api/types'
@@ -25,7 +26,7 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
   const isViewer = useIsCloudViewer()
   const usingCloudProfiles = cloudOnly || cloud.active
   const settings = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles }).data
-  const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: usingCloudProfiles && cloud.active })
+  const cloudProfilesQuery = useQuery({ ...useCloudModelProfilesQuery(), enabled: usingCloudProfiles && cloud.active })
   const cloudProfiles = useMemo(
     () => (usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : []),
     [cloudProfilesQuery.data, usingCloudProfiles],

@@ -106,3 +106,11 @@ export function useIsCloudViewer(): boolean {
   const cloud = useCloudSession()
   return cloud.active && isCloudViewerRole(cloud.user?.role)
 }
+
+export function useCloudCatalogScope() {
+  const cloud = useCloudSession()
+  return {
+    account: JSON.stringify([cloud.source, cloud.url, cloud.activeWorkspaceId, cloud.user?.id]),
+    workspaceID: cloud.source === 'attached' ? cloud.activeWorkspaceId : '',
+  }
+}

@@ -3,7 +3,8 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { boardsQuery } from '@/lib/api/boards'
-import { cloudModelProfilesQuery, resolveCloudModelSelection } from '@/lib/api/cloudThreads'
+import { resolveCloudModelSelection } from '@/lib/api/cloudThreads'
+import { useCloudModelProfilesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
 import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
@@ -193,7 +194,7 @@ function LoopPromptCard({
   const cloudOnly = useIsCloudOnly()
   const usingCloudProfiles = cloudOnly || cloud.active
   const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles })
-  const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: usingCloudProfiles && cloud.active })
+  const cloudProfilesQuery = useQuery({ ...useCloudModelProfilesQuery(), enabled: usingCloudProfiles && cloud.active })
   const agentSettings = usingCloudProfiles ? undefined : settingsQuery.data
   const cloudProfiles = useMemo(
     () => (usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : []),

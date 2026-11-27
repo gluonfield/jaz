@@ -60,10 +60,16 @@ func (s *Service) GetSession(ctx context.Context, id string) (storage.Session, b
 
 func (s *Service) CreateThread(ctx context.Context, req CreateThreadRequest) (storage.Session, error) {
 	acc, gen, ok := s.activeAccountWithGen()
+	if req.WorkspaceID != "" && req.WorkspaceID != acc.ID {
+		return storage.Session{}, ErrWorkspaceChanged
+	}
 	if !ok || acc.Token == "" {
 		return storage.Session{}, ErrNotConnected
 	}
 	created, err := s.clientFor(acc.ID).createThread(ctx, acc.BaseURL, acc.Token, req)
+	if !s.isGeneration(gen) {
+		return storage.Session{}, ErrWorkspaceChanged
+	}
 	if err != nil {
 		return storage.Session{}, err
 	}

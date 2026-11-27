@@ -24,17 +24,18 @@ type createSessionRequest struct {
 	// ArtifactSurface is fixed at creation: "chat" (default) or "canvas".
 	ArtifactSurface string `json:"artifact_surface,omitempty"`
 
-	Backend         string `json:"backend,omitempty"`
-	ModelProvider   string `json:"model_provider,omitempty"`
-	ModelProfileID  string `json:"model_profile_id,omitempty"`
-	Model           string `json:"model,omitempty"`
-	ReasoningEffort string `json:"reasoning_effort,omitempty"`
-	SpaceID         string `json:"space_id,omitempty"`
-	MachineID       string `json:"machine_id,omitempty"`
-	ExecutorTarget  string `json:"executor_target,omitempty"`
-	GitRepo         string `json:"git_repo,omitempty"`
-	GitBaseBranch   string `json:"git_base_branch,omitempty"`
-	GitBranch       string `json:"git_branch,omitempty"`
+	Backend                  string `json:"backend,omitempty"`
+	ModelProvider            string `json:"model_provider,omitempty"`
+	CloudCredentialProfileID string `json:"cloud_credential_profile_id,omitempty"`
+	ModelProfileID           string `json:"model_profile_id,omitempty"`
+	Model                    string `json:"model,omitempty"`
+	ReasoningEffort          string `json:"reasoning_effort,omitempty"`
+	SpaceID                  string `json:"space_id,omitempty"`
+	MachineID                string `json:"machine_id,omitempty"`
+	ExecutorTarget           string `json:"executor_target,omitempty"`
+	GitRepo                  string `json:"git_repo,omitempty"`
+	GitBaseBranch            string `json:"git_base_branch,omitempty"`
+	GitBranch                string `json:"git_branch,omitempty"`
 }
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
@@ -42,13 +43,23 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
+	req.CloudCredentialProfileID = strings.TrimSpace(req.CloudCredentialProfileID)
+	workspaceID := s.activeWorkspaceID()
+	if expected := r.Header.Get(cloudapi.WorkspaceHeader); expected != "" && expected != workspaceID {
+		cloudapi.WriteError(w, cloudsync.ErrWorkspaceChanged)
+		return
+	}
 	if strings.EqualFold(strings.TrimSpace(req.Backend), "cloud") || strings.TrimSpace(req.ModelProfileID) != "" {
+		if req.CloudCredentialProfileID != "" {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("native credentials require a native session"))
+			return
+		}
 		s.createCloudSession(w, r, req)
 		return
 	}
 	switch strings.TrimSpace(req.Runtime) {
 	case "", storage.RuntimeACP:
-		s.createACPSession(w, req)
+		s.createACPSession(w, req, workspaceID)
 		return
 	default:
 		writeError(w, http.StatusBadRequest, fmt.Errorf("unsupported session runtime %q; use acp", req.Runtime))
@@ -66,6 +77,7 @@ func (s *Server) createCloudSession(w http.ResponseWriter, r *http.Request, req 
 		target = strings.TrimSpace(req.MachineID)
 	}
 	session, err := s.Cloud.CreateThread(r.Context(), cloudsync.CreateThreadRequest{
+		WorkspaceID:     r.Header.Get(cloudapi.WorkspaceHeader),
 		Title:           strings.TrimSpace(req.Title),
 		SpaceID:         strings.TrimSpace(req.SpaceID),
 		ModelProfileID:  strings.TrimSpace(req.ModelProfileID),
@@ -83,9 +95,13 @@ func (s *Server) createCloudSession(w http.ResponseWriter, r *http.Request, req 
 	writeJSON(w, http.StatusOK, sessionview.Public(session))
 }
 
-func (s *Server) createACPSession(w http.ResponseWriter, req createSessionRequest) {
+func (s *Server) createACPSession(w http.ResponseWriter, req createSessionRequest, workspaceID string) {
 	if s.ACP == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("acp manager is not configured"))
+		return
+	}
+	if req.CloudCredentialProfileID != "" && workspaceID == storage.LocalWorkspaceID {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("select the Cloud workspace that owns the agent profile"))
 		return
 	}
 	directory := strings.TrimSpace(req.Directory)
@@ -101,16 +117,17 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 	ctx, cancel := serverACPBootstrapContext()
 	defer cancel()
 	session, err := s.ACP.CreateSession(ctx, acp.SpawnRequest{
-		ACPAgent:        strings.TrimSpace(req.Agent),
-		Slug:            req.Slug,
-		Title:           req.Title,
-		Directory:       directory,
-		Worktree:        req.Worktree,
-		WorkspaceID:     s.activeWorkspaceID(),
-		ArtifactSurface: surface,
-		ModelProvider:   strings.TrimSpace(req.ModelProvider),
-		Model:           strings.TrimSpace(req.Model),
-		ReasoningEffort: strings.TrimSpace(req.ReasoningEffort),
+		ACPAgent:                 strings.TrimSpace(req.Agent),
+		Slug:                     req.Slug,
+		Title:                    req.Title,
+		Directory:                directory,
+		Worktree:                 req.Worktree,
+		WorkspaceID:              workspaceID,
+		CloudCredentialProfileID: req.CloudCredentialProfileID,
+		ArtifactSurface:          surface,
+		ModelProvider:            strings.TrimSpace(req.ModelProvider),
+		Model:                    strings.TrimSpace(req.Model),
+		ReasoningEffort:          strings.TrimSpace(req.ReasoningEffort),
 	})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)

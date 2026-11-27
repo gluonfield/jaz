@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/Input'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
-import { machinesQuery } from '@/lib/api/cloudThreads'
+import { useCloudMachinesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import {
   machineBridgeQuery,
   machineBridgeQueryKey,
@@ -120,7 +120,7 @@ export function ConnectedMachinesSettings() {
   const { url: cloudUrl, active: cloudActive } = useCloudSession()
   const isCloudOnly = useIsCloudOnly()
   const canManageLocalBridge = clientRuntime.capabilities.localBackend && !isCloudOnly
-  const machines = useQuery({ ...machinesQuery, enabled: cloudActive })
+  const machines = useQuery({ ...useCloudMachinesQuery(), enabled: cloudActive })
   const bridge = useQuery({ ...machineBridgeQuery, enabled: canManageLocalBridge })
   const bridgeUnavailable = bridge.isError && isBridgeUnavailableError(bridge.error)
   const showLiveBridge = canManageLocalBridge && !bridgeUnavailable

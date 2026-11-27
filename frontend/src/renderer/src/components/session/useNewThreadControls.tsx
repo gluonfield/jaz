@@ -3,10 +3,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { acpAgentChecking, enabledACPAgents, enabledACPAgentsChecking, runtimeModelState } from '@/lib/agentRuntimes'
 import { agentLabel } from '@/lib/agentLabel'
-import { cloudModelProfilesQuery, cloudProfileToAgentOption } from '@/lib/api/cloudThreads'
+import { cloudProfileToAgentOption } from '@/lib/api/cloudThreads'
+import { useCloudModelProfilesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
-import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
+import { useCloudCatalogScope, useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
 import { composerConfig } from '@/lib/jazDefaults'
 import { useModelReasoningState } from '@/lib/modelReasoning'
 import {
@@ -27,13 +28,18 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
   const cloud = useCloudSession()
   const hasCloud = cloud.active
   const cloudOnly = useIsCloudOnly()
-  const usingCloudProfiles = cloudOnly || (targetLocation ? targetLocation === 'cloud' : false)
+  const cloudTarget = cloudOnly || targetLocation === 'cloud'
+  const nativeCloudTarget = !cloudTarget && cloud.active
+  const usingCloudProfiles = cloudTarget || nativeCloudTarget
+  const { workspaceID } = useCloudCatalogScope()
   const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles && !cloudOnly })
-  const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: usingCloudProfiles && hasCloud })
+  const cloudProfilesQuery = useQuery({ ...useCloudModelProfilesQuery(), enabled: usingCloudProfiles && hasCloud })
   const agentSettings = usingCloudProfiles ? undefined : settingsQuery.data
   const cloudProfiles = useMemo(
-    () => (usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : []),
-    [cloudProfilesQuery.data, usingCloudProfiles],
+    () => (cloudProfilesQuery.data ?? []).filter((profile) =>
+      cloudTarget || (profile.scope === 'user' && profile.profile_id === `acp:${profile.agent}`),
+    ),
+    [cloudProfilesQuery.data, cloudTarget],
   )
 
   const [localRuntime, setLocalRuntime] = useState(() => localStorage.getItem(NEW_SESSION_AGENT_KEY) || '')
@@ -169,7 +175,8 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
     agents,
     agentItems,
     activeAgentLabel,
-    isCloudTarget: usingCloudProfiles,
+    isCloudTarget: cloudTarget,
+    nativeCloudTarget,
     runtimeReady,
     runtimeAvailable,
     runtimeChecking,
@@ -178,7 +185,7 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
     // Picker visibility lives here so the controls and the mobile summary agree.
     showAgentPicker: agents.length > 1,
     showModelPicker: !composer.hideModelPicker,
-    showProjectPicker: !composer.hideProjectPicker && !usingCloudProfiles,
+    showProjectPicker: !composer.hideProjectPicker && !cloudTarget,
     runtime,
     selectRuntime,
     model: selectedModel,
@@ -198,21 +205,22 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
       ...(title ? { title } : {}),
       runtime: 'acp',
       agent: usingCloudProfiles ? (activeCloudProfile?.agent || 'codex') : runtime,
-      ...(usingCloudProfiles
-        ? {}
+      ...(cloudTarget
+        ? { backend: 'cloud' as const }
         : {
             directory: extra.directory,
             worktree: extra.worktree,
             ...(extra.canvas ? { artifact_surface: 'canvas' as const } : {}),
           }),
-      ...(usingCloudProfiles && activeCloudProfile
+      ...(workspaceID ? { cloud_workspace_id: workspaceID } : {}),
+      ...(cloudTarget && activeCloudProfile
         ? {
             model_profile_id: activeCloudProfile.profile_id,
             model_provider: activeCloudProfile.provider,
           }
-        : usesProvider && provider
-          ? { model_provider: provider }
-          : {}),
+        : nativeCloudTarget && activeCloudProfile
+          ? { cloud_credential_profile_id: activeCloudProfile.profile_id }
+          : usesProvider && provider ? { model_provider: provider } : {}),
       ...(selectedModel ? { model: selectedModel } : {}),
       ...(effort ? { reasoning_effort: effort } : {}),
       ...(fastModeConfigID && selection?.fastMode !== undefined

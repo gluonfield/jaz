@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
+import { cloudWorkspaceHeaders } from '@/lib/api/cloudScope'
 import type { ModelPickerOption, PickerAgentOption } from '@/lib/modelPicker'
 import { modelSuggestionFor } from '@/lib/modelSuggestion'
 import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
@@ -259,12 +260,12 @@ export function resolveCloudModelSelection(
   }
 }
 
-export async function listCloudModelProfiles(signal?: AbortSignal): Promise<CloudModelProfile[]> {
+export async function listCloudModelProfiles(signal?: AbortSignal, workspaceID?: string): Promise<CloudModelProfile[]> {
   try {
     const response = await cloudGet<
       | { models?: RawCloudModelProfile[] | null; profiles?: RawCloudModelProfile[] | null; model_profiles?: RawCloudModelProfile[] | null }
       | RawCloudModelProfile[]
-    >('/v1/models', { signal })
+    >('/v1/models', { signal, headers: cloudWorkspaceHeaders(workspaceID) })
     const raw = Array.isArray(response)
       ? response
       : (response.models ?? response.profiles ?? response.model_profiles ?? [])
@@ -275,15 +276,15 @@ export async function listCloudModelProfiles(signal?: AbortSignal): Promise<Clou
   }
 }
 
-export const cloudModelProfilesQuery = queryOptions({
-  queryKey: keys.cloudModelProfiles,
-  queryFn: ({ signal }) => listCloudModelProfiles(signal),
+export const cloudModelProfilesQuery = (account: string, workspaceID?: string) => queryOptions({
+  queryKey: keys.cloudModelProfiles(account),
+  queryFn: ({ signal }) => listCloudModelProfiles(signal, workspaceID),
   staleTime: 60_000,
   retry: false,
 })
 
-export async function listMachines(signal?: AbortSignal): Promise<ConnectedMachine[]> {
-  const response = await cloudGet<{ machines?: ConnectedMachine[] | null } | ConnectedMachine[]>('/v1/machines', { signal })
+export async function listMachines(signal?: AbortSignal, workspaceID?: string): Promise<ConnectedMachine[]> {
+  const response = await cloudGet<{ machines?: ConnectedMachine[] | null } | ConnectedMachine[]>('/v1/machines', { signal, headers: cloudWorkspaceHeaders(workspaceID) })
   const items = Array.isArray(response) ? response : (response.machines ?? [])
   return items.map((machine) => ({
     ...machine,
@@ -292,9 +293,9 @@ export async function listMachines(signal?: AbortSignal): Promise<ConnectedMachi
   }))
 }
 
-export const machinesQuery = queryOptions({
-  queryKey: keys.cloudMachines,
-  queryFn: ({ signal }) => listMachines(signal),
+export const cloudMachinesQuery = (account: string, workspaceID?: string) => queryOptions({
+  queryKey: [...keys.cloudMachines, account] as const,
+  queryFn: ({ signal }) => listMachines(signal, workspaceID),
   refetchInterval: 15_000,
 })
 

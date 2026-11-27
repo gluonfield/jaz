@@ -136,24 +136,25 @@ type Config struct {
 }
 
 type AgentConfig struct {
-	Command                 string
-	Args                    []string
-	ManagedAdapter          string
-	ManagedAdapterArgs      []string
-	ManagedTool             string
-	Local                   bool
-	BuiltinBridge           bool
-	ProviderMode            string
-	ModelProviderCapability string
-	ModelProvider           string
-	AuthProviderID          string
-	Model                   string
-	ReasoningEffort         string
-	URL                     string
-	Token                   string
-	Auth                    AgentAuthConfig
-	Env                     map[string]string
-	Cwd                     string
+	cloudCredentialProfileID string
+	Command                  string
+	Args                     []string
+	ManagedAdapter           string
+	ManagedAdapterArgs       []string
+	ManagedTool              string
+	Local                    bool
+	BuiltinBridge            bool
+	ProviderMode             string
+	ModelProviderCapability  string
+	ModelProvider            string
+	AuthProviderID           string
+	Model                    string
+	ReasoningEffort          string
+	URL                      string
+	Token                    string
+	Auth                     AgentAuthConfig
+	Env                      map[string]string
+	Cwd                      string
 	// AdapterBinDir is the managed-adapter bundle dir. LoginBinDir is searched
 	// before PATH for companion CLIs. Runtime-only, never persisted.
 	AdapterBinDir string

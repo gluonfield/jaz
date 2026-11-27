@@ -89,6 +89,10 @@ func withProcessStderr(err error, stderr *processStderrTail) error {
 }
 
 func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, systemPrompt string) (connection jsonrpc.MessageConn, tail *processStderrTail, err error) {
+	return m.openConnWithAuth(ctx, name, cfg, env, cwd, systemPrompt, nil)
+}
+
+func (m *Manager) openConnWithAuth(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, systemPrompt string, auth *cloudLaunchAuth) (connection jsonrpc.MessageConn, tail *processStderrTail, err error) {
 	if err := validateAgentLaunch(name, cfg); err != nil {
 		return nil, nil, err
 	}
@@ -127,27 +131,35 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
-	cleanup := func() {}
-	switch CanonicalAgentName(name) {
-	case AgentCodex:
-		if cfg.Model, err = m.startingModel(name, cfg); err == nil {
-			cleanup, err = configureCodexEnv(env, cfg, m.providers(), systemPrompt)
-		}
-	case AgentMuse:
-		cleanup, err = configureMusePrompt(env, systemPrompt)
-	case AgentCopilot:
-		cleanup, err = configureCopilotPrompt(m.cfg.Root, env, systemPrompt)
-	case AgentOpenCode:
-		cleanup, err = m.configureOpenCode(env, cfg, systemPrompt)
-	}
+	authCleanup, err := auth.prepare(ctx, name, m.cfg.Root, env, &cfg)
 	if err != nil {
 		return nil, nil, err
+	}
+	configCleanup := func() {}
+	cleanup := func() {
+		authCleanup()
+		configCleanup()
 	}
 	defer func() {
 		if err != nil {
 			cleanup()
 		}
 	}()
+	switch CanonicalAgentName(name) {
+	case AgentCodex:
+		if cfg.Model, err = m.startingModel(name, cfg); err == nil {
+			configCleanup, err = configureCodexEnv(env, cfg, m.providers(), systemPrompt)
+		}
+	case AgentMuse:
+		configCleanup, err = configureMusePrompt(env, systemPrompt)
+	case AgentCopilot:
+		configCleanup, err = configureCopilotPrompt(m.cfg.Root, env, systemPrompt)
+	case AgentOpenCode:
+		configCleanup, err = m.configureOpenCode(env, cfg, systemPrompt)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
 	command, args := launchCommand(cfg.Command, cfg.Args)
 	addCommandDirToPath(env, command)
 	cmd := exec.CommandContext(ctx, command, args...)
@@ -166,6 +178,9 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	}
 	stderr := newProcessStderrTail()
 	cmd.Stderr = io.MultiWriter(os.Stderr, stderr)
+	if auth != nil {
+		cmd.Stderr = io.Discard
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, nil, fmt.Errorf("start acp agent %q (%s): %w", name, command, err)
 	}

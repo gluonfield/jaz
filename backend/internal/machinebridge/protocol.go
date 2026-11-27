@@ -17,17 +17,18 @@ const (
 )
 
 const (
-	MethodHello           = "machine.hello"
-	MethodListDir         = "device_list_dir"
-	MethodSearch          = "device_search"
-	MethodStageFiles      = "device_stage_files"
-	MethodCommitFiles     = "device_commit_files"
-	MethodExecStart       = "device_exec_start"
-	MethodExecStop        = "device_exec_stop"
-	MethodMCPCall         = "device_mcp_call"
-	MethodExecTunnelOpen  = "exec_tunnel_open"
-	MethodExecTunnelFrame = "exec_tunnel_frame"
-	MethodExecTunnelClose = "exec_tunnel_close"
+	MethodHello             = "machine.hello"
+	methodACPProfileResolve = "acp.profile.resolve"
+	MethodListDir           = "device_list_dir"
+	MethodSearch            = "device_search"
+	MethodStageFiles        = "device_stage_files"
+	MethodCommitFiles       = "device_commit_files"
+	MethodExecStart         = "device_exec_start"
+	MethodExecStop          = "device_exec_stop"
+	MethodMCPCall           = "device_mcp_call"
+	MethodExecTunnelOpen    = "exec_tunnel_open"
+	MethodExecTunnelFrame   = "exec_tunnel_frame"
+	MethodExecTunnelClose   = "exec_tunnel_close"
 )
 
 const (
@@ -102,6 +103,7 @@ type FolderGrant struct {
 }
 
 type Capabilities struct {
+	ACPProfiles   bool     `json:"acp_profiles,omitempty"`
 	FileStaging   bool     `json:"file_staging,omitempty"`
 	LocalExec     bool     `json:"local_exec,omitempty"`
 	LocalBrowser  bool     `json:"local_browser,omitempty"`
@@ -133,6 +135,7 @@ func ValidPlatform(platform string) bool {
 
 func NegotiateCapabilities(client, server Capabilities) Capabilities {
 	negotiated := Capabilities{
+		ACPProfiles:  client.ACPProfiles && server.ACPProfiles,
 		FileStaging:  client.FileStaging && server.FileStaging,
 		LocalExec:    client.LocalExec && server.LocalExec,
 		LocalBrowser: client.LocalBrowser && server.LocalBrowser,
@@ -267,8 +270,8 @@ type DeviceCommitResponse struct {
 }
 
 type ExecStartRequest struct {
-	GrantID      string `json:"grant_id"`
-	RunID        string `json:"run_id"`
+	GrantID      string   `json:"grant_id"`
+	RunID        string   `json:"run_id"`
 	ReadOnlyDirs []string `json:"read_only_dirs,omitempty"`
 }
 

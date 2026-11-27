@@ -104,7 +104,7 @@ func (q *Queries) CompleteSession(ctx context.Context, arg CompleteSessionParams
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools, workspace_id FROM threads
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools, workspace_id, cloud_credential_profile_id FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
 `
@@ -161,6 +161,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.BackgroundWork,
 		&i.DeferredMcpTools,
 		&i.WorkspaceID,
+		&i.CloudCredentialProfileID,
 	)
 	return i, err
 }
@@ -257,7 +258,7 @@ func (q *Queries) IsMainBot(ctx context.Context, threadID string) (bool, error) 
 }
 
 const listChildSessions = `-- name: ListChildSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools, workspace_id
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools, workspace_id, cloud_credential_profile_id
 FROM threads
 WHERE parent_id = ?1
   AND archived = ?2
@@ -365,6 +366,7 @@ func (q *Queries) ListChildSessions(ctx context.Context, arg ListChildSessionsPa
 			&i.BackgroundWork,
 			&i.DeferredMcpTools,
 			&i.WorkspaceID,
+			&i.CloudCredentialProfileID,
 		); err != nil {
 			return nil, err
 		}
@@ -507,7 +509,7 @@ func (q *Queries) ListSessionSubtree(ctx context.Context, id string) ([]string, 
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools, workspace_id
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work, deferred_mcp_tools, workspace_id, cloud_credential_profile_id
 FROM threads
 WHERE archived = ?1
   AND (CAST(?2 AS TEXT) = '' OR workspace_id = ?2)
@@ -624,6 +626,7 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]T
 			&i.BackgroundWork,
 			&i.DeferredMcpTools,
 			&i.WorkspaceID,
+			&i.CloudCredentialProfileID,
 		); err != nil {
 			return nil, err
 		}
@@ -1095,6 +1098,7 @@ INSERT INTO threads (
   cwd,
   artifact_surface,
   mcp_server_policy,
+  cloud_credential_profile_id,
   deferred_mcp_tools,
   project_path,
   error,
@@ -1162,7 +1166,8 @@ INSERT INTO threads (
   ?37,
   ?38,
   ?39,
-  ?40
+  ?40,
+  ?41
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -1178,6 +1183,7 @@ ON CONFLICT(id) DO UPDATE SET
   cwd = excluded.cwd,
   artifact_surface = excluded.artifact_surface,
   mcp_server_policy = excluded.mcp_server_policy,
+  cloud_credential_profile_id = excluded.cloud_credential_profile_id,
   deferred_mcp_tools = excluded.deferred_mcp_tools,
   project_path = excluded.project_path,
   model_provider = excluded.model_provider,
@@ -1206,46 +1212,47 @@ ON CONFLICT(id) DO UPDATE SET
 `
 
 type UpsertSessionParams struct {
-	ID                    string         `json:"id"`
-	Slug                  string         `json:"slug"`
-	Title                 sql.NullString `json:"title"`
-	ManualTitle           int64          `json:"manual_title"`
-	TitleLocked           int64          `json:"title_locked"`
-	ParentID              sql.NullString `json:"parent_id"`
-	Status                string         `json:"status"`
-	Runtime               string         `json:"runtime"`
-	AcpAgent              sql.NullString `json:"acp_agent"`
-	AcpSessionID          sql.NullString `json:"acp_session_id"`
-	Cwd                   sql.NullString `json:"cwd"`
-	ArtifactSurface       sql.NullString `json:"artifact_surface"`
-	McpServerPolicy       sql.NullString `json:"mcp_server_policy"`
-	DeferredMcpTools      int64          `json:"deferred_mcp_tools"`
-	ProjectPath           sql.NullString `json:"project_path"`
-	Error                 sql.NullString `json:"error"`
-	ModelProvider         sql.NullString `json:"model_provider"`
-	Model                 sql.NullString `json:"model"`
-	ReasoningEffort       sql.NullString `json:"reasoning_effort"`
-	InputTokens           int64          `json:"input_tokens"`
-	CachedInputTokens     int64          `json:"cached_input_tokens"`
-	CachedWriteTokens     int64          `json:"cached_write_tokens"`
-	OutputTokens          int64          `json:"output_tokens"`
-	ReasoningOutputTokens int64          `json:"reasoning_output_tokens"`
-	TotalTokens           int64          `json:"total_tokens"`
-	ContextTokens         int64          `json:"context_tokens"`
-	ContextWindowTokens   int64          `json:"context_window_tokens"`
-	QueuedMessages        string         `json:"queued_messages"`
-	SourceType            sql.NullString `json:"source_type"`
-	SourceID              sql.NullString `json:"source_id"`
-	Archived              int64          `json:"archived"`
-	CreatedAtMs           int64          `json:"created_at_ms"`
-	UpdatedAtMs           int64          `json:"updated_at_ms"`
-	LastAttentionAtMs     int64          `json:"last_attention_at_ms"`
-	Pinned                int64          `json:"pinned"`
-	PendingSteerMessage   string         `json:"pending_steer_message"`
-	Unread                int64          `json:"unread"`
-	Goal                  string         `json:"goal"`
-	Turn                  string         `json:"turn"`
-	WorkspaceID           string         `json:"workspace_id"`
+	ID                       string         `json:"id"`
+	Slug                     string         `json:"slug"`
+	Title                    sql.NullString `json:"title"`
+	ManualTitle              int64          `json:"manual_title"`
+	TitleLocked              int64          `json:"title_locked"`
+	ParentID                 sql.NullString `json:"parent_id"`
+	Status                   string         `json:"status"`
+	Runtime                  string         `json:"runtime"`
+	AcpAgent                 sql.NullString `json:"acp_agent"`
+	AcpSessionID             sql.NullString `json:"acp_session_id"`
+	Cwd                      sql.NullString `json:"cwd"`
+	ArtifactSurface          sql.NullString `json:"artifact_surface"`
+	McpServerPolicy          sql.NullString `json:"mcp_server_policy"`
+	CloudCredentialProfileID sql.NullString `json:"cloud_credential_profile_id"`
+	DeferredMcpTools         int64          `json:"deferred_mcp_tools"`
+	ProjectPath              sql.NullString `json:"project_path"`
+	Error                    sql.NullString `json:"error"`
+	ModelProvider            sql.NullString `json:"model_provider"`
+	Model                    sql.NullString `json:"model"`
+	ReasoningEffort          sql.NullString `json:"reasoning_effort"`
+	InputTokens              int64          `json:"input_tokens"`
+	CachedInputTokens        int64          `json:"cached_input_tokens"`
+	CachedWriteTokens        int64          `json:"cached_write_tokens"`
+	OutputTokens             int64          `json:"output_tokens"`
+	ReasoningOutputTokens    int64          `json:"reasoning_output_tokens"`
+	TotalTokens              int64          `json:"total_tokens"`
+	ContextTokens            int64          `json:"context_tokens"`
+	ContextWindowTokens      int64          `json:"context_window_tokens"`
+	QueuedMessages           string         `json:"queued_messages"`
+	SourceType               sql.NullString `json:"source_type"`
+	SourceID                 sql.NullString `json:"source_id"`
+	Archived                 int64          `json:"archived"`
+	CreatedAtMs              int64          `json:"created_at_ms"`
+	UpdatedAtMs              int64          `json:"updated_at_ms"`
+	LastAttentionAtMs        int64          `json:"last_attention_at_ms"`
+	Pinned                   int64          `json:"pinned"`
+	PendingSteerMessage      string         `json:"pending_steer_message"`
+	Unread                   int64          `json:"unread"`
+	Goal                     string         `json:"goal"`
+	Turn                     string         `json:"turn"`
+	WorkspaceID              string         `json:"workspace_id"`
 }
 
 func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) error {
@@ -1263,6 +1270,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.Cwd,
 		arg.ArtifactSurface,
 		arg.McpServerPolicy,
+		arg.CloudCredentialProfileID,
 		arg.DeferredMcpTools,
 		arg.ProjectPath,
 		arg.Error,

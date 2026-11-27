@@ -268,6 +268,7 @@ type cloudSyncDeps struct {
 	Lifecycle fx.Lifecycle
 	Cloud     *cloudsync.Service
 	MCP       *mcpruntime.Manager
+	ACP       *acp.Manager
 	Bridge    *MachineBridgeSupervisor `optional:"true"`
 }
 
@@ -276,6 +277,7 @@ func StartCloudSync(deps cloudSyncDeps) {
 		deps.MCP.Refresh(ctx)
 	})
 	if deps.Bridge != nil {
+		deps.ACP.ResolveCloudProfile = deps.Bridge.ResolveACPProfile
 		deps.Cloud.AddOnAccountChanged(deps.Bridge.Reconcile)
 	}
 	var cancel context.CancelFunc

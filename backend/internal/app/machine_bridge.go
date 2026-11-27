@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/wins/jaz/backend/internal/acpcredentials"
 	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/machinebridge"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -41,6 +42,8 @@ type MachineBridgeSupervisor struct {
 	baseCtx         context.Context
 	running         bool
 	connGen         uint64
+	selection       cloudsync.AccountSelection
+	client          *machinebridge.Client
 	url             string
 	token           string
 	configHash      string
@@ -91,6 +94,7 @@ func (s *MachineBridgeSupervisor) Stop(ctx context.Context) {
 	s.configHash = ""
 	s.connected = false
 	s.cancel = nil
+	s.client = nil
 	s.done = nil
 	s.mu.Unlock()
 	s.opMu.Unlock()
@@ -168,7 +172,8 @@ func (s *MachineBridgeSupervisor) Reconcile(ctx context.Context) {
 }
 
 func (s *MachineBridgeSupervisor) reconcileLocked(ctx context.Context) {
-	baseURL, token, ok := s.cloud.CloudAuth(ctx)
+	account, selection := s.cloud.ActiveCloudAccount()
+	baseURL, token := account.BaseURL, account.Token
 	deviceID := s.resolveDeviceID()
 	cfg := s.loadConfig(deviceID)
 	cfgHash := cfg.Hash()
@@ -178,17 +183,18 @@ func (s *MachineBridgeSupervisor) reconcileLocked(ctx context.Context) {
 		s.mu.Unlock()
 		return
 	}
-	if !ok || !cfg.Enabled {
+	if selection.ID == "" || !cfg.Enabled {
 		oldCancel, oldDone := s.cancel, s.done
 		s.connGen++
 		s.url, s.token, s.configHash, s.cancel, s.done = "", "", "", nil, nil
 		s.connected = false
+		s.client = nil
 		s.lastError = ""
 		s.mu.Unlock()
 		stopBridgeLoop(oldCancel, oldDone)
 		return
 	}
-	if s.cancel != nil && s.url == baseURL && s.token == token && s.configHash == cfgHash {
+	if s.cancel != nil && s.selection == selection && s.url == baseURL && s.token == token && s.configHash == cfgHash {
 		s.mu.Unlock()
 		return
 	}
@@ -197,6 +203,7 @@ func (s *MachineBridgeSupervisor) reconcileLocked(ctx context.Context) {
 	gen := s.connGen
 	s.url, s.token, s.configHash, s.cancel, s.done = "", "", "", nil, nil
 	s.connected = false
+	s.client = nil
 	s.lastError = ""
 	baseCtx := s.baseCtx
 	s.mu.Unlock()
@@ -223,14 +230,16 @@ func (s *MachineBridgeSupervisor) reconcileLocked(ctx context.Context) {
 		return
 	}
 	// Verify account didn't change again while we were stopping/building.
-	curURL, curToken, curOK := s.cloud.CloudAuth(ctx)
-	if !curOK || curURL != baseURL || curToken != token {
+	current, currentSelection := s.cloud.ActiveCloudAccount()
+	if currentSelection != selection || current.Token != token {
 		s.mu.Unlock()
 		_ = client.Close()
 		return
 	}
 	runCtx, cancel := context.WithCancel(baseCtx)
 	done := make(chan struct{})
+	s.selection = selection
+	s.client = client
 	s.url = baseURL
 	s.token = token
 	s.configHash = cfgHash
@@ -274,6 +283,7 @@ func (s *MachineBridgeSupervisor) newClient(baseURL, token, deviceID string, cfg
 		DeviceID:    deviceID,
 		DisplayName: cfg.DisplayName,
 		Capabilities: machinebridge.Capabilities{
+			ACPProfiles: true,
 			FileStaging: true,
 			LocalExec:   cfg.AllowExec,
 		},
@@ -351,4 +361,26 @@ func (s *MachineBridgeSupervisor) resolveDeviceID() string {
 		s.deviceID = id
 	})
 	return s.deviceID
+}
+
+func (s *MachineBridgeSupervisor) ResolveACPProfile(ctx context.Context, workspaceID, profileID string, rejectedVersion int64) (acpcredentials.Profile, error) {
+	s.mu.Lock()
+	client, selection, gen := s.client, s.selection, s.connGen
+	s.mu.Unlock()
+	_, active := s.cloud.ActiveCloudAccount()
+	if active.ID != workspaceID || workspaceID == "" {
+		return acpcredentials.Profile{}, cloudsync.ErrWorkspaceChanged
+	}
+	if client == nil || active != selection {
+		return acpcredentials.Profile{}, machinebridge.ErrDeviceOffline
+	}
+	profile, err := client.ResolveACPProfile(ctx, profileID, rejectedVersion)
+	s.mu.Lock()
+	sameClient := s.connGen == gen
+	s.mu.Unlock()
+	_, active = s.cloud.ActiveCloudAccount()
+	if !sameClient || active != selection {
+		return acpcredentials.Profile{}, cloudsync.ErrWorkspaceChanged
+	}
+	return profile, err
 }

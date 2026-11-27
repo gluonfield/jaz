@@ -1,13 +1,23 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/wins/jaz/backend/internal/codexauthbridge"
 )
 
 func main() {
+	if codexauthbridge.Enabled(os.Args[1:]) {
+		if err := codexauthbridge.Run(context.Background(), os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "Codex workspace authentication:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	args, action := commandArgs(os.Args[1:])
 	switch action {
 	case mainHelp:

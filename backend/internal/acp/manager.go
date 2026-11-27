@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/log"
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/wins/jaz/backend/internal/acpcredentials"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -91,7 +92,8 @@ type Manager struct {
 	// prompt.
 	ThreadStarted func(storage.Session, string)
 
-	Events *sessionevents.Bus
+	Events              *sessionevents.Bus
+	ResolveCloudProfile acpcredentials.Resolver
 	// PublishWidget backs the _jaz.dev/widget/publish extension method; the
 	// session id is the jaz session linked to the calling agent's ACP session.
 	PublishWidget func(WidgetPublishRequest) (WidgetPublishResult, error)
@@ -127,7 +129,6 @@ type Manager struct {
 	launches     sync.WaitGroup
 	launchCtx    context.Context
 	stopLaunches context.CancelFunc
-	cloudLogins  *CloudLoginRunner
 
 	advertisedModels sync.Map
 }
@@ -162,11 +163,12 @@ type SpawnRequest struct {
 	// session (empty keeps the agent default).
 	ReasoningEffort string
 	// SourceType/SourceID tag sessions created by backend automation such as loops.
-	SourceType      string
-	SourceID        string
-	WorkspaceID     string
-	ArtifactSurface string
-	MCPServerPolicy string
+	SourceType               string
+	SourceID                 string
+	WorkspaceID              string
+	CloudCredentialProfileID string
+	ArtifactSurface          string
+	MCPServerPolicy          string
 	// SystemPromptExtensions are runtime-only prompt modules appended at
 	// session creation. They are not persisted in thread storage.
 	SystemPromptExtensions promptmodule.Modules
@@ -264,12 +266,7 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		resumeLocks:       sessionlock.New(),
 		inputLocks:        sessionlock.New(),
 	}
-	m.cloudLogins = NewCloudLoginRunner(m.StartIsolatedCloudLogin)
 	return m
-}
-
-func (m *Manager) CloudLogins() *CloudLoginRunner {
-	return m.cloudLogins
 }
 
 // providers returns the current effective provider set. It reads the live
@@ -324,6 +321,10 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 }
 
 func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (_ *agentConn, err error) {
+	launchAuth, err := m.cloudLaunchAuth(ctx, name, cfg.cloudCredentialProfileID)
+	if err != nil {
+		return nil, err
+	}
 	modelMetadata, err := m.resolveCodexCustomProviderModelMetadata(name, cfg)
 	if err != nil {
 		return nil, err
@@ -348,7 +349,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		}
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd, launchPrompt)
+	conn, stderr, err := m.openConnWithAuth(runCtx, name, cfg, env, cwd, launchPrompt, launchAuth)
 	if err != nil {
 		cancel()
 		return nil, err

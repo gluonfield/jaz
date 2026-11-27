@@ -3,6 +3,7 @@ package cloudsync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"time"
@@ -18,7 +19,7 @@ func (s *Service) storeEndpointCache(gen uint64, path string, raw json.RawMessag
 	s.mu.Unlock()
 }
 
-func (s *Service) fetchCachedEndpoint(ctx context.Context, path string, ttl time.Duration, disconnectedFallback json.RawMessage) (json.RawMessage, error) {
+func (s *Service) fetchCachedEndpoint(ctx context.Context, path string, disconnectedFallback json.RawMessage) (json.RawMessage, error) {
 	s.mu.RLock()
 	gen := s.accountGen
 	var acc storage.CloudAccount
@@ -35,9 +36,6 @@ func (s *Service) fetchCachedEndpoint(ctx context.Context, path string, ttl time
 		}
 		return nil, ErrNotConnected
 	}
-	if ttl > 0 && len(cached.raw) > 0 && time.Since(cached.at) < ttl {
-		return cached.raw, nil
-	}
 	raw, _, err := s.clientFor(acc.ID).doJSON(ctx, http.MethodGet, acc.BaseURL, path, acc.Token, nil)
 	if err != nil {
 		if len(cached.raw) > 0 && s.isGeneration(gen) {
@@ -50,15 +48,23 @@ func (s *Service) fetchCachedEndpoint(ctx context.Context, path string, ttl time
 }
 
 func (s *Service) ListModels(ctx context.Context) (json.RawMessage, error) {
-	return s.fetchCachedEndpoint(ctx, "/v1/models", cacheTTL, json.RawMessage(`{"models":[]}`))
+	return s.ListModelsForWorkspace(ctx, "")
 }
 
 func (s *Service) ListMachines(ctx context.Context) (json.RawMessage, error) {
-	return s.fetchCachedEndpoint(ctx, "/v1/machines", 0, json.RawMessage(`{"machines":[]}`))
+	return s.ListMachinesForWorkspace(ctx, "")
+}
+
+func (s *Service) ListMachinesForWorkspace(ctx context.Context, expected string) (json.RawMessage, error) {
+	raw, _, err := s.selectedJSON(ctx, expected, http.MethodGet, "/v1/machines", nil)
+	if expected == "" && errors.Is(err, ErrNotConnected) {
+		return json.RawMessage(`{"machines":[]}`), nil
+	}
+	return raw, err
 }
 
 func (s *Service) GetUsageSummary(ctx context.Context) (json.RawMessage, error) {
-	return s.fetchCachedEndpoint(ctx, "/v1/usage/summary", 0, nil)
+	return s.fetchCachedEndpoint(ctx, "/v1/usage/summary", nil)
 }
 
 func (s *Service) ListSpaces(ctx context.Context) ([]storage.CloudSpace, error) {

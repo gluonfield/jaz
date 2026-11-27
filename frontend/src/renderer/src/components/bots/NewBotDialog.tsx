@@ -4,7 +4,8 @@ import { ModelSelect } from '@/components/session/ModelSelect'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
-import { cloudModelProfilesQuery, resolveCloudModelSelection } from '@/lib/api/cloudThreads'
+import { resolveCloudModelSelection } from '@/lib/api/cloudThreads'
+import { useCloudModelProfilesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import { randomAvatar } from '@/lib/bots'
 import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
 import { pickerEffortOptions } from '@/lib/modelPicker'
@@ -16,7 +17,7 @@ export function NewBotDialog({ open, onClose }: { open: boolean; onClose: () => 
   const cloud = useCloudSession()
   const cloudOnly = useIsCloudOnly()
   const usingCloudProfiles = cloudOnly || cloud.active
-  const cloudProfilesQuery = useQuery({ ...cloudModelProfilesQuery, enabled: open && usingCloudProfiles && cloud.active })
+  const cloudProfilesQuery = useQuery({ ...useCloudModelProfilesQuery(), enabled: open && usingCloudProfiles && cloud.active })
   const cloudProfiles = useMemo(
     () => (usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : []),
     [cloudProfilesQuery.data, usingCloudProfiles],

@@ -100,6 +100,10 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 			return nil, err
 		}
 	}
+	cfg, err = nativeProfileConfig(agentName, session.RuntimeRef.CloudCredentialProfileID, cfg)
+	if err != nil {
+		return nil, err
+	}
 	if cfg.Local {
 		if sessionChanged {
 			if err := m.store.SaveSession(session); err != nil {

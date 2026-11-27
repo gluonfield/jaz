@@ -67,6 +67,7 @@ type ConnectRequest struct {
 }
 
 type CreateThreadRequest struct {
+	WorkspaceID     string `json:"-"`
 	Title           string `json:"title,omitempty"`
 	SpaceID         string `json:"space_id,omitempty"`
 	ModelProfileID  string `json:"model_profile_id,omitempty"`

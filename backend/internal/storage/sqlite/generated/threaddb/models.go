@@ -57,4 +57,5 @@ type Thread struct {
 	BackgroundWork           int64          `json:"background_work"`
 	DeferredMcpTools         int64          `json:"deferred_mcp_tools"`
 	WorkspaceID              string         `json:"workspace_id"`
+	CloudCredentialProfileID sql.NullString `json:"cloud_credential_profile_id"`
 }

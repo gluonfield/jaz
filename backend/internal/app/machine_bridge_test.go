@@ -30,6 +30,7 @@ func TestMachineBridgeSupervisorFollowsActiveCloudWorkspace(t *testing.T) {
 	)
 	connectedCh := make(chan struct{}, 4)
 	closedCh := make(chan struct{}, 4)
+	pending := make(chan struct{}, 1)
 
 	newMockCloud := func(orgID, orgName, token string) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +85,7 @@ func TestMachineBridgeSupervisorFollowsActiveCloudWorkspace(t *testing.T) {
 				respBytes, _ := json.Marshal(machinebridge.HelloResponse{
 					ProtocolVersion: machinebridge.CurrentProtocolVersion,
 					Accepted:        true,
-					Capabilities:    machinebridge.Capabilities{FileStaging: true, MaxStageBytes: 100 << 20},
+					Capabilities:    machinebridge.Capabilities{ACPProfiles: true, FileStaging: true, MaxStageBytes: 100 << 20},
 				})
 				_ = conn.WriteJSON(machinebridge.Frame{ID: frame.ID, Result: respBytes})
 				select {
@@ -92,8 +93,31 @@ func TestMachineBridgeSupervisorFollowsActiveCloudWorkspace(t *testing.T) {
 				default:
 				}
 				for {
-					if _, _, err := conn.ReadMessage(); err != nil {
+					var request machinebridge.Frame
+					if conn.ReadJSON(&request) != nil {
 						return
+					}
+					var params struct {
+						Profile  string `json:"profile_id"`
+						Rejected int64  `json:"rejected_version"`
+					}
+					if request.Method != "acp.profile.resolve" || json.Unmarshal(request.Params, &params) != nil {
+						t.Error("unexpected machine request")
+						return
+					}
+					switch params.Profile {
+					case "acp:codex":
+						if params.Rejected != 0 && params.Rejected != 11 {
+							t.Error("rejected credential version was lost")
+						}
+						if params.Rejected == 11 {
+							pending <- struct{}{}
+							continue
+						}
+						result := json.RawMessage(`{"profile_id":"acp:codex","agent":"codex","credential_kind":"oauth_bundle","version":11,"chatgpt":{"accessToken":"fake-access","chatgptAccountId":"test"}}`)
+						_ = conn.WriteJSON(machinebridge.Frame{ID: request.ID, Result: result})
+					default:
+						_ = conn.WriteJSON(machinebridge.Frame{ID: request.ID, Error: &machinebridge.RPCError{Code: machinebridge.CodeNotFound}})
 					}
 				}
 			default:
@@ -146,6 +170,25 @@ func TestMachineBridgeSupervisorFollowsActiveCloudWorkspace(t *testing.T) {
 	deviceID := connectedHello[0].DeviceID
 	mu.Unlock()
 
+	deadline := time.Now().Add(3 * time.Second)
+	for !bridge.Status().Connected && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	profile, err := bridge.ResolveACPProfile(ctx, stA.ActiveWorkspaceID, "acp:codex", 0)
+	if err != nil || profile.ChatGPT == nil || profile.ChatGPT.AccountID != "test" || profile.Version != 11 {
+		t.Fatalf("could not resolve the Codex profile over the paired socket: %v", err)
+	}
+	resolveErr := make(chan error, 1)
+	go func() {
+		_, err := bridge.ResolveACPProfile(ctx, stA.ActiveWorkspaceID, "acp:codex", 11)
+		resolveErr <- err
+	}()
+	select {
+	case <-pending:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for an in-flight credential request")
+	}
+
 	// 2. Switching to local cleanly disconnects machinebridge without removing Cloud A.
 	if _, err := cloud.SwitchWorkspace(ctx, cloudsync.LocalWorkspaceID); err != nil {
 		t.Fatalf("SwitchWorkspace local: %v", err)
@@ -154,6 +197,15 @@ func TestMachineBridgeSupervisorFollowsActiveCloudWorkspace(t *testing.T) {
 	case <-closedCh:
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for machinebridge disconnect on switch to local")
+	}
+
+	select {
+	case err := <-resolveErr:
+		if !errors.Is(err, cloudsync.ErrWorkspaceChanged) {
+			t.Fatalf("pending credentials survived workspace switch: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("pending credential request did not fail on disconnect")
 	}
 
 	// 3. Connecting Cloud B connects machinebridge to Cloud B with the same persisted device_id.

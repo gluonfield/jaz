@@ -55,9 +55,6 @@ func (m *Manager) Close() {
 	m.admission.Unlock()
 	m.stopLaunches()
 	m.launches.Wait()
-	if m.cloudLogins != nil {
-		m.cloudLogins.Close()
-	}
 	m.mu.Lock()
 	processes := make([]*agentProcess, 0, len(m.processes))
 	for _, process := range m.processes {
