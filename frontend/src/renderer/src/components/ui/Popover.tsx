@@ -191,6 +191,7 @@ export function MenuRow({
   active,
   disabled,
   trailing,
+  large = false,
   onClick,
   children,
 }: {
@@ -201,6 +202,8 @@ export function MenuRow({
   active?: boolean
   disabled?: boolean
   trailing?: ReactNode
+  // A taller row for menus whose rows lead with a mark, such as workspaces.
+  large?: boolean
   onClick: () => void
   children: ReactNode
 }) {
@@ -212,13 +215,13 @@ export function MenuRow({
       aria-checked={role === 'menuitemradio' ? Boolean(selected) : undefined}
       disabled={disabled}
       onClick={onClick}
-      className={`flex h-7 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
+      className={`flex w-full cursor-pointer items-center gap-2 text-left transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
         selected ? 'text-ink' : 'text-ink-2'
-      } ${active ? 'bg-surface-2' : ''}`}
+      } ${active ? 'bg-surface-2' : ''} ${large ? 'h-10 rounded-[10px] px-2 text-[14px]' : 'h-7 rounded-full px-2.5 text-[13px]'}`}
     >
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {trailing}
-      {selected ? <Check size={13} className="shrink-0 text-primary" /> : null}
+      {selected ? <Check size={large ? 15 : 13} className="shrink-0 text-primary" /> : null}
     </button>
   )
 }

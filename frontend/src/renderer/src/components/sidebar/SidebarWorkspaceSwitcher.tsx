@@ -12,14 +12,14 @@ import { activeCloudWorkspace, workspaceDisplayName } from '@/lib/cloudWorkspace
 const DEFAULT_CLASS_NAME = 'shrink-0 pl-1.5 pr-3 pt-1.5 pb-1 max-sm:px-4 max-sm:pt-2'
 const IDENTITY_CLASS =
   'flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-semibold text-ink max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
-// In the rail the workspace is its mark alone, the size of a section tab.
+// In the rail the workspace is its mark alone, filling a section tab's whole slot.
 const RAIL_CLASS = 'grid size-9 place-items-center rounded-[10px]'
-const RAIL_MARK_CLASS = 'size-6 rounded-[7px] text-[12px]'
+const RAIL_MARK_CLASS = 'size-9 rounded-[10px] text-[16px]'
 
 // A Cloud workspace shows its org icon, or its initial; Local shows the device.
 function WorkspaceMark({
   workspace,
-  className = 'size-5 rounded-md text-[11px]',
+  className = 'size-6 rounded-[7px] text-[12px]',
 }: {
   workspace: CloudWorkspaceSummary | null
   className?: string
@@ -28,15 +28,15 @@ function WorkspaceMark({
     return <OrgIconMark name={workspaceDisplayName(workspace)} icon={workspace.org_icon} className={className} />
   }
   return (
-    <span className={`grid shrink-0 place-items-center bg-list-active text-ink-2 ${className}`}>
-      <Laptop className="size-[60%]" />
+    <span className={`grid shrink-0 place-items-center bg-ink text-bg ${className}`}>
+      <Laptop className="size-[55%]" />
     </span>
   )
 }
 
 function WorkspaceLabel({ workspace }: { workspace: CloudWorkspaceSummary | null }) {
   return (
-    <span className="flex min-w-0 flex-1 items-center gap-2">
+    <span className="flex min-w-0 flex-1 items-center gap-2.5">
       <WorkspaceMark workspace={workspace} />
       <span className="min-w-0 truncate">{workspace ? workspaceDisplayName(workspace) : 'Local'}</span>
     </span>
@@ -128,7 +128,7 @@ export function SidebarWorkspaceSwitcher({
               if (switchingTo === null) setOpen((value) => !value)
             }}
             {...(rail && !open ? { title: activeName, 'data-tooltip-side': 'right' } : {})}
-            className={`group/workspace ${rail ? `${RAIL_CLASS} active:scale-[0.96]` : IDENTITY_CLASS} cursor-pointer transition-[background-color,transform] duration-150 hover:bg-list-hover aria-expanded:bg-list-hover aria-disabled:cursor-default aria-disabled:opacity-60`}
+            className={`group/workspace ${rail ? `${RAIL_CLASS} ring-ink/25 hover:ring-2 aria-expanded:ring-2 active:scale-[0.96]` : `${IDENTITY_CLASS} hover:bg-list-hover aria-expanded:bg-list-hover`} cursor-pointer transition-[background-color,box-shadow,transform] duration-150 aria-disabled:cursor-default aria-disabled:opacity-60`}
           >
             {rail ? (
               switchingTo !== null ? <LoaderCircle size={16} className="animate-spin text-ink-3" /> : railMark
@@ -151,7 +151,7 @@ export function SidebarWorkspaceSwitcher({
         <div
           role="menu"
           aria-label="Switch workspace"
-          className="w-[232px]"
+          className="w-[272px]"
           onKeyDown={(event) => {
             if (event.key === 'Tab') closeMenu()
             if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
@@ -165,6 +165,7 @@ export function SidebarWorkspaceSwitcher({
             <MenuRow
               key={ws.id}
               role="menuitemradio"
+              large
               autoFocus={activeCloud?.id === ws.id}
               selected={activeCloud?.id === ws.id}
               onClick={() => void handleSelect(ws.id)}
@@ -176,22 +177,24 @@ export function SidebarWorkspaceSwitcher({
             <>
               <MenuRow
                 role="menuitemradio"
+                large
                 autoFocus={isLocalActive}
                 selected={isLocalActive}
                 onClick={() => void handleSelect(LOCAL_WORKSPACE_ID)}
               >
                 <WorkspaceLabel workspace={null} />
               </MenuRow>
-              <div className="mx-2.5 my-1.5 h-px bg-border" />
+              <div className="mx-2 my-1.5 h-px bg-border" />
               <MenuRow
                 role="menuitem"
+                large
                 onClick={() => {
                   closeMenu()
                   setAdding(true)
                 }}
               >
-                <span className="flex items-center gap-2">
-                  <span className="grid size-5 shrink-0 place-items-center">
+                <span className="flex items-center gap-2.5">
+                  <span className="grid size-6 shrink-0 place-items-center rounded-[7px] border border-dashed border-ink/25">
                     <Plus size={14} />
                   </span>
                   Add Cloud Workspace
