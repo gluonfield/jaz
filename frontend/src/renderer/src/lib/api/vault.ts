@@ -49,14 +49,7 @@ export interface VaultItemInput {
   city_country?: string
 }
 
-export interface VaultImportCSVResult {
-  imported: number
-  skipped: number
-  failed: number
-}
-
 const vaultItemsPath = '/v1/vault/items'
-const vaultImportCSVPath = '/v1/vault/import/csv'
 
 export async function listVaultItems(options?: {
   kind?: VaultKind | ''
@@ -123,19 +116,6 @@ export async function deleteVaultItem(id: string, workspaceID?: string, signal?:
   await request<{ deleted: boolean }>(`${vaultItemsPath}/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: cloudWorkspaceHeaders(workspaceID),
-    signal,
-  })
-}
-
-export async function importVaultCSV(
-  csv: string,
-  workspaceID?: string,
-  signal?: AbortSignal,
-): Promise<VaultImportCSVResult> {
-  return request<VaultImportCSVResult>(vaultImportCSVPath, {
-    method: 'POST',
-    headers: { ...cloudWorkspaceHeaders(workspaceID), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ csv }),
     signal,
   })
 }

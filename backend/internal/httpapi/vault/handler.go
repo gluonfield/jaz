@@ -3,7 +3,6 @@ package vault
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 
@@ -12,10 +11,7 @@ import (
 	vaultcore "github.com/wins/jaz/backend/internal/vault"
 )
 
-const (
-	maxVaultBodyBytes int64 = 1 << 20
-	maxCSVBodyBytes   int64 = 8 << 20
-)
+const maxVaultBodyBytes int64 = 1 << 20
 
 type CloudProxy interface {
 	ProxyActiveWorkspace(w http.ResponseWriter, r *http.Request) bool
@@ -107,35 +103,4 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"deleted": true, "id": id})
-}
-
-func (h *Handler) ImportCSV(w http.ResponseWriter, r *http.Request) {
-	if h.proxyCloud(w, r) {
-		return
-	}
-	ct := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
-	var csvText string
-	if strings.HasPrefix(ct, "application/json") {
-		var body struct {
-			CSV string `json:"csv"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCSVBodyBytes)).Decode(&body); err != nil {
-			httpapi.WriteError(w, http.StatusBadRequest, errors.New("invalid json"))
-			return
-		}
-		csvText = body.CSV
-	} else {
-		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxCSVBodyBytes))
-		if err != nil {
-			httpapi.WriteError(w, http.StatusBadRequest, errors.New("failed to read CSV payload"))
-			return
-		}
-		csvText = string(raw)
-	}
-	result, err := h.service.ImportCSV(r.Context(), csvText)
-	if err != nil {
-		writeVaultError(w, err)
-		return
-	}
-	httpapi.WriteJSON(w, http.StatusOK, result)
 }

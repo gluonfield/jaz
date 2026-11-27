@@ -140,7 +140,7 @@ export function VaultItemFormFields({
       {kind === 'login' ? (
         <>
           {field(
-            'Website origins (exact match)',
+            'Website',
             <input
               type="text"
               value={values.origins}
@@ -180,7 +180,7 @@ export function VaultItemFormFields({
             )}
           </div>
           {field(
-            'Authenticator TOTP secret (optional)',
+            '2FA secret (optional)',
             <input
               type="password"
               value={values.totpSecret}
@@ -189,8 +189,8 @@ export function VaultItemFormFields({
                 isEdit && item?.has_totp
                   ? 'Configured — enter new secret to replace'
                   : compact
-                    ? 'Authenticator TOTP secret (optional)'
-                    : 'Base32 secret'
+                    ? '2FA secret (optional)'
+                    : undefined
               }
               autoComplete="off"
               disabled={disabled}

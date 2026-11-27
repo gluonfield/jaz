@@ -286,7 +286,6 @@ func appendVaultRoutes(routes server.Routes, h *vaultapi.Handler) server.Routes 
 		server.Route{Pattern: "POST /v1/vault/items", Handler: httpHandlerFunc(h.Create)},
 		server.Route{Pattern: "PATCH /v1/vault/items/{id}", Handler: httpHandlerFunc(h.Update)},
 		server.Route{Pattern: "DELETE /v1/vault/items/{id}", Handler: httpHandlerFunc(h.Delete)},
-		server.Route{Pattern: "POST /v1/vault/import/csv", Handler: httpHandlerFunc(h.ImportCSV)},
 	)
 }
 

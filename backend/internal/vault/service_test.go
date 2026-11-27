@@ -151,32 +151,6 @@ func TestNormalizeOriginAndRFC6238TOTP(t *testing.T) {
 	}
 }
 
-func TestImportCSVDeduplicatesAndHandlesManagerFormats(t *testing.T) {
-	svc := NewService(newMemVaultStore())
-	csvPayload := strings.Join([]string{
-		"name,url,username,password,totp",
-		"GitHub,https://github.com/login,octocat,pass-1,JBSWY3DPEHPK3PXP",
-		"GitHub Dup,https://github.com/settings,octocat,pass-2,",
-		"Bad HTTP,http://insecure.example.com,user,pass-3,",
-		"Local App,http://127.0.0.1:8080/login,dev,pass-4,",
-	}, "\n")
-
-	res, err := svc.ImportCSV(context.Background(), csvPayload)
-	if err != nil {
-		t.Fatalf("ImportCSV: %v", err)
-	}
-	if res.Imported != 2 || res.Skipped != 1 || res.Failed != 1 {
-		t.Fatalf("unexpected import counts: %+v", res)
-	}
-	items, err := svc.List(context.Background(), storage.VaultKindLogin, "")
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(items) != 2 {
-		t.Fatalf("expected 2 imported logins, got %d", len(items))
-	}
-}
-
 func TestMCPToolsBlindAutofillPoliciesAndZeroSecretLeakage(t *testing.T) {
 	store := newMemVaultStore()
 	fixedTime := time.Unix(59, 0).UTC()

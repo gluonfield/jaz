@@ -3,11 +3,8 @@ package vault
 import (
 	"context"
 	"crypto/rand"
-	"encoding/csv"
 	"encoding/hex"
-	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -258,123 +255,6 @@ func (s *Service) slotValue(record storage.VaultItemRecord, slot string) (string
 	default:
 		return "", fmt.Errorf("%w: unsupported vault kind %q", ErrInvalidInput, record.Item.Kind)
 	}
-}
-
-// ImportCSV parses logins exported from 1Password, Bitwarden, LastPass, or Chromium browsers.
-func (s *Service) ImportCSV(ctx context.Context, rawCSV string) (ImportCSVResult, error) {
-	reader := csv.NewReader(strings.NewReader(strings.TrimPrefix(rawCSV, "\ufeff")))
-	reader.FieldsPerRecord = -1
-	header, err := reader.Read()
-	if errors.Is(err, io.EOF) {
-		return ImportCSVResult{}, nil
-	}
-	if err != nil {
-		return ImportCSVResult{}, fmt.Errorf("%w: invalid CSV header: %v", ErrInvalidInput, err)
-	}
-	cols := mapCSVColumns(header)
-	if cols.url < 0 || cols.password < 0 {
-		return ImportCSVResult{}, fmt.Errorf("%w: CSV must include url/origin and password columns", ErrInvalidInput)
-	}
-
-	existing, err := s.store.ListVaultItems(ctx, storage.VaultKindLogin)
-	if err != nil {
-		return ImportCSVResult{}, err
-	}
-	seen := make(map[string]bool, len(existing))
-	for _, item := range existing {
-		for _, origin := range item.Origins {
-			seen[origin+"\x00"+item.Username] = true
-		}
-	}
-
-	var result ImportCSVResult
-	for {
-		row, err := reader.Read()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			result.Failed++
-			continue
-		}
-		rawURL := csvCell(row, cols.url)
-		password := csvCell(row, cols.password)
-		username := strings.TrimSpace(csvCell(row, cols.username))
-		label := strings.TrimSpace(csvCell(row, cols.label))
-		totp := strings.TrimSpace(csvCell(row, cols.totp))
-		if rawURL == "" && password == "" {
-			continue
-		}
-		origin, normErr := NormalizeOrigin(rawURL)
-		if normErr != nil || password == "" {
-			result.Failed++
-			continue
-		}
-		key := origin + "\x00" + username
-		if seen[key] {
-			result.Skipped++
-			continue
-		}
-		if _, err := s.Create(ctx, CreateInput{
-			Kind:       storage.VaultKindLogin,
-			Label:      label,
-			Origins:    []string{origin},
-			Username:   username,
-			Password:   password,
-			TOTPSecret: totp,
-		}); err != nil {
-			result.Failed++
-			continue
-		}
-		seen[key] = true
-		result.Imported++
-	}
-	return result, nil
-}
-
-type csvColumns struct {
-	label    int
-	url      int
-	username int
-	password int
-	totp     int
-}
-
-func mapCSVColumns(header []string) csvColumns {
-	cols := csvColumns{label: -1, url: -1, username: -1, password: -1, totp: -1}
-	for i, raw := range header {
-		name := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff")))
-		switch name {
-		case "name", "title", "label":
-			if cols.label < 0 {
-				cols.label = i
-			}
-		case "url", "website", "origin", "login_uri", "uri":
-			if cols.url < 0 {
-				cols.url = i
-			}
-		case "username", "login_username", "email", "login":
-			if cols.username < 0 {
-				cols.username = i
-			}
-		case "password", "login_password":
-			if cols.password < 0 {
-				cols.password = i
-			}
-		case "totp", "login_totp", "otp", "otpauth":
-			if cols.totp < 0 {
-				cols.totp = i
-			}
-		}
-	}
-	return cols
-}
-
-func csvCell(row []string, idx int) string {
-	if idx < 0 || idx >= len(row) {
-		return ""
-	}
-	return row[idx]
 }
 
 func (s *Service) applyCreateFields(record *storage.VaultItemRecord, input CreateInput) error {

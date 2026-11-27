@@ -70,12 +70,6 @@ type UpdateInput struct {
 	CityCountry    *string  `json:"city_country,omitempty"`
 }
 
-type ImportCSVResult struct {
-	Imported int `json:"imported"`
-	Skipped  int `json:"skipped"`
-	Failed   int `json:"failed"`
-}
-
 func NormalizeOrigin(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

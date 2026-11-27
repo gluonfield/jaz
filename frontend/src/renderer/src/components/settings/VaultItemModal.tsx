@@ -1,5 +1,8 @@
-import { Lock, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Button } from '@/components/ui/Button'
+import { IconButton } from '@/components/ui/IconButton'
+import { Segmented } from '@/components/ui/Segmented'
 import {
   buildVaultItemPayload,
   initialVaultFormValues,
@@ -7,6 +10,12 @@ import {
   type VaultFormValues,
 } from '@/components/vault/VaultItemFormFields'
 import type { VaultItem, VaultItemInput, VaultKind } from '@/lib/api/vault'
+
+const KINDS: { value: VaultKind; label: string }[] = [
+  { value: 'login', label: 'Login' },
+  { value: 'card', label: 'Card' },
+  { value: 'identity', label: 'Identity' },
+]
 
 export function VaultItemModal({
   item,
@@ -54,41 +63,15 @@ export function VaultItemModal({
     >
       <div className="w-full max-w-[460px] rounded-card border border-border bg-surface p-5 shadow-xl">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Lock className="size-4 text-ink-2" aria-hidden />
-            <h2 className="text-[15px] font-semibold text-ink">
-              {isEdit ? 'Edit vault item' : 'Add vault item'}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            aria-label="Close"
-            className="grid size-7 place-items-center rounded-md text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            <X className="size-4" />
-          </button>
+          {isEdit ? (
+            <h2 className="truncate text-[15px] font-semibold text-ink">{item?.label}</h2>
+          ) : (
+            <Segmented value={kind} options={KINDS} onChange={setKind} layoutId="vault-kind" />
+          )}
+          <IconButton size="sm" onClick={onClose} disabled={saving} aria-label="Close">
+            <X size={16} />
+          </IconButton>
         </div>
-
-        {!isEdit ? (
-          <div className="mt-3 flex gap-1.5">
-            {(['login', 'card', 'identity'] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setKind(option)}
-                className={`h-7 rounded-full px-3 text-[12px] font-medium capitalize transition-colors ${
-                  kind === option
-                    ? 'bg-primary text-primary-fg'
-                    : 'border border-border bg-bg text-ink-2 hover:text-ink'
-                }`}
-              >
-                {option === 'card' ? 'Payment card' : option}
-              </button>
-            ))}
-          </div>
-        ) : null}
 
         <form onSubmit={(e) => void handleSubmit(e)} className="mt-4 space-y-3">
           <VaultItemFormFields
@@ -102,21 +85,12 @@ export function VaultItemModal({
           {error ? <p className="text-[12px] text-danger">{error}</p> : null}
 
           <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="h-8 rounded-control border border-border bg-bg px-3 text-[13px] font-medium text-ink-2 transition-colors hover:text-ink"
-            >
+            <Button onClick={onClose} disabled={saving}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="h-8 rounded-control bg-primary px-3.5 text-[13px] font-medium text-primary-fg transition-opacity hover:opacity-90 disabled:opacity-60"
-            >
-              {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Save item'}
-            </button>
+            </Button>
+            <Button type="submit" variant="primary" disabled={saving}>
+              Save
+            </Button>
           </div>
         </form>
       </div>

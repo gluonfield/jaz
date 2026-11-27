@@ -1,7 +1,6 @@
 package vault
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -45,7 +44,6 @@ func newTestMux(t *testing.T, cloud CloudProxy) *http.ServeMux {
 	mux.HandleFunc("POST /v1/vault/items", h.Create)
 	mux.HandleFunc("PATCH /v1/vault/items/{id}", h.Update)
 	mux.HandleFunc("DELETE /v1/vault/items/{id}", h.Delete)
-	mux.HandleFunc("POST /v1/vault/import/csv", h.ImportCSV)
 	return mux
 }
 
@@ -92,18 +90,6 @@ func TestVaultHTTPHandlerCRUDNeverLeaksSecrets(t *testing.T) {
 		t.Fatalf("patch failed: %d %s", patchRec.Code, patchRec.Body.String())
 	}
 
-	// Import CSV
-	csvPayload, _ := json.Marshal(map[string]string{
-		"csv": "name,url,username,password\nLinear,https://linear.app,me@example.com,linear-pass",
-	})
-	importReq := httptest.NewRequest(http.MethodPost, "/v1/vault/import/csv", bytes.NewReader(csvPayload))
-	importReq.Header.Set("Content-Type", "application/json")
-	importRec := httptest.NewRecorder()
-	mux.ServeHTTP(importRec, importReq)
-	if importRec.Code != http.StatusOK || !strings.Contains(importRec.Body.String(), `"imported":1`) {
-		t.Fatalf("import failed: %d %s", importRec.Code, importRec.Body.String())
-	}
-
 	// Delete + 404 on repeat
 	delRec := httptest.NewRecorder()
 	mux.ServeHTTP(delRec, httptest.NewRequest(http.MethodDelete, "/v1/vault/items/"+created.Item.ID, nil))
@@ -129,7 +115,6 @@ func TestVaultHTTPHandlerProxiesToCloudWorkspace(t *testing.T) {
 		{http.MethodPost, "/v1/vault/items"},
 		{http.MethodPatch, "/v1/vault/items/vlt_1"},
 		{http.MethodDelete, "/v1/vault/items/vlt_1"},
-		{http.MethodPost, "/v1/vault/import/csv"},
 	} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`)))
@@ -137,7 +122,7 @@ func TestVaultHTTPHandlerProxiesToCloudWorkspace(t *testing.T) {
 			t.Fatalf("%s %s was not proxied to cloud: %d %s", tc.method, tc.path, rec.Code, rec.Body.String())
 		}
 	}
-	if proxy.calls != 5 {
-		t.Fatalf("expected 5 proxied calls, got %d", proxy.calls)
+	if proxy.calls != 4 {
+		t.Fatalf("expected 4 proxied calls, got %d", proxy.calls)
 	}
 }

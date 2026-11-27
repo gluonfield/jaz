@@ -16,7 +16,6 @@ if (typeof globalThis.window === 'undefined') {
 const {
   createVaultItem,
   deleteVaultItem,
-  importVaultCSV,
   listVaultItems,
   updateVaultItem,
 } = await import('./vault')
@@ -81,9 +80,6 @@ test('vault API client forwards Cloud workspace headers and handles CRUD + CSV i
     if (method === 'DELETE' && parsed.pathname === '/v1/vault/items/vlt_card_1') {
       return Response.json({ deleted: true })
     }
-    if (method === 'POST' && parsed.pathname === '/v1/vault/import/csv') {
-      return Response.json({ imported: 2, skipped: 1, failed: 0 })
-    }
     return new Response('not found', { status: 404 })
   }
 
@@ -107,15 +103,11 @@ test('vault API client forwards Cloud workspace headers and handles CRUD + CSV i
   const updated = await updateVaultItem('vlt_card_1', { label: 'Personal Visa' }, 'ws_cloud_1')
   expect(updated.label).toBe('Personal Visa')
 
-  const imported = await importVaultCSV('name,url,username,password\nA,https://a.com,u,p', 'ws_cloud_1')
-  expect(imported).toEqual({ imported: 2, skipped: 1, failed: 0 })
-
   await deleteVaultItem('vlt_card_1', 'ws_cloud_1')
   expect(seen).toEqual([
     'GET /v1/vault/items?kind=login&domain=github.com',
     'POST /v1/vault/items',
     'PATCH /v1/vault/items/vlt_card_1',
-    'POST /v1/vault/import/csv',
     'DELETE /v1/vault/items/vlt_card_1',
   ])
 })
