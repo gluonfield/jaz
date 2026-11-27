@@ -25,7 +25,7 @@ type AppToolArgs struct {
 	Markdown     string              `json:"markdown,omitempty" jsonschema:"the document body, instead of html"`
 	Files        map[string]string   `json:"files,omitempty" jsonschema:"a multi-file app as relative path to text content, instead of html"`
 	Paths        []string            `json:"paths,omitempty" jsonschema:"files in this thread's working directory to bundle, by relative path, instead of inline content"`
-	Capabilities []string            `json:"capabilities,omitempty" jsonschema:"only what the app uses. Saved at once: storage:personal, storage:shared. Held for the user's approval: ai:complete, tools:call, desktop:window, desktop:notifications, desktop:shortcuts, desktop:tray, desktop:always_on_top, desktop:fs, desktop:full_access"`
+	Capabilities []string            `json:"capabilities,omitempty" jsonschema:"only what the app uses. storage:personal and storage:shared are saved at once; ai:complete, tools:call and desktop:* wait for the user's approval"`
 	AllowedTools []string            `json:"allowed_tools,omitempty" jsonschema:"MCP tools the app may call; requires the tools:call capability"`
 	TargetAppID  string              `json:"target_app_id,omitempty" jsonschema:"app_id of an app published earlier, to publish this as its next version"`
 	Icon         *appbundle.IconSpec `json:"icon,omitempty"`
@@ -69,30 +69,14 @@ func AddMCPTools(server *mcpsdk.Server, svc *Service, sessions sessionLoader) {
 		if err != nil {
 			return nil, nil, err
 		}
-		if appbundle.RequiresPublishApproval(bundle.Manifest.Capabilities) {
-			draft, err := svc.StageDraft(ctx, bundle, args.TargetAppID, sessionID)
-			if err != nil {
-				return nil, nil, err
-			}
-			return toolResult(map[string]any{
-				"status":        "awaiting_user_approval",
-				"note":          "Not saved yet. Jaz shows a card where the user approves these capabilities; tell them it is waiting there.",
-				"draft_id":      draft.ID,
-				"bundle_sha256": draft.BundleSHA256,
-				"target_app_id": draft.TargetAppID,
-				"title":         draft.Title,
-				"kind":          draft.Kind,
-				"capabilities":  draft.Capabilities,
-				"allowed_tools": draft.AllowedTools,
-				"expires_at":    draft.ExpiresAt,
-			})
-		}
 		app, _, _, err := svc.PublishBundle(ctx, bundle, args.TargetAppID, sessionID)
+		if errors.Is(err, storage.ErrAppApprovalRequired) {
+			return stageForApproval(ctx, svc, bundle, args.TargetAppID, sessionID)
+		}
 		if err != nil {
 			return nil, nil, err
 		}
 		return toolResult(map[string]any{
-			"status":     "saved",
 			"note":       "Saved to the user's Apps. Jaz shows its card with Show App and Install App; do not repeat the app inline or ask the user to confirm.",
 			"app_id":     app.ID,
 			"title":      app.Title,
@@ -100,6 +84,24 @@ func AddMCPTools(server *mcpsdk.Server, svc *Service, sessions sessionLoader) {
 			"version":    app.CurrentVersion,
 			"visibility": app.Visibility,
 		})
+	})
+}
+
+func stageForApproval(ctx context.Context, svc *Service, bundle appbundle.Bundle, targetAppID, sessionID string) (*mcpsdk.CallToolResult, any, error) {
+	draft, err := svc.StageDraft(ctx, bundle, targetAppID, sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return toolResult(map[string]any{
+		"note":          "Not saved yet. Jaz shows a card where the user approves these capabilities; tell them it is waiting there.",
+		"draft_id":      draft.ID,
+		"bundle_sha256": draft.BundleSHA256,
+		"target_app_id": draft.TargetAppID,
+		"title":         draft.Title,
+		"kind":          draft.Kind,
+		"capabilities":  draft.Capabilities,
+		"allowed_tools": draft.AllowedTools,
+		"expires_at":    draft.ExpiresAt,
 	})
 }
 

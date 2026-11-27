@@ -60,14 +60,14 @@ type SessionSource interface {
 }
 
 type GuideInput struct {
-	Modules  []string `json:"modules,omitempty" jsonschema:"diagram, mockup, interactive, data_viz, art, chart, elicitation, canvas"`
+	Modules  []string `json:"modules,omitempty"`
 	Platform string   `json:"platform,omitempty"`
 }
 
 type ShowArtifactInput struct {
-	LoadingMessages []string `json:"loading_messages" jsonschema:"1-4 short strings shown while the artifact renders"`
-	Title           string   `json:"title" jsonschema:"short artifact title"`
-	HTML            string   `json:"html" jsonschema:"raw SVG, HTML fragment, or full self-contained HTML document"`
+	LoadingMessages []string `json:"loading_messages"`
+	Title           string   `json:"title"`
+	HTML            string   `json:"html"`
 }
 
 type ShowArtifactOutput struct {

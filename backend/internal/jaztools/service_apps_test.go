@@ -79,7 +79,7 @@ func TestPublishAppSavesDirectlyHoldsElevatedAppsAndIsDiscoverable(t *testing.T)
 	saved, failed := call("publish_app", map[string]any{"title": "World Clock", "html": "<div><h1>Clock</h1></div>"})
 	appID, _ := saved["app_id"].(string)
 	app, version, err := appsSvc.GetApp(context.Background(), appID)
-	if failed || saved["status"] != "saved" || err != nil || version == nil || app.Title != "World Clock" || app.Visibility != storage.AppVisibilityPrivate || app.CurrentVersion != 1 {
+	if failed || err != nil || version == nil || app.Title != "World Clock" || app.Visibility != storage.AppVisibilityPrivate || app.CurrentVersion != 1 {
 		t.Fatalf("publish_app payload = %#v, app = %#v, version = %#v, err = %v", saved, app, version, err)
 	}
 
@@ -89,7 +89,7 @@ func TestPublishAppSavesDirectlyHoldsElevatedAppsAndIsDiscoverable(t *testing.T)
 	}
 
 	held, failed := call("publish_app", map[string]any{"title": "Summariser", "html": "<div>Summarise</div>", "capabilities": []string{"ai:complete"}})
-	if failed || held["status"] != "awaiting_user_approval" || held["draft_id"] == "" || held["bundle_sha256"] == "" || held["app_id"] != nil {
+	if failed || held["draft_id"] == "" || held["bundle_sha256"] == "" || held["app_id"] != nil {
 		t.Fatalf("an app that spends viewer AI credits must wait for approval: %#v", held)
 	}
 	all, err := appsSvc.ListApps(context.Background(), storage.AppListFilter{})

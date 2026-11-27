@@ -14,14 +14,13 @@ test('publish_app and the retired draft tool are recognised directly, prefixed a
 })
 
 test('a saved app and an app held for approval are read from every agent envelope, and errors from none', () => {
-  const published = { status: 'saved', note: 'Saved to the user\'s Apps.', app_id: 'a'.repeat(26), title: 'World Clock', kind: 'artifact', version: 1, visibility: 'private' }
+  const published = { note: 'Saved to the user\'s Apps.', app_id: 'a'.repeat(26), title: 'World Clock', kind: 'artifact', version: 1, visibility: 'private' }
   const app = { app: { id: published.app_id, title: 'World Clock', kind: 'artifact' } }
   expect(parseAppToolOutput(JSON.stringify(published))).toEqual(app)
   expect(parseAppToolOutput({ error: null, result: { content: [{ type: 'text', text: JSON.stringify(published) }] } })).toEqual(app)
   expect(parseAppToolOutput({ result: { structuredContent: published } })).toEqual(app)
 
   const staged = {
-    status: 'awaiting_user_approval',
     note: 'Not saved yet.',
     draft_id: 'adraft_123',
     bundle_sha256: 'a'.repeat(64),
