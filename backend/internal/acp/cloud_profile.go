@@ -129,7 +129,16 @@ func (a *cloudLaunchAuth) prepare(ctx context.Context, agent, root string, env m
 		if err := os.MkdirAll(settings, 0o700); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(filepath.Join(settings, "settings.json"), []byte(`{"modelProvider":"gemini"}`), 0o600); err != nil {
+		file, err := os.CreateTemp(settings, ".settings-*.json")
+		if err != nil {
+			return nil, err
+		}
+		defer os.Remove(file.Name())
+		_, writeErr := file.WriteString(`{"modelProvider":"gemini"}`)
+		if err := errors.Join(writeErr, file.Close()); err != nil {
+			return nil, err
+		}
+		if err := os.Rename(file.Name(), filepath.Join(settings, "settings.json")); err != nil {
 			return nil, err
 		}
 		cfg.Args = append(slices.Clone(cfg.Args), "--gemini-dir", geminiDir)

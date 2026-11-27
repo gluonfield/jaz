@@ -48,20 +48,24 @@ func (s *Service) selectedJSON(ctx context.Context, expected, method, path strin
 	if selection.ID == "" {
 		return nil, 0, ErrNotConnected
 	}
+	current := func() bool {
+		_, active := s.ActiveCloudAccount()
+		return active == selection
+	}
 	client := s.clientFor(acc.ID)
 	refresh := client.refresh
 	client.refresh = func(ctx context.Context, id, token string) (string, error) {
-		if !s.isGeneration(selection.Generation) {
+		if !current() {
 			return "", ErrWorkspaceChanged
 		}
 		next, err := refresh(ctx, id, token)
-		if !s.isGeneration(selection.Generation) {
+		if !current() {
 			return "", ErrWorkspaceChanged
 		}
 		return next, err
 	}
 	raw, status, err := client.doJSON(ctx, method, acc.BaseURL, path, acc.Token, body)
-	if !s.isGeneration(selection.Generation) {
+	if !current() {
 		return nil, 0, ErrWorkspaceChanged
 	}
 	return raw, status, err

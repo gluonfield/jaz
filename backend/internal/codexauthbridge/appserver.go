@@ -69,6 +69,12 @@ func relay(ctx context.Context, adapterIn io.Reader, adapterOut io.Writer, child
 	if json.Unmarshal(initRaw, &init) != nil || init.Method != "initialize" || len(init.ID) == 0 {
 		return errors.New("expected Codex initialize request")
 	}
+	var params map[string]json.RawMessage
+	var caps map[string]json.RawMessage
+	if json.Unmarshal(init.Params, &params) != nil || json.Unmarshal(params["capabilities"], &caps) != nil ||
+		!bytes.Equal(caps["experimentalApi"], []byte("true")) {
+		return errors.New("the Codex adapter must enable experimental app-server authentication")
+	}
 	if err := toNative.Encode(initRaw); err != nil {
 		return err
 	}

@@ -73,7 +73,7 @@ func fetchProfile(ctx context.Context, version int64) (acpcredentials.Profile, e
 	}
 	req.Header.Set("Authorization", "Bearer "+os.Getenv(brokerTokenEnv))
 	client := &http.Client{
-		Timeout:       35 * time.Second,
+		Timeout:       9 * time.Second,
 		Transport:     &http.Transport{DisableKeepAlives: true},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}

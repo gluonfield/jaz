@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -17,7 +18,7 @@ import (
 // turn starts a new native session, which keeps no memory of the earlier
 // conversation while the Jaz transcript stays. An agent_switch event records
 // the move, so resuming knows a fresh native session is intended.
-func (m *Manager) SwitchAgent(_ context.Context, sessionID, agent string) error {
+func (m *Manager) SwitchAgent(ctx context.Context, sessionID, agent string) error {
 	defer m.resumeLocks.Lock(sessionID)()
 	if job, err := m.job(sessionID); err == nil && job.turnDone() != nil {
 		return errors.New("wait for the active turn before switching agent")
@@ -29,20 +30,31 @@ func (m *Manager) SwitchAgent(_ context.Context, sessionID, agent string) error 
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return fmt.Errorf("session %s is not acp-backed", sessionID)
 	}
+	agent = CanonicalAgentName(agent)
+	if agent == CanonicalAgentName(session.RuntimeRef.Agent) {
+		return nil
+	}
+	var profileID string
+	if session.RuntimeRef.CloudCredentialProfileID != "" {
+		profileID = "acp:" + agent
+	}
 	req, cfg, effort, err := m.spawnConfig(SpawnRequest{
-		ACPAgent:        agent,
-		SourceType:      session.SourceType,
-		ArtifactSurface: session.RuntimeRef.ArtifactSurface,
-		MCPServerPolicy: session.RuntimeRef.MCPServerPolicy,
+		CloudCredentialProfileID: profileID,
+		ACPAgent:                 agent,
+		SourceType:               session.SourceType,
+		ArtifactSurface:          session.RuntimeRef.ArtifactSurface,
+		MCPServerPolicy:          session.RuntimeRef.MCPServerPolicy,
 	})
 	if err != nil {
 		return err
 	}
-	if req.ACPAgent == CanonicalAgentName(session.RuntimeRef.Agent) {
-		return nil
+	ctx = sessioncontext.WithWorkspaceID(ctx, session.WorkspaceID)
+	if _, err := m.cloudLaunchAuth(ctx, req.ACPAgent, profileID); err != nil {
+		return err
 	}
 	m.teardown(sessionID)
 	session.RuntimeRef.Agent = req.ACPAgent
+	session.RuntimeRef.CloudCredentialProfileID = profileID
 	session.RuntimeRef.SessionID = ""
 	session.ModelProvider = sessionModelProvider(req.ACPAgent, cfg)
 	session.Model = strings.TrimSpace(cfg.Model)
@@ -96,7 +108,7 @@ func (m *Manager) modelChoice(sessionID, model, effort string) (storage.Session,
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return storage.Session{}, AgentConfig{}, "", false, fmt.Errorf("session %s is not acp-backed", sessionID)
 	}
-	_, cfg, effort, err := m.spawnConfig(SpawnRequest{ACPAgent: session.RuntimeRef.Agent, Model: model, ReasoningEffort: effort})
+	_, cfg, effort, err := m.spawnConfig(SpawnRequest{ACPAgent: session.RuntimeRef.Agent, Model: model, ReasoningEffort: effort, CloudCredentialProfileID: session.RuntimeRef.CloudCredentialProfileID})
 	job, _ := m.job(sessionID)
 	return session, cfg, effort, session.RuntimeRef.SessionID != "" || job != nil, err
 }
