@@ -115,6 +115,8 @@ func TestBotDelegationPromptsAndIdentityRefresh(t *testing.T) {
 					"A new problem found during an audit goes back to an implementation thread for investigation.",
 					"create_thread for each independent task",
 					"continue existing work with send_message_to_thread",
+					"Start design or investigation threads that may lead to code with worktree: true",
+					"Open an extra thread on the same task only when work runs in parallel, needs a different agent or model, or the existing thread's context is full",
 					"Start implementation threads as part of your coordinator role",
 					"The thread receives platform instructions and memory and chooses its own approach",
 					"Follow robotics research.",
