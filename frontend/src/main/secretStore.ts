@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { chmodSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, linkSync, lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { app, safeStorage } from 'electron'
 
@@ -11,6 +11,15 @@ const KEY_BYTES = 32
 const NONCE_BYTES = 12
 const TAG_BYTES = 16
 const KEYCHAIN_TIMEOUT_MS = 5_000
+
+export type SecretStoreErrorCode = 'keychain_unavailable' | 'dev_legacy_blocked' | 'legacy_locked'
+
+export class SecretStoreError extends Error {
+  constructor(readonly code: SecretStoreErrorCode, message: string) {
+    super(message)
+    this.name = 'SecretStoreError'
+  }
+}
 
 export type KeychainHelperResult =
   | { status: 'ok'; key: string }
@@ -89,31 +98,33 @@ function runMacKeychainHelper(execPath: string, command: 'get' | 'set', accessGr
     return { status: 'error', code: typeof (parsed as { code?: unknown }).code === 'number' ? (parsed as { code: number }).code : undefined }
   } catch (error) {
     const code = (error as NodeJS.ErrnoException)?.code
-    if (code === 'ENOENT') {
-      return { status: 'missing_entitlement' }
-    }
-    return { status: 'error' }
+    return code === 'ENOENT' ? { status: 'missing_entitlement' } : { status: 'error' }
   }
 }
 
 function readKeyFile(file: string): Buffer | null {
+  let stats
   try {
-    const data = readFileSync(file)
-    if (data.length !== KEY_BYTES) {
-      throw new Error(`Master key file must contain ${KEY_BYTES} bytes.`)
-    }
-    try {
-      chmodSync(file, 0o600)
-    } catch {
-      // Ignore chmod failures on filesystems that do not support POSIX modes.
-    }
-    return data
+    stats = lstatSync(file)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return null
     }
     throw error
   }
+  if (!stats.isFile() || stats.isSymbolicLink()) {
+    throw new SecretStoreError('keychain_unavailable', 'Master key file must be a regular file.')
+  }
+  const data = readFileSync(file)
+  if (data.length !== KEY_BYTES) {
+    throw new SecretStoreError('keychain_unavailable', `Master key file must contain ${KEY_BYTES} bytes.`)
+  }
+  try {
+    chmodSync(file, 0o600)
+  } catch {
+    // Ignore chmod failures on filesystems without POSIX modes.
+  }
+  return data
 }
 
 function readOrCreateKeyFile(file: string): Buffer {
@@ -121,27 +132,39 @@ function readOrCreateKeyFile(file: string): Buffer {
   if (existing) {
     return existing
   }
-  mkdirSync(dirname(file), { recursive: true })
+  const dir = dirname(file)
+  mkdirSync(dir, { recursive: true })
   const generated = randomBytes(KEY_BYTES)
+  const tmp = join(dir, `.master-key-${process.pid}-${randomBytes(6).toString('hex')}.tmp`)
   try {
-    writeFileSync(file, generated, { flag: 'wx', mode: 0o600 })
-    chmodSync(file, 0o600)
-    return generated
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      const winner = readKeyFile(file)
-      if (winner) {
-        return winner
+    writeFileSync(tmp, generated, { flag: 'wx', mode: 0o600 })
+    chmodSync(tmp, 0o600)
+    try {
+      linkSync(tmp, file)
+      return generated
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        generated.fill(0)
+        const winner = readKeyFile(file)
+        if (winner) {
+          return winner
+        }
       }
+      throw error
     }
-    throw error
+  } finally {
+    try {
+      unlinkSync(tmp)
+    } catch {
+      // Temp file already cleaned up or never created.
+    }
   }
 }
 
 function decodeBase64Key(encoded: string): Buffer {
   const key = Buffer.from(encoded, 'base64')
   if (key.length !== KEY_BYTES) {
-    throw new Error(`Master key must decode to ${KEY_BYTES} bytes.`)
+    throw new SecretStoreError('keychain_unavailable', `Master key must decode to ${KEY_BYTES} bytes.`)
   }
   return key
 }
@@ -186,16 +209,6 @@ export class DesktopSecretStore {
     return this.storage.encryptString(plaintext).toString('base64')
   }
 
-  decryptText(ciphertext: string, options?: { allowLegacy?: boolean }): { plaintext: string; migratedFromLegacy: boolean } {
-    if (ciphertext.startsWith(ENC_V2_PREFIX)) {
-      return { plaintext: openV2(ciphertext, this.masterKey()), migratedFromLegacy: false }
-    }
-    return {
-      plaintext: this.decryptLegacyBuffer(Buffer.from(ciphertext, 'base64'), options),
-      migratedFromLegacy: this.usesMasterKey,
-    }
-  }
-
   encryptBuffer(plaintext: string): Buffer {
     if (this.usesMasterKey) {
       return Buffer.from(sealV2(plaintext, this.masterKey()), 'utf8')
@@ -204,29 +217,31 @@ export class DesktopSecretStore {
     return this.storage.encryptString(plaintext)
   }
 
-  decryptBuffer(encrypted: Buffer, options?: { allowLegacy?: boolean }): { plaintext: string; migratedFromLegacy: boolean } {
-    if (isV2Ciphertext(encrypted)) {
-      return { plaintext: openV2(encrypted.toString('utf8'), this.masterKey()), migratedFromLegacy: false }
-    }
-    return {
-      plaintext: this.decryptLegacyBuffer(encrypted, options),
-      migratedFromLegacy: this.usesMasterKey,
-    }
+  decryptText(ciphertext: string, options?: { allowLegacy?: boolean }): { plaintext: string; migratedFromLegacy: boolean } {
+    return isV2Ciphertext(ciphertext)
+      ? { plaintext: openV2(ciphertext, this.masterKey()), migratedFromLegacy: false }
+      : this.decryptLegacy(Buffer.from(ciphertext, 'base64'), options)
   }
 
-  private decryptLegacyBuffer(encrypted: Buffer, options?: { allowLegacy?: boolean }): string {
+  decryptBuffer(encrypted: Buffer, options?: { allowLegacy?: boolean }): { plaintext: string; migratedFromLegacy: boolean } {
+    return isV2Ciphertext(encrypted)
+      ? { plaintext: openV2(encrypted.toString('utf8'), this.masterKey()), migratedFromLegacy: false }
+      : this.decryptLegacy(encrypted, options)
+  }
+
+  private decryptLegacy(encrypted: Buffer, options?: { allowLegacy?: boolean }): { plaintext: string; migratedFromLegacy: boolean } {
     if (this.usesMasterKey) {
       if (!this.isPackaged) {
-        throw new Error('Legacy saved secrets cannot be unlocked in dev builds.')
+        throw new SecretStoreError('dev_legacy_blocked', 'Legacy saved secrets cannot be unlocked in dev builds.')
       }
       if (!options?.allowLegacy && !this.legacyUnlocked) {
-        throw new Error('Legacy saved secrets require explicit unlock.')
+        throw new SecretStoreError('legacy_locked', 'Legacy saved secrets require explicit unlock.')
       }
     }
     this.requireSafeStorage()
     const plaintext = this.storage.decryptString(encrypted)
     this.legacyUnlocked = true
-    return plaintext
+    return { plaintext, migratedFromLegacy: this.usesMasterKey }
   }
 
   private masterKey(): Buffer {
@@ -234,8 +249,7 @@ export class DesktopSecretStore {
       return this.cachedMasterKey
     }
     if (!this.isPackaged) {
-      const devFile = join(this.userDataDir(), 'dev-master.key')
-      return this.cachedMasterKey = readOrCreateKeyFile(devFile)
+      return this.cachedMasterKey = readOrCreateKeyFile(join(this.userDataDir(), 'dev-master.key'))
     }
     const localFallbackFile = join(this.userDataDir(), 'master.key')
     const found = this.helper('get', this.accessGroup)
@@ -250,25 +264,28 @@ export class DesktopSecretStore {
       const candidate = existingLocal ?? randomBytes(KEY_BYTES)
       const stored = this.helper('set', this.accessGroup, candidate.toString('base64'))
       if (stored.status === 'ok') {
-        if (existingLocal) {
+        const winningKey = decodeBase64Key(stored.key)
+        if (existingLocal && winningKey.equals(existingLocal)) {
           try {
             unlinkSync(localFallbackFile)
           } catch {
-            // Best-effort cleanup after promoting fallback key into Data Protection Keychain.
+            // Best-effort cleanup after confirming fallback key is persisted in Data Protection Keychain.
           }
         }
-        return this.cachedMasterKey = decodeBase64Key(stored.key)
+        candidate.fill(0)
+        return this.cachedMasterKey = winningKey
       }
+      candidate.fill(0)
       if (stored.status === 'missing_entitlement') {
         return this.cachedMasterKey = readOrCreateKeyFile(localFallbackFile)
       }
     }
-    throw new Error('Saved secrets require an available system keychain.')
+    throw new SecretStoreError('keychain_unavailable', 'Saved secrets require an available system keychain.')
   }
 
   private requireSafeStorage(): void {
     if (!this.storage.isEncryptionAvailable() || (this.platform === 'linux' && this.storage.getSelectedStorageBackend() === 'basic_text')) {
-      throw new Error('Saved passwords require an available system keychain.')
+      throw new SecretStoreError('keychain_unavailable', 'Saved passwords require an available system keychain.')
     }
   }
 }

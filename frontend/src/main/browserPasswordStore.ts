@@ -2,7 +2,7 @@ import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { app } from 'electron'
 import { join } from 'node:path'
 import { passwordOrigin } from '@shared/browserPasswords'
-import { getDesktopSecretStore, type DesktopSecretStore } from '@main/secretStore'
+import { getDesktopSecretStore, SecretStoreError, type DesktopSecretStore } from '@main/secretStore'
 
 export type BrowserPassword = { origin: string; username: string; password: string }
 
@@ -22,21 +22,21 @@ export class BrowserPasswordStore {
     if (this.records) {
       return true
     }
-    let encrypted: Buffer
+    let encrypted: Buffer | null
     try {
-      encrypted = readFileSync(this.file)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        this.records = []
-        return true
-      }
+      encrypted = this.readEncryptedFile()
+    } catch {
       return false
+    }
+    if (encrypted === null) {
+      this.records = []
+      return true
     }
     if (!this.secrets.canAutoUnlock(encrypted)) {
       return false
     }
     try {
-      this.read({ allowLegacy: false })
+      this.unlockBuffer(encrypted, { allowLegacy: false })
       return true
     } catch {
       return false
@@ -47,47 +47,11 @@ export class BrowserPasswordStore {
     if (this.records) {
       return this.records
     }
-    let encrypted: Buffer
-    try {
-      encrypted = readFileSync(this.file)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return this.records = []
-      }
-      throw new Error('Saved passwords could not be read.', { cause: error })
+    const encrypted = this.readEncryptedFile()
+    if (encrypted === null) {
+      return this.records = []
     }
-    let plaintext: string
-    let migratedFromLegacy = false
-    try {
-      const opened = this.secrets.decryptBuffer(encrypted, options)
-      plaintext = opened.plaintext
-      migratedFromLegacy = opened.migratedFromLegacy
-    } catch (error) {
-      if (error instanceof Error && /system keychain|dev builds|explicit unlock/i.test(error.message)) {
-        throw error
-      }
-      throw new Error('Saved passwords could not be unlocked. Check access to your system keychain.')
-    }
-    let records: BrowserPassword[]
-    try {
-      records = JSON.parse(plaintext) as BrowserPassword[]
-      if (!Array.isArray(records) || records.some((entry) =>
-        typeof entry?.origin !== 'string' || passwordOrigin(entry.origin) !== entry.origin ||
-        typeof entry.username !== 'string' || typeof entry.password !== 'string')) {
-        throw new Error('Invalid password file')
-      }
-    } catch {
-      throw new Error('Saved passwords could not be unlocked. Check access to your system keychain.')
-    }
-    this.records = records
-    if (migratedFromLegacy) {
-      try {
-        this.write(records)
-      } catch {
-        // Keep unlocked records usable even if opportunistic on-disk migration fails.
-      }
-    }
-    return this.records
+    return this.unlockBuffer(encrypted, options)
   }
 
   save(password: BrowserPassword): void {
@@ -116,12 +80,58 @@ export class BrowserPasswordStore {
     this.write(this.read({ allowLegacy: true }).filter((entry) => entry.origin !== origin || entry.username !== username))
   }
 
+  private readEncryptedFile(): Buffer | null {
+    try {
+      return readFileSync(this.file)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return null
+      }
+      throw new Error('Saved passwords could not be read.', { cause: error })
+    }
+  }
+
+  private unlockBuffer(encrypted: Buffer, options?: { allowLegacy?: boolean }): readonly BrowserPassword[] {
+    let plaintext: string
+    let migratedFromLegacy = false
+    try {
+      const opened = this.secrets.decryptBuffer(encrypted, options)
+      plaintext = opened.plaintext
+      migratedFromLegacy = opened.migratedFromLegacy
+    } catch (error) {
+      if (error instanceof SecretStoreError) {
+        throw error
+      }
+      throw new Error('Saved passwords could not be unlocked. Check access to your system keychain.')
+    }
+    let records: BrowserPassword[]
+    try {
+      records = JSON.parse(plaintext) as BrowserPassword[]
+      if (!Array.isArray(records) || records.some((entry) =>
+        typeof entry?.origin !== 'string' || passwordOrigin(entry.origin) !== entry.origin ||
+        typeof entry.username !== 'string' || typeof entry.password !== 'string')) {
+        throw new Error('Invalid password file')
+      }
+    } catch {
+      throw new Error('Saved passwords could not be unlocked. Check access to your system keychain.')
+    }
+    this.records = records
+    if (migratedFromLegacy) {
+      try {
+        this.write(records)
+      } catch {
+        // Keep unlocked records usable even if opportunistic on-disk migration fails.
+      }
+    }
+    return this.records
+  }
+
   private write(records: BrowserPassword[]): void {
     let encrypted: Buffer
     try {
       encrypted = this.secrets.encryptBuffer(JSON.stringify(records))
     } catch (error) {
-      if (error instanceof Error && /system keychain/i.test(error.message)) {
+      if (error instanceof SecretStoreError) {
         throw error
       }
       throw new Error('The password change could not be saved.')

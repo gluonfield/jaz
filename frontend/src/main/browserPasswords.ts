@@ -18,6 +18,8 @@ import { isTrustedRendererURL } from '@main/permissions'
 
 const PENDING_GRACE_MS = 60_000
 const USERNAME_TTL_MS = 5 * 60_000
+const MAX_REMEMBERED_USERNAMES = 16
+const LOGOUT_PATH_PATTERN = /(^|\/)(log-?out|sign-?out)(\/|$)/i
 
 type PendingPassword = BrowserPassword & {
   id: string
@@ -25,8 +27,9 @@ type PendingPassword = BrowserPassword & {
   timer?: ReturnType<typeof setTimeout>
 }
 
-type FrameRequest = {
-  remaining: number
+type ActiveFrameRequest = {
+  id: string
+  frames: Set<WebFrameMain>
   found: boolean
 }
 
@@ -40,6 +43,14 @@ export type BrowserPasswordOptions = {
   graceMs?: number
 }
 
+function isLogoutURL(value: string): boolean {
+  try {
+    return LOGOUT_PATH_PATTERN.test(new URL(value).pathname)
+  } catch {
+    return false
+  }
+}
+
 export function installBrowserPasswords(
   store: BrowserPasswordStore = getBrowserPasswordStore(),
   options: BrowserPasswordOptions = {},
@@ -49,7 +60,7 @@ export function installBrowserPasswords(
   const pending = new WeakMap<WebContents, PendingPassword>()
   const errors = new WeakMap<WebContents, string>()
   const lastUsernames = new WeakMap<WebContents, Map<string, RememberedUsername>>()
-  const requests = new WeakMap<WebContents, Map<string, FrameRequest>>()
+  const activeRequests = new WeakMap<WebContents, ActiveFrameRequest>()
   const watching = new Set<WebContents>()
 
   const changed = (target: WebContents) => {
@@ -111,7 +122,21 @@ export function installBrowserPasswords(
       byOrigin = new Map()
       lastUsernames.set(target, byOrigin)
     }
-    byOrigin.set(origin, { username: trimmed, expiresAt: now() + USERNAME_TTL_MS })
+    const currentNow = now()
+    for (const [key, entry] of byOrigin) {
+      if (entry.expiresAt <= currentNow) {
+        byOrigin.delete(key)
+      }
+    }
+    byOrigin.delete(origin)
+    while (byOrigin.size >= MAX_REMEMBERED_USERNAMES) {
+      const oldest = byOrigin.keys().next().value
+      if (oldest === undefined) {
+        break
+      }
+      byOrigin.delete(oldest)
+    }
+    byOrigin.set(origin, { username: trimmed, expiresAt: currentNow + USERNAME_TTL_MS })
   }
 
   const rememberedUsername = (target: WebContents, origin: string): string => {
@@ -135,9 +160,20 @@ export function installBrowserPasswords(
     target.once('destroyed', () => {
       watching.delete(target)
       clearPending(target)
+      lastUsernames.delete(target)
+      activeRequests.delete(target)
     })
-    target.on('did-navigate', () => {
-      activePending(target)
+    target.on('did-navigate', (_event, url) => {
+      if (typeof url === 'string' && isLogoutURL(url)) {
+        clearPending(target)
+        const origin = passwordOrigin(url)
+        if (origin) {
+          lastUsernames.get(target)?.delete(origin)
+        }
+      } else {
+        activePending(target)
+      }
+      activeRequests.delete(target)
       errors.delete(target)
       changed(target)
     })
@@ -169,12 +205,8 @@ export function installBrowserPasswords(
     return result
   }
 
-  const frameBelongsToTarget = (target: WebContents, frame: WebFrameMain | null | undefined): frame is WebFrameMain => {
-    if (!frame) {
-      return false
-    }
-    return liveFrames(target).includes(frame)
-  }
+  const frameBelongsToTarget = (target: WebContents, frame: WebFrameMain | null | undefined): frame is WebFrameMain =>
+    Boolean(frame && liveFrames(target).includes(frame))
 
   const dispatchToFrames = (target: WebContents, frames: WebFrameMain[], channel: string, payload?: Record<string, unknown>) => {
     if (!frames.length) {
@@ -183,12 +215,7 @@ export function installBrowserPasswords(
       return
     }
     const requestId = randomUUID()
-    let pendingRequests = requests.get(target)
-    if (!pendingRequests) {
-      pendingRequests = new Map()
-      requests.set(target, pendingRequests)
-    }
-    pendingRequests.set(requestId, { remaining: frames.length, found: false })
+    activeRequests.set(target, { id: requestId, frames: new Set(frames), found: false })
     for (const frame of frames) {
       frame.send(channel, payload ? { ...payload, requestId } : { requestId })
     }
@@ -348,25 +375,21 @@ export function installBrowserPasswords(
     const found = typeof payload === 'boolean' ? payload : Boolean(payload?.found)
     const requestId = typeof payload === 'object' && payload ? payload.requestId : undefined
     if (requestId) {
-      const pendingRequests = requests.get(target)
-      const tracked = pendingRequests?.get(requestId)
-      if (!tracked) {
+      const tracked = activeRequests.get(target)
+      if (!tracked || tracked.id !== requestId || !tracked.frames.delete(event.senderFrame)) {
         return
       }
       if (found) {
         tracked.found = true
-      }
-      tracked.remaining -= 1
-      if (tracked.found) {
-        pendingRequests?.delete(requestId)
+        activeRequests.delete(target)
         errors.delete(target)
         changed(target)
         return
       }
-      if (tracked.remaining > 0) {
+      if (tracked.frames.size > 0) {
         return
       }
-      pendingRequests?.delete(requestId)
+      activeRequests.delete(target)
     }
     if (!found) {
       errors.set(target, 'No suitable login form was found on this page.')

@@ -306,6 +306,52 @@ test('two-step login preserves username across same-origin navigation', () => {
   expect(f.state().pending).toMatchObject({ origin: 'https://sso.example.test', username: 'step1@example.test' })
 })
 
+test('cross-origin iframe cannot spoof credentials or hijack frame results, username buffer is bounded, and logout clears pending', () => {
+  const f = fixture({ platform: 'darwin', isPackaged: false })
+  f.target.mainFrame.url = 'https://bank.example.test/login'
+  const evilFrame = f.makeFrame('https://evil.example.test/widget')
+  f.target.mainFrame.framesInSubtree = [f.target.mainFrame, evilFrame]
+
+  // Cross-origin iframe attempting to spoof capture or username for main frame origin is ignored.
+  f.username({ origin: 'https://bank.example.test', username: 'spoof@evil.test' }, evilFrame)
+  f.capture({ origin: 'https://bank.example.test', username: 'spoof@evil.test', password: 'evil-password' }, evilFrame)
+  expect(f.state().pending).toBeUndefined()
+
+  // Legitimate login on bank.example.test is saved, then evil iframe cannot answer bank's fill request.
+  f.capture({ origin: 'https://bank.example.test', username: 'alice@bank.test', password: 'bank-password' })
+  f.state({ kind: 'save', id: f.state().pending.id })
+  f.sent.length = 0
+  f.state({ kind: 'fill', origin: 'https://bank.example.test', username: 'alice@bank.test' })
+  expect(f.sent.length).toBe(1)
+  expect(f.sent[0].frame).toBe(f.target.mainFrame)
+  const fillRequestId = f.sent[0].args[1].requestId
+  f.result({ requestId: fillRequestId, found: false }, evilFrame)
+  expect(f.state().error).toBeUndefined()
+  f.result({ requestId: fillRequestId, found: false }, f.target.mainFrame)
+  expect(f.state().error).toContain('No suitable login form')
+
+  // Remembered username buffer is strictly origin-scoped and bounded to 16 origins (evicting oldest).
+  for (let i = 0; i < 18; i += 1) {
+    const origin = `https://site-${i}.example.test`
+    f.target.mainFrame.url = `${origin}/step1`
+    f.username({ origin, username: `user-${i}@example.test` })
+  }
+  f.target.mainFrame.url = 'https://site-0.example.test/step2'
+  f.capture({ origin: 'https://site-0.example.test', username: '', password: 'pw-0' })
+  expect(f.state().pending.username).toBe('')
+  f.target.mainFrame.url = 'https://site-17.example.test/step2'
+  f.capture({ origin: 'https://site-17.example.test', username: '', password: 'pw-17' })
+  expect(f.state().pending.username).toBe('user-17@example.test')
+
+  // Logout navigation clears pending grace window and remembered username for that origin.
+  f.target.mainFrame.url = 'https://site-17.example.test/logout'
+  f.target.emit('did-navigate', {}, 'https://site-17.example.test/logout')
+  expect(f.state().pending).toBeUndefined()
+  f.target.mainFrame.url = 'https://site-17.example.test/login'
+  f.capture({ origin: 'https://site-17.example.test', username: '', password: 'pw-after-logout' })
+  expect(f.state().pending.username).toBe('')
+})
+
 test('denied unlock and save preserve ciphertext and pending capture without retrying on refresh', () => {
   const f = fixture({ platform: 'linux' })
   f.seedLegacy()

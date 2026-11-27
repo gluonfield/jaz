@@ -9,15 +9,19 @@ export type BrowserPasswordsController = {
   act: (action: BrowserPasswordAction) => Promise<BrowserPasswordState | undefined>
 }
 
+const EMPTY_STATE: BrowserPasswordState = { origin: '', usernames: [], entries: [], locked: true }
+
 export function useBrowserPasswords(webContentsId: number | null): BrowserPasswordsController {
   const api = window.jaz?.browserPasswords
-  const [state, setState] = useState<BrowserPasswordState>({ origin: '', usernames: [], entries: [], locked: true })
+  const [state, setState] = useState<BrowserPasswordState>(EMPTY_STATE)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const revision = useRef(0)
 
   useEffect(() => {
     if (!api || webContentsId === null) {
+      setState(EMPTY_STATE)
+      setError('')
       return
     }
     let active = true

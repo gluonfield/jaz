@@ -42,11 +42,13 @@ private func handleGet(accessGroup: String) {
     let status = SecItemCopyMatching(query as CFDictionary, &result)
     switch status {
     case errSecSuccess:
-        guard let data = result as? Data, data.count == 32 else {
+        guard var data = result as? Data, data.count == 32 else {
             emit(["status": "error", "code": Int(errSecDecode)])
             exit(1)
         }
-        emit(["status": "ok", "key": data.base64EncodedString()])
+        let encoded = data.base64EncodedString()
+        data.resetBytes(in: 0..<data.count)
+        emit(["status": "ok", "key": encoded])
     case errSecItemNotFound:
         emit(["status": "not_found"])
     case errSecMissingEntitlement:
@@ -60,9 +62,12 @@ private func handleGet(accessGroup: String) {
 private func handleSet(accessGroup: String) {
     let raw = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
         .trimmingCharacters(in: .whitespacesAndNewlines)
-    guard let keyData = Data(base64Encoded: raw), keyData.count == 32 else {
+    guard var keyData = Data(base64Encoded: raw), keyData.count == 32 else {
         emit(["status": "error", "code": Int(errSecParam)])
         exit(64)
+    }
+    defer {
+        keyData.resetBytes(in: 0..<keyData.count)
     }
     var item = baseQuery(accessGroup: accessGroup)
     item[kSecValueData as String] = keyData
@@ -82,5 +87,8 @@ private func handleSet(accessGroup: String) {
 }
 
 private func emit(_ value: [String: Any]) {
-    print(String(decoding: try! JSONSerialization.data(withJSONObject: value), as: UTF8.self))
+    guard let json = try? JSONSerialization.data(withJSONObject: value) else {
+        exit(1)
+    }
+    print(String(decoding: json, as: UTF8.self))
 }

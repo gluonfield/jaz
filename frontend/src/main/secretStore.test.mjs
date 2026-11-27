@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { build } from 'bun'
 import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -179,6 +179,37 @@ test('non-provisioned macOS signed runs fall back to 0600 master.key and promote
   expect(dpKey).toBeTruthy()
   expect(existsSync(fallbackFile)).toBe(false)
   expect(safeCalls).toEqual([])
+})
+
+test('key file loader rejects symlinks and promotion preserves master.key if keychain returns a different key', () => {
+  const dir = tempDir('symlink-and-race')
+  const external = join(dir, 'external.key')
+  writeFileSync(external, randomBytes(32), { mode: 0o600 })
+  symlinkSync(external, join(dir, 'dev-master.key'))
+
+  const devStore = new DesktopSecretStore({
+    platform: 'darwin',
+    isPackaged: false,
+    userDataDir: dir,
+    safeStorage: forbiddenSafeStorage([]),
+  })
+  expect(() => devStore.encryptText('secret')).toThrow('regular file')
+
+  const raceDir = tempDir('promotion-race')
+  const localKey = randomBytes(32)
+  const fallbackFile = join(raceDir, 'master.key')
+  writeFileSync(fallbackFile, localKey, { mode: 0o600 })
+  const otherKey = randomBytes(32).toString('base64')
+  const racingStore = new DesktopSecretStore({
+    platform: 'darwin',
+    isPackaged: true,
+    userDataDir: raceDir,
+    keychainHelper: (command) => command === 'get' ? { status: 'not_found' } : { status: 'ok', key: otherKey },
+    safeStorage: forbiddenSafeStorage([]),
+  })
+  const ciphertext = racingStore.encryptText('after-race')
+  expect(openV2(ciphertext, Buffer.from(otherKey, 'base64'))).toBe('after-race')
+  expect(existsSync(fallbackFile)).toBe(true)
 })
 
 const macOnly = process.platform === 'darwin' ? test : test.skip

@@ -11,6 +11,7 @@ import {
 const USERNAME_HINT = /user|email|mail|login|account|identifier|handle|phone/i
 const NON_SUBMIT_BUTTON = /\b(show|hide|reveal|toggle|visibility|clear|forgot|reset|cancel|back|close|dismiss|cookie|privacy|terms)\b/i
 const SKIP_USERNAME_HINT = /search|otp|code|token|captcha|coupon|promo|zip|postal/i
+const INSTALLED_KEY = Symbol.for('jaz.browserPasswords.installed')
 
 export type PasswordBridge = {
   send: (channel: string, payload: unknown) => void
@@ -18,13 +19,16 @@ export type PasswordBridge = {
 }
 
 type CapturedDraft = {
-  origin: string
   username: string
   password: string
 }
 
 type CaptureRequest = { requestId?: string } | undefined
 type FillRequest = { origin: string; username: string; password: string; requestId?: string }
+
+function eventPath(event: Event): ReadonlyArray<EventTarget | null> {
+  return typeof event.composedPath === 'function' ? event.composedPath() : [event.target]
+}
 
 function collectDeepInputs(root: Document | ShadowRoot | Element, seen = new Set<HTMLInputElement>(), out: HTMLInputElement[] = []): HTMLInputElement[] {
   if (root instanceof HTMLFormElement) {
@@ -54,10 +58,7 @@ export function collectShadowInputs(root: Document | ShadowRoot | Element): HTML
 }
 
 function isVisibleInput(input: HTMLInputElement): boolean {
-  if (input.type === 'hidden') {
-    return false
-  }
-  if (input.getClientRects().length === 0) {
+  if (input.type === 'hidden' || input.getClientRects().length === 0) {
     return false
   }
   const view = input.ownerDocument.defaultView
@@ -86,20 +87,14 @@ function isLikelyUsernameInput(input: HTMLInputElement): boolean {
   if (input.type === 'password') {
     return false
   }
-  if (matchesSelector(input, '[autocomplete~="username" i], [autocomplete~="email" i]')) {
-    return true
-  }
-  if (input.type === 'email') {
+  if (matchesSelector(input, '[autocomplete~="username" i], [autocomplete~="email" i]') || input.type === 'email') {
     return true
   }
   if (input.type !== 'text' && input.type !== 'tel') {
     return false
   }
   const hint = inputHintText(input)
-  if (SKIP_USERNAME_HINT.test(hint)) {
-    return false
-  }
-  return USERNAME_HINT.test(hint)
+  return !SKIP_USERNAME_HINT.test(hint) && USERNAME_HINT.test(hint)
 }
 
 function pickUsername(candidates: HTMLInputElement[], allInputs: HTMLInputElement[], password: HTMLInputElement): HTMLInputElement | undefined {
@@ -133,8 +128,8 @@ export function findLoginFields(root: Document | HTMLFormElement, operation: 'ca
 }
 
 function findStandaloneUsername(doc: Document): HTMLInputElement | undefined {
-  const inputs = collectShadowInputs(doc).filter((input) => !input.disabled && isVisibleInput(input) && Boolean(input.value.trim()))
-  return inputs.find((input) => isLikelyUsernameInput(input))
+  return collectShadowInputs(doc)
+    .find((input) => !input.disabled && isVisibleInput(input) && Boolean(input.value.trim()) && isLikelyUsernameInput(input))
 }
 
 function setValue(input: HTMLInputElement, value: string): void {
@@ -155,7 +150,7 @@ function findActionControl(path: ReadonlyArray<EventTarget | null>): HTMLElement
       continue
     }
     const tag = node.tagName.toLowerCase()
-    if (tag === 'button') {
+    if (tag === 'button' || node.getAttribute('role') === 'button') {
       return node as HTMLElement
     }
     if (tag === 'input') {
@@ -163,9 +158,6 @@ function findActionControl(path: ReadonlyArray<EventTarget | null>): HTMLElement
       if (type === 'submit' || type === 'button' || type === 'image') {
         return node as HTMLElement
       }
-    }
-    if (node.getAttribute('role') === 'button') {
-      return node as HTMLElement
     }
   }
   return null
@@ -175,10 +167,7 @@ function isNonSubmitControl(control: HTMLElement): boolean {
   if (control instanceof HTMLButtonElement && control.type === 'reset') {
     return true
   }
-  if (control instanceof HTMLButtonElement && control.type === 'submit') {
-    return false
-  }
-  if (control instanceof HTMLInputElement && control.type === 'submit') {
+  if ((control instanceof HTMLButtonElement || control instanceof HTMLInputElement) && control.type === 'submit') {
     return false
   }
   const label = [
@@ -208,8 +197,7 @@ export function attachBrowserPasswordCapture(win: Window, doc: Document, bridge:
   }
 
   const syncDraftFromEvent = (event: Event) => {
-    const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target]
-    const target = path[0]
+    const target = eventPath(event)[0]
     if (!(target instanceof HTMLInputElement) || target.disabled) {
       return
     }
@@ -220,8 +208,8 @@ export function attachBrowserPasswordCapture(win: Window, doc: Document, bridge:
         if (fieldUsername) {
           rememberUsername(fieldUsername)
         }
-        draft = { origin, username: fieldUsername || lastUsername, password: target.value }
-      } else if (draft?.origin === origin) {
+        draft = { username: fieldUsername || lastUsername, password: target.value }
+      } else {
         draft = null
       }
       return
@@ -235,30 +223,24 @@ export function attachBrowserPasswordCapture(win: Window, doc: Document, bridge:
   }
 
   const emitCapture = (root: Document | HTMLFormElement, options: { manual?: boolean; requestId?: string; allowDraft?: boolean } = {}) => {
+    if (passwordOrigin(win.location.href) !== origin) {
+      return
+    }
     const { username, password } = findLoginFields(root, 'capture')
     if (password?.value) {
       const resolvedUsername = username?.value.trim() || lastUsername
       if (resolvedUsername) {
         rememberUsername(resolvedUsername)
       }
-      draft = { origin, username: resolvedUsername, password: password.value }
-      bridge.send(PASSWORD_CAPTURE_CHANNEL, {
-        origin,
-        username: resolvedUsername,
-        password: password.value,
-        ...(options.requestId ? { requestId: options.requestId } : {}),
-      })
+      draft = { username: resolvedUsername, password: password.value }
+      bridge.send(PASSWORD_CAPTURE_CHANNEL, { origin, username: resolvedUsername, password: password.value })
       if (options.manual) {
         bridge.send(PASSWORD_RESULT_CHANNEL, { requestId: options.requestId, found: true })
       }
       return
     }
     if (options.allowDraft && draft?.password) {
-      bridge.send(PASSWORD_CAPTURE_CHANNEL, {
-        origin: draft.origin,
-        username: draft.username || lastUsername,
-        password: draft.password,
-      })
+      bridge.send(PASSWORD_CAPTURE_CHANNEL, { origin, username: draft.username || lastUsername, password: draft.password })
       return
     }
     if (options.manual) {
@@ -288,8 +270,7 @@ export function attachBrowserPasswordCapture(win: Window, doc: Document, bridge:
     if (event.key !== 'Enter') {
       return
     }
-    const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target]
-    const target = path[0]
+    const target = eventPath(event)[0]
     if (!(target instanceof HTMLInputElement)) {
       return
     }
@@ -303,8 +284,7 @@ export function attachBrowserPasswordCapture(win: Window, doc: Document, bridge:
   }
 
   const onClick = (event: Event) => {
-    const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target]
-    const control = findActionControl(path)
+    const control = findActionControl(eventPath(event))
     if (!control || isNonSubmitControl(control)) {
       return
     }
@@ -341,7 +321,7 @@ export function attachBrowserPasswordCapture(win: Window, doc: Document, bridge:
 
   bridge.on(PASSWORD_FILL_CHANNEL, (_event, payload) => {
     const credential = payload as FillRequest
-    if (!credential || origin !== credential.origin) {
+    if (!credential || origin !== credential.origin || passwordOrigin(win.location.href) !== origin) {
       bridge.send(PASSWORD_RESULT_CHANNEL, { requestId: credential?.requestId, found: false })
       return
     }
@@ -371,13 +351,12 @@ export function attachBrowserPasswordCapture(win: Window, doc: Document, bridge:
   }
 }
 
-let installed = false
-
 export function installBrowserPasswordCapture(): void {
-  if (installed) {
+  const scope = globalThis as Record<PropertyKey, unknown>
+  if (scope[INSTALLED_KEY]) {
     return
   }
-  installed = true
+  scope[INSTALLED_KEY] = true
   attachBrowserPasswordCapture(window, document, {
     send: (channel, payload) => ipcRenderer.send(channel, payload),
     on: (channel, listener) => ipcRenderer.on(channel, listener),
