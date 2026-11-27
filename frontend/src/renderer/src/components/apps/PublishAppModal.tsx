@@ -82,6 +82,7 @@ export function PublishAppModal({
     setDescription(targetApp?.description ?? initialDescription)
     setVisibility(targetApp?.visibility ?? 'private')
     setSpaceId(targetApp?.space_id ?? '')
+    setSelectedUserIds(targetApp?.members?.map((m) => m.user_id) ?? [])
     setCapabilities(targetApp?.capabilities ?? ['storage:personal'])
     setAllowedToolsInput((targetApp?.allowed_tools ?? []).join(', '))
     setDraft(null)

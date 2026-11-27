@@ -176,8 +176,12 @@ export function installDesktopApps(deps: {
     const registry = loadRegistry()
     const now = new Date().toISOString()
     const isExternal = Boolean(input.isExternalOrg)
-    const perms = filterPermissionsForPolicy(input.permissions ?? [], isExternal, true)
-    const folders = isExternal ? [] : (input.scopedFolders ?? [])
+    const perms = filterPermissionsForPolicy(
+      input.permissions ?? [],
+      isExternal,
+      Boolean(input.allowDesktopFullAccess),
+    )
+    const folders = isExternal ? [] : (input.scopedFolders ?? []).filter((f) => typeof f === 'string' && f.trim())
     const existing = registry[input.appId]
     if (existing?.launcherPath) {
       removeOSLauncherShim(existing.launcherPath)
@@ -411,6 +415,9 @@ export function installDesktopApps(deps: {
 
   ipcMain.handle(`${DESKTOP_APPS_CHANNEL}fsWrite`, (event, appId: string, folderPath: string, relPath: string, content: string): boolean => {
     trustedWindow(event)
+    if (Buffer.byteLength(content, 'utf8') > MAX_FS_READ_BYTES) {
+      throw new Error('File exceeds 5 MiB desktop app write limit')
+    }
     const record = loadRegistry()[appId]
     const targetFile = resolveScopedFolderTarget(record, folderPath, relPath)
     writeFileSync(targetFile, content, 'utf8')

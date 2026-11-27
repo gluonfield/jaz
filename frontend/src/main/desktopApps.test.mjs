@@ -67,6 +67,7 @@ describe('Electron Desktop Apps version-locked permissions & shims', () => {
       writeFileSync(allowedFile, 'hello')
       writeFileSync(secretFile, 'secret')
       symlinkSync(secretFile, join(dir, 'escape.txt'))
+      symlinkSync(outside, join(dir, 'escape-dir'))
 
       const record = {
         appId: APP_ID,
@@ -85,8 +86,10 @@ describe('Electron Desktop Apps version-locked permissions & shims', () => {
         updatedAt: new Date().toISOString(),
       }
       expect(resolveScopedFolderTarget(record, dir, 'notes.txt')).toContain('notes.txt')
+      expect(resolveScopedFolderTarget(record, dir, 'sub/new-note.txt')).toContain('new-note.txt')
       expect(() => resolveScopedFolderTarget(record, dir, '../secret.txt')).toThrow()
       expect(() => resolveScopedFolderTarget(record, dir, 'escape.txt')).toThrow()
+      expect(() => resolveScopedFolderTarget(record, dir, 'escape-dir/new-pwn.txt')).toThrow()
       expect(() => resolveScopedFolderTarget(record, outside, 'secret.txt')).toThrow()
     } finally {
       rmSync(dir, { recursive: true, force: true })

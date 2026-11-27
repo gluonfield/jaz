@@ -25,7 +25,7 @@ export interface AppBridgeContext {
   ticket: AppTicketResponse
   resolveBundleAssetUrl: (relpath: string) => string
   confirmSharedWrite: () => Promise<boolean>
-  api?: AppBridgeAPI
+  api: AppBridgeAPI
   desktopApps?: DesktopAppsAPI
   desktopPermissions?: string[]
   desktopPermissionsPaused?: boolean
@@ -139,10 +139,6 @@ export function isAppBridgeRequest(data: unknown): data is AppBridgeRequestMessa
   return rec.type === 'jaz:app-bridge-request' && typeof rec.id === 'string' && typeof rec.method === 'string'
 }
 
-async function loadApi(ctx: AppBridgeContext): Promise<AppBridgeAPI> {
-  return ctx.api ?? (await import('@/lib/api/apps'))
-}
-
 export async function dispatchAppBridgeCall(
   ctx: AppBridgeContext,
   method: string,
@@ -160,7 +156,7 @@ export async function dispatchAppBridgeCall(
       const scope = params.shared ? 'shared' : 'personal'
       const reqCap = scope === 'shared' ? 'storage:shared' : 'storage:personal'
       if (!caps.has(reqCap)) throw new Error(`App does not declare ${reqCap}`)
-      return (await loadApi(ctx)).getAppKV(ctx.app.id, key, scope)
+      return ctx.api.getAppKV(ctx.app.id, key, scope)
     }
     case 'storage.set': {
       const key = typeof params.key === 'string' ? params.key : ''
@@ -173,7 +169,7 @@ export async function dispatchAppBridgeCall(
         if (!ok) throw new Error('Shared storage write cancelled by user')
       }
       const expectedRevision = typeof params.expectedRevision === 'number' ? params.expectedRevision : undefined
-      return (await loadApi(ctx)).putAppKV(ctx.app.id, key, value, { scope, expectedRevision })
+      return ctx.api.putAppKV(ctx.app.id, key, value, { scope, expectedRevision })
     }
     case 'storage.delete': {
       const key = typeof params.key === 'string' ? params.key : ''
@@ -185,14 +181,14 @@ export async function dispatchAppBridgeCall(
         if (!ok) throw new Error('Shared storage delete cancelled by user')
       }
       const expectedRevision = typeof params.expectedRevision === 'number' ? params.expectedRevision : undefined
-      return (await loadApi(ctx)).deleteAppKV(ctx.app.id, key, { scope, expectedRevision })
+      return ctx.api.deleteAppKV(ctx.app.id, key, { scope, expectedRevision })
     }
     case 'storage.list': {
       const prefix = typeof params.prefix === 'string' ? params.prefix : ''
       const scope = params.shared ? 'shared' : 'personal'
       const reqCap = scope === 'shared' ? 'storage:shared' : 'storage:personal'
       if (!caps.has(reqCap)) throw new Error(`App does not declare ${reqCap}`)
-      return (await loadApi(ctx)).listAppKV(ctx.app.id, { scope, prefix })
+      return ctx.api.listAppKV(ctx.app.id, { scope, prefix })
     }
     case 'ai.complete': {
       if (!caps.has('ai:complete')) throw new Error('App does not declare ai:complete')
@@ -200,7 +196,7 @@ export async function dispatchAppBridgeCall(
       const system = typeof params.system === 'string' ? params.system : undefined
       const model = typeof params.model === 'string' ? params.model : undefined
       const maxTokens = typeof params.maxTokens === 'number' ? params.maxTokens : undefined
-      return (await loadApi(ctx)).completeAppAI(ctx.app.id, { prompt, system, model, max_tokens: maxTokens })
+      return ctx.api.completeAppAI(ctx.app.id, { prompt, system, model, max_tokens: maxTokens })
     }
     case 'tools.call': {
       if (!caps.has('tools:call')) throw new Error('App does not declare tools:call')
@@ -210,7 +206,7 @@ export async function dispatchAppBridgeCall(
       }
       const args = (params.arguments && typeof params.arguments === 'object' ? params.arguments : {}) as Record<string, unknown>
       const alias = typeof params.alias === 'string' ? params.alias : undefined
-      return (await loadApi(ctx)).callAppTool(ctx.app.id, { tool, arguments: args, alias })
+      return ctx.api.callAppTool(ctx.app.id, { tool, arguments: args, alias })
     }
     case 'resolveAsset': {
       const relpath = typeof params.path === 'string' ? params.path.trim() : ''

@@ -13,19 +13,6 @@ import (
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/widgetdb"
 )
 
-func ValidateAppKVKey(key string) bool {
-	if key == "" || len(key) > 256 {
-		return false
-	}
-	for i := 0; i < len(key); i++ {
-		c := key[i]
-		if c < 0x20 || c == 0x7f {
-			return false
-		}
-	}
-	return strings.TrimSpace(key) == key
-}
-
 func marshalJSONString(v any, fallback string) string {
 	b, err := json.Marshal(v)
 	if err != nil || len(b) == 0 || string(b) == "null" {

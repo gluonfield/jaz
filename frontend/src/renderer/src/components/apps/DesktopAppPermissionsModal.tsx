@@ -43,7 +43,7 @@ export function DesktopAppPermissionsModal({
 
   const currentSha = app.bundle_sha256 || installed?.latestBundleSha256 || ''
   const isExternal = Boolean(installed?.isExternalOrg)
-  const fullAccessPolicyAllowed = orgPolicy ? orgPolicy.allow_desktop_full_access : true
+  const fullAccessPolicyAllowed = orgPolicy?.allow_desktop_full_access ?? false
   const tier3BlockedExternal = isExternal
   const fullAccessDisabled = tier3BlockedExternal || !fullAccessPolicyAllowed
 
@@ -86,6 +86,7 @@ export function DesktopAppPermissionsModal({
             permissions: selected,
             scopedFolders: folders,
             isExternalOrg: false,
+            allowDesktopFullAccess: fullAccessPolicyAllowed,
           })
       onSaved?.(next)
       onClose()

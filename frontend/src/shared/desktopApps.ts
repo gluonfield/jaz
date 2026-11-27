@@ -49,6 +49,7 @@ export interface InstallDesktopAppInput {
   permissions?: DesktopAppPermission[]
   scopedFolders?: string[]
   isExternalOrg?: boolean
+  allowDesktopFullAccess?: boolean
 }
 
 export interface DesktopAppFSEntry {
@@ -90,8 +91,4 @@ export interface DesktopAppsAPI {
 
 export function isTier3Permission(p: DesktopAppPermission): p is DesktopAppTier3Permission {
   return p === 'fs' || p === 'full_access'
-}
-
-export function hasElevatedPermissions(permissions: readonly DesktopAppPermission[]): boolean {
-  return permissions.length > 0
 }

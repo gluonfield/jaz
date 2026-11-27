@@ -5,8 +5,14 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import {
   appContentFileUrl,
+  callAppTool,
+  completeAppAI,
+  deleteAppKV,
   fetchAppContentText,
+  getAppKV,
   issueAppTicket,
+  listAppKV,
+  putAppKV,
   type AppTicketResponse,
   type JazApp,
 } from '@/lib/api/apps'
@@ -14,7 +20,26 @@ import {
   buildAppSandboxDocument,
   dispatchAppBridgeCall,
   isAppBridgeRequest,
+  type AppBridgeAPI,
 } from '@/lib/appBridge'
+
+const APP_BRIDGE_API: AppBridgeAPI = {
+  callAppTool,
+  completeAppAI,
+  deleteAppKV,
+  getAppKV,
+  listAppKV,
+  putAppKV,
+}
+
+function isSafeExternalLink(href: string): boolean {
+  try {
+    const parsed = new URL(href)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
 import { artifactErrorForDisplay } from '@/lib/artifacts'
 import { clientRuntime, openExternal } from '@/lib/clientRuntime'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
@@ -63,6 +88,7 @@ export function AppRenderer({
   const [height, setHeight] = useState(420)
   const [sharedPromptOpen, setSharedPromptOpen] = useState(false)
   const sharedPromptResolverRef = useRef<((allowed: boolean) => void) | null>(null)
+  const sharedPromptPromiseRef = useRef<Promise<boolean> | null>(null)
 
   const targetVersion = version && version > 0 ? version : app.current_version
 
@@ -91,10 +117,13 @@ export function AppRenderer({
 
   const confirmSharedWrite = useCallback(async (): Promise<boolean> => {
     if (hasSharedWriteAck(app.id)) return true
-    return new Promise<boolean>((resolve) => {
+    if (sharedPromptPromiseRef.current) return sharedPromptPromiseRef.current
+    const promise = new Promise<boolean>((resolve) => {
       sharedPromptResolverRef.current = resolve
       setSharedPromptOpen(true)
     })
+    sharedPromptPromiseRef.current = promise
+    return promise
   }, [app.id])
 
   const resolveSharedPrompt = (allowed: boolean) => {
@@ -102,6 +131,7 @@ export function AppRenderer({
     if (allowed) recordSharedWriteAck(app.id)
     const resolver = sharedPromptResolverRef.current
     sharedPromptResolverRef.current = null
+    sharedPromptPromiseRef.current = null
     resolver?.(allowed)
   }
 
@@ -137,7 +167,7 @@ export function AppRenderer({
         if (display) setRuntimeError(display)
         return
       }
-      if (data.type === 'jaz:artifact-link' && typeof data.href === 'string' && data.href) {
+      if (data.type === 'jaz:artifact-link' && typeof data.href === 'string' && isSafeExternalLink(data.href)) {
         openExternal(data.href)
         return
       }
@@ -147,6 +177,7 @@ export function AppRenderer({
           {
             app,
             ticket,
+            api: APP_BRIDGE_API,
             resolveBundleAssetUrl: (relpath) => appContentFileUrl(ticket, relpath),
             confirmSharedWrite,
             desktopApps: clientRuntime.desktopApps,

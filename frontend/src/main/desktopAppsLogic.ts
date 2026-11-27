@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import {
   isTier3Permission,
   type DesktopAppPermission,
@@ -107,15 +107,22 @@ export function resolveScopedFolderTarget(
   if (rel.startsWith('..') || isAbsolute(rel)) {
     throw new Error('Path escapes approved folder')
   }
-  if (existsSync(candidate)) {
-    const realTarget = realpathSync(candidate)
-    const realRel = relative(realFolder, realTarget)
-    if (realRel.startsWith('..') || isAbsolute(realRel)) {
-      throw new Error('Symlink escapes approved folder')
-    }
-    return realTarget
+  // Walk up to the nearest existing ancestor so creating a new file under a
+  // symlinked subdirectory cannot escape the approved folder.
+  let existingAncestor = candidate
+  const tailSegments: string[] = []
+  while (!existsSync(existingAncestor)) {
+    const parent = dirname(existingAncestor)
+    if (parent === existingAncestor) break
+    tailSegments.unshift(relative(parent, existingAncestor))
+    existingAncestor = parent
   }
-  return candidate
+  const realAncestor = realpathSync(existingAncestor)
+  const ancestorRel = relative(realFolder, realAncestor)
+  if (ancestorRel.startsWith('..') || isAbsolute(ancestorRel)) {
+    throw new Error('Symlink escapes approved folder')
+  }
+  return tailSegments.length > 0 ? join(realAncestor, ...tailSegments) : realAncestor
 }
 
 function escapeXml(value: string): string {
