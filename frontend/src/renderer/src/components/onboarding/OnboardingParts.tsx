@@ -5,8 +5,7 @@ import { Switch } from '@/components/ui/Switch'
 import type { Entrance, Silhouette } from '@/components/launch/DitherArt'
 import { onboardingAgentLabel } from '@/lib/agentLabel'
 
-export type OnboardingStep = 'welcome' | 'appearance' | 'agents' | 'memory' | 'connections' | 'computer' | 'voice' | 'bot'
-export type SetupStep = Exclude<OnboardingStep, 'welcome'>
+export type SetupStep = 'appearance' | 'agents' | 'memory' | 'connections' | 'computer' | 'voice' | 'bot'
 
 // A slide's dithered hero: its shape and how it arrives.
 export type Mark = { draw: Silhouette; enter: Entrance }
@@ -25,37 +24,12 @@ export const slideRise = {
   out: { opacity: 0, y: -10, filter: 'blur(6px)', transition: { duration: 0.2, ease: onboardingEase } },
 }
 
-export const slideExit = {
-  opacity: 0,
-  y: -6,
-  filter: 'blur(3px)',
-  transition: { duration: 0.16, ease: onboardingEase },
-}
-
-// Positional pixels in the brand's dither language: square dots, the active
-// step stretching into a short bar, past steps tinted toward the brand.
-export function OnboardingProgress({ step, steps }: { step: OnboardingStep; steps: SetupStep[] }) {
-  const position = steps.findIndex((value) => value === step)
-  return (
-    <div aria-label="Setup progress" className="flex shrink-0 items-center gap-[5px]">
-      {steps.map((value, index) => (
-        <span
-          key={value}
-          aria-current={index === position ? 'step' : undefined}
-          className={`size-[5px] rounded-[1px] transition-all duration-200 ${
-            index === position ? 'w-[17px] bg-primary' : index < position ? 'bg-primary/40' : 'bg-ink/15'
-          }`}
-        />
-      ))}
-    </div>
-  )
-}
-
-// Shared slide footer: Back on the left, progress dots dead center, the
-// primary action on the right — the one fixed anchor across every slide.
+// Shared slide footer: Back on the left (from the second slide on), the step
+// count dead center, the primary action on the right — the one fixed anchor
+// across every slide. The card's lit frame draws the same progress.
 export function OnboardingFooter({
-  step,
-  steps,
+  position,
+  count,
   nextLabel,
   nextDisabled = false,
   busy = false,
@@ -63,8 +37,8 @@ export function OnboardingFooter({
   onBack,
   onNext,
 }: {
-  step: OnboardingStep
-  steps: SetupStep[]
+  position: number
+  count: number
   nextLabel: string
   nextDisabled?: boolean
   busy?: boolean
@@ -76,11 +50,13 @@ export function OnboardingFooter({
     <div className="mt-8 w-full">
       {error ? <p className="mb-2 text-center text-pretty text-[12px] text-danger">{error}</p> : null}
       <div className="grid grid-cols-[1fr_auto_1fr] items-center">
-        <Button variant="ghost" size="lg" onClick={onBack} className="justify-self-start">
+        <Button variant="ghost" size="lg" onClick={onBack} className={`justify-self-start ${position === 0 ? 'invisible' : ''}`}>
           <ArrowLeft size={14} />
           Back
         </Button>
-        <OnboardingProgress step={step} steps={steps} />
+        <p className="text-[12px] tabular-nums text-ink-3">
+          {position + 1} of {count}
+        </p>
         <Button
           variant="primary"
           size="lg"

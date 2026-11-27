@@ -1,7 +1,8 @@
 import { useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { PASSAGE_OPEN_MS, runPassage } from './workspaceSwitchPassage'
+import { OPEN_MS } from '@/lib/frameLight'
+import { runPassage } from './workspaceSwitchPassage'
 
 // The new workspace is not opened before its name has been readable.
 const NAMED_MS = 1150
@@ -46,7 +47,7 @@ export function WorkspaceSwitchTransition({ name }: { name: string | null }) {
         if (cancelled) return
         setScene((current) => current && { ...current, phase: 'landing' })
         running.arrive()
-        await wait(PASSAGE_OPEN_MS)
+        await wait(OPEN_MS)
       }
       if (!cancelled) setScene(null)
     })()

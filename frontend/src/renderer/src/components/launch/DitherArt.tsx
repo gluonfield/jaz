@@ -18,7 +18,7 @@ import { useTheme } from '@/lib/theme'
 export type Silhouette = (g: OffscreenCanvasRenderingContext2D, w: number, h: number) => void
 
 // prettier-ignore
-export const BAYER8 = [
+const BAYER8 = [
   0, 32, 8, 40, 2, 34, 10, 42,
   48, 16, 56, 24, 50, 18, 58, 26,
   12, 44, 4, 36, 14, 46, 6, 38,
@@ -29,7 +29,7 @@ export const BAYER8 = [
   63, 31, 55, 23, 61, 29, 53, 21,
 ]
 
-export function hash(n: number): number {
+function hash(n: number): number {
   let x = (n + 0x9e3779b9) | 0
   x = Math.imul(x ^ (x >>> 16), 0x21f0aaad)
   x = Math.imul(x ^ (x >>> 15), 0x735a2d97)
@@ -40,7 +40,7 @@ type Dot = { x: number; y: number; color: string; alpha: number; seed: number; a
 
 type Palette = { primary: string; strong: string; ink: string; rainbow: string[] }
 
-export function readPalette(): Palette {
+function readPalette(): Palette {
   const style = getComputedStyle(document.documentElement)
   const read = (name: string) => style.getPropertyValue(name).trim()
   return {
@@ -51,7 +51,7 @@ export function readPalette(): Palette {
   }
 }
 
-export function toneFor(seed: number, ambient: boolean, palette: Palette): string {
+function toneFor(seed: number, ambient: boolean, palette: Palette): string {
   const r = seed % 1000
   if (ambient) return r < 300 ? palette.ink : palette.primary
   if (r < 30) return palette.rainbow[seed % 5]
@@ -61,7 +61,7 @@ export function toneFor(seed: number, ambient: boolean, palette: Palette): strin
 }
 
 // The ordered-dither cut: a cell whose coverage reaches it becomes a dot.
-export const threshold = (x: number, y: number, seed: number) =>
+const threshold = (x: number, y: number, seed: number) =>
   0.92 * (0.7 * ((BAYER8[(y % 8) * 8 + (x % 8)] + 0.5) / 64) + 0.3 * ((seed % 4096) / 4096))
 
 function sample(draw: Silhouette, cols: number, rows: number, palette: Palette): Dot[] {
@@ -111,10 +111,10 @@ const MORPH_SPREAD = 0.35
 const MORPH_FLIGHT = 0.4
 export const MORPH_SECONDS = MORPH_GATHER + MORPH_SPREAD + MORPH_FLIGHT
 
-export const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
+const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 const overshoot = (t: number) => 1 + 2.4 * (t - 1) ** 3 + 1.4 * (t - 1) ** 2
 
-export const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
+const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
 
 type Place = (d: Dot, x: number, y: number, alpha: number) => void
 
@@ -150,17 +150,9 @@ export const ditherSize = (cols: number, rows: number, dot = 3, gap = 1) => ({
   height: rows * (dot + gap) - gap,
 })
 
-// Boot art plays its dissolve once per process. The launch screen, the
-// onboarding gate, and the onboarding screen each mount their own canvases;
-// without this, every handoff replays the build and the boot visibly blinks.
+// Keyed art plays its dissolve once per process: a remount paints it built,
+// where replaying the build would read as a blink.
 const BUILT_KEYS = new Set<string>()
-
-// Boot art on screen, as the launch splash needs it to land grains on its dots.
-export type Landing = { canvas: HTMLCanvasElement; key: string; width: number; pitch: number; dot: number; dots: Dot[] }
-
-// While the launch splash is up it owns the boot reveal: boot art paints built
-// at once, underneath, and lists itself so the splash can fly onto it.
-export const boot = { splash: false, landings: new Set<Landing>() }
 
 export function DitherArt({
   draw,
@@ -210,7 +202,6 @@ export function DitherArt({
     let cancelled = false
     let raf = 0
     let grainTimer = 0
-    let landing: Landing | undefined
     const built = buildKey ? BUILT_KEYS.has(buildKey) : false
 
     const start = () => {
@@ -219,10 +210,6 @@ export function DitherArt({
       const dots = sample(draw, cols, rows, palette)
       const previous = shown.current
       shown.current = { draw, dots }
-      if (buildKey) {
-        landing = { canvas, key: buildKey, width, pitch, dot, dots }
-        boot.landings.add(landing)
-      }
 
       const paintDot = (d: Dot, color: string, alpha: number) => {
         ctx.clearRect(d.x * pitch, d.y * pitch, dot, dot)
@@ -292,7 +279,7 @@ export function DitherArt({
           ctx.clearRect(0, 0, width, height)
           return step(t)
         })
-      } else if (built || (buildKey && boot.splash)) {
+      } else if (built) {
         paint(dots)
         settle()
       } else {
@@ -318,7 +305,6 @@ export function DitherArt({
       cancelled = true
       cancelAnimationFrame(raf)
       window.clearInterval(grainTimer)
-      if (landing) boot.landings.delete(landing)
     }
   }, [animate, draw, enter, cols, rows, dot, gap, pitch, width, height, delay, waitForFonts, buildKey, resolved, color])
 
@@ -333,10 +319,10 @@ export function DitherArt({
   )
 }
 
-export const WORDMARK_FONT = "600 100px 'Inter Variable', 'Inter', sans-serif"
+const WORDMARK_FONT = "600 100px 'Inter Variable', 'Inter', sans-serif"
 const WORDMARK_ROWS = 48
 
-export const drawText =
+const drawText =
   (text: string): Silhouette =>
   (g, w, h) => {
     g.font = WORDMARK_FONT

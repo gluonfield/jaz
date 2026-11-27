@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, LoaderCircle } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AlertCircle } from 'lucide-react'
+import { motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
+import { HorizonBelow, HorizonStatus, useHorizonUp } from '@/components/launch/Horizon'
 import { useToast } from '@/components/ui/toast'
 import { authProviderLabel } from '@/lib/agentLabel'
 import { pluginsQuery } from '@/lib/api/plugins'
@@ -18,17 +18,12 @@ import { selectableACPAgent } from '@/lib/agentRuntimes'
 import { keys } from '@/lib/query/keys'
 import { AgentList, agentReady } from './OnboardingAgents'
 import { ConnectionsList } from './OnboardingConnections'
-import {
-  MemoryCard,
-  OnboardingFooter,
-  type OnboardingStep,
-  slideRise,
-} from './OnboardingParts'
+import { MemoryCard, OnboardingFooter, type SetupStep, slideRise } from './OnboardingParts'
 import { SystemPermissionRows } from '@/components/settings/SystemPermissionRows'
 import { hasSystemPermissions, useSystemPermissions } from '@/lib/systemPermissions'
 import { OnboardingStage } from './OnboardingStage'
 import { BotTeam } from './OnboardingBots'
-import { SETUP_STEPS, SLIDES, ThemeChoice, WelcomeStep, slideFooter } from './OnboardingSlides'
+import { SETUP_STEPS, SLIDES, ThemeChoice, slideFooter } from './OnboardingSlides'
 
 const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'kimi', 'opencode', 'antigravity', 'grok']
 
@@ -38,9 +33,9 @@ const STEPS = SETUP_STEPS.filter((step) => hasSystemPermissions || !SLIDES[step]
 // step it left.
 const STEP_KEY = 'jaz.onboarding.step'
 
-function savedStep(): OnboardingStep {
+function savedStep(): SetupStep {
   const value = window.localStorage.getItem(STEP_KEY)
-  return STEPS.find((step) => step === value) ?? 'welcome'
+  return STEPS.find((step) => step === value) ?? STEPS[0]
 }
 
 // `?onboarding` pins the gate open so the flow can be iterated in a browser
@@ -60,18 +55,20 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
 
   if (skipOnboarding) return <>{children}</>
   if (completed) return <>{children}</>
-  // One shell across loading → content, so the terrain and titlebar never
-  // remount (a remount replays the boot art and reads as a blink).
+  // The launch stage's line stays up while this loads; setup then opens out
+  // of it as a card.
   return (
     <OnboardingShell onDisconnect={disconnectBackend}>
       {(!preview && state.isPending) || onboarding.isPending ? (
-        <LoadingBlock />
+        <HorizonStatus>Opening jaz…</HorizonStatus>
       ) : onboarding.isError ? (
-        <StatusBlock
-          icon={<AlertCircle size={16} />}
-          title="Couldn't load onboarding"
-          text={onboarding.error.message}
-        />
+        <HorizonBelow>
+          <StatusBlock
+            icon={<AlertCircle size={16} />}
+            title="Couldn't load onboarding"
+            text={onboarding.error.message}
+          />
+        </HorizonBelow>
       ) : onboarding.data ? (
         <OnboardingScreen
           status={onboarding.data}
@@ -96,7 +93,7 @@ function OnboardingScreen({
   const toast = useToast()
   const connection = useConnection()
   const remote = !isLocalBackendUrl(connection.url)
-  const [step, setStep] = useState<OnboardingStep>(savedStep)
+  const [step, setStep] = useState(savedStep)
   const [draft, setDraft] = useState(() => draftFromStatus(status))
   const [acpKeysByAgent, setACPKeysByAgent] = useState<Record<string, string>>({})
   const [memoryEnabled, setMemoryEnabled] = useState(status.memory?.enabled ?? true)
@@ -207,91 +204,85 @@ function OnboardingScreen({
   })
 
   const next = STEPS[position + 1]
-  const slide = step === 'welcome' ? null : SLIDES[step]
-  const permissions = slide?.permissions
+  const slide = SLIDES[step]
+  const permissions = slide.permissions
   const { status: systemPermissions } = useSystemPermissions(Boolean(permissions))
   const skippable =
     step === 'connections' ? !anyConnected : (permissions?.every((permission) => systemPermissions?.[permission] !== 'granted') ?? false)
-  const footer = step === 'welcome' ? null : slideFooter(step, { canContinue, memoryReady, skippable })
+  const footer = slideFooter(step, { canContinue, memoryReady, skippable })
 
   return (
-    <AnimatePresence mode="wait">
-      {!slide || !footer ? (
-        <WelcomeStep key="welcome" onStart={() => setStep(STEPS[0])} />
-      ) : (
-        <OnboardingStage
-          key="setup"
-          step={step}
-          mark={slide.mark}
-          footer={
-            <OnboardingFooter
-              step={step}
-              steps={STEPS}
-              nextLabel={footer.nextLabel}
-              nextDisabled={footer.nextDisabled}
-              busy={!next && save.isPending}
-              error={next ? undefined : save.error?.message}
-              onBack={() => setStep(STEPS[position - 1] ?? 'welcome')}
-              onNext={() => (next ? setStep(next) : save.mutate())}
-            />
-          }
-        >
-          <motion.h1
-            variants={slideRise}
-            className="mt-6 text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
-          >
-            {slide.title}
-          </motion.h1>
-          <motion.p
-            variants={slideRise}
-            className="mt-2 max-w-[360px] text-center text-pretty text-[13px] leading-relaxed text-ink-2"
-          >
-            {slide.subtitle}
-          </motion.p>
+    <OnboardingStage
+      step={step}
+      progress={(position + 1) / STEPS.length}
+      mark={slide.mark}
+      footer={
+        <OnboardingFooter
+          position={position}
+          count={STEPS.length}
+          nextLabel={footer.nextLabel}
+          nextDisabled={footer.nextDisabled}
+          busy={!next && save.isPending}
+          error={next ? undefined : save.error?.message}
+          onBack={() => setStep(STEPS[position - 1])}
+          onNext={() => (next ? setStep(next) : save.mutate())}
+        />
+      }
+    >
+      <motion.h1
+        variants={slideRise}
+        className="mt-6 text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
+      >
+        {slide.title}
+      </motion.h1>
+      <motion.p
+        variants={slideRise}
+        className="mt-2 max-w-[360px] text-center text-pretty text-[13px] leading-relaxed text-ink-2"
+      >
+        {slide.subtitle}
+      </motion.p>
 
-          <motion.div variants={slideRise} className="mt-7 w-full">
-            {step === 'appearance' ? (
-              <ThemeChoice />
-            ) : step === 'agents' ? (
-              <AgentList
-                probes={onboardingProbes}
-                remote={remote}
-                acpKeysByAgent={acpKeysByAgent}
-                loginJobs={loginJobs}
-                loginPending={login.isPending ? login.variables?.agent : undefined}
-                preparePending={prepare.isPending ? prepare.variables : undefined}
-                onPrepare={(agent) => prepare.mutate(agent)}
-                onStartLogin={(agent) => {
-                  const auth = onboardingLoginAuth(agent, draft.acp[agent]?.auth)
-                  setDraft((current) => withAgentAuth(current, agent, auth))
-                  login.mutate({ agent, auth })
-                }}
-                onAPIKeyChange={(agent, value) => setACPKeysByAgent((keys) => ({ ...keys, [agent]: value }))}
-              />
-            ) : step === 'memory' ? (
-              <MemoryCard
-                enabled={memoryEnabled}
-                agent={memoryAgent}
-                agents={readyAgentNames}
-                onEnabledChange={setMemoryEnabled}
-                onAgentChange={setMemoryAgent}
-              />
-            ) : step === 'connections' ? (
-              <ConnectionsList />
-            ) : permissions ? (
-              <>
-                <div className="divide-y divide-border rounded-[14px] bg-surface">
-                  <SystemPermissionRows permissions={permissions} />
-                </div>
-                <p className="mt-2.5 text-center text-[12px] text-ink-3">You can change these any time in Settings.</p>
-              </>
-            ) : (
-              <BotTeam />
-            )}
-          </motion.div>
-        </OnboardingStage>
-      )}
-    </AnimatePresence>
+      <motion.div variants={slideRise} className="mt-7 w-full">
+        {step === 'appearance' ? (
+          <ThemeChoice />
+        ) : step === 'agents' ? (
+          <AgentList
+            probes={onboardingProbes}
+            remote={remote}
+            acpKeysByAgent={acpKeysByAgent}
+            loginJobs={loginJobs}
+            loginPending={login.isPending ? login.variables?.agent : undefined}
+            preparePending={prepare.isPending ? prepare.variables : undefined}
+            onPrepare={(agent) => prepare.mutate(agent)}
+            onStartLogin={(agent) => {
+              const auth = onboardingLoginAuth(agent, draft.acp[agent]?.auth)
+              setDraft((current) => withAgentAuth(current, agent, auth))
+              login.mutate({ agent, auth })
+            }}
+            onAPIKeyChange={(agent, value) => setACPKeysByAgent((keys) => ({ ...keys, [agent]: value }))}
+          />
+        ) : step === 'memory' ? (
+          <MemoryCard
+            enabled={memoryEnabled}
+            agent={memoryAgent}
+            agents={readyAgentNames}
+            onEnabledChange={setMemoryEnabled}
+            onAgentChange={setMemoryAgent}
+          />
+        ) : step === 'connections' ? (
+          <ConnectionsList />
+        ) : permissions ? (
+          <>
+            <div className="divide-y divide-border rounded-[14px] bg-surface">
+              <SystemPermissionRows permissions={permissions} />
+            </div>
+            <p className="mt-2.5 text-center text-[12px] text-ink-3">You can change these any time in Settings.</p>
+          </>
+        ) : (
+          <BotTeam />
+        )}
+      </motion.div>
+    </OnboardingStage>
   )
 }
 
@@ -307,30 +298,14 @@ function StatusBlock({ icon, title, text }: { icon: ReactNode; title: string; te
   )
 }
 
-function LoadingBlock() {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1, transition: { duration: 0.18 } }}
-      className="flex flex-col items-center gap-7"
-    >
-      <DitherWordmark />
-      <div className="flex items-center gap-2 text-[12px] text-ink-3">
-        <LoaderCircle size={13} className="animate-spin" />
-        Opening jaz...
-      </div>
-    </motion.div>
-  )
-}
-
 function OnboardingShell({ children, onDisconnect }: { children: ReactNode; onDisconnect?: () => void }) {
+  const staged = useHorizonUp()
   return (
-    <div className="relative flex h-full flex-col bg-bg">
-      <DitherTerrain className="absolute inset-x-0 bottom-0" delay={0.3} />
+    <div className="relative flex h-full flex-col">
       {/* Always an escape back to the connect chooser, so onboarding a backend
           you can't finish never traps the app. Right-aligned to clear the macOS
           traffic lights. */}
-      <div className="titlebar-drag relative flex h-[52px] shrink-0 items-center justify-end px-3">
+      <div className={`titlebar-drag relative flex h-[52px] shrink-0 items-center justify-end px-3 ${staged ? 'night' : ''}`}>
         {onDisconnect ? (
           <button
             type="button"

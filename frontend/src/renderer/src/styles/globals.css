@@ -4,8 +4,9 @@
 @import './tasks.css';
 
 /* Class-based dark mode: tokens are redefined under :root.dark below, so the
- * `dark:` variant is only needed for the rare per-element tweak. */
-@custom-variant dark (&:where(.dark, .dark *));
+ * `dark:` variant is only needed for the rare per-element tweak. `.night` is
+ * the launch stage, dark whatever the theme. */
+@custom-variant dark (&:where(.dark, .dark *, .night, .night *));
 
 /* Keyboard focus styling applies only while navigating with Tab; see
  * lib/dom/keyboardFocus. */
@@ -175,7 +176,8 @@
  * lifts to a clear cobalt with dark on-primary text. :where keeps the
  * defaults below the user's :root.dark Appearance overrides, even when those
  * load first. */
-:root:where(.dark) {
+:root:where(.dark),
+.night {
   color-scheme: dark;
 
   --color-bg: oklch(0.195 0.005 var(--hue));

@@ -2,7 +2,7 @@ import { Cloud, Laptop, LoaderCircle, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
-import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
+import { HorizonBelow, HorizonStatus, useHorizonUp } from '@/components/launch/Horizon'
 import { useKnownBackends } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { DEFAULT_CLOUD_URL } from '@/lib/cloudSession'
@@ -71,6 +71,7 @@ type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; o
 export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}) {
   const { status: liveStatus, error, url: currentUrl, auth: currentAuth, oidcLoginUrl: currentOidcUrl } = useConnection()
   const status = previewStatus ?? liveStatus
+  const staged = useHorizonUp()
   const [mode, setMode] = useState<'options' | 'remote' | 'sso'>('options')
   const [ssoTarget, setSsoTarget] = useState<SsoTarget | null>(null)
   const [awaitingBrowserSso, setAwaitingBrowserSso] = useState(false)
@@ -188,10 +189,11 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
 
   const signInBusyLabel = clientRuntime.kind === 'web' ? 'Signing in…' : 'Opening browser…'
 
+  if (status === 'checking' && !manual && !staged) return <HorizonStatus>{checkingCopy}</HorizonStatus>
+
   return (
-    <div className="relative flex h-full flex-col bg-bg">
-      <DitherTerrain className="absolute inset-x-0 bottom-0" delay={0.5} />
-      <div className="titlebar-drag relative h-[52px] shrink-0">
+    <div className="relative h-full">
+      <div className="titlebar-drag night relative h-[52px]">
         {manual && onClose ? (
           <button
             type="button"
@@ -204,59 +206,42 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
           </button>
         ) : null}
       </div>
-      <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-[52px]">
-        <div className="mb-8">
-          <DitherWordmark delay={0.35} />
-        </div>
+      <HorizonBelow>
+        <h1 className="sr-only">{heading}</h1>
         <AnimatePresence mode="wait" initial={false}>
           {status === 'checking' ? (
-            <motion.div
+            <motion.p
               key="checking"
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.3, delay: 0.2 } }}
+              animate={{ opacity: 1, transition: { duration: 0.4, delay: 1 } }}
               exit={{ opacity: 0, transition: { duration: 0.15 } }}
-              className="flex flex-col items-center gap-8"
+              className="text-[13px] text-ink-3"
             >
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1, transition: { duration: 0.4, delay: 1.1 } }}
-                className="text-[13px] text-ink-3"
-              >
-                {checkingCopy}
-              </motion.p>
-            </motion.div>
+              {checkingCopy}
+            </motion.p>
           ) : (
-            <motion.div
-              key="options"
-              variants={stagger}
-              initial="hidden"
-              animate="show"
-              className="flex w-full max-w-[340px] flex-col items-center"
-            >
-              <motion.h1
-                variants={rise}
-                className="text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
-              >
-                {heading}
-              </motion.h1>
+            <motion.div key="options" variants={stagger} initial="hidden" animate="show" className="flex w-full flex-col items-center">
+              <motion.p variants={rise} className="text-pretty text-center text-[13px] text-ink-2">
+                {manual ? (
+                  <>
+                    Currently on <span className="text-ink">{current.title}</span>.{' '}
+                    {canStartLocal ? 'Run jaz locally or switch to a cloud workspace.' : 'Switch to another cloud server.'}
+                  </>
+                ) : visibleError ? (
+                  <>
+                    <span>{visibleError}</span>
+                    <span className="mt-1 block text-ink-3">{reconnectHint}</span>
+                  </>
+                ) : cloudOnly && activeSso ? (
+                  <>
+                    Sign in to open <span className="text-ink">{activeSso.label}</span>.
+                  </>
+                ) : (
+                  "Agents that code, remember you, and keep working while you're away."
+                )}
+              </motion.p>
 
-              {manual ? (
-                <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
-                  Currently on <span className="text-ink">{current.title}</span>.{' '}
-                  {canStartLocal ? 'Run jaz locally or switch to a cloud workspace.' : 'Switch to another cloud server.'}
-                </motion.p>
-              ) : visibleError ? (
-                <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
-                  <span>{visibleError}</span>
-                  <span className="mt-1 block text-ink-3">{reconnectHint}</span>
-                </motion.p>
-              ) : cloudOnly && activeSso ? (
-                <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
-                  Sign in to open <span className="text-ink">{activeSso.label}</span>.
-                </motion.p>
-              ) : null}
-
-              <motion.div variants={rise} className="mt-6 w-full">
+              <motion.div variants={rise} className="mt-5 w-full">
                 <AnimatePresence mode="wait" initial={false}>
                   {mode === 'sso' && activeSso ? (
                     <motion.div
@@ -396,7 +381,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </HorizonBelow>
     </div>
   )
 }
