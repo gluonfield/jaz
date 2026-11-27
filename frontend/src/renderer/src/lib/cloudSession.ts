@@ -1,3 +1,5 @@
+import { useQuery } from '@tanstack/react-query'
+import { orgIdentityQuery } from '@/lib/api/cloudOrg'
 import type { CloudUser, ServerCapabilities } from '@/lib/api/serverTypes'
 import { clientRuntime } from '@/lib/clientRuntime'
 import {
@@ -27,7 +29,22 @@ export interface ActiveCloudSession {
 
 // Unified view of whichever Jaz Cloud session is active — either the primary
 // backend (Cloud-only / Web) or the local Go backend's active Cloud workspace.
+// The active workspace carries the org's live name and icon.
 export function useCloudSession(): ActiveCloudSession {
+  const session = useConnectedCloudSession()
+  const identity = useQuery({ ...orgIdentityQuery, enabled: session.active }).data
+  if (!identity) return session
+  return {
+    ...session,
+    workspaces: session.workspaces.map((ws) =>
+      ws.org_id === identity.org_id
+        ? { ...ws, org_name: identity.org_name || ws.org_name, org_icon: identity.org_icon }
+        : ws,
+    ),
+  }
+}
+
+function useConnectedCloudSession(): ActiveCloudSession {
   const primary = useConnection()
   const attached = useCloudAccount()
 
@@ -96,6 +113,10 @@ export function useHasCloud(): boolean {
 
 export function useIsCloudOnly(): boolean {
   return useConnection().mode === 'cloud' || clientRuntime.capabilities?.localBackend === false
+}
+
+export function useIsCloudAdmin(): boolean {
+  return useCloudSession().user?.role === 'admin'
 }
 
 export function isCloudViewerRole(role?: string | null): boolean {

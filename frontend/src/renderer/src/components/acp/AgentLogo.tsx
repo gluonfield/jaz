@@ -25,6 +25,7 @@ const SIZES: Record<string, number> = {
 function canonical(agent: string): string {
   const slug = agent.trim().toLowerCase()
   if (slug === 'openai') return 'codex'
+  if (slug === 'anthropic') return 'claude'
   if (slug === 'xai') return 'grok'
   if (slug === 'vertex' || slug === 'google') return 'gemini'
   return slug

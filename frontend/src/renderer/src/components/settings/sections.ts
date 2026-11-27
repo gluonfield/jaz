@@ -15,6 +15,7 @@ import {
   Palette,
   Plug,
   Puzzle,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
 } from 'lucide-react'
@@ -30,6 +31,7 @@ export type SettingsSection =
   | 'computer'
   | 'machines'
   | 'cloud'
+  | 'admin'
   | 'usage'
   | 'keyboard'
   | 'mcp'
@@ -50,12 +52,14 @@ export type SettingsNavItem = {
   wide?: boolean
   experimental?: boolean
   requiresCloud?: boolean
+  requiresCloudAdmin?: boolean
   requiresLocal?: boolean
   requiresLocalOrCloud?: boolean
 }
 
 export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'cloud', label: 'Workspace', icon: Layers, group: 'workspace' },
+  { id: 'admin', label: 'Admin', icon: ShieldCheck, group: 'workspace', wide: true, requiresCloudAdmin: true },
   { id: 'personalization', label: 'Personalization', icon: Sparkles, group: 'workspace', fullHeight: true },
   { id: 'memory', label: 'Memory', icon: Brain, group: 'workspace', requiresLocal: true },
   { id: 'agents', label: 'Agents (ACP)', icon: Bot, group: 'workspace', requiresLocalOrCloud: true },
@@ -94,9 +98,11 @@ export function visibleSettingsSections(
   experimentalEnabled: boolean,
   hasCloud = false,
   localBackend = true,
+  cloudAdmin = false,
 ): SettingsNavItem[] {
   return SETTINGS_SECTIONS.filter((item) => {
     if (item.requiresCloud && !hasCloud) return false
+    if (item.requiresCloudAdmin && !cloudAdmin) return false
     if (item.requiresLocal && !localBackend) return false
     if (item.id === 'memory' && hasCloud) return false
     if (item.requiresLocalOrCloud && !localBackend && !hasCloud) return false

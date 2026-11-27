@@ -10,7 +10,7 @@ import {
 } from '@/components/settings/sections'
 import { searchConnections, searchThreads } from '@/lib/api/search'
 import { clientRuntime } from '@/lib/clientRuntime'
-import { useHasCloud, useIsCloudOnly } from '@/lib/cloudSession'
+import { useHasCloud, useIsCloudAdmin, useIsCloudOnly } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import type { PaletteCommand, PaletteSection, PaletteThread } from './commandPaletteTypes'
 
@@ -37,6 +37,7 @@ export function useCommandPaletteItems({
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const hasCloud = useHasCloud()
   const cloudOnly = useIsCloudOnly()
+  const cloudAdmin = useIsCloudAdmin()
   const debouncedQuery = useDebouncedValue(query.trim(), 140)
   const searchEnabled = open && debouncedQuery.length >= 2
 
@@ -83,7 +84,7 @@ export function useCommandPaletteItems({
   // section name), keeping the resting palette uncluttered.
   const settingsCommands = useMemo<PaletteCommand[]>(
     () =>
-      visibleSettingsSections(experimentalEnabled, hasCloud, !cloudOnly).map((sectionItem) => ({
+      visibleSettingsSections(experimentalEnabled, hasCloud, !cloudOnly, cloudAdmin).map((sectionItem) => ({
         id: `settings-${sectionItem.id}`,
         kind: 'command',
         title: sectionItem.label,
@@ -93,7 +94,7 @@ export function useCommandPaletteItems({
           onOpenSettings(sectionItem.id)
         },
       })),
-    [cloudOnly, experimentalEnabled, hasCloud, onOpenChange, onOpenSettings],
+    [cloudAdmin, cloudOnly, experimentalEnabled, hasCloud, onOpenChange, onOpenSettings],
   )
 
   // Archived chats stay searchable and get their own section after the active

@@ -37,6 +37,15 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, h.service.Status(r.Context()))
 }
 
+func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
+	user, err := h.service.Me(r.Context())
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, user)
+}
+
 func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 	var req cloudsync.ConnectRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCloudJSONBodyBytes)).Decode(&req); err != nil {

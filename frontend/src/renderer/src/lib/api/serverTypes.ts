@@ -9,6 +9,12 @@ export interface ServerCapabilities {
   spaces?: boolean
 }
 
+export interface OrgIcon {
+  kind: 'none' | 'preset' | 'image'
+  preset?: string
+  url?: string
+}
+
 export interface CloudUser {
   id: string
   org_id: string

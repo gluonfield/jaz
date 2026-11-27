@@ -294,13 +294,14 @@ func (c *cloudClient) discover(ctx context.Context, baseURL string) (discoveryDo
 }
 
 type authMeResponse struct {
-	ID          string `json:"id"`
-	UserID      string `json:"user_id"`
-	OrgID       string `json:"org_id"`
-	OrgName     string `json:"org_name"`
-	Email       string `json:"email"`
-	DisplayName string `json:"display_name"`
-	Role        string `json:"role"`
+	ID          string          `json:"id"`
+	UserID      string          `json:"user_id"`
+	OrgID       string          `json:"org_id"`
+	OrgName     string          `json:"org_name"`
+	OrgIcon     json.RawMessage `json:"org_icon"`
+	Email       string          `json:"email"`
+	DisplayName string          `json:"display_name"`
+	Role        string          `json:"role"`
 }
 
 func (r authMeResponse) toUser() CloudUser {
@@ -313,6 +314,7 @@ func (r authMeResponse) toUser() CloudUser {
 		UserID:      id,
 		OrgID:       r.OrgID,
 		OrgName:     r.OrgName,
+		OrgIcon:     r.OrgIcon,
 		Email:       r.Email,
 		DisplayName: r.DisplayName,
 		Role:        r.Role,

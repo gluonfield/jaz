@@ -1,5 +1,6 @@
 import { ChevronsUpDown, Laptop, LoaderCircle, Plus } from 'lucide-react'
 import { useRef, useState } from 'react'
+import { OrgIconMark } from '@/components/cloud/OrgIconMark'
 import { AddCloudWorkspaceModal } from '@/components/connection/AddCloudWorkspaceModal'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
@@ -12,15 +13,20 @@ const DEFAULT_CLASS_NAME = 'shrink-0 pl-1.5 pr-3 pt-1.5 pb-1 max-sm:px-4 max-sm:
 const IDENTITY_CLASS =
   'flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-semibold text-ink max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
 
-// A Cloud workspace shows its initial; Local shows the device.
+// A Cloud workspace shows its org icon, or its initial; Local shows the device.
 function WorkspaceMark({ workspace }: { workspace: CloudWorkspaceSummary | null }) {
+  if (workspace) {
+    return (
+      <OrgIconMark
+        name={workspaceDisplayName(workspace)}
+        icon={workspace.org_icon}
+        className="size-5 rounded-md text-[11px]"
+      />
+    )
+  }
   return (
-    <span
-      className={`grid size-5 shrink-0 place-items-center rounded-md text-[11px] font-semibold uppercase ${
-        workspace ? 'bg-ink text-bg' : 'bg-list-active text-ink-2'
-      }`}
-    >
-      {workspace ? workspaceDisplayName(workspace).charAt(0) : <Laptop size={12} />}
+    <span className="grid size-5 shrink-0 place-items-center rounded-md bg-list-active text-ink-2">
+      <Laptop size={12} />
     </span>
   )
 }

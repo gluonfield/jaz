@@ -77,6 +77,7 @@ test('SETTINGS_SECTIONS places Workspace group first and App group second with e
 
   expect(workspaceIds).toEqual([
     'cloud',
+    'admin',
     'personalization',
     'memory',
     'agents',
@@ -205,4 +206,18 @@ test('SettingsNav heads workspace settings with the switcher alone and keeps App
   expect(cloudOnlyHtml).not.toContain('Model Providers')
   expect(cloudOnlyHtml).not.toContain('Browser')
   expect(cloudOnlyHtml).not.toContain('Computer Use')
+})
+
+test('Admin is offered only to org admins of an active Cloud workspace', () => {
+  const ids = (...args) => visibleSettingsSections(...args).map((item) => item.id)
+
+  expect(ids(true, true, true, true)).toContain('admin')
+  expect(ids(true, true, false, true)).toContain('admin')
+  expect(ids(true, true, true, false)).not.toContain('admin')
+
+  const cloud = { active: true, activeWorkspaceId: casWorkspace.id, workspaces: [casWorkspace] }
+  const adminNav = renderSettingsNav({ cloudState: { ...cloud, user: { role: 'admin' } } })
+  const memberNav = renderSettingsNav({ cloudState: { ...cloud, user: { role: 'member' } } })
+  expect(adminNav).toContain('>Admin</span>')
+  expect(memberNav).not.toContain('>Admin</span>')
 })

@@ -67,6 +67,15 @@ func (s *Service) GetUsageSummary(ctx context.Context) (json.RawMessage, error) 
 	return s.fetchCachedEndpoint(ctx, "/v1/usage/summary", nil)
 }
 
+// Me fetches the active workspace's live identity, including the org name and icon.
+func (s *Service) Me(ctx context.Context) (CloudUser, error) {
+	acc, err := s.activeAuthedAccount()
+	if err != nil {
+		return CloudUser{}, err
+	}
+	return s.clientFor(acc.ID).getMe(ctx, acc.BaseURL, acc.Token)
+}
+
 func (s *Service) ListSpaces(ctx context.Context) ([]storage.CloudSpace, error) {
 	acc, gen, ok := s.activeAccountWithGen()
 	if !ok {

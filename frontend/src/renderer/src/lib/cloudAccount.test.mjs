@@ -7,7 +7,7 @@ const bundle = await build({
   entrypoints: ['cloud-account-fixture'],
   target: 'browser',
   format: 'cjs',
-  external: ['react'],
+  external: ['react', '@tanstack/react-query'],
   define: { 'import.meta.env': '{}' },
   plugins: [{
     name: 'cloud-account-fixture',
@@ -75,6 +75,7 @@ async function fixture({
   onLocalCloudDisconnect,
   onLocalCloudSync,
   onCloudAuthMe,
+  orgIdentity,
 } = {}) {
   const stored = new Map()
   const sessionStored = new Map()
@@ -196,10 +197,15 @@ async function fixture({
 
   const module = { exports: {} }
   evaluate(
-    (name) =>
-      name === 'react'
-        ? { ...React, useSyncExternalStore: (_sub, snap) => snap(), useEffect: (effect) => effect() }
-        : require(name),
+    (name) => {
+      if (name === 'react') {
+        return { ...React, useSyncExternalStore: (_sub, snap) => snap(), useEffect: (effect) => effect() }
+      }
+      if (name === '@tanstack/react-query') {
+        return { ...require(name), useQuery: (options) => ({ data: options.enabled ? orgIdentity : undefined }) }
+      }
+      return require(name)
+    },
     module,
     module.exports,
   )
@@ -550,6 +556,7 @@ test('Cloud-only primary Cloud mode exposes connected primary workspace and NEVE
   const f = await fixture({
     localEnabled: false,
     cloudUrl,
+    orgIdentity: { org_id: 'org_cas', org_name: 'CAS Renamed', org_icon: { kind: 'preset', preset: 'rocket' } },
     onCloudAuthMe: (init) => {
       if (new Headers(init?.headers).get('Authorization') !== 'Bearer cloud-tok') {
         return Response.json({ error: 'authentication required' }, { status: 401 })
@@ -588,7 +595,8 @@ test('Cloud-only primary Cloud mode exposes connected primary workspace and NEVE
         id: 'org_cas',
         url: cloudUrl,
         org_id: 'org_cas',
-        org_name: 'Cambridge Advanced Systems',
+        org_name: 'CAS Renamed',
+        org_icon: { kind: 'preset', preset: 'rocket' },
         email: 'eng@cas.example',
         role: 'admin',
       },

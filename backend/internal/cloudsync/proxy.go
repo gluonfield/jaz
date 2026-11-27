@@ -105,8 +105,10 @@ func (p preparedProxy) buildRequest(r *http.Request, token string) (*http.Reques
 		if ct := strings.TrimSpace(r.Header.Get("Content-Type")); ct != "" {
 			req.Header.Set("Content-Type", ct)
 		}
-		if accHdr := strings.TrimSpace(r.Header.Get("Accept")); accHdr != "" {
-			req.Header.Set("Accept", accHdr)
+		for _, hdr := range []string{"Accept", "If-None-Match"} {
+			if v := strings.TrimSpace(r.Header.Get(hdr)); v != "" {
+				req.Header.Set(hdr, v)
+			}
 		}
 		for _, hdr := range []string{"If-Match", "If-None-Match"} {
 			if v := strings.TrimSpace(r.Header.Get(hdr)); v != "" {
@@ -181,7 +183,7 @@ func (s *Service) ProxyActiveWorkspace(w http.ResponseWriter, r *http.Request) b
 		return true
 	}
 
-	for _, hdr := range []string{"Content-Type", "Content-Disposition", "ETag", "Cache-Control"} {
+	for _, hdr := range []string{"Content-Type", "Content-Disposition", "ETag", "Cache-Control", "X-Content-Type-Options", "Content-Security-Policy"} {
 		if v := resp.Header.Get(hdr); v != "" {
 			w.Header().Set(hdr, v)
 		}

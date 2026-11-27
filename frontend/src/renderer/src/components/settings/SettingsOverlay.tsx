@@ -17,7 +17,8 @@ import { CloudACPSettings } from './CloudACPSettings'
 import { ComputerSettings } from '@/components/settings/ComputerSettings'
 import { ConnectedMachinesSettings } from '@/components/settings/ConnectedMachinesSettings'
 import { NotificationsSettings } from '@/components/settings/NotificationsSettings'
-import { useHasCloud, useIsCloudOnly } from '@/lib/cloudSession'
+import { useHasCloud, useIsCloudAdmin, useIsCloudOnly } from '@/lib/cloudSession'
+import { AdminSettings } from './admin/AdminSettings'
 import { BrowserSettings } from './BrowserSettings'
 import { CloudSettings } from './CloudSettings'
 import { GeneralSettings } from './GeneralSettings'
@@ -56,6 +57,7 @@ export function SettingsOverlay({
   const isMobile = useIsMobile()
   const hasCloud = useHasCloud()
   const cloudOnly = useIsCloudOnly()
+  const cloudAdmin = useIsCloudAdmin()
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const escapeLayerID = useRef<string | null>(null)
   if (!escapeLayerID.current) escapeLayerID.current = createEscapeLayerID('settings')
@@ -88,7 +90,7 @@ export function SettingsOverlay({
     }
   }, [open, onClose])
 
-  const visibleSections = visibleSettingsSections(experimentalEnabled, hasCloud, !cloudOnly)
+  const visibleSections = visibleSettingsSections(experimentalEnabled, hasCloud, !cloudOnly, cloudAdmin)
   const current = visibleSections.find((item) => item.id === section) ?? visibleSections[0]
 
   useEffect(() => {
@@ -226,6 +228,8 @@ function SectionContent({
       return <ConnectedMachinesSettings />
     case 'cloud':
       return <CloudSettings />
+    case 'admin':
+      return <AdminSettings />
     case 'browser':
       return <BrowserSettings />
     case 'usage':

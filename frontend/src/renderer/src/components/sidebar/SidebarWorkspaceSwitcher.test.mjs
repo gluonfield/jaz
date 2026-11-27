@@ -17,6 +17,7 @@ const bundle = await build({
     '@/components/connection/AddCloudWorkspaceModal',
     '@/components/ui/Popover',
     '@/components/ui/toast',
+    '@/lib/api/client',
     '@/lib/clientRuntime',
     '@/lib/cloudAccount',
     '@/lib/cloudSession',
@@ -86,6 +87,11 @@ function loadSwitcher(
       if (name === '@/components/ui/toast') {
         return {
           useToast: () => () => {},
+        }
+      }
+      if (name === '@/lib/api/client') {
+        return {
+          apiEmbeddedGetUrl: (path) => `https://backend.example${path}&ticket=t`,
         }
       }
       if (name === '@/lib/clientRuntime') {
@@ -403,4 +409,32 @@ test('Add Cloud Workspace opens the sign-in modal in place instead of navigating
 
   const openHtml = renderToStaticMarkup(React.createElement(loadSwitcher(cloudState, { adding: true })))
   expect(openHtml).toContain('data-add-cloud-modal="open"')
+})
+
+test('SidebarWorkspaceSwitcher shows each org icon: uploaded image, preset, or the initial', () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      loadSwitcher(
+        {
+          ...noWorkspaces,
+          active: true,
+          source: 'attached',
+          status: 'connected',
+          activeWorkspaceId: 'ws_cas',
+          workspaces: [
+            { ...casWorkspace, org_icon: { kind: 'image', url: '/v1/org/icon?v=abc' } },
+            { ...personalWorkspace, org_icon: { kind: 'preset', preset: 'rocket' } },
+            { ...personalWorkspace, id: 'ws_other', org_name: 'Other Org', org_icon: { kind: 'preset', preset: 'retired-preset' } },
+          ],
+        },
+        { localBackend: true, forcePopoverOpen: true },
+      ),
+    ),
+  )
+  const rows = [...html.matchAll(/<button role="menuitemradio"[^>]*>(.*?)<\/button>/g)].map((match) => match[1])
+
+  expect(rows[0]).toContain('<img src="https://backend.example/v1/org/icon?v=abc&amp;ticket=t"')
+  expect(rows[1]).toContain('lucide-rocket')
+  expect(rows[2]).not.toContain('<svg')
+  expect(rows[2]).toContain('>O</span>')
 })

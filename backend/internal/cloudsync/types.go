@@ -20,13 +20,14 @@ var (
 )
 
 type CloudUser struct {
-	ID          string `json:"id"`
-	UserID      string `json:"user_id,omitempty"`
-	OrgID       string `json:"org_id"`
-	OrgName     string `json:"org_name,omitempty"`
-	Email       string `json:"email"`
-	DisplayName string `json:"display_name"`
-	Role        string `json:"role"`
+	ID          string          `json:"id"`
+	UserID      string          `json:"user_id,omitempty"`
+	OrgID       string          `json:"org_id"`
+	OrgName     string          `json:"org_name,omitempty"`
+	OrgIcon     json.RawMessage `json:"org_icon,omitempty"`
+	Email       string          `json:"email"`
+	DisplayName string          `json:"display_name"`
+	Role        string          `json:"role"`
 }
 
 type WorkspaceSummary struct {

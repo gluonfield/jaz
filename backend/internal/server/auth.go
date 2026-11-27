@@ -154,7 +154,7 @@ func queryAuthAllowed(r *http.Request) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
-	if r.URL.Path == "/v1/bots/events" {
+	if r.URL.Path == "/v1/bots/events" || r.URL.Path == "/v1/org/icon" {
 		return true
 	}
 	if runPath, ok := strings.CutPrefix(r.URL.Path, "/v1/runs/"); ok {

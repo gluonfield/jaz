@@ -14,7 +14,7 @@ import {
   post,
   secureBackendConnection,
 } from '@/lib/api/client'
-import type { CloudUser, ServerCapabilities } from '@/lib/api/serverTypes'
+import type { CloudUser, OrgIcon, ServerCapabilities } from '@/lib/api/serverTypes'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { LOCAL_WORKSPACE_ID } from '@/lib/cloudWorkspaceDisplay'
 import { fetchServerDiscovery } from '@/lib/connectionProbe'
@@ -30,6 +30,7 @@ export interface CloudWorkspaceSummary {
   url: string
   org_id?: string
   org_name?: string
+  org_icon?: OrgIcon
   email?: string
   display_name?: string
   role?: string
