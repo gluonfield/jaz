@@ -1,7 +1,7 @@
 const LIGHT_MS = 140
 const GATHER_AT_MS = 100
 const GATHER_MS = 600
-export const PASSAGE_OPEN_MS = 800
+export const PASSAGE_OPEN_MS = 620
 // How far behind the frame each of its three echoes runs.
 const ECHO_MS = 55
 
@@ -150,16 +150,16 @@ export function runPassage(canvas: HTMLCanvasElement, tile: [number, number]) {
   let arrived = 0
   let frame = 0
   const opened = (now: number) => (arrived ? clamp((now - arrived) / PASSAGE_OPEN_MS) : 0)
-  const gathered = (now: number) => ease(clamp((now - since - GATHER_AT_MS) / GATHER_MS)) * (1 - ease(opened(now)))
+  const gathered = (now: number) => ease(clamp((now - since - GATHER_AT_MS) / GATHER_MS)) * (1 - opened(now)) ** 4
   const draw = (now: number) => {
     const out = opened(now)
     gl.uniform1f(uniforms.time, (now - since) / 1000)
     gl.uniform1f(uniforms.gather, gathered(now))
     gl.uniform3f(uniforms.echoes, gathered(now - ECHO_MS), gathered(now - 2 * ECHO_MS), gathered(now - 3 * ECHO_MS))
     gl.uniform1f(uniforms.open, arrived ? 1 : 0)
-    gl.uniform1f(uniforms.glow, clamp((now - since) / LIGHT_MS) * (1 - clamp((out - 0.8) / 0.2)))
-    gl.uniform1f(uniforms.bloom, clamp(out / 0.2) * (1 - clamp((out - 0.5) / 0.45)))
-    gl.uniform1f(uniforms.spread, 1 - (1 - clamp(out / 0.7)) ** 2)
+    gl.uniform1f(uniforms.glow, clamp((now - since) / LIGHT_MS) * (1 - clamp((out - 0.55) / 0.45)))
+    gl.uniform1f(uniforms.bloom, clamp(out / 0.12) * (1 - clamp((out - 0.35) / 0.6)))
+    gl.uniform1f(uniforms.spread, 1 - (1 - clamp(out / 0.5)) ** 2)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
     frame = requestAnimationFrame(draw)
   }
