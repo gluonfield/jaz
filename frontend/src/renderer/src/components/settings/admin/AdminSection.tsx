@@ -3,22 +3,17 @@ import { SettingsCard } from '@/components/settings/SettingsCard'
 
 export function AdminSection({
   title,
-  description,
   action,
   children,
 }: {
   title: string
-  description: string
   action?: ReactNode
   children: ReactNode
 }) {
   return (
     <div className="space-y-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h2 className="text-[14px] font-semibold text-ink">{title}</h2>
-          <p className="text-[12px] text-ink-3">{description}</p>
-        </div>
+      <div className="flex h-7 items-center justify-between gap-2">
+        <h2 className="text-[14px] font-semibold text-ink">{title}</h2>
         {action ? <div className="flex shrink-0 items-center gap-1">{action}</div> : null}
       </div>
       {children}

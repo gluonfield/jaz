@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/toast'
 import { adminOrgQuery, MAX_ORG_ICON_BYTES, updateAdminOrg } from '@/lib/api/cloudOrg'
 import { keys } from '@/lib/query/keys'
-import { AdminSection } from './AdminSection'
 
 const ICON_CHOICE =
   'grid size-8 cursor-pointer place-items-center rounded-lg text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:cursor-default disabled:opacity-50 aria-pressed:bg-ink aria-pressed:text-bg'
@@ -61,78 +60,76 @@ export function OrgIdentitySection() {
   }
 
   return (
-    <AdminSection title="Organization" description="The name and icon members see in the workspace switcher.">
-      <SettingsCard className="divide-y divide-border">
-        {org.data ? (
-          <>
-            <form onSubmit={submitName} className="flex items-center gap-2 px-3 py-2.5">
-              <label htmlFor="org-name" className="w-14 shrink-0 text-[13px] font-medium text-ink">
-                Name
-              </label>
-              <Input
-                id="org-name"
-                value={name}
-                maxLength={80}
-                onChange={(event) => setDraftName(event.target.value)}
-                className="min-w-0 flex-1"
-              />
-              <Button type="submit" variant="primary" size="sm" disabled={!nameChanged || save.isPending}>
+    <SettingsCard className="divide-y divide-border">
+      {org.data ? (
+        <>
+          <form onSubmit={submitName} className="flex items-center gap-3 px-3 py-3">
+            <OrgIconMark name={org.data.name} icon={org.data.icon} className="size-9 rounded-[10px] text-[16px]" />
+            <Input
+              aria-label="Organization name"
+              value={name}
+              maxLength={80}
+              onChange={(event) => setDraftName(event.target.value)}
+              className="min-w-0 flex-1"
+            />
+            {nameChanged ? (
+              <Button type="submit" variant="primary" size="sm" disabled={save.isPending}>
                 Save
               </Button>
-            </form>
-            <div className="flex items-start gap-2 px-3 py-2.5">
-              <p className="w-14 shrink-0 pt-1.5 text-[13px] font-medium text-ink">Icon</p>
-              <div role="group" aria-label="Organization icon" className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-                <button
-                  type="button"
-                  title="Initial"
-                  aria-label="Initial"
-                  aria-pressed={org.data.icon.kind === 'none'}
-                  disabled={save.isPending}
-                  onClick={() => save.mutate({ icon: { kind: 'none' } })}
-                  className={`${ICON_CHOICE} text-[13px] font-semibold uppercase`}
-                >
-                  {org.data.name.charAt(0)}
-                </button>
-                {Object.entries(ORG_ICON_PRESETS).map(([preset, Icon]) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    title={preset}
-                    aria-label={preset}
-                    aria-pressed={org.data.icon.kind === 'preset' && org.data.icon.preset === preset}
-                    disabled={save.isPending}
-                    onClick={() => save.mutate({ icon: { kind: 'preset', preset } })}
-                    className={ICON_CHOICE}
-                  >
-                    <Icon size={16} />
-                  </button>
-                ))}
-                {org.data.icon.kind === 'image' ? (
-                  <OrgIconMark name={org.data.name} icon={org.data.icon} className="mx-1 size-8 rounded-lg" />
-                ) : null}
-                <Button size="sm" disabled={save.isPending} onClick={() => fileInput.current?.click()}>
-                  <ImageUp size={13} />
-                  Upload image
-                </Button>
-                <input
-                  ref={fileInput}
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  hidden
-                  onChange={(event) => {
-                    void upload(event.target.files?.[0])
-                    event.target.value = ''
-                  }}
-                />
-                <p className="basis-full pt-1 text-[12px] text-ink-3">PNG or JPEG, 16 to 512 pixels square, up to 256 KB.</p>
-              </div>
-            </div>
-          </>
-        ) : (
-          <p className="px-3 py-6 text-center text-[13px] text-ink-3">{org.error?.message ?? 'Loading…'}</p>
-        )}
-      </SettingsCard>
-    </AdminSection>
+            ) : null}
+          </form>
+          <div role="group" aria-label="Organization icon" className="flex flex-wrap items-center gap-1 px-3 py-2.5">
+            <button
+              type="button"
+              title="Initial"
+              aria-label="Initial"
+              aria-pressed={org.data.icon.kind === 'none'}
+              disabled={save.isPending}
+              onClick={() => save.mutate({ icon: { kind: 'none' } })}
+              className={`${ICON_CHOICE} text-[13px] font-semibold uppercase`}
+            >
+              {org.data.name.charAt(0)}
+            </button>
+            {Object.entries(ORG_ICON_PRESETS).map(([preset, Icon]) => (
+              <button
+                key={preset}
+                type="button"
+                title={preset}
+                aria-label={preset}
+                aria-pressed={org.data.icon.kind === 'preset' && org.data.icon.preset === preset}
+                disabled={save.isPending}
+                onClick={() => save.mutate({ icon: { kind: 'preset', preset } })}
+                className={ICON_CHOICE}
+              >
+                <Icon size={16} />
+              </button>
+            ))}
+            <button
+              type="button"
+              title="Upload a PNG or JPEG, up to 256 KB"
+              aria-label="Upload image"
+              aria-pressed={org.data.icon.kind === 'image'}
+              disabled={save.isPending}
+              onClick={() => fileInput.current?.click()}
+              className={ICON_CHOICE}
+            >
+              <ImageUp size={16} />
+            </button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/png,image/jpeg"
+              hidden
+              onChange={(event) => {
+                void upload(event.target.files?.[0])
+                event.target.value = ''
+              }}
+            />
+          </div>
+        </>
+      ) : (
+        <p className="px-3 py-6 text-center text-[13px] text-ink-3">{org.error?.message ?? 'Loading…'}</p>
+      )}
+    </SettingsCard>
   )
 }

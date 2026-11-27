@@ -29,7 +29,6 @@ function integrationKeyID(name: string): string {
 }
 
 function keySummary(key: OrgAPIKey): string {
-  if (!key.configured) return 'Not set'
   const by = key.updated_by?.display_name || key.updated_by?.email
   return [
     key.label,
@@ -150,11 +149,10 @@ export function OrgAPIKeysSection() {
   return (
     <AdminSection
       title="API keys"
-      description="Keys for model providers and integrations, encrypted by Jaz Cloud and shared by every member."
       action={
         <Button size="sm" onClick={() => setEditing(NEW_INTEGRATION)}>
           <Plus size={13} />
-          Add integration key
+          Add
         </Button>
       }
     >
@@ -168,7 +166,7 @@ export function OrgAPIKeysSection() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-medium text-ink">{key.display_name}</p>
-              <p className="truncate text-[12px] text-ink-3">{keySummary(key)}</p>
+              {key.configured ? <p className="truncate text-[12px] text-ink-3">{keySummary(key)}</p> : null}
             </div>
             <Button size="sm" onClick={() => setEditing(key.key_id)}>
               {key.configured ? 'Rotate' : 'Add key'}
