@@ -32,6 +32,8 @@ type cloudClient struct {
 	http          *http.Client
 	stream        *http.Client
 	fileTransport *http.Transport
+	accountID     string
+	refresh       func(ctx context.Context, accountID, failedToken string) (string, error)
 }
 
 func newCloudClient() *cloudClient {
@@ -195,6 +197,18 @@ func cleanRelPath(relpath string) ([]string, error) {
 }
 
 func (c *cloudClient) doJSON(ctx context.Context, method, baseURL, path, token string, reqBody any) (json.RawMessage, int, error) {
+	raw, status, err := c.doJSONOnce(ctx, method, baseURL, path, token, reqBody)
+	if !isUpstreamUnauthorized(err) || c.refresh == nil || c.accountID == "" || token == "" {
+		return raw, status, err
+	}
+	nextToken, rerr := c.refresh(ctx, c.accountID, token)
+	if rerr != nil {
+		return raw, status, err
+	}
+	return c.doJSONOnce(ctx, method, baseURL, path, nextToken, reqBody)
+}
+
+func (c *cloudClient) doJSONOnce(ctx context.Context, method, baseURL, path, token string, reqBody any) (json.RawMessage, int, error) {
 	var bodyReader io.Reader
 	if reqBody != nil {
 		switch v := reqBody.(type) {
@@ -538,22 +552,35 @@ func (c *cloudClient) listUsageEvents(ctx context.Context, baseURL, token string
 	return wrapper.Events, nil
 }
 
-func (c *cloudClient) readEvents(ctx context.Context, client *http.Client, baseURL, token, threadID, query string, onEvent func(storage.CloudThreadEvent) error) error {
-	if err := validatePathSegment(threadID); err != nil {
-		return err
-	}
+func (c *cloudClient) openEvents(ctx context.Context, client *http.Client, baseURL, token, threadID, query string) (*http.Response, error) {
 	path := fmt.Sprintf("/v1/threads/%s/events?%s", url.PathEscape(threadID), query)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Accept", "text/event-stream")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := client.Do(req)
+	return client.Do(req)
+}
+
+func (c *cloudClient) readEvents(ctx context.Context, client *http.Client, baseURL, token, threadID, query string, onEvent func(storage.CloudThreadEvent) error) error {
+	if err := validatePathSegment(threadID); err != nil {
+		return err
+	}
+	resp, err := c.openEvents(ctx, client, baseURL, token, threadID, query)
 	if err != nil {
 		return err
+	}
+	if resp.StatusCode == http.StatusUnauthorized && c.refresh != nil && c.accountID != "" && token != "" {
+		if nextToken, rerr := c.refresh(ctx, c.accountID, token); rerr == nil {
+			_ = resp.Body.Close()
+			resp, err = c.openEvents(ctx, client, baseURL, nextToken, threadID, query)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -600,6 +627,19 @@ func (c *cloudClient) openSpaceSourceContent(ctx context.Context, baseURL, token
 }
 
 func (c *cloudClient) openCloudFilePath(ctx context.Context, baseURL, token, path string) (*http.Response, error) {
+	resp, err := c.openCloudFilePathOnce(ctx, baseURL, token, path)
+	if err != nil || resp.StatusCode != http.StatusUnauthorized || c.refresh == nil || c.accountID == "" || token == "" {
+		return resp, err
+	}
+	nextToken, rerr := c.refresh(ctx, c.accountID, token)
+	if rerr != nil {
+		return resp, nil
+	}
+	_ = resp.Body.Close()
+	return c.openCloudFilePathOnce(ctx, baseURL, nextToken, path)
+}
+
+func (c *cloudClient) openCloudFilePathOnce(ctx context.Context, baseURL, token, path string) (*http.Response, error) {
 	baseParsed, _ := url.Parse(baseURL)
 	baseIsLoopback := IsLoopbackURL(baseURL)
 	reqCtx := ctx

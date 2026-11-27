@@ -7,11 +7,10 @@ import {
   logoutCloudSession,
   parseOidcCallbackUrl,
   peekPendingOidcLogin,
-  refreshCloudSession,
   validateOidcCallback,
 } from '@/lib/api/cloudAuth'
-import { ApiError } from '@/lib/api/response'
 import { completeAttachedOidcCallback, refreshCloudAccountStatus, resetCloudAccountState } from '@/lib/cloudAccount'
+import { persistRotatedCredential, runActiveCloudRefresh, tryStartupCloudRefresh } from '@/lib/cloudSessionRefresh'
 import type {
   CloudUser,
   ServerAuthMethod,
@@ -32,7 +31,6 @@ import {
   refreshActiveApiSession,
   rememberApiAuthToken,
   restoreApiCredential,
-  rotateApiSessionTokens,
   secureBackendConnection,
   setApiAuthToken,
   setApiBaseUrl,
@@ -308,16 +306,8 @@ function activate(value: Attempt, candidate: Candidate): void {
       })
       if (candidate.remembered) {
         savePreference({ mode: 'remote', remoteUrl: candidate.url })
-        if (candidate.persistRotated && candidate.token) {
-          if (clientRuntime.kind === 'web') {
-            void saveBrowserCredential(candidate.url, candidate.token, () => current(value), candidate.refreshToken).catch(() => undefined)
-          } else {
-            try {
-              rememberApiAuthToken(candidate.url, () => current(value))
-            } catch {
-              // Preserve the refreshed live session if secure storage is temporarily locked.
-            }
-          }
+        if (candidate.persistRotated) {
+          persistRotatedCredential(candidate.url, candidate.token, candidate.refreshToken, true, () => current(value))
         }
       } else if (clientRuntime.kind === 'web' && candidate.token) {
         void saveBrowserCredential(candidate.url, candidate.token, () => current(value), candidate.refreshToken).then(() => {
@@ -422,23 +412,23 @@ async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<st
           return null
         }
         if (!cookieAccess.recoverable && cookieAccess.code === 'oidc_required') {
-          try {
-            const refreshed = await refreshCloudSession(value.url, {
-              credentials: 'include',
-              signal: value.controller.signal,
-            })
-            if (!current(value)) return null
+          const refreshed = await tryStartupCloudRefresh(value.url, { signal: value.controller.signal })
+          if (!current(value)) return null
+          if (refreshed.ok) {
             activate(value, {
               url: value.url,
               token: '',
-              ticket: refreshed.ticket,
-              user: refreshed.user,
+              ticket: refreshed.refreshed.ticket,
+              user: refreshed.refreshed.user,
               remembered,
               meta,
             })
             return null
-          } catch {
-            if (!current(value)) return null
+          }
+          if (options.retryOnRecoverable && refreshed.recoverable) {
+            setState({ status: 'disconnected', error: refreshed.error })
+            pollTimer = setTimeout(() => void run(false), 5000)
+            return refreshed.error
           }
         }
       }
@@ -457,44 +447,30 @@ async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<st
     }
     if (!access.ok) {
       if (!access.recoverable && meta.auth === 'oidc' && access.code === 'oidc_required' && refreshToken) {
-        try {
-          const refreshed = await refreshCloudSession(value.url, {
-            refreshToken,
-            signal: value.controller.signal,
-          })
-          if (!current(value)) return null
-          const nextRefresh = refreshed.refreshToken ?? refreshToken
-          cachedSaved = { token: refreshed.token, refreshToken: nextRefresh }
+        const refreshed = await tryStartupCloudRefresh(value.url, { refreshToken, signal: value.controller.signal })
+        if (!current(value)) return null
+        if (refreshed.ok) {
+          const nextRefresh = refreshed.refreshed.refreshToken ?? refreshToken
+          cachedSaved = { token: refreshed.refreshed.token, refreshToken: nextRefresh }
           activate(value, {
             url: value.url,
-            token: refreshed.token,
+            token: refreshed.refreshed.token,
             refreshToken: nextRefresh,
-            ticket: refreshed.ticket,
-            user: refreshed.user,
+            ticket: refreshed.refreshed.ticket,
+            user: refreshed.refreshed.user,
             remembered,
             persistRotated: true,
             meta,
           })
           return null
-        } catch (error) {
-          if (!current(value)) return null
-          if (error instanceof ApiError && error.status === 401) {
-            if (clientRuntime.kind === 'web') {
-              void forgetBrowserCredential(value.url).catch(() => undefined)
-            }
-            block('Session expired. Sign in again.', false, meta)
-            return 'Session expired. Sign in again.'
-          }
-          const recoverable = !(error instanceof ApiError) || error.status >= 500
-          const message = error instanceof Error ? error.message : 'Cloud session refresh failed'
-          if (options.retryOnRecoverable && recoverable) {
-            setState({ status: 'disconnected', error: message })
-            pollTimer = setTimeout(() => void run(false), 5000)
-            return message
-          }
-          block(message, false, meta)
-          return message
         }
+        if (options.retryOnRecoverable && refreshed.recoverable) {
+          setState({ status: 'disconnected', error: refreshed.error })
+          pollTimer = setTimeout(() => void run(false), 5000)
+          return refreshed.error
+        }
+        block(refreshed.error, false, meta)
+        return refreshed.error
       }
       if (options.retryOnRecoverable && access.recoverable) {
         setState({ status: 'disconnected', error: access.error })
@@ -943,65 +919,40 @@ if (clientRuntime.kind === 'electron' && ownsConnection && clientRuntime.onOidcC
 bridge?.subscribe((snapshot) => {
   void hydrate(snapshot)
 })
-setApiSessionRefresher(async ({ origin, mode, refreshToken, signal }) => {
+setApiSessionRefresher(({ origin, mode, refreshToken, signal }) => {
   const value = attempt
   if (!value || !current(value) || state.url !== origin || state.mode !== 'cloud' || state.auth !== 'oidc') {
-    return 'unavailable'
+    return Promise.resolve('unavailable')
   }
-  try {
-    const refreshed = await refreshCloudSession(
-      origin,
-      mode === 'cookie' ? { credentials: 'include', signal } : { refreshToken, signal },
-    )
-    if (!current(value) || state.url !== origin) {
-      return 'error'
-    }
-    if (mode === 'cookie') {
-      rotateApiSessionTokens(origin, { ticket: refreshed.ticket })
-      setState({ user: refreshed.user, error: null })
-      return 'refreshed'
-    }
-    const nextRefresh = refreshed.refreshToken ?? refreshToken
-    rotateApiSessionTokens(origin, {
-      token: refreshed.token,
-      refreshToken: nextRefresh,
-      ticket: refreshed.ticket,
-    })
-    const wasRemembered = Boolean(
-      authoritative?.session?.remembered ||
-      (connectionPreference()?.mode === 'remote' && connectionPreference()?.remoteUrl === origin),
-    )
-    if (ownsConnection && bridge && desktop) {
-      authoritative = bridge.update({
-        operation: 'commit',
-        document: desktop.document,
-        revision: value.revision,
-        session: { url: origin, token: refreshed.token, remembered: wasRemembered },
-      })
-      value.revision = authoritative.revision
-    }
-    setState({ user: refreshed.user, error: null })
-    if (ownsConnection) {
-      if (clientRuntime.kind === 'web') {
-        void saveBrowserCredential(origin, refreshed.token, () => current(value), nextRefresh).catch(() => undefined)
-      } else if (wasRemembered) {
+  const wasRemembered = Boolean(
+    authoritative?.session?.remembered ||
+    (connectionPreference()?.mode === 'remote' && connectionPreference()?.remoteUrl === origin),
+  )
+  return runActiveCloudRefresh({
+    origin,
+    mode,
+    refreshToken,
+    signal,
+    isCurrent: () => current(value) && state.url === origin,
+    ownsConnection,
+    wasRemembered,
+    onUserUpdated: (user) => setState({ user, error: null }),
+    onBearerRotated: (token) => {
+      if (ownsConnection && bridge && desktop) {
         try {
-          rememberApiAuthToken(origin, () => current(value))
+          authoritative = bridge.update({
+            operation: 'commit',
+            document: desktop.document,
+            revision: value.revision,
+            session: { url: origin, token, remembered: wasRemembered },
+          })
+          value.revision = authoritative.revision
         } catch {
-          // Preserve the live refreshed session if secure storage is temporarily locked.
+          // Keep rotated tokens in memory even if secondary-window broadcast fails.
         }
       }
-    }
-    return 'refreshed'
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      if (clientRuntime.kind === 'web' && mode === 'bearer') {
-        void forgetBrowserCredential(origin).catch(() => undefined)
-      }
-      return 'unauthorized'
-    }
-    return 'error'
-  }
+    },
+  })
 })
 onApiAuthRejected(() => {
   if (state.mode === 'cloud' && state.auth === 'oidc') {

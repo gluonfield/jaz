@@ -1,5 +1,6 @@
 import { readAPIResponse } from '@/lib/api/response'
 import { DEFAULT_API_BASE_URL, backendFetch, backendTransportUrl, clientRuntime } from '@/lib/clientRuntime'
+import { decodeStoredCredential, encodeStoredCredential } from '@/lib/credentialEnvelope'
 import { isPreviewProxyTargetHostname } from '@shared/preview'
 import type { ResourceTicket } from '@shared/connectionSession'
 import type { ServerMode } from './serverTypes'
@@ -147,21 +148,7 @@ export function restoreApiCredential(url: string): { token: string; refreshToken
   if (!stored.startsWith('enc:v1:') || !clientRuntime.decryptCredential) {
     throw new Error('Saved connection is not securely encrypted')
   }
-  const decrypted = clientRuntime.decryptCredential(stored.slice(7))
-  if (decrypted.startsWith('{"v":2,')) {
-    try {
-      const parsed = JSON.parse(decrypted) as { v?: unknown; token?: unknown; refreshToken?: unknown }
-      if (parsed.v === 2 && typeof parsed.token === 'string') {
-        const refreshToken = typeof parsed.refreshToken === 'string' && parsed.refreshToken.trim()
-          ? parsed.refreshToken.trim()
-          : undefined
-        return refreshToken ? { token: parsed.token, refreshToken } : { token: parsed.token }
-      }
-    } catch {
-      // Fall back to legacy plain token string.
-    }
-  }
-  return { token: decrypted }
+  return decodeStoredCredential(clientRuntime.decryptCredential(stored.slice(7)))
 }
 
 export function restoreApiAuthToken(url: string): string {
@@ -175,8 +162,7 @@ export function rememberApiAuthToken(url: string, current: () => boolean): void 
   if (!token || !clientRuntime.encryptCredential || !current()) {
     throw new Error('Secure credential storage is unavailable')
   }
-  const payload = refreshToken ? JSON.stringify({ v: 2, token, refreshToken }) : token
-  const ciphertext = clientRuntime.encryptCredential(payload)
+  const ciphertext = clientRuntime.encryptCredential(encodeStoredCredential(token, refreshToken))
   if (revision !== credentialRevision || token !== cachedApiAuthToken(url) || refreshToken !== cachedApiRefreshToken(url) || !current()) {
     throw new Error('Connection changed before it could be remembered')
   }
@@ -399,10 +385,10 @@ export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): 
   const revision = credentialRevision
   const sentToken = cachedApiAuthToken(origin)
   const sentRefreshGen = apiRefreshGeneration(origin)
+  const callerSuppliedAuth = new Headers(init?.headers).has('Authorization')
   const options = withAPIHeaders({ ...init, signal }, origin)
-  const bearer = new Headers(options.headers).get('Authorization')
-  const usedSessionBearer = Boolean(sentToken) && bearer === `Bearer ${sentToken}`
-  const usedSessionCookie = !bearer && !sentToken && options.credentials === 'include'
+  const usedSessionBearer = !callerSuppliedAuth && Boolean(sentToken)
+  const usedSessionCookie = !callerSuppliedAuth && !sentToken && options.credentials === 'include'
   const usedSessionAuth = usedSessionBearer || usedSessionCookie
 
   return backendFetch(targetUrl, options).then(async (response) => {

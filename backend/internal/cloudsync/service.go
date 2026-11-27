@@ -44,6 +44,8 @@ type Service struct {
 	syncMu sync.Mutex
 	wake   chan struct{}
 
+	// Lock ordering: syncMu -> persistMu -> mu. refreshMu is never held across persistMu or network I/O.
+	persistMu      sync.Mutex
 	refreshMu      sync.Mutex
 	refreshFlights map[string]*refreshFlight
 }
@@ -382,11 +384,14 @@ func (s *Service) Connect(ctx context.Context, req ConnectRequest) (Status, erro
 		CapabilitiesJSON: caps,
 		ConnectedAt:      connectedAt,
 	}
+	s.persistMu.Lock()
 	if err := s.store.SaveCloudAccount(ctx, acc); err != nil {
+		s.persistMu.Unlock()
 		s.syncMu.Unlock()
 		return Status{}, err
 	}
 	if err := s.store.SaveActiveWorkspaceID(ctx, id); err != nil {
+		s.persistMu.Unlock()
 		s.syncMu.Unlock()
 		return Status{}, err
 	}
@@ -395,6 +400,7 @@ func (s *Service) Connect(ctx context.Context, req ConnectRequest) (Status, erro
 	s.activeWorkspaceID = id
 	s.clearEndpointCachesLocked()
 	s.mu.Unlock()
+	s.persistMu.Unlock()
 	s.syncMu.Unlock()
 
 	syncCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -471,20 +477,24 @@ func (s *Service) Disconnect(ctx context.Context, workspaceID string) error {
 	// can never resurrect rows after DeleteCloudAccount completes, and persist
 	// before mutating in-memory state so DB errors never leave memory diverged.
 	s.syncMu.Lock()
+	s.persistMu.Lock()
 	s.mu.RLock()
 	prev, existed := s.accounts[target]
 	wasActive := s.activeWorkspaceID == target
 	s.mu.RUnlock()
 	if !existed {
+		s.persistMu.Unlock()
 		s.syncMu.Unlock()
 		return nil
 	}
 	if err := s.store.DeleteCloudAccount(ctx, target); err != nil {
+		s.persistMu.Unlock()
 		s.syncMu.Unlock()
 		return err
 	}
 	if wasActive {
 		if err := s.store.SaveActiveWorkspaceID(ctx, LocalWorkspaceID); err != nil {
+			s.persistMu.Unlock()
 			s.syncMu.Unlock()
 			return err
 		}
@@ -497,6 +507,7 @@ func (s *Service) Disconnect(ctx context.Context, workspaceID string) error {
 		s.clearEndpointCachesLocked()
 	}
 	s.mu.Unlock()
+	s.persistMu.Unlock()
 	s.syncMu.Unlock()
 
 	if prev.BaseURL != "" && (prev.Token != "" || prev.RefreshToken != "") {

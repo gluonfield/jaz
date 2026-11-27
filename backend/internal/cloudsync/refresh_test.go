@@ -296,3 +296,70 @@ func TestCloudSyncRefresh503PreservesTokensAnd401ClearsSession(t *testing.T) {
 		t.Fatalf("expected tokens cleared after 401 refresh failure, got ok=%v tok=%q", ok, tok)
 	}
 }
+
+func TestCloudSyncDisconnectDuringInFlightRefreshDoesNotResurrectAccount(t *testing.T) {
+	ctx := context.Background()
+	refreshEntered := make(chan struct{}, 1)
+	releaseRefresh := make(chan struct{})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/jaz-server":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "mode": "cloud", "auth": "oidc"})
+		case "/v1/auth/me":
+			_ = json.NewEncoder(w).Encode(map[string]any{"user_id": "usr_1", "org_id": "org_1", "email": "u@cas.dev", "display_name": "Dev", "role": "admin"})
+		case "/v1/auth/refresh":
+			select {
+			case refreshEntered <- struct{}{}:
+			default:
+			}
+			<-releaseRefresh
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"token":         "jwt-late",
+				"refresh_token": "rt-late",
+				"user":          map[string]any{"user_id": "usr_1", "org_id": "org_1", "email": "u@cas.dev", "display_name": "Dev", "role": "admin"},
+			})
+		case "/v1/auth/logout":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		case "/v1/members":
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid session token", "code": "unauthorized"})
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{})
+		}
+	}))
+	defer srv.Close()
+
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatalf("sqlite.New: %v", err)
+	}
+	defer store.Close()
+
+	svc := cloudsync.New(store, nil)
+	if _, err := svc.Connect(ctx, cloudsync.ConnectRequest{URL: srv.URL, Token: "jwt-1", RefreshToken: "rt-1"}); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = svc.ListMembers(ctx, "", 10)
+	}()
+
+	<-refreshEntered
+	if err := svc.Disconnect(ctx, ""); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+	close(releaseRefresh)
+	<-done
+
+	accounts, err := store.ListCloudAccounts(ctx)
+	if err != nil {
+		t.Fatalf("ListCloudAccounts: %v", err)
+	}
+	if len(accounts) != 0 {
+		t.Fatalf("expected disconnected account not to be resurrected by late refresh, got %+v", accounts)
+	}
+}

@@ -1,5 +1,8 @@
+import { decodeStoredCredential, encodeStoredCredential, type StoredCredential } from './credentialEnvelope'
+
 const STORE = 'credentials'
 type Saved = { iv: Uint8Array<ArrayBuffer>; ciphertext: ArrayBuffer }
+export type StoredBrowserCredential = StoredCredential
 
 async function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -43,34 +46,6 @@ async function encryptionKey(): Promise<CryptoKey> {
   return selected || proposed
 }
 
-export type StoredBrowserCredential = {
-  token: string
-  refreshToken?: string
-}
-
-function encodeCredentialPayload(token: string, refreshToken?: string): string {
-  const refresh = refreshToken?.trim()
-  if (!refresh) return token
-  return JSON.stringify({ v: 2, token, refreshToken: refresh })
-}
-
-function decodeCredentialPayload(raw: string): StoredBrowserCredential {
-  if (raw.startsWith('{"v":2,')) {
-    try {
-      const parsed = JSON.parse(raw) as { v?: unknown; token?: unknown; refreshToken?: unknown }
-      if (parsed.v === 2 && typeof parsed.token === 'string') {
-        const refreshToken = typeof parsed.refreshToken === 'string' && parsed.refreshToken.trim()
-          ? parsed.refreshToken.trim()
-          : undefined
-        return refreshToken ? { token: parsed.token, refreshToken } : { token: parsed.token }
-      }
-    } catch {
-      // Fall back to legacy plain token string.
-    }
-  }
-  return { token: raw }
-}
-
 export async function saveBrowserCredential(
   url: string,
   token: string,
@@ -79,7 +54,7 @@ export async function saveBrowserCredential(
 ): Promise<void> {
   const key = await encryptionKey()
   const iv = crypto.getRandomValues(new Uint8Array(12))
-  const payload = encodeCredentialPayload(token, refreshToken)
+  const payload = encodeStoredCredential(token, refreshToken)
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(url) }, key, new TextEncoder().encode(payload))
   await transaction('readwrite', (store) => {
     if (!current()) throw new Error('Connection changed before it could be saved')
@@ -93,7 +68,7 @@ export async function loadBrowserCredential(url: string): Promise<StoredBrowserC
   const key = await read<CryptoKey>('key')
   if (!key) throw new Error('Saved browser credential key is missing')
   const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: saved.iv, additionalData: new TextEncoder().encode(url) }, key, saved.ciphertext)
-  return decodeCredentialPayload(new TextDecoder().decode(plaintext))
+  return decodeStoredCredential(new TextDecoder().decode(plaintext))
 }
 
 export async function forgetBrowserCredential(url: string): Promise<void> {

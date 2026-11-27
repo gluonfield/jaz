@@ -69,10 +69,11 @@ func cloudSessionRejected(w http.ResponseWriter, resp *http.Response) bool {
 }
 
 type preparedProxy struct {
-	acc    storage.CloudAccount
-	target string
-	raw    []byte
-	sse    bool
+	acc       storage.CloudAccount
+	cleanPath string
+	target    string
+	raw       []byte
+	sse       bool
 }
 
 func (p preparedProxy) buildRequest(r *http.Request, token string) (*http.Request, error) {
@@ -129,7 +130,7 @@ func (s *Service) prepareProxy(w http.ResponseWriter, r *http.Request, sse bool)
 			return nil, true
 		}
 	}
-	return &preparedProxy{acc: acc, target: target, raw: raw, sse: sse}, true
+	return &preparedProxy{acc: acc, cleanPath: cleanPath, target: target, raw: raw, sse: sse}, true
 }
 
 // ProxyActiveWorkspace transparently forwards a request to the active Cloud
@@ -163,7 +164,7 @@ func (s *Service) ProxyActiveWorkspace(w http.ResponseWriter, r *http.Request) b
 			w.Header().Set(hdr, v)
 		}
 	}
-	if isWidgetContentPath(r.URL.Path) {
+	if isWidgetContentPath(prepared.cleanPath) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")

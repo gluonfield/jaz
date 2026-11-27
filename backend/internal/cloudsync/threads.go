@@ -47,9 +47,7 @@ func (s *Service) GetSession(ctx context.Context, id string) (storage.Session, b
 	if acc.Token == "" {
 		return storage.Session{}, false, nil
 	}
-	remote, err := withAccountRefresh(ctx, s, acc, func(token string) (storage.CloudThread, error) {
-		return s.client.getThread(ctx, acc.BaseURL, token, id)
-	})
+	remote, err := s.clientFor(acc.ID).getThread(ctx, acc.BaseURL, acc.Token, id)
 	if err != nil {
 		return storage.Session{}, false, nil
 	}
@@ -65,9 +63,7 @@ func (s *Service) CreateThread(ctx context.Context, req CreateThreadRequest) (st
 	if !ok || acc.Token == "" {
 		return storage.Session{}, ErrNotConnected
 	}
-	created, err := withAccountRefresh(ctx, s, acc, func(token string) (storage.CloudThread, error) {
-		return s.client.createThread(ctx, acc.BaseURL, token, req)
-	})
+	created, err := s.clientFor(acc.ID).createThread(ctx, acc.BaseURL, acc.Token, req)
 	if err != nil {
 		return storage.Session{}, err
 	}
@@ -92,14 +88,13 @@ func (s *Service) LoadTranscript(ctx context.Context, id string) (ProjectedTrans
 	if err != nil {
 		return ProjectedTranscript{}, false, err
 	}
+	client := s.clientFor(acc.ID)
 	fetchedRemote := false
 	if !ok {
 		if acc.Token == "" {
 			return ProjectedTranscript{}, false, nil
 		}
-		remote, fetchErr := withAccountRefresh(ctx, s, acc, func(token string) (storage.CloudThread, error) {
-			return s.client.getThread(ctx, acc.BaseURL, token, id)
-		})
+		remote, fetchErr := client.getThread(ctx, acc.BaseURL, s.latestToken(acc), id)
 		if fetchErr != nil {
 			return ProjectedTranscript{}, false, nil
 		}
@@ -122,17 +117,13 @@ func (s *Service) LoadTranscript(ctx context.Context, id string) (ProjectedTrans
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				remote, remoteErr = withAccountRefresh(ctx, s, acc, func(token string) (storage.CloudThread, error) {
-					return s.client.getThread(ctx, acc.BaseURL, token, th.ID)
-				})
+				remote, remoteErr = client.getThread(ctx, acc.BaseURL, s.latestToken(acc), th.ID)
 			}()
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			fresh, freshErr = withAccountRefresh(ctx, s, acc, func(token string) ([]storage.CloudThreadEvent, error) {
-				return s.client.fetchEventsOnce(ctx, acc.BaseURL, token, th.ID, th.LastSeq)
-			})
+			fresh, freshErr = client.fetchEventsOnce(ctx, acc.BaseURL, s.latestToken(acc), th.ID, th.LastSeq)
 		}()
 		wg.Wait()
 		if !fetchedRemote && remoteErr == nil {
@@ -183,34 +174,31 @@ func (s *Service) StreamEvents(ctx context.Context, threadID string, afterSeq in
 		}
 		emit(projector.Convert(ev))
 	}
-	_, err = withAccountRefresh(ctx, s, acc, func(token string) (struct{}, error) {
-		return struct{}{}, s.client.streamEvents(ctx, acc.BaseURL, token, threadID, lastSeq, func(ev storage.CloudThreadEvent) error {
-			if ev.Seq > 0 && ev.Seq <= lastSeq {
-				return nil
-			}
-			if ev.Seq > lastSeq {
-				lastSeq = ev.Seq
-			}
-			if s.isGeneration(gen) {
-				_ = s.store.AppendCloudThreadEvents(ctx, acc.ID, threadID, []storage.CloudThreadEvent{ev})
-				if term := cloudTerminalState(ev.Type); term != "" {
-					status := storage.StatusIdle
-					if term == "failed" {
-						status = storage.StatusError
-					} else if term == "cancelled" {
-						status = storage.StatusInterrupted
-					}
-					_ = s.store.UpdateCloudThreadStatus(ctx, acc.ID, threadID, status, ev.CreatedAt)
-					s.TriggerSync()
-				} else if isCloudUserEvent(ev.Type) || isCloudAssistantDelta(ev.Type) || isCloudThinkingDelta(ev.Type) || isCloudToolEvent(ev.Type) {
-					_ = s.store.UpdateCloudThreadStatus(ctx, acc.ID, threadID, storage.StatusRunning, ev.CreatedAt)
-				}
-			}
-			emit(projector.Convert(ev))
+	return s.clientFor(acc.ID).streamEvents(ctx, acc.BaseURL, acc.Token, threadID, lastSeq, func(ev storage.CloudThreadEvent) error {
+		if ev.Seq > 0 && ev.Seq <= lastSeq {
 			return nil
-		})
+		}
+		if ev.Seq > lastSeq {
+			lastSeq = ev.Seq
+		}
+		if s.isGeneration(gen) {
+			_ = s.store.AppendCloudThreadEvents(ctx, acc.ID, threadID, []storage.CloudThreadEvent{ev})
+			if term := cloudTerminalState(ev.Type); term != "" {
+				status := storage.StatusIdle
+				if term == "failed" {
+					status = storage.StatusError
+				} else if term == "cancelled" {
+					status = storage.StatusInterrupted
+				}
+				_ = s.store.UpdateCloudThreadStatus(ctx, acc.ID, threadID, status, ev.CreatedAt)
+				s.TriggerSync()
+			} else if isCloudUserEvent(ev.Type) || isCloudAssistantDelta(ev.Type) || isCloudThinkingDelta(ev.Type) || isCloudToolEvent(ev.Type) {
+				_ = s.store.UpdateCloudThreadStatus(ctx, acc.ID, threadID, storage.StatusRunning, ev.CreatedAt)
+			}
+		}
+		emit(projector.Convert(ev))
+		return nil
 	})
-	return err
 }
 
 func (s *Service) CreateTurn(ctx context.Context, threadID string, body json.RawMessage) (json.RawMessage, int, error) {
@@ -221,7 +209,7 @@ func (s *Service) CreateTurn(ctx context.Context, threadID string, body json.Raw
 	if !ok || acc.Token == "" {
 		return nil, 0, ErrNotConnected
 	}
-	raw, code, err := s.doAccountJSON(ctx, acc, http.MethodPost, "/v1/threads/"+url.PathEscape(threadID)+"/turns", body)
+	raw, code, err := s.clientFor(acc.ID).doJSON(ctx, http.MethodPost, acc.BaseURL, "/v1/threads/"+url.PathEscape(threadID)+"/turns", acc.Token, body)
 	if err != nil {
 		return nil, code, err
 	}
@@ -239,7 +227,7 @@ func (s *Service) CancelThread(ctx context.Context, threadID string) (json.RawMe
 	if !ok || acc.Token == "" {
 		return nil, 0, ErrNotConnected
 	}
-	raw, code, err := s.doAccountJSON(ctx, acc, http.MethodPost, "/v1/threads/"+url.PathEscape(threadID)+"/cancel", nil)
+	raw, code, err := s.clientFor(acc.ID).doJSON(ctx, http.MethodPost, acc.BaseURL, "/v1/threads/"+url.PathEscape(threadID)+"/cancel", acc.Token, nil)
 	if err != nil {
 		return nil, code, err
 	}
@@ -264,7 +252,7 @@ func (s *Service) SteerThread(ctx context.Context, threadID, text, mode string) 
 	if trimmedMode := strings.TrimSpace(mode); trimmedMode != "" {
 		payload["mode"] = trimmedMode
 	}
-	raw, code, err := s.doAccountJSON(ctx, acc, http.MethodPost, "/v1/threads/"+url.PathEscape(threadID)+"/steer", payload)
+	raw, code, err := s.clientFor(acc.ID).doJSON(ctx, http.MethodPost, acc.BaseURL, "/v1/threads/"+url.PathEscape(threadID)+"/steer", acc.Token, payload)
 	if err != nil {
 		return nil, code, err
 	}
@@ -297,7 +285,7 @@ func (s *Service) UpdateUserState(ctx context.Context, threadID string, patch st
 			payload["last_read_seq"] = cur.LastSeq
 		}
 	}
-	raw, _, err := s.doAccountJSON(ctx, acc, http.MethodPut, "/v1/threads/"+url.PathEscape(threadID)+"/user-state", payload)
+	raw, _, err := s.clientFor(acc.ID).doJSON(ctx, http.MethodPut, acc.BaseURL, "/v1/threads/"+url.PathEscape(threadID)+"/user-state", acc.Token, payload)
 	if err != nil {
 		return storage.Session{}, nil, err
 	}
@@ -319,7 +307,7 @@ func (s *Service) UpdateThread(ctx context.Context, threadID string, body json.R
 	if !ok || acc.Token == "" {
 		return nil, 0, ErrNotConnected
 	}
-	raw, status, err := s.doAccountJSON(ctx, acc, http.MethodPatch, "/v1/threads/"+url.PathEscape(threadID), body)
+	raw, status, err := s.clientFor(acc.ID).doJSON(ctx, http.MethodPatch, acc.BaseURL, "/v1/threads/"+url.PathEscape(threadID), acc.Token, body)
 	if err != nil {
 		return nil, status, err
 	}
@@ -339,7 +327,7 @@ func (s *Service) DeleteThread(ctx context.Context, threadID string) (json.RawMe
 	if !ok || acc.Token == "" {
 		return nil, 0, ErrNotConnected
 	}
-	raw, status, err := s.doAccountJSON(ctx, acc, http.MethodDelete, "/v1/threads/"+url.PathEscape(threadID), nil)
+	raw, status, err := s.clientFor(acc.ID).doJSON(ctx, http.MethodDelete, acc.BaseURL, "/v1/threads/"+url.PathEscape(threadID), acc.Token, nil)
 	if err != nil {
 		return nil, status, err
 	}

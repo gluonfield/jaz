@@ -52,7 +52,7 @@ export function PluginsSettings({
   const isViewer = useIsCloudViewer()
   const workspace = activeCloudWorkspace(cloud)
   const isCloudActive = Boolean(workspace)
-  const canManageOrgPlugins = !isCloudActive || (!isViewer && cloud.user?.role === 'admin')
+  const canManageOrgPlugins = !isCloudActive || (!isViewer && cloud.user?.role?.trim().toLowerCase() === 'admin')
   const [query, setQuery] = useState('')
   const [localSelectedID, setLocalSelectedID] = useState<string | null>(selectedPlugin ?? null)
   const [addMode, setAddMode] = useState<AddPluginMode | null>(null)

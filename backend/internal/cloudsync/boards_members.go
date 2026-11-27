@@ -24,7 +24,7 @@ func (s *Service) authedJSON(ctx context.Context, method, path string, body any)
 	if err != nil {
 		return nil, 0, err
 	}
-	return s.doAccountJSON(ctx, acc, method, path, body)
+	return s.clientFor(acc.ID).doJSON(ctx, method, acc.BaseURL, path, acc.Token, body)
 }
 
 func (s *Service) authedSegmentJSON(ctx context.Context, method, prefix, segment, suffix string, body any) (json.RawMessage, int, error) {
