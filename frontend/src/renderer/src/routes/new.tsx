@@ -21,10 +21,10 @@ import { spaceDefaultGitRepos, spacesQuery } from '@/lib/api/cloudSpaces'
 import { useCloudMachinesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
-import { machineBridgeQuery } from '@/lib/api/machineBridge'
+import { isMachineBridgeUnavailable, machineBridgeQuery } from '@/lib/api/machineBridge'
 import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
-import { useCloudCatalogScope, useCloudSession, useIsCloudOnly, useIsCloudViewer } from '@/lib/cloudSession'
+import { isCloudViewerRole, useCloudCatalogScope, useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
 import { isLocalBackendUrl, useConnection } from '@/lib/connection'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useTaskWorkspace } from '@/lib/hooks/useTaskWorkspace'
@@ -70,7 +70,7 @@ function NewSessionPage() {
   const voice = useGlobalVoice()
   const cloud = useCloudSession()
   const cloudOnly = useIsCloudOnly()
-  const isViewer = useIsCloudViewer()
+  const isViewer = cloud.active && isCloudViewerRole(cloud.user?.role)
   const connection = useConnection()
   const canRunHere = !cloudOnly && !isViewer && isLocalBackendUrl(connection.url)
   const navigate = useNavigate()
@@ -93,13 +93,16 @@ function NewSessionPage() {
     enabled: cloud.active && !isViewer,
   })
   const owner = cloud.user?.id
-  const machines = owner && (!canRunHere || localDevice.data) && !isViewer
+  const localDeviceID = canRunHere ? localDevice.data?.device_id : ''
+  const deviceIdentityKnown = localDeviceID !== undefined || isMachineBridgeUnavailable(localDevice.error)
+  const machines = owner && !isViewer && deviceIdentityKnown
     ? (connectedMachines.data ?? []).filter((machine) =>
-        machine.online && machine.user_id === owner && (!canRunHere || machine.device_id !== localDevice.data?.device_id),
+        machine.online && machine.user_id === owner && machine.device_id !== localDeviceID,
       )
     : []
   const selection = execution?.account === account ? execution.location : undefined
-  const effectiveLocation = cloud.active ? (canRunHere ? selection ?? 'cloud' : 'cloud') : cloudOnly ? 'cloud' : 'local'
+  const defaultLocation = cloud.active || cloudOnly ? 'cloud' : 'local'
+  const effectiveLocation = cloud.active && canRunHere && selection ? selection : defaultLocation
   const targetIsCloud = effectiveLocation === 'cloud'
 
   const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !cloudOnly && !targetIsCloud }).data
@@ -282,7 +285,7 @@ function NewSessionPage() {
       {cloud.active && (
         <ExecutionLocationPicker
           location={effectiveLocation}
-          lockedCloud={!canRunHere}
+          localAvailable={canRunHere}
           machines={machines}
           onChange={(location) => setExecution({ account, location })}
           placement={controlPlacement}

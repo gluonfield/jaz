@@ -13,7 +13,7 @@ type staticMCPServerStore struct {
 	servers []mcpconfig.Server
 }
 
-func (s staticMCPServerStore) ListMCPServers() ([]mcpconfig.Server, error) {
+func (s staticMCPServerStore) ListMCPServersForSession(string) ([]mcpconfig.Server, error) {
 	return append([]mcpconfig.Server(nil), s.servers...), nil
 }
 

@@ -7,7 +7,6 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acpcredentials"
 	"github.com/wins/jaz/backend/internal/m365copilot"
-	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/promptmodule"
@@ -124,7 +123,7 @@ type Config struct {
 	ModelCatalog     ModelCatalog
 	SystemPrompt     SystemPromptSource
 	ClaudePlugins    func() ([]plugins.NativePlugin, error)
-	MCPStore         mcpconfig.ServerReader
+	MCPServers       SessionMCPServers
 	MicrosoftCopilot *m365copilot.AuthService
 	ResumePrompt     SessionPromptExtensionResolver
 	// TurnNote is text a thread's next turn opens with for its agent alone,

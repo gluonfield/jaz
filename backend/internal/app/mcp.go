@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/charmbracelet/log"
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/connections"
 	driveconnector "github.com/wins/jaz/backend/internal/connectors/drive"
@@ -30,10 +31,6 @@ type acpMCPServerReader struct {
 	loadSession func(string) (storage.Session, error)
 }
 
-func (r acpMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) {
-	return r.ListMCPServersForSession("")
-}
-
 func (r acpMCPServerReader) ListMCPServersForSession(sessionID string) ([]mcpconfig.Server, error) {
 	servers := []mcpconfig.Server{mcpruntime.ProxyServerConfig(r.proxyURL), jaztools.ServerConfig(r.jaztoolsURL)}
 	if sessionID != "" {
@@ -56,7 +53,7 @@ func (r acpMCPServerReader) ListMCPServersForSession(sessionID string) ([]mcpcon
 	return servers, nil
 }
 
-func NewACPMCPServerReader(jaz *jaztools.Service, urls serverconfig.URLs, key RuntimeAuthKey, store storage.Store) mcpconfig.ServerReader {
+func NewACPMCPServers(jaz *jaztools.Service, urls serverconfig.URLs, key RuntimeAuthKey, store storage.Store) acp.SessionMCPServers {
 	return acpMCPServerReader{proxyURL: urls.MCPProxy, jaztoolsURL: jaz.URL(), cloudURL: urls.CloudMCP, authKey: string(key), loadSession: store.LoadSession}
 }
 

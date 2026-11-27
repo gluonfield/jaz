@@ -116,7 +116,7 @@ func serveOptions(args []string) []fx.Option {
 			fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus))),
 			jaztools.New,
 			terminal.New,
-			app.NewACPMCPServerReader,
+			app.NewACPMCPServers,
 			exectool.NewCommandManager,
 			app.NewInstructionsStore,
 			app.NewPromptBuilder,

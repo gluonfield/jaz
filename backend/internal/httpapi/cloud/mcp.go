@@ -38,6 +38,9 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		ID     json.RawMessage `json:"id"`
 		Method string          `json:"method"`
+		Params struct {
+			Name string `json:"name"`
+		} `json:"params"`
 	}
 	if err := json.Unmarshal(body, &request); err != nil || request.Method == "" {
 		httpapi.WriteError(w, http.StatusBadRequest, errors.New("invalid MCP request"))
@@ -51,7 +54,8 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteJSON(w, http.StatusOK, map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": struct{}{}})
 		return
 	}
-	raw, status, err := h.service.CallMCP(r.Context(), session, body, request.Method == "tools/call")
+	bindThread := request.Method == "tools/call" && request.Params.Name != "plugins_search"
+	raw, status, err := h.service.CallMCP(r.Context(), session, body, bindThread)
 	if err != nil {
 		WriteError(w, err)
 		return

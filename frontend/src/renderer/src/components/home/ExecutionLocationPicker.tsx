@@ -1,105 +1,87 @@
-import { ChevronDown, Cloud, Laptop, LoaderCircle } from 'lucide-react'
+import { ChevronDown, Cloud, Laptop } from 'lucide-react'
 import { useState } from 'react'
-import { AddCloudWorkspaceModal } from '@/components/connection/AddCloudWorkspaceModal'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import type { ConnectedMachine } from '@/lib/api/serverTypes'
-import { clientRuntime } from '@/lib/clientRuntime'
-import { useCloudSession } from '@/lib/cloudSession'
 
 export type ExecutionLocation = 'local' | 'cloud'
 
+const labels: Record<ExecutionLocation, string> = { local: 'This machine', cloud: 'Cloud' }
+
 export function ExecutionLocationPicker({
   location,
-  machines = [],
-  lockedCloud = false,
+  localAvailable,
+  machines,
   placement,
   disabled,
   onChange,
 }: {
   location: ExecutionLocation
-  machines?: ConnectedMachine[]
-  lockedCloud?: boolean
+  localAvailable: boolean
+  machines: ConnectedMachine[]
   placement?: 'above' | 'below'
   disabled?: boolean
   onChange: (location: ExecutionLocation) => void
 }) {
-  const cloud = useCloudSession()
   const [open, setOpen] = useState(false)
-  const [adding, setAdding] = useState(false)
-
-  const showLocal = !lockedCloud && clientRuntime.capabilities.localBackend
-  const showCloud = cloud.active || !showLocal || cloud.workspaces.length === 0
-  const choices = [
-    ...(showLocal ? [{ id: 'local' as const, label: cloud.active ? 'This machine' : 'Local' }] : []),
-    ...(showCloud ? [{ id: 'cloud' as const, label: 'Cloud' }] : []),
-  ]
-  const selected = choices.find(({ id }) => id === location) ?? choices[0]
-  const { label } = selected
-  const Icon = selected.id === 'cloud' ? Cloud : Laptop
-  const peers = cloud.active ? machines : []
+  const label = labels[location]
+  const Icon = location === 'cloud' ? Cloud : Laptop
+  if (!localAvailable && machines.length === 0) {
+    return (
+      <span className="inline-flex h-7 items-center gap-1.5 px-2.5 text-[12px] font-medium text-ink-2">
+        <Icon size={13} className="shrink-0" />
+        {label}
+      </span>
+    )
+  }
+  const choices: ExecutionLocation[] = localAvailable ? ['local', 'cloud'] : ['cloud']
 
   return (
-    <>
-      {choices.length === 1 && peers.length === 0 ? (
-        <span className="inline-flex h-7 items-center gap-1.5 px-2.5 text-[12px] font-medium text-ink-2">
+    <Popover
+      open={open && !disabled}
+      onClose={() => setOpen(false)}
+      placement={placement}
+      align="start"
+      trigger={
+        <button
+          type="button"
+          disabled={disabled}
+          aria-haspopup="menu"
+          aria-expanded={open && !disabled}
+          aria-label={`Work in: ${label}`}
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-ink-2 transition-[background-color,color,scale] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96] disabled:cursor-default disabled:opacity-50"
+        >
           <Icon size={13} className="shrink-0" />
           {label}
-        </span>
-      ) : (
-        <Popover
-          open={open && !disabled}
-          onClose={() => setOpen(false)}
-          placement={placement}
-          align="start"
-          trigger={
-            <button
-              type="button"
-              disabled={disabled}
-              aria-haspopup="menu"
-              aria-expanded={open && !disabled}
-              aria-label={`Work in: ${label}`}
-              onClick={() => setOpen((value) => !value)}
-              className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-ink-2 transition-[background-color,color,scale] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96] disabled:cursor-default disabled:opacity-50"
-            >
-              <Icon size={13} className="shrink-0" />
-              {label}
-              <ChevronDown size={11} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
-            </button>
-          }
-        >
-          <div role="menu" aria-label="Work in">
-            {choices.map(({ id, label }) => (
-              <MenuRow
-                key={id}
-                role="menuitemradio"
-                selected={selected.id === id}
-                trailing={id === 'cloud' && cloud.status === 'checking' ? (
-                  <LoaderCircle size={12} className="shrink-0 animate-spin text-ink-3" />
-                ) : null}
-                onClick={() => {
-                  setOpen(false)
-                  onChange(id)
-                  if (id === 'cloud' && !cloud.active) setAdding(true)
-                }}
-              >
-                {label}
-              </MenuRow>
+          <ChevronDown size={11} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        </button>
+      }
+    >
+      <div role="menu" aria-label="Work in">
+        {choices.map((id) => (
+          <MenuRow
+            key={id}
+            role="menuitemradio"
+            selected={location === id}
+            onClick={() => {
+              setOpen(false)
+              onChange(id)
+            }}
+          >
+            {labels[id]}
+          </MenuRow>
+        ))}
+      </div>
+      {machines.length > 0 && (
+        <div className="mt-1 border-t border-border px-2.5 pt-1.5 text-[12px]">
+          <p className="text-ink-3">Available to Cloud tools</p>
+          <ul aria-label="Machines available to Cloud tools" className="max-h-32 overflow-y-auto py-1 text-ink-2">
+            {machines.map((machine) => (
+              <li key={machine.device_id} className="truncate py-0.5" title={machine.display_name}>{machine.display_name}</li>
             ))}
-            {peers.map((machine) => (
-              <MenuRow
-                key={machine.device_id}
-                role="menuitemradio"
-                disabled
-                onClick={() => {}}
-                trailing={<span className="text-ink-3">Available to Cloud tools</span>}
-              >
-                {machine.display_name}
-              </MenuRow>
-            ))}
-          </div>
-        </Popover>
+          </ul>
+        </div>
       )}
-      <AddCloudWorkspaceModal open={adding} onClose={() => setAdding(false)} />
-    </>
+    </Popover>
   )
 }

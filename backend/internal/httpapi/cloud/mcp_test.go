@@ -25,6 +25,7 @@ func TestNativeMCPSearchAndCallStayWithSessionWorkspace(t *testing.T) {
 
 	var mu sync.Mutex
 	var contexts []map[string]any
+	var created int
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -47,7 +48,8 @@ func TestNativeMCPSearchAndCallStayWithSessionWorkspace(t *testing.T) {
 			if len(hash) != 64 || body["source_type"] != "native_mcp_context" || len(body) != 2 {
 				t.Errorf("Cloud context received unexpected local data: %v", body)
 			}
-			body["id"] = "cloud-context"
+			created++
+			body["id"] = fmt.Sprintf("cloud-context-%d", created)
 			body["org_id"] = "org"
 			body["owner_user_id"] = "owner"
 			body["visibility"] = "private"
@@ -73,7 +75,18 @@ func TestNativeMCPSearchAndCallStayWithSessionWorkspace(t *testing.T) {
 			case "tools/list":
 				result = `{"tools":[{"name":"search_tools"},{"name":"call_tool"}]}`
 			case "tools/call":
-				if r.Header.Get("X-Jaz-Thread-ID") != "cloud-context" {
+				if req.Params.Name == "plugins_search" {
+					if r.Header.Get("X-Jaz-Thread-ID") != "" || len(contexts) != 0 {
+						t.Error("plugin discovery provisioned a Cloud thread")
+					}
+					result = `{"content":[{"type":"text","text":"workspace_plugins"}]}`
+					break
+				}
+				if len(contexts) == 0 {
+					_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"error":{"code":-32003,"message":"thread not found or inaccessible"}}`, req.ID)
+					return
+				}
+				if r.Header.Get("X-Jaz-Thread-ID") != contexts[0]["id"] {
 					t.Error("tool call missing its authorized Cloud thread")
 					w.WriteHeader(http.StatusForbidden)
 					return
@@ -129,12 +142,27 @@ func TestNativeMCPSearchAndCallStayWithSessionWorkspace(t *testing.T) {
 	post(local.ID, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, http.StatusForbidden, "native Cloud-workspace")
 	post(native.ID, `{"jsonrpc":"2.0","method":"notifications/initialized"}`, http.StatusAccepted, "")
 	post(native.ID, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, http.StatusOK, "search_tools")
-	post(native.ID, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_tools","arguments":{"query":"lookup"}}}`, http.StatusOK, "workspace_custom_lookup")
-	handler = NewMCPHandler(cloudsync.New(store, nil), store)
-	post(native.ID, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"call_tool","arguments":{"name":"workspace_custom_lookup","arguments":{}}}}`, http.StatusOK, "lookup succeeded")
-	mu.Lock()
-	defer mu.Unlock()
-	if len(contexts) != 1 {
-		t.Fatalf("native session created %d Cloud contexts", len(contexts))
+	post(native.ID, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"plugins_search","arguments":{"query":"lookup"}}}`, http.StatusOK, "workspace_plugins")
+	var searches sync.WaitGroup
+	for range 2 {
+		searches.Go(func() {
+			post(native.ID, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_tools","arguments":{"query":"lookup"}}}`, http.StatusOK, "workspace_custom_lookup")
+		})
 	}
+	searches.Wait()
+	handler = NewMCPHandler(cloudsync.New(store, nil), store)
+	post(native.ID, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"call_tool","arguments":{"name":"workspace_custom_lookup","arguments":{}}}}`, http.StatusOK, "lookup succeeded")
+	mu.Lock()
+	if created != 1 {
+		t.Errorf("native session created %d Cloud contexts before any deletion", created)
+	}
+	contexts = nil
+	mu.Unlock()
+	post(native.ID, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"search_tools","arguments":{"query":"lookup"}}}`, http.StatusOK, "thread not found or inaccessible")
+	mu.Lock()
+	if created != 1 {
+		t.Error("a rejected Cloud tool call was replayed")
+	}
+	mu.Unlock()
+	post(native.ID, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"search_tools","arguments":{"query":"lookup"}}}`, http.StatusOK, "workspace_custom_lookup")
 }

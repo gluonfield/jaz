@@ -16,11 +16,11 @@ import { useCloudMachinesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import {
   machineBridgeQuery,
   machineBridgeQueryKey,
+  isMachineBridgeUnavailable,
   updateMachineBridge,
   type MachineBridgeShareConfig,
   type MachineBridgeStatus,
 } from '@/lib/api/machineBridge'
-import { ApiError } from '@/lib/api/response'
 import type { ConnectedMachine, FolderAccessMode } from '@/lib/api/serverTypes'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { FOLDER_ACCESS_LABELS } from '@/lib/cloudMachineConfig'
@@ -112,17 +112,13 @@ function bridgeStatusBadge(
   }
 }
 
-function isBridgeUnavailableError(error: unknown): boolean {
-  return error instanceof ApiError && (error.status === 404 || error.status === 501)
-}
-
 export function ConnectedMachinesSettings() {
   const { url: cloudUrl, active: cloudActive } = useCloudSession()
   const isCloudOnly = useIsCloudOnly()
   const canManageLocalBridge = clientRuntime.capabilities.localBackend && !isCloudOnly
   const machines = useQuery({ ...useCloudMachinesQuery(), enabled: cloudActive })
   const bridge = useQuery({ ...machineBridgeQuery, enabled: canManageLocalBridge })
-  const bridgeUnavailable = bridge.isError && isBridgeUnavailableError(bridge.error)
+  const bridgeUnavailable = isMachineBridgeUnavailable(bridge.error)
   const showLiveBridge = canManageLocalBridge && !bridgeUnavailable
   const localDeviceId = showLiveBridge ? (bridge.data?.device_id ?? '') : ''
 

@@ -30,7 +30,7 @@ func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessag
 	if init.AgentCapabilities.MCPCapabilities == nil || !init.AgentCapabilities.MCPCapabilities.HTTP {
 		return []json.RawMessage{}
 	}
-	servers, err := enabledHTTPMCPServers(ctx, m.cfg.MCPStore, policy)
+	servers, err := enabledHTTPMCPServers(ctx, m.cfg.MCPServers, policy)
 	if err != nil {
 		m.log.Warn("load mcp servers for acp failed", "error", err)
 		servers = nil
@@ -41,19 +41,15 @@ func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessag
 	return servers
 }
 
-func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, policy string) ([]json.RawMessage, error) {
-	if store == nil {
+type SessionMCPServers interface {
+	ListMCPServersForSession(string) ([]mcpconfig.Server, error)
+}
+
+func enabledHTTPMCPServers(ctx context.Context, source SessionMCPServers, policy string) ([]json.RawMessage, error) {
+	if source == nil {
 		return nil, nil
 	}
-	list := store.ListMCPServers
-	if scoped, ok := store.(interface {
-		ListMCPServersForSession(string) ([]mcpconfig.Server, error)
-	}); ok {
-		list = func() ([]mcpconfig.Server, error) {
-			return scoped.ListMCPServersForSession(mcpsession.ID(ctx))
-		}
-	}
-	servers, err := list()
+	servers, err := source.ListMCPServersForSession(mcpsession.ID(ctx))
 	if err != nil {
 		return nil, err
 	}

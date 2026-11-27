@@ -422,7 +422,7 @@ func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, log
 	})
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, inst instructions.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service, installed *plugins.Store, msCopilot *m365copilot.AuthService, resolveCloudProfile acpcredentials.Resolver) (acp.Config, error) {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, inst instructions.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers acp.SessionMCPServers, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service, installed *plugins.Store, msCopilot *m365copilot.AuthService, resolveCloudProfile acpcredentials.Resolver) (acp.Config, error) {
 	if err := bots.MigrateHomes(store); err != nil {
 		return acp.Config{}, err
 	}
@@ -436,7 +436,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, inst instructions.Store,
 	cfg.ACP.ModelCatalog = modelCatalog
 	cfg.ACP.SystemPrompt = prompts
 	cfg.ACP.ClaudePlugins = installed.ClaudePlugins
-	cfg.ACP.MCPStore = mcpServers
+	cfg.ACP.MCPServers = mcpServers
 	cfg.ACP.MicrosoftCopilot = msCopilot
 	cfg.ACP.ResolveCloudProfile = resolveCloudProfile
 	promptBuilder := loops.RuntimePromptBuilder{Repo: store, PromptExtras: []func(loops.Loop, loops.Run) string{bots.RoutineInstructions(store)}}

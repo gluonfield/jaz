@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { get, put } from './client'
+import { ApiError } from './response'
 import type { MachineFolderGrant } from './serverTypes'
 
 export interface MachineBridgeShareConfig {
@@ -19,6 +20,10 @@ export interface MachineBridgeStatus {
 }
 
 export const machineBridgeQueryKey = ['cloud', 'machine-bridge'] as const
+
+export function isMachineBridgeUnavailable(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 404 || error.status === 501)
+}
 
 function normalizeBridgeStatus(raw: Partial<MachineBridgeStatus> | null | undefined): MachineBridgeStatus {
   const cfg = raw?.config

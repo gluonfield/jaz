@@ -121,7 +121,7 @@ func (m *Manager) refreshMCPBeforeTurn(ctx context.Context, job *jobState) error
 }
 
 func (m *Manager) grokMCPServers(ctx context.Context, job *jobState, policy string, revision uint64) ([]json.RawMessage, error) {
-	servers, err := enabledHTTPMCPServers(mcpsession.With(ctx, job.ID), m.cfg.MCPStore, policy)
+	servers, err := enabledHTTPMCPServers(mcpsession.With(ctx, job.ID), m.cfg.MCPServers, policy)
 	if err != nil {
 		return nil, err
 	}

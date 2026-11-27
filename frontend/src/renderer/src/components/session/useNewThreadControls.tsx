@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { acpAgentChecking, enabledACPAgents, enabledACPAgentsChecking, runtimeModelState } from '@/lib/agentRuntimes'
 import { agentLabel } from '@/lib/agentLabel'
-import { cloudProfileToAgentOption, resolveCloudModelSelection } from '@/lib/api/cloudThreads'
+import { cloudProfileToAgentOption, resolveCloudProfileModel } from '@/lib/api/cloudThreads'
 import { useCloudModelProfilesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
@@ -77,7 +77,7 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
     ? `cloud:${cloud.activeWorkspaceId || cloud.url}:${activeCloudProfile.profile_id}`
     : `${nativeAgent}/${provider}`
   const selection = selections[selectionKey]
-  const cloudSelection = activeCloudProfile ? resolveCloudModelSelection([activeCloudProfile], selection) : undefined
+  const cloudSelection = activeCloudProfile ? resolveCloudProfileModel(activeCloudProfile, selection) : undefined
   const selectedModel = cloudSelection?.model ?? selection?.model ?? model.defaultModel
 
   const localReasoning = useModelReasoningState({

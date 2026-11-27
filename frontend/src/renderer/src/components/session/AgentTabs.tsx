@@ -46,12 +46,12 @@ export function useAgentSwipe(agent?: AgentChoice) {
 // One logo per agent; the selected one widens to show its name.
 export function AgentTabs({ value, options, items, onChange, disabled }: AgentChoice & { disabled?: boolean }) {
   const index = options.indexOf(value)
-  const named = `calc(100% - ${(options.length - 1) * STEP}px)`
+  const named = `max(${NAMED}px, 100% - ${(options.length - 1) * STEP}px)`
   return (
     <div
       role="tablist"
       aria-label="Agent"
-      className="relative mb-1.5 flex gap-0.5 border-b border-border pb-1.5"
+      className="relative mb-1.5 flex gap-0.5 overflow-x-auto border-b border-border pb-1.5"
       onKeyDown={(event) => {
         if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') {
           return

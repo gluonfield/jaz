@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/netip"
@@ -33,7 +34,6 @@ type cloudClient struct {
 	stream        *http.Client
 	fileTransport *http.Transport
 	accountID     string
-	mcpThreadID   string
 	refresh       func(ctx context.Context, accountID, failedToken string) (string, error)
 }
 
@@ -198,7 +198,11 @@ func cleanRelPath(relpath string) ([]string, error) {
 }
 
 func (c *cloudClient) doJSON(ctx context.Context, method, baseURL, path, token string, reqBody any) (json.RawMessage, int, error) {
-	raw, status, err := c.doJSONOnce(ctx, method, baseURL, path, token, reqBody)
+	return c.doJSONWithHeaders(ctx, method, baseURL, path, token, reqBody, nil)
+}
+
+func (c *cloudClient) doJSONWithHeaders(ctx context.Context, method, baseURL, path, token string, reqBody any, headers http.Header) (json.RawMessage, int, error) {
+	raw, status, err := c.doJSONOnce(ctx, method, baseURL, path, token, reqBody, headers)
 	if !isUpstreamUnauthorized(err) || c.refresh == nil || c.accountID == "" || token == "" {
 		return raw, status, err
 	}
@@ -206,10 +210,10 @@ func (c *cloudClient) doJSON(ctx context.Context, method, baseURL, path, token s
 	if rerr != nil {
 		return raw, status, err
 	}
-	return c.doJSONOnce(ctx, method, baseURL, path, nextToken, reqBody)
+	return c.doJSONOnce(ctx, method, baseURL, path, nextToken, reqBody, headers)
 }
 
-func (c *cloudClient) doJSONOnce(ctx context.Context, method, baseURL, path, token string, reqBody any) (json.RawMessage, int, error) {
+func (c *cloudClient) doJSONOnce(ctx context.Context, method, baseURL, path, token string, reqBody any, headers http.Header) (json.RawMessage, int, error) {
 	var bodyReader io.Reader
 	if reqBody != nil {
 		switch v := reqBody.(type) {
@@ -229,6 +233,7 @@ func (c *cloudClient) doJSONOnce(ctx context.Context, method, baseURL, path, tok
 	if err != nil {
 		return nil, 0, err
 	}
+	maps.Copy(req.Header, headers)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 	if reqBody != nil {
@@ -236,9 +241,6 @@ func (c *cloudClient) doJSONOnce(ctx context.Context, method, baseURL, path, tok
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	if c.mcpThreadID != "" {
-		req.Header.Set("X-Jaz-Thread-ID", c.mcpThreadID)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

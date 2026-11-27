@@ -44,7 +44,7 @@ func TestAntigravityKeepsNativeToolsOnStartAndResume(t *testing.T) {
 			agent.Env = config.Agents[acp.AgentAntigravity].Env
 			config.Agents[acp.AgentAntigravity] = agent
 			config.Adapters = fakeAdapterResolver{launch: acp.AdapterLaunch{Command: os.Args[0], Args: []string{"-test.run=TestFakeACPAgentProcess", "--"}}}
-			config.MCPStore = staticMCPStore{servers: []mcpconfig.Server{
+			config.MCPServers = staticMCPServers{servers: []mcpconfig.Server{
 				jaztools.ServerConfig("http://127.0.0.1:5299/mcp/jaztools"),
 				mcpruntime.ProxyServerConfig("http://127.0.0.1:5299/mcp/proxy"),
 			}}

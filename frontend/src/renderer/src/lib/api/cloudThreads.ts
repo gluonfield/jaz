@@ -233,6 +233,19 @@ export function resolveCloudModelSelection(
   const agentItems = profiles.map(cloudProfileToAgentOption)
   const agents = agentItems.map((item) => item.id)
   const profile = findCloudModelProfile(profiles, input.profileId, input.agent)
+  return {
+    profile,
+    agentItems,
+    agents,
+    profileId: profile?.profile_id ?? '',
+    ...resolveCloudProfileModel(profile, input),
+  }
+}
+
+export function resolveCloudProfileModel(
+  profile: CloudModelProfile | undefined,
+  input: { model?: string; effort?: string } = {},
+) {
   const modelSuggestions = profile?.models ?? []
   const requestedModel = input.model?.trim() ?? ''
   const storedModelValid = Boolean(
@@ -251,10 +264,6 @@ export function resolveCloudModelSelection(
     ? requestedEffort
     : selectedSuggestion?.reasoning?.default_effort ?? effortOptions[0]?.value ?? ''
   return {
-    profile,
-    agentItems,
-    agents,
-    profileId: profile?.profile_id ?? '',
     model,
     modelSuggestions,
     effort,
