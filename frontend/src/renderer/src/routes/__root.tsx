@@ -388,7 +388,7 @@ function RootLayout() {
                         />
                       ) : (
                         <>
-                          <SidebarWorkspaceSwitcher />
+                          {isMobile && <SidebarWorkspaceSwitcher />}
                           {tab === '/bots' ? (
                             <BotsPanel mobile={isMobile} />
                           ) : (

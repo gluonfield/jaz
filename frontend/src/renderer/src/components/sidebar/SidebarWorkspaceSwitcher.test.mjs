@@ -438,3 +438,30 @@ test('SidebarWorkspaceSwitcher shows each org icon: uploaded image, preset, or t
   expect(rows[2]).not.toContain('<svg')
   expect(rows[2]).toContain('>O</span>')
 })
+
+test('in the nav rail the switcher is the workspace mark alone, named by its tooltip, with the same menu', () => {
+  const state = {
+    active: false,
+    source: 'attached',
+    status: 'disconnected',
+    activeWorkspaceId: 'local',
+    workspaces: [casWorkspace],
+    url: '',
+    user: null,
+    error: null,
+    oidcLoginUrl: '',
+    capabilities: {},
+    lastSyncAt: '',
+  }
+  const closed = renderToStaticMarkup(React.createElement(loadSwitcher(state), { rail: true }))
+  expect(closed).toContain('aria-label="Workspace: Local"')
+  expect(closed).toContain('title="Local"')
+  expect(closed.replace(/<[^>]+>/g, '')).toBe('')
+
+  const open = renderToStaticMarkup(React.createElement(loadSwitcher(state, { forcePopoverOpen: true }), { rail: true }))
+  expect(open).toContain('Cambridge Advanced Systems')
+  expect(checkedRow(open)).toBe('Local')
+  expect(open).toContain('Add Cloud Workspace')
+
+  expect(renderToStaticMarkup(React.createElement(loadSwitcher(noWorkspaces), { rail: true }))).toBe('')
+})

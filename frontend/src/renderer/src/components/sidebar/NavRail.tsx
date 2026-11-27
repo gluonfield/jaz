@@ -4,6 +4,7 @@ import { AppWindow, LayoutDashboard, MessageSquare, Settings } from 'lucide-reac
 import { useRef, useState } from 'react'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { PluginIcon } from '@/components/plugins/PluginIcon'
+import { SidebarWorkspaceSwitcher } from '@/components/sidebar/SidebarWorkspaceSwitcher'
 import { BotsGlyph } from '@/components/bots/BotAvatar'
 import type { SettingsSection } from '@/components/settings/sections'
 import { botsQuery } from '@/lib/api/bots'
@@ -132,6 +133,7 @@ export function NavRail({
 
   return (
     <nav ref={rail} aria-label="Sections" style={{ width: RAIL_WIDTH }} className="flex shrink-0 flex-col items-center gap-2 pb-2 pt-[5px] max-sm:hidden">
+      <SidebarWorkspaceSwitcher rail />
       <Link
         to={current ? '/sessions/$sessionId' : '/new'}
         params={current ? { sessionId: current } : {}}
