@@ -11,6 +11,7 @@ const (
 	PresentationArtifact   PresentationKind = "artifact"
 	PresentationPluginView PresentationKind = "plugin-view"
 	PresentationCanvas     PresentationKind = "canvas"
+	PresentationMap        PresentationKind = "map"
 )
 
 type PresentationEvent struct {
@@ -19,6 +20,27 @@ type PresentationEvent struct {
 	Presented bool           `json:"presented,omitempty"`
 	Artifact  *ArtifactEvent `json:"artifact,omitempty"`
 	View      *PluginView    `json:"view,omitempty"`
+	Map       *PlaceMap      `json:"map,omitempty"`
+}
+
+// PlaceMap is a set of places drawn on an inline map. Every place has
+// coordinates; the tool that presents it resolves the ones given only by address.
+type PlaceMap struct {
+	Title  string  `json:"title"`
+	Places []Place `json:"places"`
+}
+
+type Place struct {
+	Name      string  `json:"name"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	Address   string  `json:"address,omitempty"`
+	Category  string  `json:"category,omitempty"`
+	Note      string  `json:"note,omitempty"`
+	Rating    float64 `json:"rating,omitempty"`
+	Reviews   int     `json:"reviews,omitempty"`
+	Price     string  `json:"price,omitempty"`
+	URL       string  `json:"url,omitempty"`
 }
 
 type PluginView struct {
@@ -54,17 +76,21 @@ func (p *PresentationEvent) UnmarshalJSON(data []byte) error {
 	}
 	switch p.Kind {
 	case PresentationCanvas:
-		p.Artifact = nil
-		p.View = nil
+		p.Artifact, p.View, p.Map = nil, nil, nil
 		return nil
 	case PresentationArtifact:
 		if p.Artifact != nil && p.Artifact.Title != "" && p.Artifact.WidgetCode != "" {
-			p.View = nil
+			p.View, p.Map = nil, nil
 			return nil
 		}
 	case PresentationPluginView:
 		if p.View != nil && p.View.Title != "" && p.View.WidgetCode != "" && p.View.File != "" {
-			p.Artifact = nil
+			p.Artifact, p.Map = nil, nil
+			return nil
+		}
+	case PresentationMap:
+		if p.Map != nil && len(p.Map.Places) > 0 {
+			p.Artifact, p.View = nil, nil
 			return nil
 		}
 	}

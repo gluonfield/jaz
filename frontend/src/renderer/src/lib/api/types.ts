@@ -4,6 +4,7 @@ import type { VoiceLine } from '@shared/voice'
 // sessionevents, server). Field names must match exactly.
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { MessageContextInput } from '@/lib/messageContext'
+import type { PlaceMap } from '@/lib/maps'
 
 export interface RuntimeRef {
   type: string
@@ -638,6 +639,7 @@ export type PresentationEvent = { presented?: boolean } & (
   | { kind: 'artifact'; artifact: ArtifactEvent }
   | { kind: 'plugin-view'; view: PluginView }
   | { kind: 'canvas' }
+  | { kind: 'map'; map: PlaceMap }
 )
 
 // MCPAppEvent is an agent's call to a tool its MCP server links to an MCP

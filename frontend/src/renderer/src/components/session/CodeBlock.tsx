@@ -1,10 +1,12 @@
 import type { Element, ElementContent } from 'hast'
-import { Fragment, useContext, type ComponentProps } from 'react'
+import { Fragment, useContext, useMemo, type ComponentProps } from 'react'
 import type { ExtraProps } from 'react-markdown'
 import { CopyToggleIcon } from '@/components/ui/CopyToggleIcon'
 import { useCopyAction } from '@/lib/useCopyAction'
 import { MermaidDiagram } from '@/components/session/MermaidDiagram'
 import { MarkdownArtifact, MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
+import { MapBlock } from '@/components/maps/MapBlock'
+import { parseMapFence } from '@/lib/maps'
 import { HighlightedCodeLine, type HighlightedCodeTokens, useHighlightedCode } from './HighlightedCode'
 
 const LANGUAGE_LABELS: Record<string, string> = {
@@ -108,9 +110,11 @@ export function CodeBlock({ node, children }: ComponentProps<'pre'> & ExtraProps
   const isMermaid = language.toLowerCase() === 'mermaid'
   const artifacts = useContext(MarkdownArtifactContext)
   const isArtifact = language.toLowerCase() === 'jaz-artifact' && artifacts.mode !== 'source'
-  const highlighted = useHighlightedCode(isMermaid || isArtifact ? '' : language, text)
+  const map = useMemo(() => (language.toLowerCase() === 'jaz-map' ? parseMapFence(text) : undefined), [language, text])
+  const highlighted = useHighlightedCode(isMermaid || isArtifact || map ? '' : language, text)
 
   if (!code) return <pre>{children}</pre>
+  if (map) return artifacts.mode === 'preview' ? <p className="text-sm text-ink-3">{map.title} · Map</p> : <MapBlock map={map} />
   if (isArtifact) return <MarkdownArtifact {...artifacts} code={text} title={typeof code.data?.meta === 'string' ? code.data.meta.trim() || 'Interactive artifact' : 'Interactive artifact'} />
 
   const lines = text.split('\n')

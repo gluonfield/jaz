@@ -159,7 +159,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
 		"create_thread", "send_message_to_thread", "wait_threads", "stop_thread", "list_agent_options",
 		"create_goal", "get_goal", "update_goal",
-		"visualise_read_me", "visualise_show_widget",
+		"visualise_read_me", "visualise_show_widget", "show_map",
 	} {
 		if !names[name] {
 			t.Fatalf("missing tool %s in %#v", name, names)

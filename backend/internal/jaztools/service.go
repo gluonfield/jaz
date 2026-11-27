@@ -14,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/maps"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpdeferred"
 	"github.com/wins/jaz/backend/internal/mcpsession"
@@ -83,6 +84,7 @@ type Service struct {
 	pluginStore     *plugins.Store
 	visualizeTools  *visualize.Service
 	pluginTools     *plugins.MCPTools
+	mapTools        *maps.MCPTools
 	widgetPublisher *widgets.SessionPublisher
 	appsService     *apps.Service
 	sessions        sessionSource
@@ -166,6 +168,7 @@ func New(
 		pluginStore:     installed,
 		visualizeTools:  visualizeTools,
 		pluginTools:     &plugins.MCPTools{Plugins: installed, Presenter: visualizeTools},
+		mapTools:        &maps.MCPTools{Presenter: visualizeTools, Geocoder: maps.NewPhoton()},
 		goalTools:       newGoalTools(events, sessions, usage),
 		titleTools:      &threads.TitleTools{Store: sessions, Events: events},
 		widgetPublisher: widgetPublisher,
@@ -341,10 +344,12 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		s.visualizeTools.AddReadMeTo(server)
 		s.visualizeTools.AddShowWidgetTo(server)
 		s.visualizeTools.AddCanvasTo(server)
+		s.mapTools.AddTo(server)
 	default:
 		s.visualizeTools.AddReadMeTo(server)
 		s.visualizeTools.AddShowWidgetTo(server)
 		s.visualizeTools.AddCanvasTo(server)
+		s.mapTools.AddTo(server)
 		s.pluginTools.AddTo(server)
 	}
 	return server

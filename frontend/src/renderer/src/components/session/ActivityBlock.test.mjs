@@ -345,6 +345,37 @@ test('the completed production transcript keeps one work fold with searchable ac
   expect(ordered).toEqual([...ordered].sort((a, b) => a - b))
 })
 
+test('a map the agent shows stays with the answer, outside the work fold, with directions per place', () => {
+  const at = (seconds) => new Date(seconds * 1000).toISOString()
+  const acp = (state, extra) => ({ id: 'thread', agent: 'claude', session_id: 'thread', state, ...extra })
+  const html = renderToStaticMarkup(createElement(Transcript, {
+    messages: [{ seq: 1, role: 'user', content: 'Coffee near Kings Cross?', created_at: at(1) }],
+    events: [
+      { session_id: 'thread', type: 'acp_tool', at: at(2), acp: acp('running', { tool_calls: [{ id: 'map', tool_name: 'mcp__jaztools__show_map', title: 'Locating cafés' }] }) },
+      {
+        session_id: 'thread',
+        type: 'artifact',
+        at: at(3),
+        artifact: {
+          kind: 'map',
+          presented: true,
+          map: { title: 'Coffee near Kings Cross', places: [{ name: 'Caravan', latitude: 51.5357, longitude: -0.1253, address: '1 Granary Square, London' }] },
+        },
+      },
+      { session_id: 'thread', type: 'acp_message', content: 'Caravan is the pick.', at: at(4), acp: acp('completed') },
+    ],
+    sessionId: 'thread',
+    groupTurns: true,
+  }))
+
+  expect(html.match(/Worked for/g)).toHaveLength(1)
+  expect(html).not.toContain('Locating cafés')
+  expect(html).toContain('Coffee near Kings Cross</span>')
+  expect(html).toContain('href="https://www.google.com/maps/dir/?api=1&amp;destination=Caravan%2C+1+Granary+Square%2C+London"')
+  expect(html).toContain('href="https://www.google.com/maps/search/?api=1&amp;query=Caravan%2C+1+Granary+Square%2C+London"')
+  expect(html.indexOf('Worked for')).toBeLessThan(html.indexOf('Caravan'))
+})
+
 test('inline shell preference keeps commands and output on the transcript axis', () => {
   const entries = [
     thought('reasoning-before-command'),

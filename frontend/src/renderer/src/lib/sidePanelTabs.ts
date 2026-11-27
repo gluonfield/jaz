@@ -4,8 +4,8 @@ import type { ArtifactInput } from '@/lib/artifacts'
 import type { OpenedFile } from '@/lib/mcpAppFiles'
 
 export type PanelView = PluginView
-export type PanelPresentation = Exclude<PresentationEvent, { kind: 'artifact' }>
-export const isPanelPresentation = (view?: PresentationEvent): view is PanelPresentation => Boolean(view && view.kind !== 'artifact')
+export type PanelPresentation = Extract<PresentationEvent, { kind: 'plugin-view' | 'canvas' }>
+export const isPanelPresentation = (view?: PresentationEvent): view is PanelPresentation => view?.kind === 'plugin-view' || view?.kind === 'canvas'
 
 export type SidePanelTab =
   | { id: string; kind: 'preview' | 'terminal' | 'side-chat' | 'canvas' }
