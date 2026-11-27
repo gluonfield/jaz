@@ -1,6 +1,10 @@
-const SWEEP = 0.45
-const FLIGHT = 0.6
-export const SAND_ARRIVE_MS = (SWEEP * 1.2 + FLIGHT) * 1000
+const SWEEP = 0.4
+const FLIGHT = 0.5
+const ZOOM_MS = 200
+const SETTLED_MS = (SWEEP * 1.2 + FLIGHT) * 1000
+export const SAND_ARRIVE_MS = SETTLED_MS + ZOOM_MS
+// How far the window steps back before it is blown away.
+const STEP_BACK = 0.06
 const GRAINS = 240_000
 
 // Shared by both programs so a cell's picture and its grain agree on when it lifts off.
@@ -8,6 +12,7 @@ const COMMON = `
 precision highp float;
 uniform vec2 size;
 uniform float cell;
+uniform float zoom;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -47,9 +52,11 @@ uniform float arriving;
 
 void main() {
   vec2 point = vec2(gl_FragCoord.x, size.y * density - gl_FragCoord.y) / density;
+  point = (point - size * 0.5) / zoom + size * 0.5;
   vec2 index = floor(point / cell);
   vec3 color = base;
-  if (arriving >= 0.0 && flight(index, arriving) >= 1.0) {
+  if (point.x < 0.0 || point.y < 0.0 || point.x > size.x || point.y > size.y) {
+  } else if (arriving >= 0.0 && flight(index, arriving) >= 1.0) {
     color = texture2D(to, point / size).rgb;
   } else if (flight(index, leaving) <= 0.0) {
     color = texture2D(from, point / size).rgb;
@@ -85,13 +92,13 @@ void main() {
     (b - 0.5) * size.y * 0.3 * carried - sin(along * 3.14159) * size.y * 0.07 * a
   );
   vec2 swirl = vec2(cos(b * 40.0 + along * 7.0), sin(a * 40.0 + along * 9.0)) * along * 34.0 * (0.4 + b);
-  vec2 point = home + drift + swirl;
+  vec2 point = (home + drift + swirl - size * 0.5) * zoom + size * 0.5;
 
   vec3 color = texture2D(image, home / size).rgb;
   float body = smoothstep(0.012, 0.06, distance(color, base));
   float glint = step(0.82, b) * sin(along * 3.14159);
   tint = vec4(mix(color, mix(accent, vec3(1.0), 0.5), glint * 0.55), body * (1.0 - smoothstep(0.72, 1.0, along)));
-  gl_PointSize = cell * density * mix(1.15, 0.75, along);
+  gl_PointSize = cell * density * zoom * mix(1.15, 0.75, along);
   gl_Position = vec4(point.x / size.x * 2.0 - 1.0, 1.0 - point.y / size.y * 2.0, 0.0, 1.0);
 }`
 
@@ -110,6 +117,11 @@ function cssColor(variable: string): [number, number, number] {
   return [red / 255, green / 255, blue / 255]
 }
 
+function ease(progress: number): number {
+  const t = Math.min(1, Math.max(0, progress))
+  return t * t * (3 - 2 * t)
+}
+
 function link(gl: WebGLRenderingContext, vertex: string, fragment: string): WebGLProgram {
   const program = gl.createProgram()
   for (const [type, source] of [[gl.VERTEX_SHADER, vertex], [gl.FRAGMENT_SHADER, fragment]] as const) {
@@ -122,8 +134,9 @@ function link(gl: WebGLRenderingContext, vertex: string, fragment: string): WebG
   return program
 }
 
-// Turns `from`, a picture of the window, to sand on `canvas` and blows it away.
-// `arrive` blows a picture of the new window in and settles it, taking
+// Steps `from`, a picture of the window, back a little on `canvas`, turns it to
+// sand and blows it away.
+// `arrive` blows a picture of the new window in, settles it and brings it forward, taking
 // SAND_ARRIVE_MS. Returns null where WebGL cannot do it.
 export function runSand(canvas: HTMLCanvasElement, from: HTMLCanvasElement) {
   const gl = canvas.getContext('webgl', { alpha: false, antialias: false })
@@ -180,6 +193,7 @@ export function runSand(canvas: HTMLCanvasElement, from: HTMLCanvasElement) {
   gl.uniform1i(gl.getUniformLocation(picture, 'to'), 1)
   const corner = gl.getAttribLocation(picture, 'corner')
   const index = gl.getAttribLocation(grains, 'index')
+  const zooms = [picture, grains].map((program) => gl.getUniformLocation(program, 'zoom'))
   const uniforms = {
     leaving: gl.getUniformLocation(picture, 'leaving'),
     arriving: gl.getUniformLocation(picture, 'arriving'),
@@ -198,9 +212,13 @@ export function runSand(canvas: HTMLCanvasElement, from: HTMLCanvasElement) {
     gl.drawArrays(gl.POINTS, 0, columns * rows)
   }
   const draw = (now: number) => {
-    const leaving = (now - started) / 1000
+    const back = ease((now - started) / ZOOM_MS)
+    const forward = arrived ? ease((now - arrived - SETTLED_MS) / ZOOM_MS) : 0
+    const zoom = 1 - STEP_BACK * back * (1 - forward)
+    const leaving = (now - started - ZOOM_MS) / 1000
     const arriving = arrived ? (now - arrived) / 1000 : -1
     gl.useProgram(picture)
+    gl.uniform1f(zooms[0], zoom)
     gl.disable(gl.BLEND)
     gl.bindBuffer(gl.ARRAY_BUFFER, corners)
     gl.enableVertexAttribArray(corner)
@@ -210,6 +228,7 @@ export function runSand(canvas: HTMLCanvasElement, from: HTMLCanvasElement) {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
 
     gl.useProgram(grains)
+    gl.uniform1f(zooms[1], zoom)
     gl.enable(gl.BLEND)
     gl.bindBuffer(gl.ARRAY_BUFFER, cells)
     gl.enableVertexAttribArray(index)

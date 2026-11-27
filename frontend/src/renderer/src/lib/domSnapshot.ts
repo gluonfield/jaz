@@ -8,7 +8,7 @@ const TRANSPARENT = /^(transparent|rgba\(0, 0, 0, 0\))$/
 type Painter = {
   context: CanvasRenderingContext2D
   icons: Map<Element, HTMLImageElement>
-  skip: Element | null
+  skip: (element: Element) => boolean
 }
 
 function roundedPath(context: CanvasRenderingContext2D, rect: DOMRect, radius: number) {
@@ -70,7 +70,7 @@ function paintText(context: CanvasRenderingContext2D, text: Text, style: CSSStyl
 }
 
 function paintElement(painter: Painter, element: Element, inherited: number) {
-  if (element === painter.skip) return
+  if (painter.skip(element)) return
   const { context } = painter
   const style = getComputedStyle(element)
   const opacity = inherited * parseFloat(style.opacity)
@@ -126,8 +126,8 @@ function paintElement(painter: Painter, element: Element, inherited: number) {
   if (clips) context.restore()
 }
 
-// `skip` and everything inside it is left out, so an overlay can snapshot the page beneath itself.
-export async function snapshotWindow(scale: number, skip: Element | null): Promise<HTMLCanvasElement> {
+// Elements `skip` accepts are left out with everything inside them, so an overlay can snapshot the page beneath itself.
+export async function snapshotWindow(scale: number, skip: (element: Element) => boolean): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas')
   canvas.width = Math.round(window.innerWidth * scale)
   canvas.height = Math.round(window.innerHeight * scale)
