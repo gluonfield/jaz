@@ -442,22 +442,15 @@ func closeSession(ss *serverSession) {
 func (m *Manager) Status(id string) mcpconfig.ServerStatus {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	return m.serverStatusLocked(id)
+}
+
+func (m *Manager) serverStatusLocked(id string) mcpconfig.ServerStatus {
 	status := m.statuses[id]
-	if ss := m.sessions[id]; status.Status == "connected" && ss != nil && ss.oauth != nil && ss.oauth.needsAuthorization() {
+	if ss := m.sessions[id]; status.Status == "connected" && ss != nil && ss.oauth != nil && ss.oauth.authorizationChallenge() != nil {
 		status.Status, status.Error = "needs_auth", signInRequired
 	}
 	return status
-}
-
-func (m *Manager) setServerStatus(id string, status mcpconfig.ServerStatus) {
-	if strings.TrimSpace(id) == "" || status.Status == "" {
-		return
-	}
-	m.mu.Lock()
-	if m.ctx.Err() == nil {
-		m.statuses[id] = status
-	}
-	m.mu.Unlock()
 }
 
 func (m *Manager) Test(ctx context.Context, server mcpconfig.Server) mcpconfig.ServerStatus {

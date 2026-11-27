@@ -138,11 +138,18 @@ export function MCPSettings() {
   })
   const authorize = useMutation({
     mutationFn: ({ id }: AuthorizeVariables) => authorizeMCPServer(id),
-    onSuccess: (status, variables) => {
+    onSuccess: async (status, variables) => {
       if (status.status === 'connected') {
         closeAuthWindow(variables.authWindow)
         toast(`Connected, ${mcpToolCountLabel(status.tool_count)}`)
       } else if (status.auth_url) {
+        await queryClient.cancelQueries({ queryKey: mcpServersQuery.queryKey })
+        queryClient.setQueryData(mcpServersQuery.queryKey, (data) => data && {
+          ...data,
+          servers: data.servers.map<MCPServer>((server) => server.id === variables.id
+            ? { ...server, status: 'needs_auth', error: undefined }
+            : server),
+        })
         openAuthURL(status.auth_url, variables.authWindow)
         authWindowRef.current = variables.authWindow
         setPendingAuthServerID(variables.id)
@@ -181,21 +188,13 @@ export function MCPSettings() {
   useEffect(() => {
     if (!pendingAuthServerID) return
     const server = sortedServers.find((item) => item.id === pendingAuthServerID)
-    if (!server) {
-      closeAuthWindow(authWindowRef.current)
-      authWindowRef.current = null
-      setPendingAuthServerID(null)
-      return
-    }
-    if (server.status === 'connected') {
-      closeAuthWindow(authWindowRef.current)
-      authWindowRef.current = null
-      setPendingAuthServerID(null)
+    if (server && server.status !== 'connected' && server.status !== 'error' && server.status !== 'auth_error') return
+    closeAuthWindow(authWindowRef.current)
+    authWindowRef.current = null
+    setPendingAuthServerID(null)
+    if (server?.status === 'connected') {
       toast(`Connected, ${mcpToolCountLabel(server.tool_count)}`)
-    } else if (server.status === 'error') {
-      closeAuthWindow(authWindowRef.current)
-      authWindowRef.current = null
-      setPendingAuthServerID(null)
+    } else if (server) {
       toast(server.error ? `Sign-in failed: ${server.error}` : 'Sign-in failed', 'danger')
     }
   }, [pendingAuthServerID, sortedServers, toast])
@@ -357,7 +356,7 @@ function MCPServerRow({
   onAuthorize: () => void
   onTools: () => void
 }) {
-  const needsAuth = server.status === 'needs_auth'
+  const needsAuth = server.status === 'needs_auth' || server.status === 'auth_error'
   const oauthConfigured = Boolean(server.oauth?.client_id || server.oauth?.issuer)
   const canAuthorize = needsAuth || (oauthConfigured && server.status !== 'connected')
   const statusText = authorizing ? 'Waiting for sign-in…' : mcpStatusText(server)
@@ -461,7 +460,7 @@ function StatusIcon({ server, authorizing }: { server: MCPServer; authorizing: b
   if (!server.enabled) return <span className="size-2 rounded-full bg-ink-3/45" />
   if (server.status === 'connected') return <CheckCircle2 size={15} className="text-ok" />
   if (server.status === 'needs_auth') return <KeyRound size={14} className="text-accent" />
-  if (server.status === 'error') return <CircleAlert size={15} className="text-danger" />
+  if (server.status === 'error' || server.status === 'auth_error') return <CircleAlert size={15} className="text-danger" />
   return <span className="size-2 rounded-full bg-running" />
 }
 

@@ -5,8 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -22,7 +26,7 @@ func (c *serverConnection) checkOAuth(ctx context.Context, server mcpconfig.Serv
 		}
 		return nil
 	}
-	if c.oauth.needsAuthorization() {
+	if c.oauth.authorizationChallenge() != nil {
 		return nil
 	}
 	if source, err := c.oauth.TokenSource(ctx); err != nil || source != nil {
@@ -33,10 +37,65 @@ func (c *serverConnection) checkOAuth(ctx context.Context, server mcpconfig.Serv
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	if _, err := c.oauth.protectedResourceMetadata(probeCtx, nil, discoveryProactive); err == nil {
+	if _, err := c.oauth.protectedResourceMetadata(probeCtx, nil); err == nil {
 		return errNeedsAuthorization
 	}
 	return nil
+}
+
+func (h *oauthHandler) protectedResourceMetadata(ctx context.Context, challenge *oauthChallenge) (*oauthex.ProtectedResourceMetadata, error) {
+	resource, err := url.Parse(h.serverURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse server URL: %w", err)
+	}
+	origin := url.URL{Scheme: resource.Scheme, Host: resource.Host}
+	for _, candidate := range protectedResourceMetadataURLs(resource, origin, challenge) {
+		prm, err := oauthex.GetProtectedResourceMetadata(ctx, candidate.url, candidate.resource, h.httpClient)
+		if err != nil {
+			continue
+		}
+		if len(prm.AuthorizationServers) == 0 {
+			return nil, errors.New("protected resource metadata lists no authorization servers")
+		}
+		return prm, nil
+	}
+	issuer := h.oauth.Issuer
+	if issuer == "" {
+		if challenge == nil {
+			return nil, errors.New("server did not advertise OAuth protected resource metadata")
+		}
+		issuer = origin.String()
+	}
+	return &oauthex.ProtectedResourceMetadata{
+		AuthorizationServers: []string{issuer},
+		Resource:             h.serverURL,
+	}, nil
+}
+
+type prmCandidate struct {
+	url      string
+	resource string
+}
+
+func protectedResourceMetadataURLs(resource *url.URL, origin url.URL, challenge *oauthChallenge) []prmCandidate {
+	const wellKnown = "/.well-known/oauth-protected-resource"
+	var candidates []prmCandidate
+	identifier := resource.String()
+	if challenge != nil && challenge.metadataURL != "" {
+		candidates = append(candidates, prmCandidate{url: challenge.metadataURL, resource: identifier})
+	}
+	metadata := origin
+	for _, path := range []string{wellKnown + strings.TrimRight(resource.Path, "/"), wellKnown} {
+		metadata.Path = path
+		candidate := prmCandidate{url: metadata.String(), resource: identifier}
+		if !slices.Contains(candidates, candidate) {
+			candidates = append(candidates, candidate)
+		}
+	}
+	if root := origin.String(); root != identifier {
+		candidates = append(candidates, prmCandidate{url: metadata.String(), resource: root})
+	}
+	return candidates
 }
 
 type authorizationMetadata struct {

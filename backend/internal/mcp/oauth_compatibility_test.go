@@ -27,12 +27,12 @@ func TestOAuthRejectsUnadvertisedS256(t *testing.T) {
 		t.Run(fmt.Sprint(methods), func(t *testing.T) {
 			srv := mockAuthServer(t, map[string]any{"code_challenge_methods_supported": methods})
 			handler := newOAuthHandler(mcpconfig.Server{ID: "pkce", URL: srv.URL + "/mcp"}, newMemTokenStore(), http.DefaultClient, nil)
-			handler.mode = oauthModeInteractive
+			handler.interactive = true
 			handler.fetch = func(context.Context, string) (mcpconfig.AuthorizationResponse, error) {
 				t.Error("opened authorization without S256 support")
 				return mcpconfig.AuthorizationResponse{}, nil
 			}
-			if err := handler.AuthorizeFromMetadata(t.Context()); err == nil || !strings.Contains(err.Error(), "PKCE") {
+			if err := handler.authorize(t.Context(), nil); err == nil || !strings.Contains(err.Error(), "PKCE") {
 				t.Fatalf("authorization error = %v", err)
 			}
 			if srv.registrations != 0 {
@@ -52,8 +52,8 @@ func TestOAuthMissingMetadataDoesNotGuessEndpoints(t *testing.T) {
 	}))
 	defer srv.Close()
 	handler := newOAuthHandler(mcpconfig.Server{ID: "missing", URL: srv.URL + "/mcp", OAuth: mcpconfig.OAuthConfig{Issuer: srv.URL}}, newMemTokenStore(), srv.Client(), nil)
-	handler.mode = oauthModeInteractive
-	if err := handler.AuthorizeFromMetadata(t.Context()); err == nil || !strings.Contains(err.Error(), "S256") || posts != 0 {
+	handler.interactive = true
+	if err := handler.authorize(t.Context(), nil); err == nil || !strings.Contains(err.Error(), "S256") || posts != 0 {
 		t.Fatalf("missing metadata: err=%v posts=%d", err, posts)
 	}
 }
@@ -64,10 +64,10 @@ func TestOAuthRegistrationFailureExplainsSetup(t *testing.T) {
 			srv := mockAuthServer(t, nil)
 			srv.registrationStatus = status
 			handler := newOAuthHandler(mcpconfig.Server{ID: "protected", URL: srv.URL + "/mcp"}, newMemTokenStore(), srv.Client(), nil)
-			handler.mode = oauthModeInteractive
+			handler.interactive = true
 			handler.redirectURL = "https://local.example/v1/mcp/oauth/callback"
 			handler.broker = oauthbroker.Broker{URL: "https://broker.example/oauth/callback"}
-			err := handler.AuthorizeFromMetadata(t.Context())
+			err := handler.authorize(t.Context(), nil)
 			for _, want := range []string{"authenticated registration", "https://broker.example/oauth/callback", "configure an OAuth client ID", "S256 PKCE"} {
 				if err == nil || !strings.Contains(err.Error(), want) {
 					t.Fatalf("error = %v; want %q", err, want)
@@ -480,7 +480,7 @@ func TestOAuthResponseIssuerValidation(t *testing.T) {
 			srv := mockAuthServer(t, map[string]any{"authorization_response_iss_parameter_supported": test.advertised})
 			store := newMemTokenStore()
 			handler := newOAuthHandler(mcpconfig.Server{ID: "issuer", URL: srv.URL + "/mcp"}, store, srv.Client(), nil)
-			handler.mode = oauthModeInteractive
+			handler.interactive = true
 			handler.redirectURL = "https://jaz.example/v1/mcp/oauth/callback"
 			handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
 				u, _ := url.Parse(authURL)
@@ -490,7 +490,7 @@ func TestOAuthResponseIssuerValidation(t *testing.T) {
 				}
 				return mcpconfig.AuthorizationResponse{State: u.Query().Get("state"), Code: "approved-code", Issuer: issuer, Error: test.failure}, nil
 			}
-			err := handler.AuthorizeFromMetadata(t.Context())
+			err := handler.authorize(t.Context(), nil)
 			if test.wantError {
 				if err == nil || !strings.Contains(err.Error(), "issuer") || strings.Contains(err.Error(), "untrusted-provider-error") || srv.tokenForm != nil {
 					t.Fatalf("issuer rejection: err=%v token=%v", err, srv.tokenForm)
@@ -516,8 +516,8 @@ func TestOAuthBindsPreregisteredClientToIssuer(t *testing.T) {
 				store.SaveToken(t.Context(), server.TokenID(), integrationoauth.Token{ClientID: "registered", Issuer: "https://original.example"})
 			}
 			handler := newOAuthHandler(server, store, srv.Client(), nil)
-			handler.mode = oauthModeInteractive
-			err := handler.AuthorizeFromMetadata(t.Context())
+			handler.interactive = true
+			err := handler.authorize(t.Context(), nil)
 			if err == nil || !strings.Contains(err.Error(), "authorization server") || srv.registrations != 0 || srv.tokenForm != nil {
 				t.Fatalf("issuer binding: err=%v registrations=%d token=%v", err, srv.registrations, srv.tokenForm)
 			}
@@ -535,13 +535,13 @@ func TestDCRSelectsApplicationTypeFromCallback(t *testing.T) {
 		t.Run(test.callback, func(t *testing.T) {
 			srv := mockAuthServer(t, nil)
 			handler := newOAuthHandler(mcpconfig.Server{ID: "application", URL: srv.URL + "/mcp"}, newMemTokenStore(), srv.Client(), nil)
-			handler.mode = oauthModeInteractive
+			handler.interactive = true
 			handler.redirectURL = test.callback
 			handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
 				u, _ := url.Parse(authURL)
 				return mcpconfig.AuthorizationResponse{State: u.Query().Get("state"), Code: "approved-code"}, nil
 			}
-			if err := handler.AuthorizeFromMetadata(t.Context()); err != nil {
+			if err := handler.authorize(t.Context(), nil); err != nil {
 				t.Fatal(err)
 			}
 			if srv.registration.ApplicationType != test.application || srv.registration.RedirectURIs[0] != test.callback || srv.tokenForm.Get("redirect_uri") != test.callback {

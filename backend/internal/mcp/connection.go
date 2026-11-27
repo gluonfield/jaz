@@ -9,7 +9,6 @@ import (
 	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/modelcontextprotocol/go-sdk/oauthex"
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
@@ -53,34 +52,14 @@ func (c *serverConnection) callTool(ctx context.Context, params *mcpsdk.CallTool
 		return session.CallTool(ctx, params)
 	})
 	if c.oauth != nil {
-		if challenges := toolAuthChallenges(result); len(challenges) > 0 || isRejectedGrant(err) {
-			c.oauth.markAuthorizationRequired(challenges)
-			return nil, errNeedsAuthorization
+		if challenge := toolOAuthChallenge(result); challenge != nil {
+			return nil, c.oauth.requireAuthorization(challenge)
+		}
+		if isRejectedGrant(err) {
+			return nil, c.oauth.requireAuthorization(&oauthChallenge{})
 		}
 	}
 	return result, err
-}
-
-func toolAuthChallenges(result *mcpsdk.CallToolResult) []oauthex.Challenge {
-	if result == nil || !result.IsError {
-		return nil
-	}
-	raw, ok := result.Meta["mcp/www_authenticate"]
-	if !ok {
-		return nil
-	}
-	headers, ok := raw.([]any)
-	if !ok {
-		headers = []any{raw}
-	}
-	var challenges []oauthex.Challenge
-	for _, value := range headers {
-		if text, ok := value.(string); ok {
-			parsed, _ := bearerChallenges([]string{text})
-			challenges = append(challenges, parsed...)
-		}
-	}
-	return challenges
 }
 
 func (c *serverConnection) readResource(ctx context.Context, uri string) (*mcpsdk.ReadResourceResult, error) {
@@ -186,6 +165,11 @@ func (m *Manager) connectionKey(ctx context.Context, server mcpconfig.Server) ([
 // loadCatalog reads the server's agent tools, what its tools declare for MCP
 // Apps and whether it offers search.
 func (c *serverConnection) loadCatalog(ctx context.Context, server mcpconfig.Server) (*serverSession, error) {
+	release, err := c.acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	var items []remoteTool
 	session := c.current()
 	apps := newServerApps(server.ID, session.InitializeResult())

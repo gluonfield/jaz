@@ -1140,7 +1140,7 @@ export interface MCPServer {
   bearer_token_set?: boolean
   headers?: MCPHeader[]
   oauth?: MCPOAuthConfig
-  status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'
+  status: MCPServerStatus['status']
   tool_count: number
   tools?: MCPTool[]
   error?: string
@@ -1181,7 +1181,7 @@ export interface MCPEntrypoint {
 }
 
 export interface MCPServerStatus {
-  status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'
+  status: 'connected' | 'disabled' | 'error' | 'auth_error' | 'needs_auth' | 'unknown'
   tool_count: number
   tools?: MCPTool[]
   error?: string

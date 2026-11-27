@@ -46,22 +46,15 @@ type oauthHandler struct {
 	broker      oauthbroker.Broker
 	fetch       codeFetcher
 
-	mu         sync.Mutex
-	mode       oauthMode
-	state      authorizationState
-	challenges []oauthex.Challenge
+	mu          sync.Mutex
+	interactive bool
+	authorized  bool
+	required    *oauthChallenge
 }
 
 // codeFetcher directs the user through the authorization URL (e.g. opens a browser)
 // and returns the authorization code and state once the redirect arrives.
 type codeFetcher func(ctx context.Context, authURL string) (mcpconfig.AuthorizationResponse, error)
-
-type metadataDiscovery int
-
-const (
-	discoveryFromChallenge metadataDiscovery = iota
-	discoveryProactive
-)
 
 type oauthClientConfig struct {
 	clientID     string
@@ -71,21 +64,6 @@ type oauthClientConfig struct {
 	useBroker    bool
 }
 
-type oauthMode int
-
-const (
-	oauthModeBackground oauthMode = iota
-	oauthModeInteractive
-)
-
-type authorizationState int
-
-const (
-	authorizationIdle authorizationState = iota
-	authorizationRequired
-	authorizationComplete
-)
-
 func newOAuthHandler(server mcpconfig.Server, store integrationoauth.Store, httpClient *http.Client, guard *integrationoauth.RefreshGuard) *oauthHandler {
 	return &oauthHandler{
 		tokenID:    server.TokenID(),
@@ -94,15 +72,13 @@ func newOAuthHandler(server mcpconfig.Server, store integrationoauth.Store, http
 		store:      store,
 		httpClient: httpClient,
 		guard:      guard,
-		mode:       oauthModeBackground,
-		state:      authorizationIdle,
 	}
 }
 
 // TokenSource is rebuilt per call: the SDK passes the current connection's
 // context, and a source cached across a redial would refresh on a closed one.
 func (h *oauthHandler) TokenSource(ctx context.Context) (oauth2.TokenSource, error) {
-	if h.mode == oauthModeInteractive && !h.didAuthorize() {
+	if h.interactive && !h.didAuthorize() {
 		return nil, nil
 	}
 	src, err := (integrationoauth.Refresher{
@@ -124,30 +100,24 @@ func (h *oauthHandler) Authorize(ctx context.Context, _ *http.Request, resp *htt
 		return errors.New("MCP server rejected the new OAuth grant")
 	}
 	headers := resp.Header.Values("WWW-Authenticate")
-	challenges, err := bearerChallenges(headers)
+	challenge, err := parseOAuthChallenge(headers)
 	if err != nil {
 		return err
 	}
-	if len(challenges) == 0 && (len(headers) != 0 || resp.StatusCode != http.StatusUnauthorized) {
-		return fmt.Errorf("MCP server returned HTTP %d without an OAuth challenge", resp.StatusCode)
+	if challenge == nil {
+		if len(headers) != 0 || resp.StatusCode != http.StatusUnauthorized {
+			return fmt.Errorf("MCP server returned HTTP %d without an OAuth challenge", resp.StatusCode)
+		}
+		challenge = &oauthChallenge{}
 	}
-	return h.authorizeChallenge(ctx, challenges)
-}
-
-func (h *oauthHandler) AuthorizeFromMetadata(ctx context.Context) error {
-	return h.authorize(ctx, nil, discoveryProactive)
-}
-
-func (h *oauthHandler) authorizeChallenge(ctx context.Context, challenges []oauthex.Challenge) error {
-	return h.authorize(ctx, challenges, discoveryFromChallenge)
-}
-
-func (h *oauthHandler) authorize(ctx context.Context, challenges []oauthex.Challenge, discovery metadataDiscovery) error {
-	if h.mode != oauthModeInteractive {
-		h.markAuthorizationRequired(challenges)
-		return errNeedsAuthorization
+	if !h.interactive {
+		return h.requireAuthorization(challenge)
 	}
-	tok, err := h.runAuthorization(ctx, challenges, discovery)
+	return h.authorize(ctx, challenge)
+}
+
+func (h *oauthHandler) authorize(ctx context.Context, challenge *oauthChallenge) error {
+	tok, err := h.runAuthorization(ctx, challenge)
 	if err != nil {
 		return err
 	}
@@ -164,50 +134,41 @@ func (h *oauthHandler) saveToken(ctx context.Context, tok integrationoauth.Token
 		h.guard.Reset(h.tokenID)
 	}
 	h.mu.Lock()
-	h.state = authorizationComplete
+	h.authorized = true
 	h.mu.Unlock()
 	return nil
 }
 
-func (h *oauthHandler) needsAuthorization() bool {
-	_, required := h.authorizationChallenge()
-	return required
-}
-
-func (h *oauthHandler) authorizationChallenge() ([]oauthex.Challenge, bool) {
+func (h *oauthHandler) authorizationChallenge() *oauthChallenge {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.challenges, h.state == authorizationRequired
+	return h.required
 }
 
 func (h *oauthHandler) didAuthorize() bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.state == authorizationComplete
+	return h.authorized
 }
 
-func (h *oauthHandler) markAuthorizationRequired(challenges []oauthex.Challenge) {
+func (h *oauthHandler) requireAuthorization(challenge *oauthChallenge) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.state = authorizationRequired
-	if len(challenges) > 0 {
-		h.challenges = challenges
+	if h.required == nil || challenge.hasParameters() {
+		h.required = challenge
 	}
+	return errNeedsAuthorization
 }
 
 // runAuthorization performs the OAuth 2.0 authorization-code flow with PKCE.
 // It uses configured client credentials when present and otherwise follows MCP
 // client registration: a client ID metadata document, then dynamic registration.
-func (h *oauthHandler) runAuthorization(ctx context.Context, challenges []oauthex.Challenge, discovery metadataDiscovery) (integrationoauth.Token, error) {
+func (h *oauthHandler) runAuthorization(ctx context.Context, challenge *oauthChallenge) (integrationoauth.Token, error) {
 	var zero integrationoauth.Token
-	prm, err := h.protectedResourceMetadata(ctx, challenges, discovery)
+	prm, err := h.protectedResourceMetadata(ctx, challenge)
 	if err != nil {
 		return zero, err
 	}
-	if len(prm.AuthorizationServers) == 0 {
-		return zero, errors.New("server advertised no authorization servers")
-	}
-
 	asm, err := authorizationServerMetadata(ctx, prm.AuthorizationServers[0], h.httpClient)
 	if err != nil {
 		return zero, fmt.Errorf("authorization server metadata: %w", err)
@@ -216,7 +177,10 @@ func (h *oauthHandler) runAuthorization(ctx context.Context, challenges []oauthe
 		return zero, errors.New("authorization server must advertise S256 PKCE support in its OAuth metadata")
 	}
 
-	scopes := scopesFromChallenges(challenges)
+	var scopes []string
+	if challenge != nil {
+		scopes = challenge.scopes
+	}
 	if len(scopes) == 0 && !h.oauth.UseAppScopes {
 		scopes = prm.ScopesSupported
 	}
@@ -409,98 +373,6 @@ func dynamicClientSecret(client oauthClientConfig) string {
 
 func (h *oauthHandler) exchangeContext(ctx context.Context) context.Context {
 	return context.WithValue(ctx, oauth2.HTTPClient, h.httpClient)
-}
-
-// protectedResourceMetadata discovers the protected resource metadata, trying the
-// URL from the WWW-Authenticate challenge, then the well-known locations, and
-// finally falling back to treating the server origin as the authorization server.
-func (h *oauthHandler) protectedResourceMetadata(ctx context.Context, challenges []oauthex.Challenge, discovery metadataDiscovery) (*oauthex.ProtectedResourceMetadata, error) {
-	for _, candidate := range protectedResourceMetadataURLs(resourceMetadataURLFromChallenges(challenges), h.serverURL) {
-		prm, err := oauthex.GetProtectedResourceMetadata(ctx, candidate.url, candidate.resource, h.httpClient)
-		if err != nil || prm == nil {
-			continue
-		}
-		if len(prm.AuthorizationServers) == 0 {
-			return nil, errors.New("protected resource metadata lists no authorization servers")
-		}
-		return prm, nil
-	}
-	if h.oauth.Issuer != "" {
-		return &oauthex.ProtectedResourceMetadata{
-			AuthorizationServers: []string{h.oauth.Issuer},
-			Resource:             h.serverURL,
-		}, nil
-	}
-	if discovery == discoveryProactive {
-		return nil, errors.New("server did not advertise OAuth protected resource metadata")
-	}
-	u, err := url.Parse(h.serverURL)
-	if err != nil {
-		return nil, fmt.Errorf("parse server url: %w", err)
-	}
-	u.Path = ""
-	return &oauthex.ProtectedResourceMetadata{
-		AuthorizationServers: []string{u.String()},
-		Resource:             h.serverURL,
-	}, nil
-}
-
-type prmCandidate struct {
-	url      string
-	resource string
-}
-
-func protectedResourceMetadataURLs(metadataURL, resourceURL string) []prmCandidate {
-	var out []prmCandidate
-	if metadataURL != "" {
-		out = append(out, prmCandidate{url: metadataURL, resource: resourceURL})
-	}
-	ru, err := url.Parse(resourceURL)
-	if err != nil {
-		return out
-	}
-	mu := *ru
-	mu.RawPath, mu.RawQuery, mu.Fragment = "", "", ""
-	mu.ForceQuery = false
-	const wellKnown = "/.well-known/oauth-protected-resource"
-	for _, path := range []string{wellKnown + strings.TrimRight(ru.Path, "/"), wellKnown} {
-		mu.Path = path
-		candidate := prmCandidate{url: mu.String(), resource: resourceURL}
-		if !slices.Contains(out, candidate) {
-			out = append(out, candidate)
-		}
-	}
-	origin := (&url.URL{Scheme: ru.Scheme, Host: ru.Host}).String()
-	if resourceURL != origin {
-		out = append(out, prmCandidate{url: mu.String(), resource: origin})
-	}
-	return out
-}
-
-func bearerChallenges(headers []string) ([]oauthex.Challenge, error) {
-	challenges, err := oauthex.ParseWWWAuthenticate(headers)
-	if err != nil {
-		return nil, fmt.Errorf("parse WWW-Authenticate: %w", err)
-	}
-	return slices.DeleteFunc(challenges, func(c oauthex.Challenge) bool { return c.Scheme != "bearer" }), nil
-}
-
-func resourceMetadataURLFromChallenges(cs []oauthex.Challenge) string {
-	for _, c := range cs {
-		if u := c.Params["resource_metadata"]; u != "" {
-			return u
-		}
-	}
-	return ""
-}
-
-func scopesFromChallenges(cs []oauthex.Challenge) []string {
-	for _, c := range cs {
-		if c.Scheme == "bearer" && c.Params["scope"] != "" {
-			return strings.Fields(c.Params["scope"])
-		}
-	}
-	return nil
 }
 
 func randomState() (string, error) {
