@@ -61,7 +61,7 @@ func AddMCPTools(server *mcpsdk.Server, svc *Service, sessions sessionLoader) {
 	}
 	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "prepare_app_draft",
-		Description: "Pack inline HTML/Markdown or workspace files into a validated jaz-app/1 preflight draft for explicit user confirmation and publishing.",
+		Description: "Publish or share a Jaz artifact, interactive HTML app, or Markdown document by packing inline HTML/Markdown or workspace files into a validated jaz-app/1 preflight draft for user confirmation in Jaz.",
 	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, args PrepareDraftArgs) (*mcpsdk.CallToolResult, any, error) {
 		sessionID := mcpsession.SessionID(req)
 		var sessionDir string

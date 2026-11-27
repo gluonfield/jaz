@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ACPToolCall } from '@/lib/api/types'
+import { AppDraftCard } from './AppDraftCard'
+import { isAppDraftToolName } from './appDraftTool'
 import { ArtifactBlock } from './ArtifactBlock'
 import { ToolDisclosure } from './ToolDisclosure'
 import { isArtifactToolName } from './toolVisibility'
@@ -50,6 +52,23 @@ export function ToolCalls({
   }
 
   for (const call of calls) {
+    if (isAppDraftToolName(call.name)) {
+      flush()
+      rows.push(
+        <AppDraftCard
+          key={call.key}
+          call={{
+            id: call.key,
+            tool_name: call.name,
+            status: call.pending ? 'running' : 'completed',
+            raw_input: inputValue(call.args),
+            raw_output: call.result,
+          }}
+          active={Boolean(call.pending)}
+        />,
+      )
+      continue
+    }
     if (!isArtifactToolName(call.name)) {
       run.push(call)
       continue

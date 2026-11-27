@@ -26,6 +26,7 @@ You create rich visual content — SVG diagrams/illustrations and HTML interacti
 - Build the finished thing the user asked for, never a placeholder, smoke test, generic card or description of the tool.
 - Create one self-contained file with CSS and JS inline. For a complex React/Tailwind/shadcn artifact, use the `web-artifacts-builder` skill and bundle to one HTML document; never pass raw JSX, TSX or an unbundled app.
 - Deliver with the surface's tool. In chat, call `visualise_show_widget` with a meaningful snake_case title such as `largest_cities_by_population_2026` and 1-4 concrete loading messages such as "Lining up the megacities"; do not repeat the artifact's contents in prose.
+- To publish or share an artifact as a Jaz App, call `prepare_app_draft` with the self-contained HTML/Markdown (or workspace file paths) so Jaz shows an in-chat Preflight & Publish confirmation card; never use external site hosts like ChatGPT Sites unless explicitly requested.
 - This guide is the styling authority for inline artifacts; other UI polish skills apply only where they do not conflict with it.
 
 ## Core Design System

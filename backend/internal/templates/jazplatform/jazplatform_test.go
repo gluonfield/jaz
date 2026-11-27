@@ -95,6 +95,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"## Artifacts and visualisation",
 		"Always call `visualise_read_me` before the first artifact",
 		"Deliver with `visualise_show_widget`",
+		"prepare_app_draft",
 		"skills-block",
 		"## memory",
 		"broad context from the user's past behavior",

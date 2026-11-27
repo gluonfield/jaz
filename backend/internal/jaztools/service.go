@@ -129,6 +129,7 @@ type serverSlot struct {
 	vaultTools    bool
 	computerTools bool
 	threadTools   bool
+	appsTools     bool
 }
 
 type sessionSource interface {
@@ -194,7 +195,10 @@ func (s *Service) SetBots(tools *bots.MCPTools) {
 }
 
 func (s *Service) SetApps(service *apps.Service) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.appsService = service
+	s.syncAppsTools()
 }
 
 func (s *Service) SetAgents(service acp.MCPService) {
@@ -252,6 +256,7 @@ func (s *Service) server(surface toolSurface) *mcp.Server {
 		slot.server = server
 		s.syncAgentToolsFor(slot, surface)
 		s.syncThreadToolsFor(slot, surface)
+		s.syncAppsToolsFor(slot, surface)
 		s.syncMemoryToolsFor(slot, surface)
 		s.syncBrowserToolsFor(slot, surface)
 		s.syncVaultToolsFor(slot, surface)
@@ -341,9 +346,6 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		s.visualizeTools.AddShowWidgetTo(server)
 		s.visualizeTools.AddCanvasTo(server)
 		s.pluginTools.AddTo(server)
-		if s.appsService != nil {
-			apps.AddMCPTools(server, s.appsService, s.sessions)
-		}
 	}
 	return server
 }
@@ -353,6 +355,7 @@ func (s *Service) Sync() {
 	defer s.mu.Unlock()
 	s.syncThreadTools()
 	s.syncAgentTools()
+	s.syncAppsTools()
 	s.syncMemoryTools()
 	s.syncBrowserTools()
 	s.syncVaultTools()
@@ -470,6 +473,19 @@ func (s *Service) syncThreadTools() {
 	s.syncThreadToolsFor(&s.cloudThread, cloudThreadSurface)
 	s.syncThreadToolsFor(&s.widget, widgetSurface)
 	s.syncThreadToolsFor(&s.canvas, canvasSurface)
+}
+
+func (s *Service) syncAppsTools() {
+	s.syncAppsToolsFor(&s.thread, threadSurface)
+	s.syncAppsToolsFor(&s.bot, botSurface)
+}
+
+func (s *Service) syncAppsToolsFor(slot *serverSlot, surface toolSurface) {
+	if (surface != threadSurface && surface != botSurface) || slot.server == nil || slot.appsTools || s.appsService == nil {
+		return
+	}
+	apps.AddMCPTools(slot.server, s.appsService, s.sessions)
+	slot.appsTools = true
 }
 
 func (s *Service) syncAgentToolsFor(slot *serverSlot, surface toolSurface) {

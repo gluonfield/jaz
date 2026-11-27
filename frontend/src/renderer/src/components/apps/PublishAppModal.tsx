@@ -42,6 +42,7 @@ export function PublishAppModal({
   entry,
   sourceThreadId,
   targetApp,
+  initialDraft,
   onPublished,
 }: {
   open: boolean
@@ -54,23 +55,29 @@ export function PublishAppModal({
   entry?: string
   sourceThreadId?: string
   targetApp?: JazApp | null
+  initialDraft?: AppDraft | null
   onPublished?: (app: JazApp) => void
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const cloud = useCloudSession()
   const isCloud = cloud.active
+  const hasRestageSource = Boolean(html?.trim() || markdown?.trim())
 
-  const [title, setTitle] = useState(targetApp?.title ?? initialTitle)
-  const [description, setDescription] = useState(targetApp?.description ?? initialDescription)
+  const [title, setTitle] = useState(targetApp?.title ?? initialDraft?.title ?? initialTitle)
+  const [description, setDescription] = useState(targetApp?.description ?? initialDraft?.description ?? initialDescription)
   const [visibility, setVisibility] = useState<AppVisibility>(targetApp?.visibility ?? 'private')
   const [spaceId, setSpaceId] = useState<string>(targetApp?.space_id ?? '')
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>(
     targetApp?.members?.map((m) => m.user_id) ?? [],
   )
-  const [capabilities, setCapabilities] = useState<string[]>(targetApp?.capabilities ?? ['storage:personal'])
-  const [allowedToolsInput, setAllowedToolsInput] = useState((targetApp?.allowed_tools ?? []).join(', '))
-  const [draft, setDraft] = useState<AppDraft | null>(null)
+  const [capabilities, setCapabilities] = useState<string[]>(
+    targetApp?.capabilities ?? initialDraft?.capabilities ?? ['storage:personal'],
+  )
+  const [allowedToolsInput, setAllowedToolsInput] = useState(
+    (targetApp?.allowed_tools ?? initialDraft?.allowed_tools ?? []).join(', '),
+  )
+  const [draft, setDraft] = useState<AppDraft | null>(initialDraft ?? null)
   const [confirmDigest, setConfirmDigest] = useState(false)
 
   const spaces = useQuery({ ...spacesQuery, enabled: open && isCloud })
@@ -78,16 +85,16 @@ export function PublishAppModal({
 
   useEffect(() => {
     if (!open) return
-    setTitle(targetApp?.title ?? initialTitle)
-    setDescription(targetApp?.description ?? initialDescription)
+    setTitle(targetApp?.title ?? initialDraft?.title ?? initialTitle)
+    setDescription(targetApp?.description ?? initialDraft?.description ?? initialDescription)
     setVisibility(targetApp?.visibility ?? 'private')
     setSpaceId(targetApp?.space_id ?? '')
     setSelectedUserIds(targetApp?.members?.map((m) => m.user_id) ?? [])
-    setCapabilities(targetApp?.capabilities ?? ['storage:personal'])
-    setAllowedToolsInput((targetApp?.allowed_tools ?? []).join(', '))
-    setDraft(null)
+    setCapabilities(targetApp?.capabilities ?? initialDraft?.capabilities ?? ['storage:personal'])
+    setAllowedToolsInput((targetApp?.allowed_tools ?? initialDraft?.allowed_tools ?? []).join(', '))
+    setDraft(initialDraft ?? null)
     setConfirmDigest(false)
-  }, [open, initialTitle, initialDescription, targetApp])
+  }, [open, initialTitle, initialDescription, targetApp, initialDraft])
 
   const stageMutation = useMutation({
     mutationFn: async () => {
@@ -118,7 +125,7 @@ export function PublishAppModal({
   const publishMutation = useMutation({
     mutationFn: async () => {
       if (!draft) throw new Error('Run preflight check first')
-      return publishApp(targetApp?.id ?? 'new', {
+      return publishApp(targetApp?.id ?? draft.target_app_id ?? 'new', {
         draft_id: draft.draft_id,
         bundle_sha256: draft.bundle_sha256,
         title: title.trim() || draft.title,
@@ -137,6 +144,7 @@ export function PublishAppModal({
   })
 
   const toggleCap = (cap: string) => {
+    if (!hasRestageSource) return
     setDraft(null)
     setCapabilities((cur) => (cur.includes(cap) ? cur.filter((c) => c !== cap) : [...cur, cap]))
   }
@@ -211,7 +219,7 @@ export function PublishAppModal({
               value={title}
               onChange={(e) => {
                 setTitle(e.target.value)
-                setDraft(null)
+                if (hasRestageSource) setDraft(null)
               }}
               placeholder="e.g. Budget Calculator"
             />
@@ -222,7 +230,7 @@ export function PublishAppModal({
               value={description}
               onChange={(e) => {
                 setDescription(e.target.value)
-                setDraft(null)
+                if (hasRestageSource) setDraft(null)
               }}
               placeholder="Short summary shown in Apps library"
             />
@@ -305,7 +313,7 @@ export function PublishAppModal({
           <label className="mb-1.5 block text-[12px] font-medium text-ink-2">Declared runtime capabilities</label>
           <div className="grid gap-1.5 sm:grid-cols-2">
             {CAPABILITY_OPTIONS.map((opt) => {
-              const disabled = opt.id === 'storage:shared' && !isCloud
+              const disabled = !hasRestageSource || (opt.id === 'storage:shared' && !isCloud)
               return (
                 <label
                   key={opt.id}
@@ -316,7 +324,7 @@ export function PublishAppModal({
                   <input
                     type="checkbox"
                     disabled={disabled}
-                    checked={!disabled && capabilities.includes(opt.id)}
+                    checked={capabilities.includes(opt.id) && (opt.id !== 'storage:shared' || isCloud)}
                     onChange={() => toggleCap(opt.id)}
                     className="accent-primary"
                   />
@@ -329,9 +337,10 @@ export function PublishAppModal({
             <div className="mt-2">
               <Input
                 value={allowedToolsInput}
+                disabled={!hasRestageSource}
                 onChange={(e) => {
                   setAllowedToolsInput(e.target.value)
-                  setDraft(null)
+                  if (hasRestageSource) setDraft(null)
                 }}
                 placeholder="Explicit allowed_tools (comma-separated, e.g. crm_search, tasks_list)"
               />
