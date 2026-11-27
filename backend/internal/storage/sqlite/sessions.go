@@ -296,11 +296,11 @@ func (s *Store) CompleteSession(id string, completedAt time.Time) error {
 }
 
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
-	return s.listSessions(context.Background(), filter)
+	return listSessions(context.Background(), s.db, filter)
 }
 
-func (s *Store) listSessions(ctx context.Context, filter storage.SessionFilter) ([]storage.Session, error) {
-	q := threaddb.New(s.db)
+func listSessions(ctx context.Context, db *sql.DB, filter storage.SessionFilter) ([]storage.Session, error) {
+	q := threaddb.New(db)
 	params := sessionListParams(filter)
 	var (
 		rows []threaddb.Thread
