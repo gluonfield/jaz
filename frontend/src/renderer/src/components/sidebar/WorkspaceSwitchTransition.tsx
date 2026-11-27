@@ -14,25 +14,36 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 // the destination's name while the page dims, the name leaves, and the frame
 // opens back out onto the new workspace with a nebula blooming round it.
 // `name` is the workspace being switched to, null when no switch is under way.
+// Reduced motion switches without it.
 export function WorkspaceSwitchTransition({ name }: { name: string | null }) {
   const reduce = useReducedMotion()
-  const [scene, setScene] = useState<{ name: string; phase: 'leaving' | 'landing' | 'done' } | null>(null)
+  const [scene, setScene] = useState<{ name: string; since: number; phase: 'leaving' | 'landing' | 'done' } | null>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const label = useRef<HTMLParagraphElement>(null)
   const passage = useRef<ReturnType<typeof runPassage>>(null)
-  const started = useRef(0)
+
+  const since = scene?.since
+  useEffect(() => {
+    if (since === undefined) return
+    const running = runPassage(canvas.current!, [label.current!.offsetWidth, label.current!.offsetHeight])
+    passage.current = running
+    return () => {
+      passage.current = null
+      running?.stop()
+    }
+  }, [since])
 
   useEffect(() => {
+    if (reduce) return
     if (name !== null) {
-      started.current = performance.now()
-      setScene({ name, phase: 'leaving' })
+      setScene({ name, since: performance.now(), phase: 'leaving' })
       return
     }
     let cancelled = false
     void (async () => {
       const running = passage.current
       if (running) {
-        await wait(NAMED_MS - (performance.now() - started.current))
+        await wait(NAMED_MS - (performance.now() - running.since))
         if (cancelled) return
         setScene((current) => current && { ...current, phase: 'landing' })
         await wait(NAME_FADE_MS)
@@ -48,18 +59,7 @@ export function WorkspaceSwitchTransition({ name }: { name: string | null }) {
     return () => {
       cancelled = true
     }
-  }, [name])
-
-  const shown = scene !== null
-  useEffect(() => {
-    if (!shown || reduce) return
-    const running = runPassage(canvas.current!, [label.current!.offsetWidth, label.current!.offsetHeight])
-    passage.current = running
-    return () => {
-      passage.current = null
-      running?.stop()
-    }
-  }, [shown, reduce])
+  }, [name, reduce])
 
   if (typeof document === 'undefined' || !scene) return null
   return createPortal(

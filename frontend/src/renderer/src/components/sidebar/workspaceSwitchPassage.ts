@@ -62,6 +62,11 @@ float frame(vec2 p, float gathered) {
   return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
 }
 
+float echo(vec2 p, float behind) {
+  float trail = frame(p, behind);
+  return exp(-trail * trail / 1.6) * clamp(abs(behind - gather) * 7.0, 0.0, 1.0);
+}
+
 float sparks(vec2 p, float pitch, float seed) {
   vec2 grid = p / pitch;
   vec2 cell = floor(grid);
@@ -99,11 +104,7 @@ void main() {
   float line = exp(-edge * edge / 1.1);
   float halo = (0.5 * exp(-abs(edge) / 6.0) + 0.14 * exp(-abs(edge) / 34.0)) * (edge > 0.0 ? 1.0 : mix(0.45, 0.06, open));
   color += (WHITE * line * (0.75 + 0.5 * sweep) + WARM * halo * (0.55 + 0.9 * sweep + 0.8 * bloom)) * glow;
-  for (int index = 0; index < 3; index++) {
-    float behind = index == 0 ? echoes.x : index == 1 ? echoes.y : echoes.z;
-    float trail = frame(p, behind);
-    color += WARM * exp(-trail * trail / 1.6) * clamp(abs(behind - gather) * 7.0, 0.0, 1.0) * (0.42 - 0.11 * float(index)) * glow * (1.0 - open);
-  }
+  color += WARM * (0.42 * echo(p, echoes.x) + 0.31 * echo(p, echoes.y) + 0.2 * echo(p, echoes.z)) * glow * (1.0 - open);
   gl_FragColor = vec4(color, scrim);
 }`
 
@@ -112,7 +113,8 @@ const ease = (value: number) => (value < 0.5 ? 4 * value ** 3 : 1 - (-2 * value 
 
 // Draws a frame of light round the window on `canvas`, which lies over it, and
 // gathers it onto a tile of `tile` CSS pixels at the centre. `arrive` opens the
-// frame back out over PASSAGE_OPEN_MS. Returns null where WebGL cannot do it.
+// frame back out over PASSAGE_OPEN_MS; `since` is when it began. Returns null
+// where WebGL cannot do it.
 export function runPassage(canvas: HTMLCanvasElement, tile: [number, number]) {
   const gl = canvas.getContext('webgl', { antialias: false })
   if (!gl) return null
@@ -142,25 +144,26 @@ export function runPassage(canvas: HTMLCanvasElement, tile: [number, number]) {
   gl.uniform1f(at('density'), window.devicePixelRatio)
   const uniforms = { time: at('time'), gather: at('gather'), echoes: at('echoes'), open: at('open'), glow: at('glow'), bloom: at('bloom') }
 
-  const started = performance.now()
+  const since = performance.now()
   let arrived = 0
   let frame = 0
   const opened = (now: number) => (arrived ? clamp((now - arrived) / PASSAGE_OPEN_MS) : 0)
-  const gathered = (now: number) => ease(clamp((now - started - GATHER_AT_MS) / GATHER_MS)) * (1 - ease(opened(now)))
+  const gathered = (now: number) => ease(clamp((now - since - GATHER_AT_MS) / GATHER_MS)) * (1 - ease(opened(now)))
   const draw = (now: number) => {
     const out = opened(now)
-    gl.uniform1f(uniforms.time, (now - started) / 1000)
+    gl.uniform1f(uniforms.time, (now - since) / 1000)
     gl.uniform1f(uniforms.gather, gathered(now))
     gl.uniform3f(uniforms.echoes, gathered(now - ECHO_MS), gathered(now - 2 * ECHO_MS), gathered(now - 3 * ECHO_MS))
     gl.uniform1f(uniforms.open, arrived ? 1 : 0)
-    gl.uniform1f(uniforms.glow, clamp((now - started) / LIGHT_MS) * (1 - clamp((out - 0.8) / 0.2)))
+    gl.uniform1f(uniforms.glow, clamp((now - since) / LIGHT_MS) * (1 - clamp((out - 0.8) / 0.2)))
     gl.uniform1f(uniforms.bloom, clamp(out / 0.2) * (1 - clamp((out - 0.5) / 0.45)))
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
     frame = requestAnimationFrame(draw)
   }
-  draw(started)
+  draw(since)
 
   return {
+    since,
     arrive: () => {
       arrived = performance.now()
     },
