@@ -18,7 +18,8 @@ const grokMCPUpdateMethod = "_x.ai/session/update_mcp_servers"
 
 type MCPRevisionSource interface {
 	Revision() uint64
-	ListedRevision(session string) uint64
+	// ListedRevision reports no revision for a session whose MCP client never read the catalog.
+	ListedRevision(session string) (uint64, bool)
 }
 
 func (m *Manager) SetMCPRevisionSource(source MCPRevisionSource) {
@@ -27,19 +28,18 @@ func (m *Manager) SetMCPRevisionSource(source MCPRevisionSource) {
 	m.mcpRevisionSource = source
 }
 
-func (m *Manager) mcpRevision() uint64 {
-	revision, _ := m.mcpRevisions("")
-	return revision
+func (m *Manager) mcpSource() MCPRevisionSource {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.mcpRevisionSource
 }
 
-func (m *Manager) mcpRevisions(session string) (revision, listed uint64) {
-	m.mu.RLock()
-	source := m.mcpRevisionSource
-	m.mu.RUnlock()
+func (m *Manager) mcpRevision() uint64 {
+	source := m.mcpSource()
 	if source == nil {
-		return 0, 0
+		return 0
 	}
-	return source.Revision(), source.ListedRevision(session)
+	return source.Revision()
 }
 
 func supportedMCPRefresh(raw json.RawMessage, policy string) string {
@@ -64,12 +64,16 @@ func supportedMCPRefresh(raw json.RawMessage, policy string) string {
 	return ""
 }
 
-// Agents are trusted to follow tools/list_changed only once their MCP client
-// has read the changed catalog. Codex never rereads it and other clients can
-// miss the notification, so a relaunch that resumes the thread reads it instead.
+// An agent has the changed catalog only once its MCP client rereads it. Codex
+// never does and other clients can miss tools/list_changed, so a relaunch that
+// resumes the thread reads it instead. An agent that never read the catalog
+// does not use it.
 func (m *Manager) retireStaleCatalog(job *jobState, process *agentProcess) {
-	revision, listed := m.mcpRevisions(job.ID)
-	if process.mcpRefresh != "" || !fullMCPPolicy(process.mcpPolicy) || process.mcpRevision == revision || listed == revision {
+	source := m.mcpSource()
+	if source == nil || process.mcpRefresh != "" || process.mcpRevision == source.Revision() {
+		return
+	}
+	if listed, ok := source.ListedRevision(job.ID); !ok || listed == source.Revision() {
 		return
 	}
 	if !m.subagentsRunning(job) && !m.hasLivePermissionWaiter(job.ID) {

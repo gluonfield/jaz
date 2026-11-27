@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -289,7 +290,7 @@ func TestIdleThreadDiscoversAndCallsServerConnectedMidThread(t *testing.T) {
 	if status := manager.RefreshServer(ctx, "remote"); status.Status != "connected" {
 		t.Fatalf("connect status = %+v", status)
 	}
-	if manager.ListedRevision("thread") == manager.Revision() {
+	if listed, _ := manager.ListedRevision("thread"); listed == manager.Revision() {
 		t.Fatal("thread counted as current before its client read the new catalog")
 	}
 	select {
@@ -301,11 +302,55 @@ func TestIdleThreadDiscoversAndCallsServerConnectedMidThread(t *testing.T) {
 	if err != nil || len(list.Tools) != 1 {
 		t.Fatalf("tools after connecting = %v, %v", list, err)
 	}
-	if manager.ListedRevision("thread") != manager.Revision() {
+	if listed, ok := manager.ListedRevision("thread"); !ok || listed != manager.Revision() {
 		t.Fatal("thread not counted as current after reading the new catalog")
+	}
+	if _, ok := manager.ListedRevision("other thread"); ok {
+		t.Fatal("thread that never read the catalog counted as a reader")
 	}
 	result, err := session.CallTool(ctx, &mcpsdk.CallToolParams{Name: list.Tools[0].Name})
 	if err != nil || result.IsError {
 		t.Fatalf("call new server's tool = %v, %v", result, err)
+	}
+}
+
+func TestProxySessionLivesOnlyWhileItsNotificationStreamIsConnected(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	manager := NewManager(&testStore{}, nil, tools.NewRegistry(), log.New(io.Discard))
+	defer manager.Close()
+	manager.sessionTTL = 150 * time.Millisecond
+	proxy := httptest.NewServer(manager.Handler())
+	defer proxy.Close()
+	send := func(ctx context.Context, method, session, body string) *http.Response {
+		t.Helper()
+		request, _ := http.NewRequestWithContext(ctx, method, proxy.URL, strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Accept", "application/json, text/event-stream")
+		if session != "" {
+			request.Header.Set("Mcp-Session-Id", session)
+		}
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { response.Body.Close() })
+		return response
+	}
+	session := send(ctx, http.MethodPost, "", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`).Header.Get("Mcp-Session-Id")
+	send(ctx, http.MethodPost, session, `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+	streamCtx, drop := context.WithCancel(ctx)
+	if status := send(streamCtx, http.MethodGet, session, "").StatusCode; status != http.StatusOK {
+		t.Fatalf("notification stream status = %d", status)
+	}
+	const ping = `{"jsonrpc":"2.0","id":2,"method":"ping"}`
+	time.Sleep(4 * manager.sessionTTL)
+	if status := send(ctx, http.MethodPost, session, ping).StatusCode; status != http.StatusOK {
+		t.Fatalf("session with a connected stream expired: status %d", status)
+	}
+	drop()
+	time.Sleep(4 * manager.sessionTTL)
+	if status := send(ctx, http.MethodPost, session, ping).StatusCode; status != http.StatusNotFound {
+		t.Fatalf("session outlived its dropped stream: status %d", status)
 	}
 }

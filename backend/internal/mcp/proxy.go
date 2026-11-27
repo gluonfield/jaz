@@ -73,11 +73,11 @@ func (m *Manager) recordToolLists(next mcpsdk.MethodHandler) mcpsdk.MethodHandle
 	}
 }
 
-// ListedRevision is the catalog revision the agent session's MCP client last read.
-func (m *Manager) ListedRevision(session string) uint64 {
+func (m *Manager) ListedRevision(session string) (uint64, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.listed[session]
+	revision, ok := m.listed[session]
+	return revision, ok
 }
 
 func (m *Manager) ensureProxyReady(ctx context.Context) {

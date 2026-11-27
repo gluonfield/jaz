@@ -13,11 +13,14 @@ import (
 type catalogRevision struct {
 	atomic.Uint64
 	listed atomic.Uint64
+	unread atomic.Bool
 }
 
 func (r *catalogRevision) Revision() uint64 { return r.Load() }
 
-func (r *catalogRevision) ListedRevision(string) uint64 { return r.listed.Load() }
+func (r *catalogRevision) ListedRevision(string) (uint64, bool) {
+	return r.listed.Load(), !r.unread.Load()
+}
 
 func TestChangedCatalogRelaunchesOnlyAnIdleProcessThatMissedIt(t *testing.T) {
 	type thread struct {
@@ -100,6 +103,16 @@ func TestChangedCatalogRelaunchesOnlyAnIdleProcessThatMissedIt(t *testing.T) {
 		other.send("catalog change it missed")
 		if starts, resumed := other.launches(); starts != 2 || resumed != 1 {
 			t.Fatalf("process starts = %d, session/resume = %d; want the thread resumed to read the missed catalog", starts, resumed)
+		}
+	})
+
+	t.Run("agent that never read the catalog", func(t *testing.T) {
+		other := start(t, "fake")
+		other.revision.unread.Store(true)
+		other.revision.Add(1)
+		other.send("changed catalog")
+		if starts, _ := other.launches(); starts != 1 {
+			t.Fatalf("process starts = %d, want an agent that does not use the catalog left running", starts)
 		}
 	})
 }

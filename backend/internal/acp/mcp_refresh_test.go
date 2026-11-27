@@ -23,7 +23,7 @@ func (r *testMCPRevision) Revision() uint64 {
 	return r.value.Load()
 }
 
-func (*testMCPRevision) ListedRevision(string) uint64 { return 0 }
+func (*testMCPRevision) ListedRevision(string) (uint64, bool) { return 0, false }
 
 func TestMCPRefreshRequiresAdvertisedCapabilityAndPolicy(t *testing.T) {
 	for _, test := range []struct{ name, raw, policy, want string }{
