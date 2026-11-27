@@ -165,6 +165,7 @@ type Session struct {
 	SpaceID                string          `json:"space_id,omitempty"`
 	Visibility             string          `json:"visibility,omitempty"`
 	RunID                  string          `json:"run_id,omitempty"`
+	OwnerUserID            string          `json:"owner_user_id,omitempty"`
 	PersonalSourcesEnabled bool            `json:"personal_sources_enabled,omitempty"`
 	Backend                string          `json:"backend,omitempty"`
 	Archived               bool            `json:"archived,omitempty"`

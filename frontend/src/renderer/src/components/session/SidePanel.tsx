@@ -86,7 +86,7 @@ export function SidePanel({
               onSend={onSend}
               onQueuePrompt={onQueuePrompt}
               onQueueAction={onQueueAction}
-              onOpenDiff={() => panel.addTab('diff')}
+              onOpenDiff={panel.openDiff}
             />
           )}
         </div>
@@ -119,7 +119,7 @@ export function SidePanel({
                   <FileReaderPanel sessionId={session.id} cloudRunId={cloudRunId} fileRef={tab.file} visible={visible} working={working} onOpenFile={panel.openFile} onClose={panel.close} />
                 </SidePanelCloseGuard>
               ) : tab.kind === 'diff' ? (
-                <CodeDiffPanel sessionId={session.id} visible={visible} isCloud={isCloudSession} />
+                <CodeDiffPanel sessionId={session.id} visible={visible} isCloud={isCloudSession} repo={tab.repo} onSelectRepo={panel.openDiff} />
               ) : tab.kind === 'app' ? (
                 <MCPAppFrame app={tab.app} file={tab.file} call={tab.call} active={visible} />
               ) : tab.kind === 'view' ? (

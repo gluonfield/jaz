@@ -1,10 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronDown, GitBranch, LoaderCircle, Lock, LogIn, Search, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown, GitBranch, LoaderCircle, Lock, Plus, Search, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { MenuRow, Popover } from '@/components/ui/Popover'
+import { Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
 import {
   useCloudGitHubBranches,
@@ -12,31 +12,163 @@ import {
   useCloudGitHubRepos,
   useCloudGitHubStatus,
   withGitHubPluginSearch,
+  type CloudGitRepoSpec,
 } from '@/lib/api/cloudGitHub'
 import { useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
-function useGitHubPickerData({
-  enabled,
-  loadRepos,
-  repo,
-  includePersonal,
-}: {
-  enabled: boolean
-  loadRepos: boolean
-  repo: string
+interface PickerProps {
+  value: CloudGitRepoSpec[]
   includePersonal: boolean
+  disabled?: boolean
+}
+
+export function GitHubBranchField({
+  repo, label, value, disabled, onChange,
+}: {
+  repo: string
+  label: string
+  value: string
+  disabled?: boolean
+  onChange: (value: string) => void
 }) {
+  const id = useId()
+  const branches = useCloudGitHubBranches(repo, !disabled)
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1 block text-[11px] text-ink-3">{label}</span>
+      <Input
+        aria-label={`${label} for ${repo}`}
+        value={value}
+        list={id}
+        placeholder={branches.isLoading ? 'Loading branches…' : 'Default branch'}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-8 text-[12px]"
+      />
+      <datalist id={id}>
+        {branches.data?.branches.map(({ name }) => <option key={name} value={name} />)}
+      </datalist>
+    </label>
+  )
+}
+
+export function ThreadRepoPicker({
+  value, includePersonal, disabled, placement, onChange,
+}: PickerProps & {
+  placement?: 'above' | 'below'
+  onChange: (repos: CloudGitRepoSpec[]) => void
+}) {
+  const label = value.length
+    ? value.slice(0, 2).map(({ repo }) => shortRepoName(repo)).join(', ')
+    : 'Repositories'
+
+  return (
+    <RepositoryMenu
+      value={value}
+      includePersonal={includePersonal}
+      disabled={disabled}
+      placement={placement}
+      label={label}
+      icon={GitBranch}
+      multiple
+      onSelect={(next) => {
+        const selected = value.some(({ repo }) => sameRepo(repo, next.repo))
+        onChange(selected ? value.filter(({ repo }) => !sameRepo(repo, next.repo)) : [...value, next])
+      }}
+    >
+      {value.length > 0 ? (
+        <div className="space-y-2 border-t border-border pt-2">
+          <RepositoryRows value={value} onChange={onChange} />
+          <Button variant="ghost" size="sm" onClick={() => onChange([])}>Clear selection</Button>
+        </div>
+      ) : null}
+    </RepositoryMenu>
+  )
+}
+
+export function GitHubRepoField({
+  value, disabled, includePersonal, onChange,
+}: PickerProps & { onChange: (repos: CloudGitRepoSpec[]) => void }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[12px] font-medium text-ink-2">Default repositories</p>
+      <RepositoryRows value={value} disabled={disabled} onChange={onChange} />
+      {!disabled ? (
+        <AddGitHubRepository value={value} includePersonal={includePersonal} onSelect={(repo) => onChange([...value, repo])} />
+      ) : null}
+    </div>
+  )
+}
+
+export function AddGitHubRepository({
+  value, includePersonal, disabled, onSelect,
+}: PickerProps & { onSelect: (repo: CloudGitRepoSpec) => void }) {
+  return (
+    <RepositoryMenu
+      value={value}
+      includePersonal={includePersonal}
+      disabled={disabled}
+      label="Add repository"
+      icon={Plus}
+      onSelect={onSelect}
+    />
+  )
+}
+
+function RepositoryRows({
+  value, disabled, onChange,
+}: Pick<PickerProps, 'value' | 'disabled'> & { onChange: (repos: CloudGitRepoSpec[]) => void }) {
+  return value.map((item) => (
+    <div key={item.repo} className="flex items-end gap-2">
+      <span className="min-w-0 flex-1 truncate py-2 text-[12px] text-ink-2" title={item.repo}>{item.repo}</span>
+      <div className="min-w-0 flex-1">
+        <GitHubBranchField
+          repo={item.repo}
+          label="Base branch"
+          value={item.base_branch ?? ''}
+          disabled={disabled}
+          onChange={(base_branch) => onChange(value.map((repo) => repo === item ? { ...repo, base_branch } : repo))}
+        />
+      </div>
+      {!disabled ? (
+        <button
+          type="button"
+          className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-control text-ink-3 hover:bg-surface-2 hover:text-ink"
+          aria-label={`Remove ${item.repo}`}
+          onClick={() => onChange(value.filter((repo) => repo !== item))}
+        >
+          <X size={14} />
+        </button>
+      ) : null}
+    </div>
+  ))
+}
+
+function RepositoryMenu({
+  value, disabled, includePersonal, placement, label, icon: Icon, multiple, onSelect, children,
+}: PickerProps & {
+  placement?: 'above' | 'below'
+  label: string
+  icon: typeof GitBranch
+  multiple?: boolean
+  onSelect: (repo: CloudGitRepoSpec) => void
+  children?: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const navigate = useNavigate()
   const toast = useToast()
-  const queryClient = useQueryClient()
+  const isViewer = useIsCloudViewer()
+  const showing = open && !disabled
   const oauth = useCloudGitHubOAuth({
     onStarted: () => toast('Finish GitHub sign-in in your browser'),
     onError: (err) => toast(err.message || 'Could not start GitHub sign-in', 'danger'),
   })
-  const status = useCloudGitHubStatus(enabled, oauth.polling)
-  const configured = Boolean(status.data?.configured)
-  const repos = useCloudGitHubRepos({ includePersonal, enabled: loadRepos && configured })
-  const branches = useCloudGitHubBranches(repo, loadRepos && configured && Boolean(repo))
+  const queryClient = useQueryClient()
+  const status = useCloudGitHubStatus(showing, oauth.polling)
+  const repos = useCloudGitHubRepos({ includePersonal, enabled: showing && Boolean(status.data?.configured) })
 
   useEffect(() => {
     if (oauth.polling && status.data?.user_linked) {
@@ -45,346 +177,130 @@ function useGitHubPickerData({
     }
   }, [oauth, queryClient, status.data?.user_linked])
 
-  return { status, repos, branches, oauth }
-}
-
-// Compact shelf/inline repository + base-branch selector for New Thread,
-// Project New Chat, and attaching a repo to an existing Cloud thread.
-export function ThreadRepoPicker({
-  repo,
-  baseBranch,
-  placement = 'above',
-  disabled,
-  includePersonal = true,
-  placeholder = 'Repository',
-  onChange,
-}: {
-  repo: string
-  baseBranch: string
-  placement?: 'above' | 'below'
-  disabled?: boolean
-  includePersonal?: boolean
-  placeholder?: string
-  onChange: (next: { repo: string; baseBranch: string }) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState('')
-  const isViewer = useIsCloudViewer()
-  const navigate = useNavigate()
-  const openGitHubPlugin = () => {
+  const filter = search.trim().toLowerCase()
+  const matches = (repos.data?.repos ?? [])
+    .filter(({ full_name }) => full_name.toLowerCase().includes(filter))
+    .filter(({ full_name }) => multiple || !value.some(({ repo }) => sameRepo(repo, full_name)))
+  const close = () => {
     setOpen(false)
+    setSearch('')
+  }
+  const manage = () => {
+    close()
     void navigate({ to: '.', search: withGitHubPluginSearch })
   }
 
-  const { status, repos, branches, oauth } = useGitHubPickerData({
-    enabled: !disabled,
-    loadRepos: open,
-    repo,
-    includePersonal,
-  })
-
-  const filteredRepos = useMemo(() => {
-    const items = repos.data?.repos ?? []
-    const q = search.trim().toLowerCase()
-    return q ? items.filter((item) => item.full_name.toLowerCase().includes(q)) : items
-  }, [repos.data?.repos, search])
-
-  const selectedRepoMeta = repos.data?.repos.find(
-    (item) => item.full_name.toLowerCase() === repo.trim().toLowerCase(),
-  )
-  const effectiveBranch = baseBranch || selectedRepoMeta?.default_branch || ''
-  const shortRepo = repo ? (repo.split('/').at(-1) || repo) : placeholder
-  const label = repo ? (effectiveBranch ? `${shortRepo}:${effectiveBranch}` : shortRepo) : placeholder
-
-  const selectRepo = (fullName: string, defaultBranch: string) => {
-    setSearch('')
-    onChange({ repo: fullName, baseBranch: defaultBranch })
-    if (!fullName) setOpen(false)
-  }
-
-  return (
-    <Popover
-      open={open && !disabled}
-      onClose={() => setOpen(false)}
-      placement={placement}
-      align="start"
-      trigger={
-        <button
-          type="button"
-          disabled={disabled}
-          aria-haspopup="dialog"
-          aria-expanded={open && !disabled}
-          aria-label={repo ? `Repository: ${repo}${effectiveBranch ? ` (${effectiveBranch})` : ''}` : placeholder}
-          title={repo ? `${repo}${effectiveBranch ? ` (${effectiveBranch})` : ''}` : placeholder}
-          onClick={() => setOpen((value) => !value)}
-          className="inline-flex h-7 max-w-[15rem] cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-ink-2 transition-[background-color,color,scale] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96] disabled:cursor-default disabled:opacity-50"
-        >
-          <GitBranch size={13} className="shrink-0" />
-          <span className="truncate">{label}</span>
-          <ChevronDown size={11} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
-        </button>
-      }
+  const trigger = (
+    <button
+      ref={triggerRef}
+      type="button"
+      disabled={disabled}
+      aria-expanded={showing}
+      aria-label={multiple ? 'Select repositories' : label}
+      title={multiple && value.length ? value.map(({ repo }) => repo).join(', ') : label}
+      onClick={() => showing ? close() : setOpen(true)}
+      className="inline-flex h-7 max-w-[15rem] cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-ink-2 transition-[background-color,color,scale] hover:bg-surface-2 hover:text-ink active:scale-[0.96] disabled:cursor-default disabled:opacity-50"
     >
-      <div className="flex w-[280px] flex-col gap-2 p-1.5">
-        {status.isPending ? (
-          <div className="flex items-center gap-2 px-2 py-2 text-[12px] text-ink-3">
-            <LoaderCircle size={13} className="animate-spin" />
-            Checking GitHub…
+      <Icon size={13} className="shrink-0" />
+      <span className="truncate">{label}</span>
+      {multiple && value.length > 2 ? <span className="shrink-0 text-ink-3 tabular-nums">+{value.length - 2}</span> : null}
+      <ChevronDown size={11} className={`shrink-0 transition-transform ${showing ? 'rotate-180' : ''}`} />
+    </button>
+  )
+  const content = (
+    <div className="flex max-h-[min(55dvh,28rem)] w-full min-w-0 flex-col gap-2 overflow-y-auto p-1.5">
+      {status.isPending || (status.data?.configured && repos.isPending) ? (
+        <p className="flex items-center gap-2 px-2 py-2 text-[12px] text-ink-3">
+          <LoaderCircle size={13} className="animate-spin" />
+          {status.isPending ? 'Checking GitHub…' : 'Loading repositories…'}
+        </p>
+      ) : status.isError || repos.isError ? (
+        <div className="px-2 text-[12px]">
+          <p className="text-danger">Couldn’t load GitHub repositories.</p>
+          <Button variant="ghost" size="sm" onClick={() => void (status.isError ? status.refetch() : repos.refetch())}>Retry</Button>
+        </div>
+      ) : !status.data?.configured || repos.data?.connect_required ? (
+        <div className="space-y-1 px-2 text-[12px] text-ink-2">
+          <p>{status.data?.configured ? 'Connect GitHub to browse repositories.' : 'GitHub is unavailable in this workspace.'}</p>
+          {repos.data?.connect_required && !isViewer ? (
+            <Button variant="primary" size="sm" disabled={oauth.isPending} onClick={() => oauth.mutate(undefined)}>Connect GitHub</Button>
+          ) : null}
+          <Button variant="ghost" size="sm" onClick={manage}>Manage in Plugins</Button>
+        </div>
+      ) : (
+        <>
+          <div className="relative">
+            <Search size={13} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-3" />
+            <Input
+              autoFocus
+              aria-label="Filter repositories"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Filter repositories…"
+              className="h-8 pl-7 text-[12px]"
+            />
           </div>
-        ) : !status.data?.configured ? (
-          <div className="flex flex-col gap-2 px-2 py-1.5">
-            <p className="text-[12px] text-ink-3">
-              GitHub is not configured for this Jaz Cloud deployment yet.
-            </p>
-            <Button variant="ghost" size="sm" onClick={openGitHubPlugin} className="self-start px-2">
-              Open GitHub in Plugins
-            </Button>
-          </div>
-        ) : repos.data?.connect_required ? (
-          <div className="flex flex-col gap-2 px-2 py-1.5">
-            <p className="text-[12px] text-ink-2">Connect your GitHub account to browse repositories.</p>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {!isViewer ? (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={oauth.isPending}
-                  onClick={() => oauth.mutate(undefined)}
-                >
-                  {oauth.isPending ? <LoaderCircle size={13} className="animate-spin" /> : <LogIn size={13} />}
-                  Connect GitHub
-                </Button>
-              ) : null}
-              <Button variant="ghost" size="sm" onClick={openGitHubPlugin}>
-                Manage in Plugins
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="relative">
-              <Search size={13} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-3" />
-              <Input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Filter repositories…"
-                className="h-7 pl-7 text-[12px]"
-              />
-            </div>
-
-            <div className="max-h-[190px] overflow-y-auto">
-              <MenuRow role="menuitemradio" selected={!repo} onClick={() => selectRepo('', '')}>
-                No repository
-              </MenuRow>
-              {repos.isPending ? (
-                <div className="flex items-center gap-2 px-2.5 py-2 text-[12px] text-ink-3">
-                  <LoaderCircle size={12} className="animate-spin" />
-                  Loading repositories…
-                </div>
-              ) : filteredRepos.length === 0 ? (
-                <div className="flex flex-col gap-1.5 px-2.5 py-2">
-                  <p className="text-[12px] text-ink-3">
-                    {search.trim() ? 'No matching repositories.' : 'No repositories available yet.'}
-                  </p>
-                  {!search.trim() ? (
-                    <button
-                      type="button"
-                      onClick={openGitHubPlugin}
-                      className="self-start cursor-pointer text-[11.5px] font-medium text-primary hover:underline"
-                    >
-                      Manage GitHub access in Plugins
-                    </button>
-                  ) : null}
-                </div>
-              ) : (
-                filteredRepos.map((item) => (
-                  <MenuRow
-                    key={item.full_name}
-                    role="menuitemradio"
-                    selected={item.full_name.toLowerCase() === repo.trim().toLowerCase()}
-                    onClick={() => selectRepo(item.full_name, item.default_branch)}
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                      {item.private ? <Lock size={11} className="shrink-0 text-ink-3" /> : null}
-                      <span className="truncate">{item.full_name}</span>
-                    </span>
-                  </MenuRow>
-                ))
-              )}
-            </div>
-
-            {repo ? (
-              <div className="border-t border-border/70 pt-2">
-                <label className="block px-1">
-                  <span className="mb-1 block text-[11px] font-medium text-ink-3">Base branch</span>
-                  {branches.isPending ? (
-                    <div className="flex items-center gap-1.5 py-1 text-[12px] text-ink-3">
-                      <LoaderCircle size={12} className="animate-spin" />
-                      Loading branches…
-                    </div>
-                  ) : branches.data && branches.data.branches.length > 0 ? (
-                    <select
-                      aria-label="Base branch"
-                      value={baseBranch}
-                      onChange={(e) => {
-                        onChange({ repo, baseBranch: e.target.value })
-                        setOpen(false)
-                      }}
-                      className="h-7 w-full rounded-control border border-border bg-bg px-2 text-[12px] text-ink focus:border-primary focus:outline-none"
-                    >
-                      {!branches.data.branches.some((b) => b.name === baseBranch) && baseBranch ? (
-                        <option value={baseBranch}>{baseBranch}</option>
-                      ) : null}
-                      {branches.data.branches.map((branch) => (
-                        <option key={branch.name} value={branch.name}>
-                          {branch.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <Input
-                      type="text"
-                      value={baseBranch}
-                      onChange={(e) => onChange({ repo, baseBranch: e.target.value })}
-                      placeholder={selectedRepoMeta?.default_branch || 'main'}
-                      className="h-7 text-[12px]"
-                    />
-                  )}
+          <div className="max-h-44 shrink-0 overflow-y-auto">
+            {matches.map(({ full_name, default_branch, private: isPrivate }) => {
+              const pick = () => {
+                onSelect({ repo: full_name, base_branch: default_branch })
+                if (!multiple) {
+                  close()
+                  triggerRef.current?.focus()
+                }
+              }
+              const content = (
+                <>
+                  {isPrivate ? <Lock size={11} className="shrink-0 text-ink-3" aria-label="Private" /> : null}
+                  <span className="truncate">{full_name}</span>
+                </>
+              )
+              const className = 'flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-control px-2 text-left text-[12px] text-ink-2 hover:bg-surface-2'
+              return multiple ? (
+                <label key={full_name} className={className} title={full_name}>
+                  <input
+                    type="checkbox"
+                    checked={value.some(({ repo }) => sameRepo(repo, full_name))}
+                    onChange={pick}
+                    className="accent-primary"
+                  />
+                  {content}
                 </label>
-              </div>
+              ) : (
+                <button key={full_name} type="button" className={className} title={full_name} onClick={pick}>{content}</button>
+              )
+            })}
+            {!matches.length ? (
+              <p className="px-2 py-2 text-[12px] text-ink-3">
+                {filter ? 'No matching repositories.' : 'No additional repositories available.'}
+              </p>
             ) : null}
-          </>
-        )}
-      </div>
-    </Popover>
+          </div>
+        </>
+      )}
+      {children}
+    </div>
+  )
+
+  if (multiple) {
+    return (
+      <Popover open={showing} onClose={close} placement={placement} trigger={trigger}>
+        <div className="w-[min(330px,calc(100vw-32px))]">{content}</div>
+      </Popover>
+    )
+  }
+  return (
+    <div>
+      {trigger}
+      {showing ? <div className="rounded-control bg-surface-2/50">{content}</div> : null}
+    </div>
   )
 }
 
-// Form-layout default repository + base branch fields for Space (Project) settings.
-export function GitHubRepoField({
-  repo,
-  baseBranch,
-  disabled,
-  includePersonal = true,
-  onChange,
-}: {
-  repo: string
-  baseBranch: string
-  disabled?: boolean
-  includePersonal?: boolean
-  onChange: (next: { repo: string; baseBranch: string }) => void
-}) {
-  const isViewer = useIsCloudViewer()
-  const navigate = useNavigate()
-  const openGitHubPlugin = () => void navigate({ to: '.', search: withGitHubPluginSearch })
-  const { status, repos, branches, oauth } = useGitHubPickerData({
-    enabled: true,
-    loadRepos: true,
-    repo,
-    includePersonal,
-  })
+function shortRepoName(repo: string) {
+  return repo.split('/').at(-1) || repo
+}
 
-  if (!status.isLoading && !status.data?.configured && !repo) {
-    return null
-  }
-
-  const repoList = repos.data?.repos ?? []
-  const branchList = branches.data?.branches ?? []
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[12px] font-medium text-ink-2">Default repository</span>
-        {repo && !disabled ? (
-          <button
-            type="button"
-            onClick={() => onChange({ repo: '', baseBranch: '' })}
-            className="inline-flex cursor-pointer items-center gap-1 text-[11.5px] text-ink-3 hover:text-ink"
-          >
-            <X size={11} />
-            Clear
-          </button>
-        ) : null}
-      </div>
-
-      {repos.data?.connect_required ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-border bg-surface px-2.5 py-2 text-[12px] text-ink-2">
-          <span>Connect GitHub to select a repository.</span>
-          <div className="flex items-center gap-1.5">
-            {!isViewer && !disabled ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={oauth.isPending}
-                onClick={() => oauth.mutate(undefined)}
-              >
-                {oauth.isPending ? <LoaderCircle size={12} className="animate-spin" /> : <LogIn size={12} />}
-                Connect
-              </Button>
-            ) : null}
-            <Button variant="ghost" size="sm" onClick={openGitHubPlugin}>
-              Plugins
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <select
-            aria-label="Default repository"
-            value={repo}
-            disabled={disabled || repos.isLoading}
-            onChange={(e) => {
-              const nextRepo = e.target.value
-              const match = repoList.find((item) => item.full_name === nextRepo)
-              onChange({ repo: nextRepo, baseBranch: match?.default_branch ?? '' })
-            }}
-            className="h-9 w-full rounded-control border border-border bg-bg px-2.5 text-[13px] text-ink focus:border-primary focus:outline-none disabled:opacity-60"
-          >
-            <option value="">None</option>
-            {repo && !repoList.some((item) => item.full_name === repo) ? (
-              <option value={repo}>{repo}</option>
-            ) : null}
-            {repoList.map((item) => (
-              <option key={item.full_name} value={item.full_name}>
-                {item.full_name}
-              </option>
-            ))}
-          </select>
-
-          {branchList.length > 0 ? (
-            <select
-              aria-label="Default base branch"
-              value={baseBranch}
-              disabled={disabled || !repo || branches.isLoading}
-              onChange={(e) => onChange({ repo, baseBranch: e.target.value })}
-              className="h-9 w-full rounded-control border border-border bg-bg px-2.5 text-[13px] text-ink focus:border-primary focus:outline-none disabled:opacity-60"
-            >
-              <option value="">Default branch</option>
-              {baseBranch && !branchList.some((b) => b.name === baseBranch) ? (
-                <option value={baseBranch}>{baseBranch}</option>
-              ) : null}
-              {branchList.map((branch) => (
-                <option key={branch.name} value={branch.name}>
-                  {branch.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <Input
-              type="text"
-              aria-label="Default base branch"
-              value={baseBranch}
-              disabled={disabled || !repo}
-              onChange={(e) => onChange({ repo, baseBranch: e.target.value })}
-              placeholder={repo ? 'Default branch (e.g. main)' : 'Base branch'}
-            />
-          )}
-        </div>
-      )}
-      <p className="text-[11.5px] text-ink-3">
-        New chats started in this project inherit this repository and base branch automatically.
-      </p>
-    </div>
-  )
+function sameRepo(left: string, right: string) {
+  return left.toLowerCase() === right.toLowerCase()
 }

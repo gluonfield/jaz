@@ -283,3 +283,62 @@ test('GitHub URL and segment guards reject unsafe schemes and invalid org/repo n
   api.openSafeGitHubUrl('https://github.com/acme/app/pull/42')
   expect(opened).toEqual(['https://github.com/acme/app/pull/42'])
 })
+
+test('Cloud repo selections preserve inheritance, explicit empty lists, and per-repo request scope', async () => {
+  const api = setupCloudApi()
+  const repos = [
+    { repo: 'demo/app', base_branch: 'main' },
+    { repo: 'demo/docs', base_branch: 'release', mount_dir: 'guide' },
+  ]
+  const calls = []
+  replace('fetch', async (url, init) => {
+    const { pathname, searchParams } = new URL(url)
+    const body = init?.body ? JSON.parse(init.body) : undefined
+    calls.push({ method: init?.method ?? 'GET', pathname, body, params: Object.fromEntries(searchParams) })
+    if (pathname === '/v1/threads') {
+      return Response.json({ id: 'thread', run_id: 'run', owner_user_id: 'owner', visibility: 'space', status: 'idle' })
+    }
+    if (pathname.endsWith('/repo')) {
+      return Response.json({ attached: true, ...repos[0], repos })
+    }
+    if (pathname.endsWith('/diff')) {
+      return Response.json({ repo: searchParams.get('repo'), diffs: [{ path: 'README.md', content: searchParams.get('repo') }] })
+    }
+    return Response.json({})
+  })
+
+  await api.createSpace({ name: 'Demo', default_git_repos: repos })
+  expect(calls.at(-1).body.default_git_repos).toEqual(repos)
+  await api.patchSpace('project', { default_git_repos: [] })
+  expect(calls.at(-1).body.default_git_repos).toEqual([])
+
+  await api.createSession({ space_id: 'project' })
+  expect(calls.at(-1).body).not.toHaveProperty('git_repos')
+  await api.createSession({ space_id: 'project', git_repos: [] })
+  expect(calls.at(-1).body.git_repos).toEqual([])
+  const session = await api.createSession({ space_id: 'project', git_repos: repos })
+  expect(calls.at(-1).body.git_repos).toEqual(repos)
+  expect(session.owner_user_id).toBe('owner')
+
+  expect(api.threadRepoStatuses(await api.getCloudThreadRepo('thread'))).toEqual(repos)
+  expect(api.threadRepoStatuses({ attached: true, ...repos[0] })).toMatchObject([repos[0]])
+  await api.attachCloudThreadRepo('thread', repos[1])
+  expect(calls.at(-1)).toMatchObject({ method: 'POST', pathname: '/v1/threads/thread/repos', body: repos[1] })
+  await api.detachCloudThreadRepo('thread', 'guide')
+  expect(calls.at(-1)).toMatchObject({ method: 'DELETE', pathname: '/v1/threads/thread/repos/guide' })
+
+  await api.getCloudThreadRepoChanges('thread', 'demo/docs')
+  expect(calls.at(-1).params).toEqual({ repo: 'demo/docs' })
+  await api.pushCloudThreadRepo('thread', { repo: 'demo/docs', branch: 'work' })
+  expect(calls.at(-1).body).toEqual({ repo: 'demo/docs', branch: 'work' })
+  await api.createCloudThreadRepoPR('thread', { repo: 'demo/docs' })
+  expect(calls.at(-1).body).toEqual({ repo: 'demo/docs' })
+
+  const first = api.cloudThreadRepoDiffQuery('thread', 'demo/app', 'README.md')
+  const second = api.cloudThreadRepoDiffQuery('thread', 'demo/docs', 'README.md')
+  const { QueryClient } = await import('@tanstack/react-query')
+  const queries = new QueryClient()
+  expect((await queries.fetchQuery(first)).diffs[0].content).toBe('demo/app')
+  expect((await queries.fetchQuery(second)).diffs[0].content).toBe('demo/docs')
+  expect(calls.at(-1).params).toEqual({ repo: 'demo/docs', path: 'README.md' })
+})

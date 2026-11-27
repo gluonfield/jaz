@@ -139,6 +139,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
         : tab === 'file' ? { id: 'file', kind: tab, file: null }
           : { id: tab, kind: tab }, after)
   }, [browsers, openTab, sessionId])
+  const openDiff = useCallback((repo: string) => openTab({ id: 'diff', kind: 'diff', repo }), [openTab])
   const duplicateTab = useCallback((id: string) => {
     openTab({ id: browsers.duplicate(sessionId, id), kind: 'preview' }, id)
   }, [browsers, openTab, sessionId])
@@ -250,7 +251,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     containerRef, open, mode, tabs, activeTab,
     resize, resizing, setResizing, width, widthStyle, minWidth, maxWidth,
     resizable: mode === 'tabs',
-    toggleMode, close, selectTab, reorderTabs, addTab, duplicateTab, closeTab, registerCloseGuard, openFile, openPreview, openApp, openView,
+    toggleMode, close, selectTab, reorderTabs, addTab, openDiff, duplicateTab, closeTab, registerCloseGuard, openFile, openPreview, openApp, openView,
   }
 }
 

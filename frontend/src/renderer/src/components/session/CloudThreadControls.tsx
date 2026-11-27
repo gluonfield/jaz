@@ -16,7 +16,7 @@ import { useEffect, useState } from 'react'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { isCloudApiSession } from '@/lib/api/client'
-import { openSafeGitHubUrl, useCloudThreadRepo } from '@/lib/api/cloudGitHub'
+import { openSafeGitHubUrl, threadRepoStatuses, useCloudThreadRepo } from '@/lib/api/cloudGitHub'
 import { spacesQuery, updateThreadUserState } from '@/lib/api/cloudSpaces'
 import type { Session } from '@/lib/api/types'
 import { useHasCloud, useIsCloudViewer } from '@/lib/cloudSession'
@@ -74,8 +74,10 @@ export function CloudThreadControls({
     isShared ? 'bg-primary-soft text-primary hover:bg-primary-soft/80' : 'bg-surface-2 text-ink-2 hover:text-ink'
   }`
 
-  const repoInfo = repoQuery.data
-  const repoFull = repoInfo?.attached ? (repoInfo.repo ?? '') : ''
+  const repos = threadRepoStatuses(repoQuery.data)
+  const repoInfo = repos.length === 1 ? repos[0] : undefined
+  const repoFull = repoInfo?.repo ?? ''
+  const hasChanges = repos.some((repo) => repo.dirty || (repo.ahead ?? 0) > 0)
   const repoShort = repoFull ? (repoFull.split('/').at(-1) || repoFull) : ''
   const branch = repoInfo?.branch || repoInfo?.base_branch || ''
   const prUrl = repoInfo?.pr_url || ''
@@ -101,25 +103,25 @@ export function CloudThreadControls({
         </span>
       )}
 
-      {repoFull ? (
+      {repos.length > 0 ? (
         <button
           type="button"
           onClick={() => {
-            if ((repoInfo?.dirty || (repoInfo?.ahead ?? 0) > 0) && onOpenDiff) {
+            if (hasChanges && onOpenDiff) {
               onOpenDiff()
             } else {
               onOpenOverview?.()
             }
           }}
-          title={`${repoFull}${branch ? ` (${branch})` : ''}${repoInfo?.dirty ? ' · uncommitted changes' : ''}`}
+          title={repos.map(({ repo }) => repo).join(', ')}
           className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2 transition-colors hover:bg-surface hover:text-ink"
         >
           <GitBranch size={11} className="shrink-0 text-ink-3" />
           <span className="max-w-[150px] truncate font-mono text-[10.5px]">
-            {branch ? `${repoShort}:${branch}` : repoShort}
+            {repos.length > 1 ? `${repos.length} repositories` : branch ? `${repoShort}:${branch}` : repoShort}
           </span>
-          {repoInfo?.dirty ? (
-            <span className="size-1.5 shrink-0 rounded-full bg-running" aria-label="Uncommitted changes" />
+          {hasChanges && (!repoInfo || repoInfo.dirty) ? (
+            <span className="size-1.5 shrink-0 rounded-full bg-running" aria-label={repoInfo ? 'Uncommitted changes' : 'Repository changes'} />
           ) : null}
           {(repoInfo?.ahead ?? 0) > 0 ? (
             <span className="font-mono text-[10px] text-ink-3 tabular-nums">↑{repoInfo?.ahead}</span>

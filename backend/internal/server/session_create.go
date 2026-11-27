@@ -24,18 +24,19 @@ type createSessionRequest struct {
 	// ArtifactSurface is fixed at creation: "chat" (default) or "canvas".
 	ArtifactSurface string `json:"artifact_surface,omitempty"`
 
-	Backend                  string `json:"backend,omitempty"`
-	ModelProvider            string `json:"model_provider,omitempty"`
-	CloudCredentialProfileID string `json:"cloud_credential_profile_id,omitempty"`
-	ModelProfileID           string `json:"model_profile_id,omitempty"`
-	Model                    string `json:"model,omitempty"`
-	ReasoningEffort          string `json:"reasoning_effort,omitempty"`
-	SpaceID                  string `json:"space_id,omitempty"`
-	MachineID                string `json:"machine_id,omitempty"`
-	ExecutorTarget           string `json:"executor_target,omitempty"`
-	GitRepo                  string `json:"git_repo,omitempty"`
-	GitBaseBranch            string `json:"git_base_branch,omitempty"`
-	GitBranch                string `json:"git_branch,omitempty"`
+	Backend                  string                        `json:"backend,omitempty"`
+	ModelProvider            string                        `json:"model_provider,omitempty"`
+	CloudCredentialProfileID string                        `json:"cloud_credential_profile_id,omitempty"`
+	ModelProfileID           string                        `json:"model_profile_id,omitempty"`
+	Model                    string                        `json:"model,omitempty"`
+	ReasoningEffort          string                        `json:"reasoning_effort,omitempty"`
+	SpaceID                  string                        `json:"space_id,omitempty"`
+	MachineID                string                        `json:"machine_id,omitempty"`
+	ExecutorTarget           string                        `json:"executor_target,omitempty"`
+	GitRepo                  string                        `json:"git_repo,omitempty"`
+	GitBaseBranch            string                        `json:"git_base_branch,omitempty"`
+	GitBranch                string                        `json:"git_branch,omitempty"`
+	GitRepos                 []cloudsync.ThreadGitRepoSpec `json:"git_repos,omitzero"`
 }
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +85,7 @@ func (s *Server) createCloudSession(w http.ResponseWriter, r *http.Request, req 
 		Model:           strings.TrimSpace(req.Model),
 		ReasoningEffort: strings.TrimSpace(req.ReasoningEffort),
 		ExecutorTarget:  target,
+		GitRepos:        req.GitRepos,
 		GitRepo:         strings.TrimSpace(req.GitRepo),
 		GitBaseBranch:   strings.TrimSpace(req.GitBaseBranch),
 		GitBranch:       strings.TrimSpace(req.GitBranch),

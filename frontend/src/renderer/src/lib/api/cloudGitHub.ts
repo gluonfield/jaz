@@ -5,7 +5,6 @@ import { ApiError } from '@/lib/api/response'
 import { openExternal } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
 import { del, get, patch, post, secureBackendConnection } from './client'
-import { patchCloudThread, type CloudThread } from './cloudThreads'
 
 export const DEFAULT_GITHUB_APP_NAME = 'Jaz'
 export const CLOUD_GITHUB_PLUGIN_ID = 'github'
@@ -93,9 +92,19 @@ export interface CloudConnectorAccount {
   expires_at?: string | null
 }
 
-export interface CloudThreadRepo {
-  attached: boolean
-  repo?: string
+export interface CloudGitRepoSpec {
+  repo: string
+  base_branch?: string
+  mount_dir?: string
+}
+
+export interface CloudThreadGitRepoSpec extends CloudGitRepoSpec {
+  branch?: string
+}
+
+export interface CloudThreadRepoStatus {
+  repo: string
+  mount_dir?: string
   base_branch?: string
   branch?: string
   base_sha?: string
@@ -108,7 +117,18 @@ export interface CloudThreadRepo {
   pr_url?: string
   pr_state?: string
   checks_status?: string
+}
+
+export interface CloudThreadRepo extends Partial<CloudThreadRepoStatus> {
+  attached: boolean
   sandbox_warm?: boolean
+  repos?: CloudThreadRepoStatus[]
+}
+
+export function threadRepoStatuses(status?: CloudThreadRepo): CloudThreadRepoStatus[] {
+  if (!status?.attached) return []
+  if (status.repos) return status.repos
+  return status.repo ? [{ ...status, repo: status.repo }] : []
 }
 
 export interface CloudThreadRepoChange {
@@ -122,6 +142,7 @@ export interface CloudThreadRepoChange {
 
 export interface CloudThreadRepoChanges {
   repo: string
+  mount_dir?: string
   base_branch: string
   branch: string
   changes: CloudThreadRepoChange[]
@@ -145,6 +166,7 @@ export interface CloudThreadRepoDiff {
 }
 
 export interface CloudThreadRepoPushInput {
+  repo?: string
   branch?: string
   commit_message?: string
 }
@@ -157,6 +179,7 @@ export interface CloudThreadRepoPushResult {
 }
 
 export interface CloudThreadRepoPRInput {
+  repo?: string
   title?: string
   body?: string
   head?: string
@@ -409,21 +432,23 @@ export function getCloudThreadRepo(threadId: string, signal?: AbortSignal): Prom
 
 export async function getCloudThreadRepoChanges(
   threadId: string,
+  repo = '',
   signal?: AbortSignal,
 ): Promise<CloudThreadRepoChanges> {
-  const raw = await get<CloudThreadRepoChanges>(`/v1/threads/${encodeURIComponent(threadId)}/repo/changes`, {
-    signal,
-  })
+  const suffix = repo ? `?${new URLSearchParams({ repo })}` : ''
+  const raw = await get<CloudThreadRepoChanges>(`/v1/threads/${encodeURIComponent(threadId)}/repo/changes${suffix}`, { signal })
   return { ...raw, changes: Array.isArray(raw.changes) ? raw.changes : [] }
 }
 
 export async function getCloudThreadRepoDiff(
   threadId: string,
-  path?: string,
+  path = '',
+  repo = '',
   signal?: AbortSignal,
 ): Promise<CloudThreadRepoDiff> {
   const params = new URLSearchParams()
-  if (path?.trim()) params.set('path', path.trim())
+  if (repo) params.set('repo', repo)
+  if (path) params.set('path', path)
   const suffix = params.size ? `?${params.toString()}` : ''
   const raw = await get<CloudThreadRepoDiff>(`/v1/threads/${encodeURIComponent(threadId)}/repo/diff${suffix}`, {
     signal,
@@ -436,6 +461,7 @@ export function pushCloudThreadRepo(
   input: CloudThreadRepoPushInput = {},
 ): Promise<CloudThreadRepoPushResult> {
   return post<CloudThreadRepoPushResult>(`/v1/threads/${encodeURIComponent(threadId)}/repo/push`, {
+    ...(input.repo ? { repo: input.repo } : {}),
     ...(input.branch?.trim() ? { branch: input.branch.trim() } : {}),
     ...(input.commit_message?.trim() ? { commit_message: input.commit_message.trim() } : {}),
   })
@@ -446,6 +472,7 @@ export function createCloudThreadRepoPR(
   input: CloudThreadRepoPRInput = {},
 ): Promise<CloudThreadRepoPRResult> {
   return post<CloudThreadRepoPRResult>(`/v1/threads/${encodeURIComponent(threadId)}/repo/pr`, {
+    ...(input.repo ? { repo: input.repo } : {}),
     ...(input.title?.trim() ? { title: input.title.trim() } : {}),
     ...(input.body !== undefined ? { body: input.body } : {}),
     ...(input.head?.trim() ? { head: input.head.trim() } : {}),
@@ -454,15 +481,17 @@ export function createCloudThreadRepoPR(
   })
 }
 
-export function attachCloudThreadRepo(
-  threadId: string,
-  input: { git_repo: string; git_base_branch?: string; git_branch?: string },
-): Promise<CloudThread> {
-  return patchCloudThread(threadId, {
-    git_repo: input.git_repo.trim(),
-    ...(input.git_base_branch !== undefined ? { git_base_branch: input.git_base_branch.trim() } : {}),
-    ...(input.git_branch !== undefined ? { git_branch: input.git_branch.trim() } : {}),
-  })
+export function attachCloudThreadRepo(threadId: string, input: CloudThreadGitRepoSpec) {
+  return post<{ repo: CloudThreadGitRepoSpec; repos: CloudThreadGitRepoSpec[] }>(
+    `/v1/threads/${encodeURIComponent(threadId)}/repos`,
+    input,
+  )
+}
+
+export function detachCloudThreadRepo(threadId: string, mountDir: string) {
+  return del<{ deleted: boolean; repos: CloudThreadGitRepoSpec[] }>(
+    `/v1/threads/${encodeURIComponent(threadId)}/repos/${encodeURIComponent(mountDir)}`,
+  )
 }
 
 export const cloudGitHubStatusQuery = queryOptions({
@@ -500,17 +529,17 @@ export const cloudThreadRepoQuery = (threadId: string) =>
     refetchInterval: 30_000,
   })
 
-export const cloudThreadRepoChangesQuery = (threadId: string) =>
+export const cloudThreadRepoChangesQuery = (threadId: string, repo: string) =>
   queryOptions({
-    queryKey: keys.cloudThreadRepoChanges(threadId),
-    queryFn: ({ signal }) => getCloudThreadRepoChanges(threadId, signal),
+    queryKey: keys.cloudThreadRepoChanges(threadId, repo),
+    queryFn: ({ signal }) => getCloudThreadRepoChanges(threadId, repo, signal),
     staleTime: 30_000,
   })
 
-export const cloudThreadRepoDiffQuery = (threadId: string, path = '') =>
+export const cloudThreadRepoDiffQuery = (threadId: string, repo: string, path: string) =>
   queryOptions({
-    queryKey: keys.cloudThreadRepoDiff(threadId, path),
-    queryFn: ({ signal }) => getCloudThreadRepoDiff(threadId, path, signal),
+    queryKey: keys.cloudThreadRepoDiff(threadId, repo, path),
+    queryFn: ({ signal }) => getCloudThreadRepoDiff(threadId, path, repo, signal),
     staleTime: 30_000,
   })
 
@@ -546,16 +575,16 @@ export function useCloudThreadRepo(threadId: string, enabled = true) {
   })
 }
 
-export function useCloudThreadRepoChanges(threadId: string, enabled = true) {
+export function useCloudThreadRepoChanges(threadId: string, repo: string, enabled: boolean) {
   return useQuery({
-    ...cloudThreadRepoChangesQuery(threadId),
+    ...cloudThreadRepoChangesQuery(threadId, repo),
     enabled: enabled && Boolean(threadId),
   })
 }
 
-export function useCloudThreadRepoDiff(threadId: string, path = '', enabled = true) {
+export function useCloudThreadRepoDiff(threadId: string, repo: string, path: string, enabled: boolean) {
   return useQuery({
-    ...cloudThreadRepoDiffQuery(threadId, path),
+    ...cloudThreadRepoDiffQuery(threadId, repo, path),
     enabled: enabled && Boolean(threadId),
   })
 }

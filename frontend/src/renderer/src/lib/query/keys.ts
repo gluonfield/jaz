@@ -100,8 +100,8 @@ export const keys = {
   cloudGitHubBranches: (owner: string, repo: string) =>
     ['cloud', 'github', 'branches', owner, repo] as const,
   cloudThreadRepo: (threadId: string) => ['cloud', 'threads', threadId, 'repo'] as const,
-  cloudThreadRepoChanges: (threadId: string) => ['cloud', 'threads', threadId, 'repo', 'changes'] as const,
-  cloudThreadRepoDiff: (threadId: string, path = '') => ['cloud', 'threads', threadId, 'repo', 'diff', path] as const,
+  cloudThreadRepoChanges: (threadId: string, repo: string) => ['cloud', 'threads', threadId, 'repo', 'changes', repo] as const,
+  cloudThreadRepoDiff: (threadId: string, repo: string, path: string) => ['cloud', 'threads', threadId, 'repo', 'diff', repo, path] as const,
 }
 
 export const WORKSPACE_QUERY_ROOTS = [

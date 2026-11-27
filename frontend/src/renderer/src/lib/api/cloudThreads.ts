@@ -1,3 +1,4 @@
+import type { CloudThreadGitRepoSpec } from '@/lib/api/cloudGitHub'
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
 import { cloudWorkspaceHeaders } from '@/lib/api/cloudScope'
@@ -89,6 +90,7 @@ export interface CloudSessionEvent {
 }
 
 export interface CreateCloudThreadInput {
+  git_repos?: CloudThreadGitRepoSpec[]
   title?: string
   space_id?: string
   model_profile_id?: string
@@ -351,6 +353,7 @@ export function cloudThreadToSession(thread: CloudThread): Session {
     space_id: thread.space_id || undefined,
     visibility: thread.visibility === 'space' ? 'space' : 'private',
     run_id: thread.run_id || thread.id,
+    owner_user_id: thread.owner_user_id,
     git_repo: thread.git_repo || undefined,
     git_base_branch: thread.git_base_branch || undefined,
     git_branch: thread.git_branch || undefined,
@@ -381,6 +384,7 @@ export async function createCloudThread(input: CreateCloudThreadInput): Promise<
     ...(input.model ? { model: input.model } : {}),
     ...(input.reasoning_effort ? { reasoning_effort: input.reasoning_effort } : {}),
     ...(input.executor_target ? { executor_target: input.executor_target } : {}),
+    ...(input.git_repos !== undefined ? { git_repos: input.git_repos } : {}),
     ...(input.git_repo ? { git_repo: input.git_repo } : {}),
     ...(input.git_base_branch ? { git_base_branch: input.git_base_branch } : {}),
     ...(input.git_branch ? { git_branch: input.git_branch } : {}),

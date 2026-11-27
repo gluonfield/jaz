@@ -7,7 +7,8 @@ export type PanelPresentation = Exclude<PresentationEvent, { kind: 'artifact' }>
 export const isPanelPresentation = (view?: PresentationEvent): view is PanelPresentation => Boolean(view && view.kind !== 'artifact')
 
 export type SidePanelTab =
-  | { id: string; kind: 'preview' | 'terminal' | 'side-chat' | 'diff' | 'canvas' }
+  | { id: string; kind: 'preview' | 'terminal' | 'side-chat' | 'canvas' }
+  | { id: string; kind: 'diff'; repo?: string }
   | { id: string; kind: 'file'; file: FileReference | null }
   // An app tab shows a thread app, a file's viewer, or the call an inline view opened larger.
   | { id: string; kind: 'app'; app: Pick<MCPEntrypoint, 'server_id' | 'tool' | 'title' | 'icon'>; file?: OpenedFile; call?: Pick<MCPAppEvent, 'arguments' | 'result'> }

@@ -1,3 +1,4 @@
+import type { CloudGitRepoSpec } from '@/lib/api/cloudGitHub'
 import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { ThreadRepoPicker } from '@/components/cloud/GitHubRepoPicker'
@@ -16,7 +17,7 @@ import { FastModeOption } from '@/components/session/NativeModelOptions'
 import { TaskWorkspaceControl } from '@/components/session/TaskWorkspaceControl'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
-import { spacesQuery } from '@/lib/api/cloudSpaces'
+import { spaceDefaultGitRepos, spacesQuery } from '@/lib/api/cloudSpaces'
 import { useCloudMachinesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
@@ -75,7 +76,7 @@ function NewSessionPage() {
   const [creating, setCreating] = useState(false)
   const [spendCapError, setSpendCapError] = useState<string | null>(null)
   const [spaceId, setSpaceId] = useState(() => search.space ?? '')
-  const [repoOverride, setRepoOverride] = useState<{ repo: string; baseBranch: string } | null>(null)
+  const [repoOverride, setRepoOverride] = useState<CloudGitRepoSpec[]>()
 
   const { account } = useCloudCatalogScope()
   const [execution, setExecution] = useState<{ account: string; location: ExecutionLocation; executor: string }>()
@@ -129,7 +130,7 @@ function NewSessionPage() {
   }, [directory, project, directoryInfo.error, targetIsCloud])
 
   useEffect(() => {
-    setRepoOverride(null)
+    setRepoOverride(undefined)
     if (!cloud.active) {
       setSpaceId('')
       return
@@ -138,8 +139,7 @@ function NewSessionPage() {
   }, [cloud.active, cloud.activeWorkspaceId, search.space])
 
   const selectedSpace = spaceId ? spaces.data?.find((item) => item.id === spaceId) : undefined
-  const gitRepo = repoOverride ? repoOverride.repo : (selectedSpace?.default_git_repo ?? '')
-  const gitBaseBranch = repoOverride ? repoOverride.baseBranch : (selectedSpace?.default_git_branch ?? '')
+  const gitRepos = repoOverride ?? spaceDefaultGitRepos(selectedSpace)
 
   const handleStart = async (text?: string, options: SendMessageOptions = {}, fromApp = false) => {
     if (isViewer && targetIsCloud) {
@@ -181,8 +181,7 @@ function NewSessionPage() {
             ...baseInput,
             ...(spaceId ? { space_id: spaceId } : {}),
             ...(executorTarget ? { executor_target: executorTarget } : {}),
-            ...(gitRepo ? { git_repo: gitRepo } : {}),
-            ...(gitRepo && gitBaseBranch ? { git_base_branch: gitBaseBranch } : {}),
+            git_repos: repoOverride,
           }
         : baseInput
       if (text === undefined) {
@@ -291,12 +290,11 @@ function NewSessionPage() {
             disabled={creating || readOnly}
             onChange={(nextSpaceId) => {
               setSpaceId(nextSpaceId)
-              setRepoOverride(null)
+              setRepoOverride(undefined)
             }}
           />
           <ThreadRepoPicker
-            repo={gitRepo}
-            baseBranch={gitBaseBranch}
+            value={gitRepos}
             placement={controlPlacement}
             disabled={creating || readOnly}
             includePersonal={!selectedSpace || selectedSpace.visibility === 'private'}

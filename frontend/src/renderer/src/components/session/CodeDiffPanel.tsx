@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, FolderGit2, LoaderCircle, RefreshCw } from 'lucide-react'
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
+  threadRepoStatuses,
   useCloudThreadRepo,
   useCloudThreadRepoChanges,
   useCloudThreadRepoDiff,
@@ -15,13 +16,17 @@ export const CodeDiffPanel = memo(function CodeDiffPanel({
   sessionId,
   visible,
   isCloud = false,
+  repo,
+  onSelectRepo,
 }: {
   sessionId: string
   visible: boolean
   isCloud?: boolean
+  repo?: string
+  onSelectRepo: (repo: string) => void
 }) {
   return isCloud
-    ? <CloudCodeDiffPanel sessionId={sessionId} visible={visible} />
+    ? <CloudCodeDiffPanel sessionId={sessionId} visible={visible} selectedRepo={repo} onSelectRepo={onSelectRepo} />
     : <LocalCodeDiffPanel sessionId={sessionId} visible={visible} />
 })
 
@@ -30,12 +35,14 @@ function DiffPanelShell({
   subtitle,
   subtitleTitle,
   summary,
+  filters,
   children,
 }: {
   title: string
   subtitle: string
   subtitleTitle?: string
   summary?: string
+  filters?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -50,6 +57,7 @@ function DiffPanelShell({
           <span className="hidden shrink-0 font-mono text-[11px] text-ink-3 tabular-nums sm:inline">{summary}</span>
         ) : null}
       </div>
+      {filters}
       <div className="scrollbar-quiet min-h-0 flex-1 overflow-y-auto">{children}</div>
     </div>
   )
@@ -198,12 +206,18 @@ function LocalCodeDiffPanel({ sessionId, visible }: { sessionId: string; visible
   )
 }
 
-function CloudCodeDiffPanel({ sessionId, visible }: { sessionId: string; visible: boolean }) {
-  const repo = useCloudThreadRepo(sessionId, visible)
-  const attached = Boolean(repo.data?.attached && repo.data?.repo)
-  const changes = useCloudThreadRepoChanges(sessionId, visible && attached)
+function CloudCodeDiffPanel({ sessionId, visible, selectedRepo, onSelectRepo }: {
+  sessionId: string
+  visible: boolean
+  selectedRepo?: string
+  onSelectRepo: (repo: string) => void
+}) {
+  const status = useCloudThreadRepo(sessionId, visible)
+  const repos = threadRepoStatuses(status.data)
+  const repo = repos.find((item) => item.repo === selectedRepo) ?? repos[0]
+  const selector = repo?.repo ?? ''
+  const changes = useCloudThreadRepoChanges(sessionId, selector, visible && Boolean(repo))
   const data = changes.isError ? undefined : changes.data
-  const { expanded, toggle } = useAutoExpandFirst(sessionId, data?.changes[0]?.path ?? '')
 
   const summary = useMemo(() => {
     if (!data) return 'Code diff'
@@ -213,25 +227,41 @@ function CloudCodeDiffPanel({ sessionId, visible }: { sessionId: string; visible
     return added || deleted ? `${files} · +${added} −${deleted}` : files
   }, [data])
 
-  const repoTitle = data?.repo || repo.data?.repo || 'Cloud repository'
-  const baseBranch = data?.base_branch || repo.data?.base_branch || 'main'
-  const branch = data?.branch || repo.data?.branch || baseBranch
+  const repoTitle = data?.repo || repo?.repo || 'Cloud repositories'
+  const baseBranch = data?.base_branch || repo?.base_branch || ''
+  const branch = data?.branch || repo?.branch || baseBranch
 
   return (
     <DiffPanelShell
-      title={`${repoTitle}${attached && branch ? ` · ${branch}` : ''}`}
-      subtitle={attached ? `${baseBranch} → ${branch}` : 'No repository attached'}
-      summary={attached ? summary : undefined}
+      title={repoTitle}
+      subtitle={repo ? [baseBranch, branch].filter(Boolean).join(' → ') : 'Code changes'}
+      summary={repo ? summary : undefined}
+      filters={repos.length > 1 ? (
+        <div role="group" aria-label="Filter changes by repository" className="flex shrink-0 flex-wrap gap-1 border-b border-border px-3 py-2">
+          {repos.map(({ repo: name }) => (
+            <button
+              key={name}
+              type="button"
+              aria-pressed={name === selector}
+              onClick={() => onSelectRepo(name)}
+              className="min-h-8 min-w-0 max-w-full cursor-pointer truncate rounded-full bg-surface px-2.5 text-[12px] text-ink-2 hover:bg-surface-2 aria-pressed:bg-primary-soft aria-pressed:text-primary"
+              title={name}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      ) : undefined}
     >
-      {repo.isPending ? (
-        <DiffLoadingRow label="Loading repository…" />
-      ) : repo.isError ? (
+      {status.isPending ? (
+        <DiffLoadingRow label="Loading repositories…" />
+      ) : status.isError ? (
         <DiffErrorBlock
-          message={`Couldn’t load repository status: ${repo.error.message}`}
+          message={`Couldn’t load repository status: ${status.error.message}`}
           retryLabel="Retry"
-          onRetry={() => void repo.refetch()}
+          onRetry={() => void status.refetch()}
         />
-      ) : !attached ? (
+      ) : !repo ? (
         <div className="px-3 py-4 text-[12px] text-ink-3">
           No repository is attached to this Cloud thread. Attach one in Overview or when starting a new thread.
         </div>
@@ -246,22 +276,32 @@ function CloudCodeDiffPanel({ sessionId, visible }: { sessionId: string; visible
       ) : data && data.changes.length === 0 ? (
         <div className="px-3 py-4 text-[12px] text-ink-3">No changes against {baseBranch} yet.</div>
       ) : (
-        data?.changes.map((change) => (
-          <CollapsibleDiffSection
-            key={`${change.source}:${change.path}`}
-            label={change.path}
-            title={change.path}
-            badge={cloudChangeBadge(change)}
-            meta={cloudChangeMeta(change)}
-            expanded={Boolean(expanded[change.path])}
-            onToggle={() => toggle(change.path)}
-          >
-            <CloudFileDiffBody sessionId={sessionId} path={change.path} visible={visible} />
-          </CollapsibleDiffSection>
-        ))
+        <CloudChangedFiles key={JSON.stringify([sessionId, selector])} sessionId={sessionId} repo={selector} changes={data?.changes ?? []} visible={visible} />
       )}
     </DiffPanelShell>
   )
+}
+
+function CloudChangedFiles({ sessionId, repo, changes, visible }: {
+  sessionId: string
+  repo: string
+  changes: CloudThreadRepoChange[]
+  visible: boolean
+}) {
+  const { expanded, toggle } = useAutoExpandFirst(sessionId, changes[0]?.path ?? '')
+  return changes.map((change) => (
+    <CollapsibleDiffSection
+      key={change.path}
+      label={change.path}
+      title={change.path}
+      badge={cloudChangeBadge(change)}
+      meta={cloudChangeMeta(change)}
+      expanded={Boolean(expanded[change.path])}
+      onToggle={() => toggle(change.path)}
+    >
+      <CloudFileDiffBody sessionId={sessionId} repo={repo} path={change.path} visible={visible} />
+    </CollapsibleDiffSection>
+  ))
 }
 
 function cloudChangeBadge(change: CloudThreadRepoChange): ReactNode {
@@ -290,16 +330,13 @@ function cloudChangeMeta(change: CloudThreadRepoChange): ReactNode {
   return null
 }
 
-function CloudFileDiffBody({
-  sessionId,
-  path,
-  visible,
-}: {
+function CloudFileDiffBody({ sessionId, repo, path, visible }: {
   sessionId: string
+  repo: string
   path: string
   visible: boolean
 }) {
-  const diff = useCloudThreadRepoDiff(sessionId, path, visible)
+  const diff = useCloudThreadRepoDiff(sessionId, repo, path, visible)
   if (diff.isPending) {
     return (
       <div className="flex items-center gap-2 border-t border-border px-3 py-3 text-[12px] text-ink-3">
@@ -331,7 +368,7 @@ function CloudFileDiffBody({
             </div>
           ) : (
             <p className="px-3 py-3 text-[12px] italic text-ink-3">
-              {entry.source === 'workspace'
+              {entry.status === 'workspace_deleted' ? 'Deleted in the workspace.' : entry.source === 'workspace'
                 ? 'Workspace file preview unavailable (binary or exceeds 128 KiB).'
                 : 'No patch available for this file.'}
             </p>

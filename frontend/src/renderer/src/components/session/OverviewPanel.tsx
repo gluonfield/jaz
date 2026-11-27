@@ -59,7 +59,7 @@ export function OverviewPanel({
   onSend: SendMessageHandler
   onQueuePrompt: SendMessageHandler
   onQueueAction: (action: QueuedAction, label: string) => Promise<void>
-  onOpenDiff?: () => void
+  onOpenDiff?: (repo: string) => void
 }) {
   const isCloudSession = session.backend === 'cloud' || isCloudApiSession()
   const repo = useRepoActions(session)

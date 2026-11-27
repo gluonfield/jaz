@@ -67,17 +67,23 @@ type ConnectRequest struct {
 	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
+type ThreadGitRepoSpec struct {
+	storage.CloudGitRepoSpec
+	Branch string `json:"branch,omitempty"`
+}
+
 type CreateThreadRequest struct {
-	WorkspaceID     string `json:"-"`
-	Title           string `json:"title,omitempty"`
-	SpaceID         string `json:"space_id,omitempty"`
-	ModelProfileID  string `json:"model_profile_id,omitempty"`
-	Model           string `json:"model,omitempty"`
-	ReasoningEffort string `json:"reasoning_effort,omitempty"`
-	ExecutorTarget  string `json:"executor_target,omitempty"`
-	GitRepo         string `json:"git_repo,omitempty"`
-	GitBaseBranch   string `json:"git_base_branch,omitempty"`
-	GitBranch       string `json:"git_branch,omitempty"`
+	WorkspaceID     string              `json:"-"`
+	Title           string              `json:"title,omitempty"`
+	SpaceID         string              `json:"space_id,omitempty"`
+	ModelProfileID  string              `json:"model_profile_id,omitempty"`
+	Model           string              `json:"model,omitempty"`
+	ReasoningEffort string              `json:"reasoning_effort,omitempty"`
+	ExecutorTarget  string              `json:"executor_target,omitempty"`
+	GitRepo         string              `json:"git_repo,omitempty"`
+	GitBaseBranch   string              `json:"git_base_branch,omitempty"`
+	GitBranch       string              `json:"git_branch,omitempty"`
+	GitRepos        []ThreadGitRepoSpec `json:"git_repos,omitzero"`
 }
 
 type ProjectedTranscript struct {

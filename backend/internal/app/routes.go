@@ -206,6 +206,8 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge ma
 		server.Route{Pattern: "DELETE /v1/github/installations/{id}", Handler: httpHandlerFunc(h.Proxy)},
 		server.Route{Pattern: "GET /v1/github/repos", Handler: httpHandlerFunc(h.Proxy)},
 		server.Route{Pattern: "GET /v1/github/repos/{owner}/{repo}/branches", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/threads/{id}/repos", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "DELETE /v1/threads/{id}/repos/{mount_dir}", Handler: httpHandlerFunc(h.Proxy)},
 		server.Route{Pattern: "GET /v1/threads/{id}/repo", Handler: httpHandlerFunc(h.Proxy)},
 		server.Route{Pattern: "GET /v1/threads/{id}/repo/changes", Handler: httpHandlerFunc(h.Proxy)},
 		server.Route{Pattern: "GET /v1/threads/{id}/repo/diff", Handler: httpHandlerFunc(h.Proxy)},

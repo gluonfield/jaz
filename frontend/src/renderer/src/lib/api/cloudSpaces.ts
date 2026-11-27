@@ -1,4 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
+import type { CloudGitRepoSpec } from '@/lib/api/cloudGitHub'
 import { ApiError } from '@/lib/api/response'
 import { keys } from '@/lib/query/keys'
 import {
@@ -29,6 +30,7 @@ export interface CloudSpace {
   name: string
   visibility?: SpaceVisibility
   created_by?: string
+  default_git_repos?: CloudGitRepoSpec[]
   default_git_repo?: string
   default_git_branch?: string
   can_edit?: boolean
@@ -36,6 +38,11 @@ export interface CloudSpace {
   member_count?: number
   source_count?: number
   members?: CloudSpaceMember[]
+}
+
+export function spaceDefaultGitRepos(space?: CloudSpace): CloudGitRepoSpec[] {
+  return space?.default_git_repos
+    ?? (space?.default_git_repo ? [{ repo: space.default_git_repo, base_branch: space.default_git_branch }] : [])
 }
 
 export interface SpaceSource {
@@ -84,41 +91,22 @@ export const spaceQuery = (spaceId: string) =>
     staleTime: 15_000,
   })
 
-export async function createSpace(input: {
-  name: string
-  visibility?: SpaceVisibility
+type SpaceInput = Pick<CloudSpace, 'name' | 'visibility' | 'default_git_repos' | 'default_git_repo' | 'default_git_branch'> & {
   member_user_ids?: string[]
-  default_git_repo?: string
-  default_git_branch?: string
-}): Promise<CloudSpace> {
-  const name = input.name.trim()
-  if (!name) throw new Error('Project name is required')
-  const payload: {
-    name: string
-    visibility?: SpaceVisibility
-    member_user_ids?: string[]
-    default_git_repo?: string
-    default_git_branch?: string
-  } = { name }
-  if (input.visibility) payload.visibility = input.visibility
-  if (input.member_user_ids) payload.member_user_ids = input.member_user_ids
-  const defaultRepo = input.default_git_repo?.trim()
-  if (defaultRepo) payload.default_git_repo = defaultRepo
-  const defaultBranch = input.default_git_branch?.trim()
-  if (defaultBranch) payload.default_git_branch = defaultBranch
-  return cloudPost<CloudSpace>('/v1/spaces', payload)
 }
 
-export async function patchSpace(
-  spaceId: string,
-  input: {
-    name?: string
-    visibility?: SpaceVisibility
-    member_user_ids?: string[]
-    default_git_repo?: string
-    default_git_branch?: string
-  },
-): Promise<CloudSpace> {
+export async function createSpace(input: SpaceInput): Promise<CloudSpace> {
+  const name = input.name.trim()
+  if (!name) throw new Error('Project name is required')
+  return cloudPost<CloudSpace>('/v1/spaces', {
+    ...input,
+    name,
+    default_git_repo: input.default_git_repo?.trim() || undefined,
+    default_git_branch: input.default_git_branch?.trim() || undefined,
+  })
+}
+
+export async function patchSpace(spaceId: string, input: Partial<SpaceInput>): Promise<CloudSpace> {
   return cloudPatch<CloudSpace>(`/v1/spaces/${encodeURIComponent(spaceId)}`, input)
 }
 

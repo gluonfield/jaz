@@ -1,329 +1,202 @@
-import { useNavigate } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import {
   ArrowUpFromLine,
-  Check,
-  CheckCircle2,
-  Clock,
   Copy,
   ExternalLink,
   FolderGit2,
   GitBranch,
   GitPullRequest,
-  GitPullRequestArrow,
   LoaderCircle,
   LogIn,
-  Puzzle,
   RefreshCw,
-  XCircle,
+  X,
 } from 'lucide-react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ThreadRepoPicker } from '@/components/cloud/GitHubRepoPicker'
-import { withGitHubPluginSearch } from '@/lib/api/cloudGitHub'
+import { useState } from 'react'
+import { AddGitHubRepository, GitHubBranchField } from '@/components/cloud/GitHubRepoPicker'
+import { SectionHeader } from '@/components/session/OverviewRuns'
+import { useCloudThreadRepoActions } from '@/components/session/useCloudThreadRepoActions'
+import { Button } from '@/components/ui/Button'
+import { useToast } from '@/components/ui/toast'
+import {
+  githubRepoWebUrl,
+  threadRepoStatuses,
+  useCloudThreadRepo,
+  type CloudThreadRepoStatus,
+} from '@/lib/api/cloudGitHub'
+import { sessionQuery } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
-import { SectionHeader } from './OverviewRuns'
-import { useCloudThreadRepoActions } from './useCloudThreadRepoActions'
+import { isCloudViewerRole, useCloudSession } from '@/lib/cloudSession'
 
-function CloudRepoActionRow({
-  icon: Icon,
-  onClick,
-  disabled,
-  hint,
-  spin,
-  children,
-}: {
-  icon: typeof GitBranch
-  onClick: () => void
-  disabled?: boolean
-  hint?: string
-  spin?: boolean
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={hint}
-      className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-surface-2 enabled:hover:text-ink disabled:opacity-50"
-    >
-      <Icon size={13} className={`shrink-0 text-ink-3 ${spin ? 'animate-spin' : ''}`} />
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-    </button>
-  )
-}
-
-function ChecksRow({ status }: { status: string }) {
-  if (!status) return null
-  if (status === 'success') {
-    return (
-      <p className="flex items-center gap-1.5 text-ok">
-        <CheckCircle2 size={12} className="shrink-0" />
-        Checks passing
-      </p>
-    )
-  }
-  if (status === 'failure') {
-    return (
-      <p className="flex items-center gap-1.5 text-danger">
-        <XCircle size={12} className="shrink-0" />
-        Checks failing
-      </p>
-    )
-  }
-  return (
-    <p className="flex items-center gap-1.5 text-running">
-      <Clock size={12} className="shrink-0" />
-      Checks pending
-    </p>
-  )
-}
-
-export function CloudGitSection({
-  session,
-  onOpenDiff,
-}: {
+export function CloudGitSection({ session, onOpenDiff }: {
   session: Session
-  onOpenDiff?: () => void
+  onOpenDiff?: (repo: string) => void
 }) {
-  const repo = useCloudThreadRepoActions(session)
-  const navigate = useNavigate()
-  const [copied, setCopied] = useState(false)
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const reduceMotion = useReducedMotion()
-  const openGitHubPlugin = () => void navigate({ to: '.', search: withGitHubPluginSearch })
-
-  const branchLabel = repo.branch || repo.baseBranch || 'main'
-  const allowPersonal = session.visibility !== 'space' || Boolean(session.personal_sources_enabled)
-
-  useEffect(() => {
-    setCopied(false)
-  }, [branchLabel])
-
-  useEffect(
-    () => () => {
-      if (copiedTimer.current) clearTimeout(copiedTimer.current)
-    },
-    [],
-  )
-
-  if (repo.error) {
-    return (
-      <section className="flex flex-col gap-1">
-        <SectionHeader>Git</SectionHeader>
-        <p className="px-2.5 text-[12px] leading-snug text-danger">
-          Repository status unavailable.
-        </p>
-        <CloudRepoActionRow icon={RefreshCw} onClick={repo.refetch}>
-          Retry repository status
-        </CloudRepoActionRow>
-      </section>
-    )
-  }
-
-  if (!repo.attached) {
-    if (repo.isViewer || repo.isLoading) return null
-    return (
-      <section className="flex flex-col gap-1.5">
-        <SectionHeader>Repository</SectionHeader>
-        <div className="px-1">
-          <ThreadRepoPicker
-            repo=""
-            baseBranch=""
-            placement="below"
-            placeholder="Attach repository"
-            disabled={repo.busy !== null}
-            includePersonal={allowPersonal}
-            onChange={({ repo: nextRepo, baseBranch }) => {
-              if (nextRepo) void repo.attachRepo(nextRepo, baseBranch)
-            }}
-          />
-        </div>
-      </section>
-    )
-  }
-
-  const copyBranch = async () => {
-    if (!(await writeClipboard(branchLabel))) return
-    if (copiedTimer.current) clearTimeout(copiedTimer.current)
-    setCopied(true)
-    copiedTimer.current = setTimeout(() => setCopied(false), 1500)
-  }
-
-  const branchPath = branchLabel.split('/').map(encodeURIComponent).join('/')
+  const cloud = useCloudSession()
+  const isViewer = isCloudViewerRole(cloud.user?.role)
+  const isAdmin = cloud.user?.role === 'admin'
+  const thread = useQuery({
+    ...sessionQuery(session.id),
+    enabled: Boolean(cloud.user) && !isAdmin && !isViewer && !session.owner_user_id,
+  })
+  const owner = session.owner_user_id ?? thread.data?.owner_user_id
+  const canManage = Boolean(cloud.user && !isViewer && (isAdmin || cloud.user.id === owner))
+  const query = useCloudThreadRepo(session.id)
+  const actions = useCloudThreadRepoActions(session.id)
+  const repos = threadRepoStatuses(query.data)
 
   return (
-    <>
-      <section className="flex flex-col gap-0.5">
-        <div className="mb-1.5 flex items-center justify-between gap-2">
-          <SectionHeader>Git</SectionHeader>
-          <span className="min-w-0 truncate text-[11px] text-ink-3" title={repo.repo}>
-            {repo.repo}
-          </span>
+    <section className="flex flex-col gap-2" aria-busy={actions.busy || query.isPending}>
+      <SectionHeader>Git</SectionHeader>
+      {query.isError ? (
+        <div className="px-2">
+          <p className="text-[12px] text-danger">Repository status unavailable.</p>
+          <Button variant="ghost" size="sm" onClick={() => void query.refetch()}><RefreshCw size={12} /> Retry</Button>
         </div>
-
-        <button
-          type="button"
-          aria-label={copied ? `Copied branch name ${branchLabel}` : `Copy branch name ${branchLabel}`}
-          title={copied ? 'Copied' : `Copy branch name (${repo.baseBranch ? `base: ${repo.baseBranch}` : 'default'})`}
-          onClick={() => void copyBranch()}
-          className="group flex h-7 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-        >
-          <GitBranch size={13} className="shrink-0 text-ink-3" />
-          <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{branchLabel}</span>
-          <span className="grid size-3 shrink-0 place-items-center">
-            <AnimatePresence initial={false} mode="popLayout">
-              <motion.span
-                key={copied ? 'copied' : 'copy'}
-                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.25, filter: 'blur(4px)' }}
-                animate={reduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.25, filter: 'blur(4px)' }}
-                transition={reduceMotion ? { duration: 0.12 } : { type: 'spring', duration: 0.3, bounce: 0 }}
-                className="grid size-3 place-items-center"
-              >
-                {copied ? (
-                  <Check size={12} className="text-primary" />
-                ) : (
-                  <Copy size={12} className="text-ink-3 opacity-70 transition-opacity group-hover:opacity-100" />
-                )}
-              </motion.span>
-            </AnimatePresence>
-          </span>
-        </button>
-
-        {repo.dirty || repo.ahead > 0 || repo.behind > 0 || repo.checksStatus || repo.prNumber > 0 ? (
-          <div className="space-y-1 px-2.5 py-1 text-[12px] leading-snug text-ink-3">
-            {repo.dirty ? <p className="text-running">Uncommitted workspace changes</p> : null}
-            {repo.ahead > 0 || repo.behind > 0 ? (
-              <p>
-                {repo.ahead > 0 ? `${repo.ahead} ahead` : ''}
-                {repo.ahead > 0 && repo.behind > 0 ? ' · ' : ''}
-                {repo.behind > 0 ? `${repo.behind} behind` : ''}
-                {repo.baseBranch ? ` of ${repo.baseBranch}` : ''}
-              </p>
-            ) : null}
-            {repo.prNumber > 0 ? (
-              <p>
-                PR #{repo.prNumber}
-                {repo.prState ? ` · ${repo.prState}` : ''}
-              </p>
-            ) : null}
-            <ChecksRow status={repo.checksStatus} />
-          </div>
-        ) : null}
-
-        {onOpenDiff ? (
-          <CloudRepoActionRow icon={FolderGit2} onClick={onOpenDiff}>
-            View changes
-          </CloudRepoActionRow>
-        ) : null}
-
-        {!repo.isViewer ? (
-          <CloudRepoActionRow
-            icon={repo.busy === 'push' ? LoaderCircle : ArrowUpFromLine}
-            spin={repo.busy === 'push'}
-            disabled={repo.busy !== null}
-            hint="Commits workspace edits and pushes this branch to GitHub"
-            onClick={() => void repo.push()}
-          >
-            {repo.busy === 'push' ? 'Pushing…' : 'Push branch'}
-          </CloudRepoActionRow>
-        ) : null}
-
-        {!repo.isViewer ? (
-          <div className="pt-1">
-            <ThreadRepoPicker
-              repo={repo.repo}
-              baseBranch={repo.baseBranch}
-              placement="below"
-              placeholder="Change repository"
-              disabled={repo.busy !== null}
-              includePersonal={allowPersonal}
-              onChange={({ repo: nextRepo, baseBranch }) => {
-                if (nextRepo !== repo.repo || baseBranch !== repo.baseBranch) {
-                  void repo.attachRepo(nextRepo, baseBranch)
-                }
-              }}
+      ) : query.isPending ? (
+        <p className="flex items-center gap-2 px-2 text-[12px] text-ink-3"><LoaderCircle size={12} className="animate-spin" /> Loading repositories…</p>
+      ) : (
+        <>
+          {repos.map((repo) => (
+            <GitRepository
+              key={repo.repo}
+              repo={repo}
+              canManage={canManage}
+              isViewer={isViewer}
+              actions={actions}
+              onOpenDiff={onOpenDiff}
             />
-          </div>
-        ) : null}
-      </section>
+          ))}
+          {canManage ? (
+            <AddGitHubRepository
+              value={repos}
+              includePersonal={session.visibility !== 'space' || Boolean(session.personal_sources_enabled)}
+              disabled={actions.busy}
+              onSelect={(repo) => actions.saveRepo(repo, `Attached ${repo.repo}`)}
+            />
+          ) : repos.length === 0 ? (
+            <p className="px-2 text-[12px] text-ink-3">No repositories attached.</p>
+          ) : null}
+          {actions.connectRequired && !isViewer ? (
+            <Button className="self-start" variant="ghost" size="sm" onClick={actions.connect} disabled={actions.connecting}>
+              <LogIn size={12} /> Connect GitHub
+            </Button>
+          ) : null}
+        </>
+      )}
+    </section>
+  )
+}
 
-      <section className="flex flex-col gap-0.5">
-        <div className="mb-1.5">
-          <SectionHeader>GitHub</SectionHeader>
+function GitRepository({ repo, actions, canManage, isViewer, onOpenDiff }: {
+  repo: CloudThreadRepoStatus
+  actions: ReturnType<typeof useCloudThreadRepoActions>
+  canManage: boolean
+  isViewer: boolean
+  onOpenDiff?: (repo: string) => void
+}) {
+  const [baseBranch, setBaseBranch] = useState<string | null>(null)
+  const [confirmDetach, setConfirmDetach] = useState(false)
+  const toast = useToast()
+  const branch = repo.branch || repo.base_branch || ''
+  const base = repo.base_branch || ''
+  const webUrl = githubRepoWebUrl(repo.repo)
+  const canOpenPR = Boolean(repo.pr_url || (!isViewer && branch && branch !== base))
+  const mount = repo.mount_dir ? `/workspace/${repo.mount_dir}` : undefined
+
+  async function copyBranch() {
+    if (await writeClipboard(branch)) toast(`Copied ${branch}`)
+  }
+
+  return (
+    <div className="space-y-1.5 border-b border-border px-2 pb-2.5">
+      <div className="flex items-center justify-between gap-1.5">
+        {webUrl ? (
+          <button type="button" title={repo.repo} onClick={() => actions.openUrl(webUrl)} className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left text-[12px] font-medium text-ink hover:underline">
+            <span className="truncate">{repo.repo}</span><ExternalLink size={11} className="shrink-0 text-ink-3" />
+          </button>
+        ) : <span className="truncate text-[12px] font-medium text-ink" title={repo.repo}>{repo.repo}</span>}
+        {canManage ? (
+          <button type="button" aria-label={`Detach ${repo.repo}`} title="Detach repository" className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-control text-ink-3 hover:bg-surface-2 hover:text-ink disabled:opacity-50" disabled={actions.busy} onClick={() => setConfirmDetach(!confirmDetach)}>
+            <X size={13} />
+          </button>
+        ) : null}
+      </div>
+      {mount ? <p className="truncate font-mono text-[11px] text-ink-3" title={mount}>{mount}</p> : null}
+      {branch ? (
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => void copyBranch()} className="flex max-w-full cursor-pointer items-center gap-1.5 font-mono text-[12px] text-ink-2 hover:text-ink" title={`Copy branch name ${branch}`}>
+            <GitBranch size={12} className="shrink-0" />
+            <span className="truncate">{branch}</span>
+            <Copy size={11} className="shrink-0 text-ink-3" />
+          </button>
+          {webUrl ? (
+            <button
+              type="button"
+              aria-label={`View ${branch} on GitHub`}
+              title="View branch on GitHub"
+              className="shrink-0 cursor-pointer text-ink-3 hover:text-ink"
+              onClick={() => actions.openUrl(`${webUrl}/tree/${encodeURIComponent(branch)}`)}
+            >
+              <ExternalLink size={11} />
+            </button>
+          ) : null}
         </div>
-
-        {repo.prUrl ? (
-          <CloudRepoActionRow
-            icon={GitPullRequest}
-            disabled={repo.busy !== null}
-            hint={repo.prHint}
-            onClick={() => void repo.createOrOpenPR()}
-          >
-            {repo.prNumber > 0 ? `Open pull request #${repo.prNumber}` : 'Open pull request'}
-          </CloudRepoActionRow>
-        ) : !repo.isViewer ? (
-          <CloudRepoActionRow
-            icon={repo.busy === 'pr' ? LoaderCircle : GitPullRequestArrow}
-            spin={repo.busy === 'pr'}
-            disabled={repo.prDisabled || repo.busy !== null}
-            hint={repo.prHint}
-            onClick={() => void repo.createOrOpenPR()}
-          >
-            {repo.busy === 'pr' ? 'Creating pull request…' : 'Create pull request'}
-          </CloudRepoActionRow>
+      ) : null}
+      <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-ink-3 tabular-nums">
+        {base ? <span title={base}>Base · {base}</span> : null}
+        {repo.dirty ? <span className="text-running">Uncommitted changes</span> : null}
+        {Boolean(repo.ahead) ? <span>{repo.ahead} ahead</span> : null}
+        {Boolean(repo.behind) ? <span>{repo.behind} behind</span> : null}
+        {repo.checks_status ? <span>Checks {repo.checks_status === 'success' ? 'passing' : repo.checks_status === 'failure' ? 'failing' : repo.checks_status}</span> : null}
+        {repo.pr_state ? <span>PR {repo.pr_state}</span> : null}
+      </div>
+      {canManage && confirmDetach ? (
+        <div className="space-y-1">
+          <p className="text-[12px] text-ink-2">Detach this repository from the thread?</p>
+          <div className="flex gap-1">
+            <Button variant="ghost" size="sm" onClick={() => setConfirmDetach(false)}>Cancel</Button>
+            <Button variant="danger" size="sm" disabled={actions.busy} onClick={() => {
+              setConfirmDetach(false)
+              actions.removeRepo(repo)
+            }}>Detach</Button>
+          </div>
+        </div>
+      ) : null}
+      {canManage && baseBranch !== null ? (
+        <form className="space-y-1.5" onSubmit={(event) => {
+          event.preventDefault()
+          const next = baseBranch.trim()
+          if (!next || next === base || actions.busy) return
+          actions.saveRepo({ repo: repo.repo, mount_dir: repo.mount_dir, base_branch: next }, `Updated base branch for ${repo.repo}`)
+          setBaseBranch(null)
+        }}>
+          <GitHubBranchField repo={repo.repo} label="Base branch" value={baseBranch} disabled={actions.busy} onChange={setBaseBranch} />
+          <div className="flex gap-1">
+            <Button variant="ghost" size="sm" onClick={() => setBaseBranch(null)}>Cancel</Button>
+            <Button type="submit" variant="secondary" size="sm" disabled={actions.busy || !baseBranch.trim() || baseBranch.trim() === base}>Save base branch</Button>
+          </div>
+        </form>
+      ) : null}
+      <div className="flex flex-wrap gap-1">
+        {onOpenDiff ? (
+          <Button variant="ghost" size="sm" onClick={() => onOpenDiff(repo.repo)}><FolderGit2 size={12} /> Changes</Button>
         ) : null}
-
-        {repo.connectRequired && !repo.isViewer ? (
-          <>
-            <CloudRepoActionRow
-              icon={repo.connectingGitHub ? LoaderCircle : LogIn}
-              spin={repo.connectingGitHub}
-              disabled={repo.connectingGitHub}
-              onClick={repo.connectGitHub}
-            >
-              Connect GitHub account
-            </CloudRepoActionRow>
-            <CloudRepoActionRow icon={Puzzle} onClick={openGitHubPlugin}>
-              Manage GitHub in Plugins
-            </CloudRepoActionRow>
-          </>
+        {!isViewer ? (
+          <Button variant="ghost" size="sm" disabled={actions.busy || !branch} onClick={() => actions.push(repo)}><ArrowUpFromLine size={12} /> Push</Button>
         ) : null}
-
-        {repo.compareUrl ? (
-          <CloudRepoActionRow
-            icon={ExternalLink}
-            onClick={() => repo.openUrl(repo.compareUrl)}
-          >
-            Open GitHub compare
-          </CloudRepoActionRow>
+        {canOpenPR ? (
+          <Button variant="ghost" size="sm" disabled={actions.busy} onClick={() => actions.openPR(repo)}>
+            <GitPullRequest size={12} /> {repo.pr_url ? (repo.pr_number ? `Open PR #${repo.pr_number}` : 'Open PR') : 'Create PR'}
+          </Button>
         ) : null}
-
-        {repo.webUrl ? (
-          <>
-            <CloudRepoActionRow
-              icon={GitPullRequest}
-              onClick={() => repo.openUrl(`${repo.webUrl}/pulls`)}
-            >
-              Pull requests
-            </CloudRepoActionRow>
-            <CloudRepoActionRow
-              icon={GitBranch}
-              onClick={() => repo.openUrl(`${repo.webUrl}/tree/${branchPath}`)}
-            >
-              View branch
-            </CloudRepoActionRow>
-            <CloudRepoActionRow
-              icon={ExternalLink}
-              onClick={() => repo.openUrl(repo.webUrl)}
-            >
-              Open repository
-            </CloudRepoActionRow>
-          </>
+        {webUrl ? (
+          <Button variant="ghost" size="sm" onClick={() => actions.openUrl(`${webUrl}/pulls`)}>Pull requests</Button>
         ) : null}
-      </section>
-    </>
+        {canManage && baseBranch === null ? (
+          <Button variant="ghost" size="sm" disabled={actions.busy} onClick={() => setBaseBranch(base)}>Edit base branch</Button>
+        ) : null}
+      </div>
+    </div>
   )
 }

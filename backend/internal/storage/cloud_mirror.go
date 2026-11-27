@@ -33,6 +33,12 @@ type CloudSpaceMember struct {
 	Role        string `json:"role,omitempty"`
 }
 
+type CloudGitRepoSpec struct {
+	Repo       string `json:"repo"`
+	BaseBranch string `json:"base_branch,omitempty"`
+	MountDir   string `json:"mount_dir,omitempty"`
+}
+
 type CloudSpace struct {
 	AccountID        string             `json:"-"`
 	ID               string             `json:"id"`
@@ -40,6 +46,7 @@ type CloudSpace struct {
 	Name             string             `json:"name"`
 	Visibility       string             `json:"visibility,omitempty"`
 	CreatedBy        string             `json:"created_by,omitempty"`
+	DefaultGitRepos  []CloudGitRepoSpec `json:"default_git_repos,omitempty"`
 	DefaultGitRepo   string             `json:"default_git_repo,omitempty"`
 	DefaultGitBranch string             `json:"default_git_branch,omitempty"`
 	CanEdit          bool               `json:"can_edit,omitempty"`
@@ -130,6 +137,7 @@ func (t CloudThread) ToSession() Session {
 		SpaceID:                t.SpaceID,
 		Visibility:             visibility,
 		RunID:                  runID,
+		OwnerUserID:            t.OwnerUserID,
 		PersonalSourcesEnabled: t.PersonalSourcesEnabled,
 		Backend:                "cloud",
 		Pinned:                 t.Pinned,

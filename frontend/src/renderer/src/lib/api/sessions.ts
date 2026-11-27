@@ -1,3 +1,4 @@
+import type { CloudThreadGitRepoSpec } from '@/lib/api/cloudGitHub'
 import type { UsageWindow } from '@/lib/usageWindow'
 import { ApiError, readAPIResponse } from '@/lib/api/response'
 import { queryOptions } from '@tanstack/react-query'
@@ -81,6 +82,7 @@ export interface CreateSessionInput {
   visibility?: 'private' | 'space'
   machine_id?: string
   executor_target?: string
+  git_repos?: CloudThreadGitRepoSpec[]
   git_repo?: string
   git_base_branch?: string
   git_branch?: string
@@ -96,6 +98,7 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
       model: input.model,
       reasoning_effort: input.reasoning_effort,
       executor_target: input.executor_target ?? input.machine_id,
+      git_repos: input.git_repos,
       git_repo: input.git_repo,
       git_base_branch: input.git_base_branch,
       git_branch: input.git_branch,

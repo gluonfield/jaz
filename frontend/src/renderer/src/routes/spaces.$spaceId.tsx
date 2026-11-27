@@ -1,3 +1,4 @@
+import type { CloudGitRepoSpec } from '@/lib/api/cloudGitHub'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import {
@@ -30,7 +31,7 @@ import { FileDropScope } from '@/components/ui/FileDrop'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { appsQuery } from '@/lib/api/apps'
-import { spaceQuery, spaceSourcesQuery, spacesQuery } from '@/lib/api/cloudSpaces'
+import { spaceDefaultGitRepos, spaceQuery, spaceSourcesQuery, spacesQuery } from '@/lib/api/cloudSpaces'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { deleteSession, moveSessionToSpace, sidebarSessionsQuery } from '@/lib/api/sessions'
 import { useIsCloudViewer } from '@/lib/cloudSession'
@@ -67,7 +68,7 @@ function SpaceProjectPage() {
   const [creating, setCreating] = useState(false)
   const [spendCapError, setSpendCapError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [repoChoice, setRepoChoice] = useState<{ repo: string; baseBranch: string } | null>(null)
+  const [repoChoice, setRepoChoice] = useState<CloudGitRepoSpec[]>()
 
   const detail = useQuery(spaceQuery(spaceId))
   const allSpaces = useQuery(spacesQuery)
@@ -78,11 +79,10 @@ function SpaceProjectPage() {
   const controls = useNewThreadControls('cloud')
 
   useEffect(() => {
-    setRepoChoice(null)
+    setRepoChoice(undefined)
   }, [spaceId])
 
-  const effectiveGitRepo = repoChoice ? repoChoice.repo : (space?.default_git_repo ?? '')
-  const effectiveGitBaseBranch = repoChoice ? repoChoice.baseBranch : (space?.default_git_branch ?? '')
+  const defaultRepos = spaceDefaultGitRepos(space)
 
   const projectChats = useMemo(
     () => (sessions.data ?? []).filter((s) => s.space_id === spaceId && !s.archived),
@@ -131,8 +131,7 @@ function SpaceProjectPage() {
         {
           ...baseInput,
           space_id: spaceId,
-          ...(effectiveGitRepo ? { git_repo: effectiveGitRepo } : {}),
-          ...(effectiveGitRepo && effectiveGitBaseBranch ? { git_base_branch: effectiveGitBaseBranch } : {}),
+          git_repos: repoChoice,
         },
         text,
         options,
@@ -205,13 +204,12 @@ function SpaceProjectPage() {
                 <span>{projectChats.length} {projectChats.length === 1 ? 'chat' : 'chats'}</span>
                 <span>·</span>
                 <span>{sourceCount} {sourceCount === 1 ? 'source' : 'sources'}</span>
-                {space.default_git_repo ? (
+                {defaultRepos.length > 0 ? (
                   <>
                     <span>·</span>
-                    <span className="inline-flex items-center gap-1 font-mono text-[11.5px] text-ink-2">
+                    <span className="inline-flex items-center gap-1 text-[11.5px] text-ink-2" title={defaultRepos.map(({ repo }) => repo).join(', ')}>
                       <GitBranch size={11} />
-                      {space.default_git_repo}
-                      {space.default_git_branch ? `:${space.default_git_branch}` : ''}
+                      {defaultRepos.length} {defaultRepos.length === 1 ? 'repository' : 'repositories'}
                     </span>
                   </>
                 ) : null}
@@ -235,8 +233,7 @@ function SpaceProjectPage() {
             <div>
               <div className="mb-1.5 flex items-center gap-1">
                 <ThreadRepoPicker
-                  repo={effectiveGitRepo}
-                  baseBranch={effectiveGitBaseBranch}
+                  value={repoChoice ?? defaultRepos}
                   placement={controlPlacement}
                   disabled={creating}
                   includePersonal={space.visibility === 'private'}

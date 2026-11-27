@@ -11,6 +11,7 @@ import {
   createSpace,
   deleteSpace,
   patchSpace,
+  spaceDefaultGitRepos,
   type CloudSpace,
   type SpaceVisibility,
 } from '@/lib/api/cloudSpaces'
@@ -79,23 +80,19 @@ export function SpaceModal({
   const [selectedMembers, setSelectedMembers] = useState<PickedMember[]>(() =>
     initialSelectedMembers(space),
   )
-  const [defaultGitRepo, setDefaultGitRepo] = useState(space?.default_git_repo ?? '')
-  const [defaultGitBranch, setDefaultGitBranch] = useState(space?.default_git_branch ?? '')
+  const [defaultGitRepos, setDefaultGitRepos] = useState(() => spaceDefaultGitRepos(space))
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const save = useMutation({
     mutationFn: () => {
       const trimmed = name.trim()
       if (!trimmed) throw new Error('Project name is required')
-      const gitRepo = defaultGitRepo.trim()
-      const gitBranch = gitRepo ? defaultGitBranch.trim() : ''
       if (space) {
         return patchSpace(space.id, {
           name: trimmed,
           visibility,
           member_user_ids: visibility === 'selected' ? selectedMembers.map((m) => m.user_id) : [],
-          default_git_repo: gitRepo,
-          default_git_branch: gitBranch,
+          default_git_repos: defaultGitRepos,
         })
       }
       return createSpace({
@@ -104,8 +101,7 @@ export function SpaceModal({
         ...(visibility === 'selected'
           ? { member_user_ids: selectedMembers.map((m) => m.user_id) }
           : {}),
-        ...(gitRepo ? { default_git_repo: gitRepo } : {}),
-        ...(gitBranch ? { default_git_branch: gitBranch } : {}),
+        default_git_repos: defaultGitRepos,
       })
     },
     onSuccess: (saved) => {
@@ -276,14 +272,10 @@ export function SpaceModal({
           ) : null}
 
           <GitHubRepoField
-            repo={defaultGitRepo}
-            baseBranch={defaultGitBranch}
-            disabled={!canEdit}
+            value={defaultGitRepos}
+            disabled={!canEdit || save.isPending}
             includePersonal={visibility === 'private'}
-            onChange={({ repo, baseBranch }) => {
-              setDefaultGitRepo(repo)
-              setDefaultGitBranch(baseBranch)
-            }}
+            onChange={setDefaultGitRepos}
           />
         </div>
       </div>

@@ -406,11 +406,12 @@ func (c *cloudClient) listSpaces(ctx context.Context, baseURL, token string) ([]
 }
 
 type CreateSpaceRequest struct {
-	Name             string   `json:"name"`
-	Visibility       string   `json:"visibility,omitempty"`
-	MemberUserIDs    []string `json:"member_user_ids,omitempty"`
-	DefaultGitRepo   string   `json:"default_git_repo,omitempty"`
-	DefaultGitBranch string   `json:"default_git_branch,omitempty"`
+	Name             string                     `json:"name"`
+	Visibility       string                     `json:"visibility,omitempty"`
+	MemberUserIDs    []string                   `json:"member_user_ids,omitempty"`
+	DefaultGitRepos  []storage.CloudGitRepoSpec `json:"default_git_repos,omitzero"`
+	DefaultGitRepo   string                     `json:"default_git_repo,omitempty"`
+	DefaultGitBranch string                     `json:"default_git_branch,omitempty"`
 }
 
 func (c *cloudClient) createSpace(ctx context.Context, baseURL, token string, req CreateSpaceRequest) (storage.CloudSpace, error) {
