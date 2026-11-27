@@ -2,26 +2,27 @@ import { useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { snapshotWindow } from '@/lib/domSnapshot'
-import { runSand, SAND_ARRIVE_MS } from './workspaceSwitchSand'
+import { PARTICLES_ARRIVE_MS, PARTICLES_ZOOM_MS, runParticles } from './workspaceSwitchParticles'
 
 const FADE_MS = 140
 // Time for the new workspace to draw itself before it is pictured.
 const SETTLE_MS = 120
 // The new workspace is not blown in before its name has been readable.
-const NAMED_MS = 650
+const NAMED_MS = 850
+const NAME_FADE_MS = 160
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-// The passage between workspaces: the window steps back, turns to sand and is blown away,
-// then the new workspace is blown in and settles into place, with its name
-// held in the middle while the window is empty. `name` is the
-// workspace being switched to, null when no switch is under way.
+// The passage between workspaces: the window steps back and comes apart into
+// grains that are drawn into a ring turning around the destination's name, then
+// fly back out as the new workspace. The name leaves just before the window comes forward. `name` is the workspace being switched to,
+// null when no switch is under way.
 export function WorkspaceSwitchTransition({ name }: { name: string | null }) {
   const reduce = useReducedMotion()
-  const [scene, setScene] = useState<{ name: string; phase: 'leaving' | 'arriving' | 'done' } | null>(null)
+  const [scene, setScene] = useState<{ name: string; phase: 'leaving' | 'landing' | 'done' } | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
-  const sand = useRef<Promise<ReturnType<typeof runSand>>>(Promise.resolve(null))
+  const particles = useRef<Promise<ReturnType<typeof runParticles>>>(Promise.resolve(null))
   const started = useRef(0)
 
   // The window without this overlay or the menu that is closing behind the switch.
@@ -36,14 +37,16 @@ export function WorkspaceSwitchTransition({ name }: { name: string | null }) {
     }
     let cancelled = false
     void (async () => {
-      const running = await sand.current
+      const running = await particles.current
       if (running) {
         await wait(Math.max(SETTLE_MS, NAMED_MS - (performance.now() - started.current)))
         const arrival = await picture()
         if (cancelled) return
         running.arrive(arrival)
-        setScene((current) => current && { ...current, phase: 'arriving' })
-        await wait(SAND_ARRIVE_MS)
+        await wait(PARTICLES_ARRIVE_MS - PARTICLES_ZOOM_MS - NAME_FADE_MS)
+        if (cancelled) return
+        setScene((current) => current && { ...current, phase: 'landing' })
+        await wait(PARTICLES_ZOOM_MS + NAME_FADE_MS)
       }
       if (cancelled) return
       setScene((current) => current && { ...current, phase: 'done' })
@@ -59,11 +62,11 @@ export function WorkspaceSwitchTransition({ name }: { name: string | null }) {
   useEffect(() => {
     if (!shown || reduce) return
     const running = picture().then((picture) =>
-      canvas.current ? runSand(canvas.current, picture) : null,
+      canvas.current ? runParticles(canvas.current, picture) : null,
     )
-    sand.current = running
+    particles.current = running
     return () => {
-      sand.current = Promise.resolve(null)
+      particles.current = Promise.resolve(null)
       void running.then((started) => started?.stop())
     }
   }, [shown, reduce])
@@ -78,13 +81,16 @@ export function WorkspaceSwitchTransition({ name }: { name: string | null }) {
       className={`fixed inset-0 transition-opacity [-webkit-app-region:no-drag] ${scene.phase === 'done' ? 'opacity-0' : ''}`}
     >
       <canvas ref={canvas} className="size-full" />
-      <p
-        className={`absolute inset-0 grid place-items-center text-[28px] font-semibold tracking-[-0.02em] text-ink transition-[opacity,filter,scale] duration-300 ease-out starting:scale-95 starting:opacity-0 starting:blur-md ${
-          scene.phase === 'leaving' ? 'delay-[350ms]' : 'scale-105 opacity-0 blur-md delay-200'
-        }`}
-      >
-        {scene.name}
-      </p>
+      <div className="absolute inset-0 grid place-items-center">
+        <p
+          style={{ transitionDuration: `${NAME_FADE_MS}ms` }}
+          className={`max-w-[60vw] truncate rounded-2xl border border-border bg-surface/80 px-6 py-3.5 text-[22px] font-semibold tracking-[-0.02em] text-ink shadow-[0_12px_40px_rgb(0_0_0/0.18)] backdrop-blur-md transition-[opacity,scale] ease-out starting:scale-90 starting:opacity-0 ${
+            scene.phase === 'leaving' ? 'delay-[350ms]' : 'scale-95 opacity-0'
+          }`}
+        >
+          {scene.name}
+        </p>
+      </div>
     </div>,
     document.body,
   )
