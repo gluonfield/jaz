@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { botChat, connectedTaskThreads, dragSections, lastBotId, placePin, rememberBot, taskName, taskStateLabel } from './bots'
+import { botChat, connectedTaskThreads, dragSections, lastBotId, placePin, rememberBot, taskName, taskState } from './bots'
 import { optimisticTranscriptMessages } from './optimisticUserMessage'
 import { mergeEarlierHistory } from './sessionHistory'
 
@@ -172,19 +172,19 @@ test('a drag previews where the bot lands and keeps it, hidden, where the drag b
 })
 
 test('a finished worker does not make an open task look complete', () => {
-  expect(taskStateLabel({ status: 'in_progress', threads: [{ state: 'finished' }] })).toBe('Not delivered yet')
+  expect(taskState({ status: 'in_progress', threads: [{ state: 'finished' }] })).toEqual(['Not delivered yet'])
 })
 
 test('task state distinguishes active work and blockers from worker completion', () => {
-  expect(taskStateLabel({ status: 'in_progress', moving: true, threads: [{ state: 'working' }] })).toBe('Working')
-  expect(taskStateLabel({ status: 'pending', blocked: true })).toBe('Waiting on another task')
-  expect(taskStateLabel({ status: 'waiting_for_user' })).toBe('Waiting for you')
-  expect(taskStateLabel({ status: 'stopped' })).toBe('Stopped')
+  expect(taskState({ status: 'in_progress', moving: true, threads: [{ state: 'working' }] })).toEqual(['Working', 'running'])
+  expect(taskState({ status: 'pending', blocked: true, moving: true })).toEqual(['Waiting on another task'])
+  expect(taskState({ status: 'waiting_for_user', moving: true })).toEqual(['Waiting for you', 'waiting'])
+  expect(taskState({ status: 'stopped' })).toEqual(['Stopped'])
 })
 
 test('a closed task says how it closed, whatever its threads did', () => {
-  expect(taskStateLabel({ status: 'completed', threads: [{ state: 'finished' }] })).toBe('Done')
-  expect(taskStateLabel({ status: 'cancelled', threads: [{ state: 'failed' }] })).toBe('Dropped')
+  expect(taskState({ status: 'completed', threads: [{ state: 'finished' }] })).toEqual(['Done'])
+  expect(taskState({ status: 'cancelled', threads: [{ state: 'failed' }] })).toEqual(['Dropped'])
 })
 
 test('taskName uses the concise name and falls back to a clean single line for older unnamed tasks', () => {

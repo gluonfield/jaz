@@ -39,16 +39,20 @@ export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'thinking' | 'work
   return bot.away ? 'away' : 'idle'
 }
 
-export function taskStateLabel(task: Pick<BotOwed, 'status' | 'moving' | 'blocked' | 'stalled' | 'threads'>): string {
-  if (task.status === 'completed') return 'Done'
-  if (task.status === 'cancelled') return 'Dropped'
-  if (task.status === 'stopped') return 'Stopped'
-  if (task.status === 'waiting_for_user') return 'Waiting for you'
-  if (task.blocked) return 'Waiting on another task'
-  if (task.moving) return 'Working'
-  if (task.threads?.some((thread) => thread.state === 'finished' || thread.state === 'failed')) return 'Not delivered yet'
-  if (task.stalled) return 'Needs follow-up'
-  return task.status === 'pending' ? 'Not started' : 'In progress'
+// A task's state in a few words, marked when it is work under way or a
+// question waiting on the person.
+export type TaskState = [label: string, tone?: 'running' | 'waiting']
+
+export function taskState(task: Pick<BotOwed, 'status' | 'moving' | 'blocked' | 'stalled' | 'threads'>): TaskState {
+  if (task.status === 'completed') return ['Done']
+  if (task.status === 'cancelled') return ['Dropped']
+  if (task.status === 'stopped') return ['Stopped']
+  if (task.status === 'waiting_for_user') return ['Waiting for you', 'waiting']
+  if (task.blocked) return ['Waiting on another task']
+  if (task.moving) return ['Working', 'running']
+  if (task.threads?.some((thread) => thread.state === 'finished' || thread.state === 'failed')) return ['Not delivered yet']
+  if (task.stalled) return ['Needs follow-up']
+  return [task.status === 'pending' ? 'Not started' : 'In progress']
 }
 
 export function taskName(task: Pick<BotOwed, 'name' | 'request'>): string {

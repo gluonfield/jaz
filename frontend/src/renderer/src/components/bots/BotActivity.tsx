@@ -5,7 +5,7 @@ import { useEffect, useState, type MouseEvent } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotOwed, BotOwedThread, BotThreadActivity } from '@/lib/api/types'
-import { type ConnectedTaskThread, connectedTaskThreads, taskName, taskStateLabel } from '@/lib/bots'
+import { type ConnectedTaskThread, type TaskState, connectedTaskThreads, taskName, taskState } from '@/lib/bots'
 import { clockTime, formatDuration, shortDate } from '@/lib/format/time'
 
 const EMPTY_OWED: BotOwed[] = []
@@ -42,7 +42,7 @@ export function BotActivity({ bot }: { bot: Bot }) {
           <ul className="flex flex-col">
             {owed.map((item) => (
               <li key={item.id} className="flex flex-col">
-                <TaskButton task={item} state={taskStateLabel(item)} onOpen={setShown} />
+                <TaskButton task={item} state={taskState(item)} onOpen={setShown} />
               </li>
             ))}
           </ul>
@@ -57,7 +57,7 @@ export function BotActivity({ bot }: { bot: Bot }) {
                   <li key={`task-${item.task.id}`} className="flex flex-col">
                     <TaskButton
                       task={item.task}
-                      state={item.task.status === 'completed' ? clockTime(item.at) : taskStateLabel(item.task)}
+                      state={item.task.status === 'completed' ? [clockTime(item.at)] : taskState(item.task)}
                       onOpen={setShown}
                     />
                   </li>
@@ -81,14 +81,11 @@ export function BotActivity({ bot }: { bot: Bot }) {
 
 const LINE = '-mx-2 flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-left text-[13px] transition-colors duration-150 hover:bg-list-hover'
 
-// Work under way and a question for the person stand out from the rest.
-const TASK_TONES: Partial<Record<string, Tone>> = { Working: 'running', 'Waiting for you': 'waiting' }
-
-function TaskButton({ task, state, onOpen }: { task: BotOwed; state: string; onOpen: (id: number) => void }) {
+function TaskButton({ task, state: [label, tone], onOpen }: { task: BotOwed; state: TaskState; onOpen: (id: number) => void }) {
   const title = taskName(task)
   return (
     <button type="button" title={title} onClick={() => onOpen(task.id)} className={`${LINE} cursor-pointer`}>
-      <Line title={title} state={state} tone={TASK_TONES[state]} />
+      <Line title={title} state={label} tone={tone} />
     </button>
   )
 }
@@ -118,7 +115,7 @@ function TaskModal({
     document.getElementById(event.currentTarget.hash.slice(1))?.scrollIntoView({ block: 'center' })
   }
   return (
-    <Modal open onClose={onClose} title={name} description={taskStateLabel(task)} size="sm">
+    <Modal open onClose={onClose} title={name} description={taskState(task)[0]} size="sm">
       <div className="flex flex-col gap-4 text-[13px]">
         {request && request !== name ? <p className="whitespace-pre-wrap wrap-break-word text-ink-2">{task.request}</p> : null}
         {next ? (
