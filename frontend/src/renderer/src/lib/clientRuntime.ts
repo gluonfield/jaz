@@ -4,6 +4,7 @@ import type { UpdateStatus } from '../../../shared/update'
 import type { VoiceOverlayAPI } from '@shared/voice'
 import type { WindowKind } from '@shared/windowKind'
 import type { ConnectionSessionAPI } from '@shared/connectionSession'
+import type { DesktopAppsAPI } from '@shared/desktopApps'
 import { normalizeCloudUrl, parseBoolFlag } from '@shared/cloudConfig'
 import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
@@ -14,6 +15,7 @@ export type ClientPlatform = 'desktop' | 'browser'
 
 export interface ClientRuntime {
   connectionSession?: ConnectionSessionAPI
+  desktopApps?: DesktopAppsAPI
   voiceOverlay?: VoiceOverlayAPI
   kind: ClientRuntimeKind
   platform: ClientPlatform
@@ -59,7 +61,7 @@ function isHostedCloudWebBuild(): boolean {
 }
 
 function webOriginCloudUrl(): string {
-  const origin = normalizeCloudUrl(window.location?.origin)
+  const origin = normalizeCloudUrl(typeof window !== 'undefined' ? window.location?.origin : undefined)
   return origin && origin !== LOCAL_BACKEND_URL ? origin : ''
 }
 
@@ -75,7 +77,7 @@ function webDefaultApiBaseUrl(): string {
   const configured = import.meta.env.VITE_JAZ_API_URL?.trim()
   // "origin" targets the origin the app is served from, so one build works
   // behind a reverse proxy at any domain (app and API share an origin).
-  if (configured === 'origin') return window.location.origin
+  if (configured === 'origin') return typeof window !== 'undefined' ? window.location.origin : ''
   if (configured) return configured
   const cloudUrl = webCloudUrl()
   if (cloudUrl) return cloudUrl
@@ -83,12 +85,13 @@ function webDefaultApiBaseUrl(): string {
 }
 
 function createRuntime(): ClientRuntime {
-  const electron = window.jaz
+  const electron = typeof window !== 'undefined' ? window.jaz : undefined
   if (electron) {
     const localEnabled = electron.localEnabled ?? true
     return {
       kind: 'electron',
       connectionSession: electron.connectionSession,
+      desktopApps: electron.desktopApps,
       platform: 'desktop',
       deviceKind: 'desktop',
       windowKind: electron.windowKind,
@@ -160,7 +163,8 @@ export function backendFetch(url: string, init?: RequestInit): Promise<Response>
 // native titlebar and redraws its own; window-top headers clear them there.
 // The browser client (even on a Mac) keeps the OS title bar, so there is
 // nothing at the window's top-left to dodge.
-export const isMacDesktop = clientRuntime.kind === 'electron' && /Mac/.test(navigator.platform)
+export const isMacDesktop =
+  clientRuntime.kind === 'electron' && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform)
 
 export function openExternal(url: string): void {
   if (clientRuntime.openExternalURL) {

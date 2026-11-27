@@ -347,7 +347,8 @@ function BoardPage() {
         open={modal === 'add'}
         onClose={() => setModal(null)}
         boardId={boardId}
-        assignedLoopIds={items.map((item) => item.loop_id)}
+        assignedLoopIds={items.filter((item) => item.loop_id).map((item) => item.loop_id)}
+        assignedAppIds={items.filter((item) => item.app_id).map((item) => item.app_id!)}
         onCreateNew={() => setModal('new-loop')}
         onAssigned={(loopIds) => {
           pendingLoopId.current = loopIds[0] ?? null

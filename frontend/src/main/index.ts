@@ -43,6 +43,12 @@ import { readNodeCloudConfig } from '@shared/cloudConfig'
 import { installDroppedFileInspection, installFileActions } from '@main/fileActions'
 import { attachContextMenu } from '@main/contextMenu'
 import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
+import {
+  extractDesktopAppDeepLinkArg,
+  installDesktopApps,
+  parseDesktopAppDeepLink,
+  type DesktopAppsController,
+} from '@main/desktopApps'
 import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
@@ -77,6 +83,8 @@ if (app.isPackaged) {
 }
 
 let mainWindow: BrowserWindow | null = null
+let desktopApps: DesktopAppsController | null = null
+let pendingAppDeepLink: string | null = extractDesktopAppDeepLinkArg(process.argv)
 const oidcGate = createOidcCallbackGate()
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
@@ -91,10 +99,22 @@ const connectionSession = createConnectionSession({
 
 app.on('open-url', (event, url) => {
   event.preventDefault()
+  const appId = parseDesktopAppDeepLink(url)
+  if (appId) {
+    if (desktopApps) desktopApps.openAppWindow(appId)
+    else pendingAppDeepLink = appId
+    return
+  }
   oidcGate.consume(url, mainWindow)
 })
 
 app.on('second-instance', (_event, argv) => {
+  const appId = extractDesktopAppDeepLinkArg(argv)
+  if (appId) {
+    if (desktopApps) desktopApps.openAppWindow(appId)
+    else pendingAppDeepLink = appId
+    return
+  }
   const callback = extractOidcCallbackArg(argv)
   if (callback) {
     oidcGate.consume(callback, mainWindow)
@@ -331,6 +351,16 @@ if (singleInstanceLock) {
   installBrowserDownloads()
   installDroppedFileInspection()
   installFileActions(connectionSession)
+  desktopApps = installDesktopApps({
+    preloadPath: join(__dirname, '../preload/index.js'),
+    rendererPath,
+    appIcon,
+    attachWindow: (win, label) => {
+      connectionSession.attach(win)
+      attachWindowLifecycle(win, { label })
+      attachBrowserNavigationCommands(win)
+    },
+  })
   installApplicationMenu()
   registerDictation()
 
@@ -426,6 +456,11 @@ if (singleInstanceLock) {
   }
   setupLauncher((window) => connectionSession.attach(window))
   createWindow()
+  if (pendingAppDeepLink && desktopApps) {
+    const id = pendingAppDeepLink
+    pendingAppDeepLink = null
+    desktopApps.openAppWindow(id)
+  }
   updates.start()
   app.on('activate', () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -445,6 +480,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   oidcGate.clear()
   notifications.stop()
+  desktopApps?.teardown()
   teardownLauncher()
   stopLocalBackend('before_quit')
 })

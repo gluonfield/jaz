@@ -15,13 +15,13 @@ type Querier interface {
 	DeleteOrphanWidgetVersions(ctx context.Context, deletedStatus string) error
 	DeleteOrphanWidgets(ctx context.Context, deletedStatus string) (int64, error)
 	GetBoard(ctx context.Context, id string) (Board, error)
-	GetBoardWidget(ctx context.Context, arg GetBoardWidgetParams) (BoardWidget, error)
+	GetBoardWidget(ctx context.Context, arg GetBoardWidgetParams) (GetBoardWidgetRow, error)
 	GetDefaultBoard(ctx context.Context, workspaceID string) (Board, error)
 	GetWidget(ctx context.Context, id string) (Widget, error)
 	GetWidgetByLoop(ctx context.Context, loopID string) (Widget, error)
 	GetWidgetVersion(ctx context.Context, arg GetWidgetVersionParams) (WidgetVersion, error)
 	InsertWidgetVersion(ctx context.Context, arg InsertWidgetVersionParams) error
-	ListAllPlacements(ctx context.Context, boardID string) ([]BoardWidget, error)
+	ListAllPlacements(ctx context.Context, boardID string) ([]ListAllPlacementsRow, error)
 	ListBoardItems(ctx context.Context, arg ListBoardItemsParams) ([]ListBoardItemsRow, error)
 	ListBoards(ctx context.Context, filterWorkspaceID string) ([]Board, error)
 	ListBoardsForWidget(ctx context.Context, widgetID string) ([]string, error)

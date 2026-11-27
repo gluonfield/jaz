@@ -8,6 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/apps"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/computercontrol"
@@ -79,6 +80,7 @@ type Service struct {
 	visualizeTools  *visualize.Service
 	pluginTools     *plugins.MCPTools
 	widgetPublisher *widgets.SessionPublisher
+	appsService     *apps.Service
 	sessions        sessionSource
 
 	url string
@@ -184,6 +186,10 @@ func (s *Service) SetLoops(service loops.MCPService, opts ...loops.MCPOption) {
 
 func (s *Service) SetBots(tools *bots.MCPTools) {
 	s.botTools = tools
+}
+
+func (s *Service) SetApps(service *apps.Service) {
+	s.appsService = service
 }
 
 func (s *Service) SetAgents(service acp.MCPService) {
@@ -314,6 +320,9 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		s.visualizeTools.AddShowWidgetTo(server)
 		s.visualizeTools.AddCanvasTo(server)
 		s.pluginTools.AddTo(server)
+		if s.appsService != nil {
+			apps.AddMCPTools(server, s.appsService, s.sessions)
+		}
 	}
 	return server
 }

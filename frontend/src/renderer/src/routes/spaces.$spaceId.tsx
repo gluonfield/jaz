@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import {
+  AppWindow,
   FileText,
   Folder,
   FolderMinus,
@@ -28,6 +29,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
+import { appsQuery } from '@/lib/api/apps'
 import { spaceQuery, spaceSourcesQuery, spacesQuery } from '@/lib/api/cloudSpaces'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { deleteSession, moveSessionToSpace, sidebarSessionsQuery } from '@/lib/api/sessions'
@@ -41,7 +43,7 @@ export const Route = createFileRoute('/spaces/$spaceId')({
   component: SpaceProjectPage,
 })
 
-type ProjectTab = 'chats' | 'sources' | 'instructions'
+type ProjectTab = 'chats' | 'apps' | 'sources' | 'instructions'
 
 function formatRelativeDate(iso: string): string {
   const date = new Date(iso)
@@ -72,6 +74,7 @@ function SpaceProjectPage() {
   const space = detail.data ?? allSpaces.data?.find((item) => item.id === spaceId)
   const sessions = useQuery(sidebarSessionsQuery)
   const sources = useQuery(spaceSourcesQuery(spaceId))
+  const spaceApps = useQuery(appsQuery({ scope: 'space', spaceId }))
   const controls = useNewThreadControls('cloud')
 
   useEffect(() => {
@@ -262,6 +265,7 @@ function SpaceProjectPage() {
             {(
               [
                 { id: 'chats', label: 'Chats', count: projectChats.length, Icon: MessageSquare },
+                { id: 'apps', label: 'Apps', count: (spaceApps.data ?? []).length, Icon: AppWindow },
                 { id: 'sources', label: 'Sources', count: sourceCount, Icon: FileText },
                 { id: 'instructions', label: 'Instructions', Icon: Sparkles },
               ] as const
@@ -346,6 +350,33 @@ function SpaceProjectPage() {
                   )
                 })}
               </ul>
+            )
+          ) : tab === 'apps' ? (
+            (spaceApps.data ?? []).length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-ink-3">
+                No apps shared in this Space yet. Publish any artifact or document and choose this Space to share it with members.
+              </p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(spaceApps.data ?? []).map((app) => (
+                  <Link
+                    key={app.id}
+                    to="/apps/$appId"
+                    params={{ appId: app.id }}
+                    className="flex flex-col justify-between gap-2 rounded-card border border-border bg-surface p-3.5 transition-colors hover:border-primary/40"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[13.5px] font-semibold text-ink">{app.title}</span>
+                      <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-ink-3">
+                        v{app.current_version} · {app.kind}
+                      </span>
+                    </div>
+                    {app.description ? (
+                      <p className="line-clamp-2 text-[12px] text-ink-2">{app.description}</p>
+                    ) : null}
+                  </Link>
+                ))}
+              </div>
             )
           ) : tab === 'sources' ? (
             <ProjectSourcesPanel spaceId={spaceId} canEdit={canEdit} />

@@ -36,7 +36,9 @@ func (q *Queries) DeleteBoardWidget(ctx context.Context, arg DeleteBoardWidgetPa
 }
 
 const deleteOrphanBoardWidgets = `-- name: DeleteOrphanBoardWidgets :exec
-DELETE FROM board_widgets WHERE widget_id IN (
+DELETE FROM board_widgets
+WHERE app_id IS NULL
+  AND widget_id IN (
   SELECT w.id FROM widgets w
   LEFT JOIN loops l ON l.id = w.loop_id
   WHERE l.id IS NULL OR l.status = ?1)
@@ -111,9 +113,21 @@ type GetBoardWidgetParams struct {
 	WidgetID string `json:"widget_id"`
 }
 
-func (q *Queries) GetBoardWidget(ctx context.Context, arg GetBoardWidgetParams) (BoardWidget, error) {
+type GetBoardWidgetRow struct {
+	BoardID     string `json:"board_id"`
+	WidgetID    string `json:"widget_id"`
+	X           int64  `json:"x"`
+	Y           int64  `json:"y"`
+	W           int64  `json:"w"`
+	H           int64  `json:"h"`
+	PlacedBy    string `json:"placed_by"`
+	CreatedAtMs int64  `json:"created_at_ms"`
+	UpdatedAtMs int64  `json:"updated_at_ms"`
+}
+
+func (q *Queries) GetBoardWidget(ctx context.Context, arg GetBoardWidgetParams) (GetBoardWidgetRow, error) {
 	row := q.db.QueryRowContext(ctx, getBoardWidget, arg.BoardID, arg.WidgetID)
-	var i BoardWidget
+	var i GetBoardWidgetRow
 	err := row.Scan(
 		&i.BoardID,
 		&i.WidgetID,
@@ -271,15 +285,27 @@ FROM board_widgets
 WHERE board_id = ?1
 `
 
-func (q *Queries) ListAllPlacements(ctx context.Context, boardID string) ([]BoardWidget, error) {
+type ListAllPlacementsRow struct {
+	BoardID     string `json:"board_id"`
+	WidgetID    string `json:"widget_id"`
+	X           int64  `json:"x"`
+	Y           int64  `json:"y"`
+	W           int64  `json:"w"`
+	H           int64  `json:"h"`
+	PlacedBy    string `json:"placed_by"`
+	CreatedAtMs int64  `json:"created_at_ms"`
+	UpdatedAtMs int64  `json:"updated_at_ms"`
+}
+
+func (q *Queries) ListAllPlacements(ctx context.Context, boardID string) ([]ListAllPlacementsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAllPlacements, boardID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []BoardWidget{}
+	items := []ListAllPlacementsRow{}
 	for rows.Next() {
-		var i BoardWidget
+		var i ListAllPlacementsRow
 		if err := rows.Scan(
 			&i.BoardID,
 			&i.WidgetID,
@@ -308,6 +334,9 @@ const listBoardItems = `-- name: ListBoardItems :many
 SELECT
   bw.board_id,
   bw.widget_id,
+  CAST('loop' AS TEXT) AS widget_kind,
+  CAST('' AS TEXT) AS app_id,
+  CAST('' AS TEXT) AS app_kind,
   bw.x,
   bw.y,
   bw.w,
@@ -327,8 +356,36 @@ FROM board_widgets bw
 JOIN widgets w ON w.id = bw.widget_id
 JOIN loops l ON l.id = w.loop_id
 WHERE bw.board_id = ?1
+  AND bw.app_id IS NULL
   AND l.status <> ?2
-ORDER BY bw.y ASC, bw.x ASC
+UNION ALL
+SELECT
+  bw.board_id,
+  bw.widget_id,
+  CAST('app' AS TEXT) AS widget_kind,
+  a.id AS app_id,
+  a.kind AS app_kind,
+  bw.x,
+  bw.y,
+  bw.w,
+  bw.h,
+  bw.placed_by,
+  CAST('' AS TEXT) AS loop_id,
+  a.title,
+  a.current_version,
+  CAST('' AS TEXT) AS size_hint,
+  NULL AS last_error,
+  a.updated_at_ms AS widget_updated_at_ms,
+  CAST('' AS TEXT) AS loop_name,
+  CAST('' AS TEXT) AS loop_status,
+  NULL AS loop_last_run_status,
+  0 AS loop_last_run_at_ms
+FROM board_widgets bw
+JOIN apps a ON a.id = bw.app_id
+WHERE bw.board_id = ?1
+  AND bw.app_id IS NOT NULL
+  AND a.status = 'active'
+ORDER BY y ASC, x ASC
 `
 
 type ListBoardItemsParams struct {
@@ -339,6 +396,9 @@ type ListBoardItemsParams struct {
 type ListBoardItemsRow struct {
 	BoardID           string         `json:"board_id"`
 	WidgetID          string         `json:"widget_id"`
+	WidgetKind        string         `json:"widget_kind"`
+	AppID             string         `json:"app_id"`
+	AppKind           string         `json:"app_kind"`
 	X                 int64          `json:"x"`
 	Y                 int64          `json:"y"`
 	W                 int64          `json:"w"`
@@ -368,6 +428,9 @@ func (q *Queries) ListBoardItems(ctx context.Context, arg ListBoardItemsParams) 
 		if err := rows.Scan(
 			&i.BoardID,
 			&i.WidgetID,
+			&i.WidgetKind,
+			&i.AppID,
+			&i.AppKind,
 			&i.X,
 			&i.Y,
 			&i.W,

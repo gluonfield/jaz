@@ -16,12 +16,14 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoopsIndexRouteImport } from './routes/loops.index'
 import { Route as BotsIndexRouteImport } from './routes/bots.index'
 import { Route as BoardsIndexRouteImport } from './routes/boards.index'
+import { Route as AppsIndexRouteImport } from './routes/apps.index'
 import { Route as SpacesSpaceIdRouteImport } from './routes/spaces.$spaceId'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions.$sessionId'
 import { Route as PluginsPluginRouteImport } from './routes/plugins.$plugin'
 import { Route as LoopsLoopIdRouteImport } from './routes/loops.$loopId'
 import { Route as BotsBotIdRouteImport } from './routes/bots.$botId'
 import { Route as BoardsBoardIdRouteImport } from './routes/boards.$boardId'
+import { Route as AppsAppIdRouteImport } from './routes/apps.$appId'
 import { Route as AppsServerIdToolRouteImport } from './routes/apps.$serverId.$tool'
 
 const NewRoute = NewRouteImport.update({
@@ -59,6 +61,11 @@ const BoardsIndexRoute = BoardsIndexRouteImport.update({
   path: '/boards/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppsIndexRoute = AppsIndexRouteImport.update({
+  id: '/apps/',
+  path: '/apps/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SpacesSpaceIdRoute = SpacesSpaceIdRouteImport.update({
   id: '/spaces/$spaceId',
   path: '/spaces/$spaceId',
@@ -89,6 +96,11 @@ const BoardsBoardIdRoute = BoardsBoardIdRouteImport.update({
   path: '/boards/$boardId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppsAppIdRoute = AppsAppIdRouteImport.update({
+  id: '/apps/$appId',
+  path: '/apps/$appId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppsServerIdToolRoute = AppsServerIdToolRouteImport.update({
   id: '/apps/$serverId/$tool',
   path: '/apps/$serverId/$tool',
@@ -100,12 +112,14 @@ export interface FileRoutesByFullPath {
   '/feed': typeof FeedRoute
   '/launcher': typeof LauncherRoute
   '/new': typeof NewRoute
+  '/apps/$appId': typeof AppsAppIdRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/bots/$botId': typeof BotsBotIdRoute
   '/loops/$loopId': typeof LoopsLoopIdRoute
   '/plugins/$plugin': typeof PluginsPluginRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/spaces/$spaceId': typeof SpacesSpaceIdRoute
+  '/apps/': typeof AppsIndexRoute
   '/boards/': typeof BoardsIndexRoute
   '/bots/': typeof BotsIndexRoute
   '/loops/': typeof LoopsIndexRoute
@@ -116,12 +130,14 @@ export interface FileRoutesByTo {
   '/feed': typeof FeedRoute
   '/launcher': typeof LauncherRoute
   '/new': typeof NewRoute
+  '/apps/$appId': typeof AppsAppIdRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/bots/$botId': typeof BotsBotIdRoute
   '/loops/$loopId': typeof LoopsLoopIdRoute
   '/plugins/$plugin': typeof PluginsPluginRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/spaces/$spaceId': typeof SpacesSpaceIdRoute
+  '/apps': typeof AppsIndexRoute
   '/boards': typeof BoardsIndexRoute
   '/bots': typeof BotsIndexRoute
   '/loops': typeof LoopsIndexRoute
@@ -133,12 +149,14 @@ export interface FileRoutesById {
   '/feed': typeof FeedRoute
   '/launcher': typeof LauncherRoute
   '/new': typeof NewRoute
+  '/apps/$appId': typeof AppsAppIdRoute
   '/boards/$boardId': typeof BoardsBoardIdRoute
   '/bots/$botId': typeof BotsBotIdRoute
   '/loops/$loopId': typeof LoopsLoopIdRoute
   '/plugins/$plugin': typeof PluginsPluginRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/spaces/$spaceId': typeof SpacesSpaceIdRoute
+  '/apps/': typeof AppsIndexRoute
   '/boards/': typeof BoardsIndexRoute
   '/bots/': typeof BotsIndexRoute
   '/loops/': typeof LoopsIndexRoute
@@ -151,12 +169,14 @@ export interface FileRouteTypes {
     | '/feed'
     | '/launcher'
     | '/new'
+    | '/apps/$appId'
     | '/boards/$boardId'
     | '/bots/$botId'
     | '/loops/$loopId'
     | '/plugins/$plugin'
     | '/sessions/$sessionId'
     | '/spaces/$spaceId'
+    | '/apps/'
     | '/boards/'
     | '/bots/'
     | '/loops/'
@@ -167,12 +187,14 @@ export interface FileRouteTypes {
     | '/feed'
     | '/launcher'
     | '/new'
+    | '/apps/$appId'
     | '/boards/$boardId'
     | '/bots/$botId'
     | '/loops/$loopId'
     | '/plugins/$plugin'
     | '/sessions/$sessionId'
     | '/spaces/$spaceId'
+    | '/apps'
     | '/boards'
     | '/bots'
     | '/loops'
@@ -183,12 +205,14 @@ export interface FileRouteTypes {
     | '/feed'
     | '/launcher'
     | '/new'
+    | '/apps/$appId'
     | '/boards/$boardId'
     | '/bots/$botId'
     | '/loops/$loopId'
     | '/plugins/$plugin'
     | '/sessions/$sessionId'
     | '/spaces/$spaceId'
+    | '/apps/'
     | '/boards/'
     | '/bots/'
     | '/loops/'
@@ -200,12 +224,14 @@ export interface RootRouteChildren {
   FeedRoute: typeof FeedRoute
   LauncherRoute: typeof LauncherRoute
   NewRoute: typeof NewRoute
+  AppsAppIdRoute: typeof AppsAppIdRoute
   BoardsBoardIdRoute: typeof BoardsBoardIdRoute
   BotsBotIdRoute: typeof BotsBotIdRoute
   LoopsLoopIdRoute: typeof LoopsLoopIdRoute
   PluginsPluginRoute: typeof PluginsPluginRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
   SpacesSpaceIdRoute: typeof SpacesSpaceIdRoute
+  AppsIndexRoute: typeof AppsIndexRoute
   BoardsIndexRoute: typeof BoardsIndexRoute
   BotsIndexRoute: typeof BotsIndexRoute
   LoopsIndexRoute: typeof LoopsIndexRoute
@@ -263,6 +289,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BoardsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/apps/': {
+      id: '/apps/'
+      path: '/apps'
+      fullPath: '/apps/'
+      preLoaderRoute: typeof AppsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/spaces/$spaceId': {
       id: '/spaces/$spaceId'
       path: '/spaces/$spaceId'
@@ -305,6 +338,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BoardsBoardIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/apps/$appId': {
+      id: '/apps/$appId'
+      path: '/apps/$appId'
+      fullPath: '/apps/$appId'
+      preLoaderRoute: typeof AppsAppIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/apps/$serverId/$tool': {
       id: '/apps/$serverId/$tool'
       path: '/apps/$serverId/$tool'
@@ -320,12 +360,14 @@ const rootRouteChildren: RootRouteChildren = {
   FeedRoute: FeedRoute,
   LauncherRoute: LauncherRoute,
   NewRoute: NewRoute,
+  AppsAppIdRoute: AppsAppIdRoute,
   BoardsBoardIdRoute: BoardsBoardIdRoute,
   BotsBotIdRoute: BotsBotIdRoute,
   LoopsLoopIdRoute: LoopsLoopIdRoute,
   PluginsPluginRoute: PluginsPluginRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
   SpacesSpaceIdRoute: SpacesSpaceIdRoute,
+  AppsIndexRoute: AppsIndexRoute,
   BoardsIndexRoute: BoardsIndexRoute,
   BotsIndexRoute: BotsIndexRoute,
   LoopsIndexRoute: LoopsIndexRoute,

@@ -35,6 +35,7 @@ import { CONNECTION_SESSION_CHANNEL, LOCAL_SESSION_CHANNEL, type ConnectionSessi
 import { readNodeCloudConfig } from '@shared/cloudConfig'
 import { LOCAL_BACKEND_TRANSPORT_URL, LOCAL_BACKEND_URL } from '@shared/localBackend'
 import { FILE_ACTIONS_CHANNEL, type FileActionsAPI } from '@shared/fileActions'
+import { DESKTOP_APPS_CHANNEL, type DesktopAppsAPI } from '@shared/desktopApps'
 
 const cloudConfig = readNodeCloudConfig(process.env)
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? (cloudConfig.localEnabled ? LOCAL_BACKEND_URL : cloudConfig.cloudUrl || LOCAL_BACKEND_URL)
@@ -85,6 +86,33 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
       canReveal: (backendUrl, sessionId) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'canReveal', backendUrl, sessionId),
       reveal: (backendUrl, sessionId, path) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'reveal', backendUrl, sessionId, path),
     } satisfies FileActionsAPI,
+    desktopApps: {
+      list: () => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}list`),
+      get: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}get`, appId),
+      install: (input) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}install`, input),
+      uninstall: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}uninstall`, appId),
+      openWindow: (appId, opts) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}openWindow`, appId, opts),
+      setPermissions: (appId, bundleSha256, permissions, scopedFolders, allowDesktopFullAccess) =>
+        ipcRenderer.invoke(
+          `${DESKTOP_APPS_CHANNEL}setPermissions`,
+          appId,
+          bundleSha256,
+          permissions,
+          scopedFolders,
+          allowDesktopFullAccess,
+        ),
+      syncVersion: (appId, version, bundleSha256, declaredCapabilities) =>
+        ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}syncVersion`, appId, version, bundleSha256, declaredCapabilities),
+      setAlwaysOnTop: (appId, enabled) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}setAlwaysOnTop`, appId, enabled),
+      showNotification: (appId, title, body) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}showNotification`, appId, title, body),
+      registerShortcut: (appId, accelerator) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}registerShortcut`, appId, accelerator),
+      setTray: (appId, enabled, title) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}setTray`, appId, enabled, title),
+      pickScopedFolder: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}pickScopedFolder`, appId),
+      fsList: (appId, folderPath, relPath) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}fsList`, appId, folderPath, relPath),
+      fsRead: (appId, folderPath, relPath) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}fsRead`, appId, folderPath, relPath),
+      fsWrite: (appId, folderPath, relPath, content) =>
+        ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}fsWrite`, appId, folderPath, relPath, content),
+    } satisfies DesktopAppsAPI,
     computer: {
       status: () => ipcRenderer.invoke(COMPUTER_CHANNEL + 'status'),
       begin: (id, session) => ipcRenderer.invoke(COMPUTER_CHANNEL + 'begin', id, session),

@@ -416,6 +416,7 @@ export interface Board {
 export interface BoardItem {
   board_id: string
   widget_id: string
+  widget_kind?: 'loop' | 'app'
   x: number
   y: number
   w: number
@@ -426,6 +427,8 @@ export interface BoardItem {
   loop_status: Loop['status']
   loop_last_run_status?: LoopRunStatus
   loop_last_run_at?: string
+  app_id?: string
+  app_kind?: 'artifact' | 'document'
   title: string
   current_version: number
   size_hint?: string

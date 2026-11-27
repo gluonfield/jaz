@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { FileText, LoaderCircle, X } from 'lucide-react'
+import { FileText, LoaderCircle, Share2, X } from 'lucide-react'
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { PublishAppModal } from '@/components/apps/PublishAppModal'
 import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/session/HighlightedCode'
 import { DocumentEditor, DocumentHeader, isEditableDocument } from '@/components/document/DocumentEditor'
 import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
@@ -65,6 +66,9 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) && !runId })
   const [draft, setDraft] = useState(filePath)
   const [inputError, setInputError] = useState('')
+  const [publishOpen, setPublishOpen] = useState(false)
+  const isHtmlOrSvg = /\.(html?|svg)$/i.test(filePath)
+  const canPublish = Boolean((markdown || isHtmlOrSvg) && file.data && !file.data.binary && typeof file.data.content === 'string')
 
   useEffect(() => {
     setDraft(filePath)
@@ -88,6 +92,12 @@ export const FileReaderPanel = memo(function FileReaderPanel({
     <div className="flex h-full min-h-0 flex-col">
       {markdown ? (
         <DocumentHeader title={markdownDocumentTitle(file.data?.content ?? '', filePath)} onClose={onClose}>
+          {canPublish ? (
+            <Button size="sm" variant="ghost" onClick={() => setPublishOpen(true)} title="Publish as Jaz App">
+              <Share2 size={12} />
+              Publish
+            </Button>
+          ) : null}
           <FileActions sessionId={sessionId} cloudRunId={runId} path={filePath} />
         </DocumentHeader>
       ) : <form
@@ -105,6 +115,12 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
         />
+        {canPublish ? (
+          <Button size="sm" variant="ghost" type="button" onClick={() => setPublishOpen(true)} title="Publish as Jaz App">
+            <Share2 size={12} />
+            Publish
+          </Button>
+        ) : null}
         {filePath ? <FileActions sessionId={sessionId} cloudRunId={runId} path={filePath} /> : null}
         <IconButton size="sm" aria-label="Close file" onClick={onClose}><X size={16} /></IconButton>
       </form>}
@@ -166,6 +182,18 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           />
         )}
       </div>
+      {publishOpen && file.data?.content !== undefined ? (
+        <PublishAppModal
+          open
+          onClose={() => setPublishOpen(false)}
+          initialTitle={markdown ? markdownDocumentTitle(file.data.content, filePath) : (filePath.split(/[\\/]/).at(-1) ?? 'App')}
+          kind={markdown ? 'document' : 'artifact'}
+          entry={markdown ? 'index.md' : filePath.toLowerCase().endsWith('.svg') ? 'index.svg' : 'index.html'}
+          markdown={markdown ? file.data.content : undefined}
+          html={markdown ? undefined : file.data.content}
+          sourceThreadId={sessionId}
+        />
+      ) : null}
     </div>
   )
 })

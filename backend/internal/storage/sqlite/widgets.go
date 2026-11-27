@@ -246,7 +246,17 @@ func (s *Store) LoadPlacement(boardID, widgetID string) (widgets.Placement, bool
 	if err != nil {
 		return widgets.Placement{}, false, err
 	}
-	return placementFromDB(row), true, nil
+	return widgets.Placement{
+		BoardID:   row.BoardID,
+		WidgetID:  row.WidgetID,
+		X:         int(row.X),
+		Y:         int(row.Y),
+		W:         int(row.W),
+		H:         int(row.H),
+		PlacedBy:  row.PlacedBy,
+		CreatedAt: msToTime(row.CreatedAtMs),
+		UpdatedAt: msToTime(row.UpdatedAtMs),
+	}, true, nil
 }
 
 func (s *Store) DeletePlacement(boardID, widgetID string) error {
@@ -269,7 +279,17 @@ func (s *Store) ListPlacements(boardID string) ([]widgets.Placement, error) {
 	}
 	out := make([]widgets.Placement, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, placementFromDB(widgetdb.BoardWidget(row)))
+		out = append(out, widgets.Placement{
+			BoardID:   row.BoardID,
+			WidgetID:  row.WidgetID,
+			X:         int(row.X),
+			Y:         int(row.Y),
+			W:         int(row.W),
+			H:         int(row.H),
+			PlacedBy:  row.PlacedBy,
+			CreatedAt: msToTime(row.CreatedAtMs),
+			UpdatedAt: msToTime(row.UpdatedAtMs),
+		})
 	}
 	return out, nil
 }
@@ -294,6 +314,9 @@ func (s *Store) ListBoardItems(boardID string) ([]widgets.BoardItem, error) {
 				H:        int(row.H),
 				PlacedBy: row.PlacedBy,
 			},
+			WidgetKind:        row.WidgetKind,
+			AppID:             row.AppID,
+			AppKind:           row.AppKind,
 			LoopID:            row.LoopID,
 			LoopName:          row.LoopName,
 			LoopStatus:        row.LoopStatus,
@@ -336,19 +359,5 @@ func boardFromDB(row widgetdb.Board) widgets.Board {
 		IsDefault:    row.IsDefault != 0,
 		CreatedAt:    msToTime(row.CreatedAtMs),
 		UpdatedAt:    msToTime(row.UpdatedAtMs),
-	}
-}
-
-func placementFromDB(row widgetdb.BoardWidget) widgets.Placement {
-	return widgets.Placement{
-		BoardID:   row.BoardID,
-		WidgetID:  row.WidgetID,
-		X:         int(row.X),
-		Y:         int(row.Y),
-		W:         int(row.W),
-		H:         int(row.H),
-		PlacedBy:  row.PlacedBy,
-		CreatedAt: msToTime(row.CreatedAtMs),
-		UpdatedAt: msToTime(row.UpdatedAtMs),
 	}
 }

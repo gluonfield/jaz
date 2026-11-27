@@ -21,18 +21,6 @@ type Board struct {
 	WorkspaceID  string         `json:"workspace_id"`
 }
 
-type BoardWidget struct {
-	BoardID     string `json:"board_id"`
-	WidgetID    string `json:"widget_id"`
-	X           int64  `json:"x"`
-	Y           int64  `json:"y"`
-	W           int64  `json:"w"`
-	H           int64  `json:"h"`
-	PlacedBy    string `json:"placed_by"`
-	CreatedAtMs int64  `json:"created_at_ms"`
-	UpdatedAtMs int64  `json:"updated_at_ms"`
-}
-
 type Widget struct {
 	ID             string         `json:"id"`
 	LoopID         string         `json:"loop_id"`

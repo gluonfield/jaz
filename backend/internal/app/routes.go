@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	feedcore "github.com/wins/jaz/backend/internal/feed"
 	agentsessionsapi "github.com/wins/jaz/backend/internal/httpapi/agentsessions"
+	appsapi "github.com/wins/jaz/backend/internal/httpapi/apps"
 	botsapi "github.com/wins/jaz/backend/internal/httpapi/bots"
 	browserapi "github.com/wins/jaz/backend/internal/httpapi/browser"
 	canvasapi "github.com/wins/jaz/backend/internal/httpapi/canvas"
@@ -68,6 +69,7 @@ type routeDeps struct {
 	VoiceRelay       *voiceapi.RelayHandler
 	Push             *mobilepush.Service
 	MicrosoftCopilot *m365copilotapi.Handler
+	Apps             *appsapi.Handler         `optional:"true"`
 	Cloud            *cloudsync.Service       `optional:"true"`
 	MachineBridge    machinebridge.Controller `optional:"true"`
 }
@@ -132,7 +134,8 @@ func NewRoutes(deps routeDeps) server.Routes {
 		)
 	}
 	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser, deps.Store)
-	routes = appendMCPRoutes(routes, deps.MCP)
+	routes = appendMCPRoutes(routes, deps.MCP, deps.Cloud)
+	routes = appendAppsRoutes(routes, deps.Apps)
 	routes = appendCloudRoutes(routes, deps.Cloud, deps.MachineBridge, deps.ACP)
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
 }
@@ -228,16 +231,48 @@ func modelCapabilityRoutes(catalog *modelcatalog.Service) server.Routes {
 	}
 }
 
-func appendMCPRoutes(routes server.Routes, mcp *mcpruntime.Manager) server.Routes {
+func appendMCPRoutes(routes server.Routes, mcp *mcpruntime.Manager, cloud *cloudsync.Service) server.Routes {
 	if mcp == nil {
 		return routes
 	}
 	handler := mcpappsapi.NewHandler(mcp)
+	if cloud != nil {
+		handler.WithCloud(cloud)
+	}
 	return append(routes,
 		server.Route{Pattern: "GET /v1/mcp/apps", Handler: httpHandlerFunc(handler.List)},
 		server.Route{Pattern: "GET /v1/mcp/apps/{server}/resource", Handler: httpHandlerFunc(handler.Resource)},
 		server.Route{Pattern: "POST /v1/mcp/apps/{server}/tools/call", Handler: httpHandlerFunc(handler.CallTool)},
 		server.Route{Pattern: "GET /v1/search/connections", Handler: mcpsearchapi.NewHandler(mcp)},
+	)
+}
+
+func appendAppsRoutes(routes server.Routes, h *appsapi.Handler) server.Routes {
+	if h == nil {
+		return routes
+	}
+	return append(routes,
+		server.Route{Pattern: "GET /v1/org/app-policies", Handler: httpHandlerFunc(h.GetPolicy)},
+		server.Route{Pattern: "PUT /v1/org/app-policies", Handler: httpHandlerFunc(h.PutPolicy)},
+		server.Route{Pattern: "GET /v1/apps", Handler: httpHandlerFunc(h.List)},
+		server.Route{Pattern: "POST /v1/apps", Handler: httpHandlerFunc(h.Create)},
+		server.Route{Pattern: "POST /v1/apps/drafts", Handler: httpHandlerFunc(h.CreateDraft)},
+		server.Route{Pattern: "GET /v1/apps/{id}", Handler: httpHandlerFunc(h.Get)},
+		server.Route{Pattern: "PUT /v1/apps/{id}", Handler: httpHandlerFunc(h.Put)},
+		server.Route{Pattern: "PATCH /v1/apps/{id}", Handler: httpHandlerFunc(h.Patch)},
+		server.Route{Pattern: "PUT /v1/apps/{id}/acl", Handler: httpHandlerFunc(h.Patch)},
+		server.Route{Pattern: "DELETE /v1/apps/{id}", Handler: httpHandlerFunc(h.Delete)},
+		server.Route{Pattern: "GET /v1/apps/{id}/versions", Handler: httpHandlerFunc(h.ListVersions)},
+		server.Route{Pattern: "POST /v1/apps/{id}/rollback", Handler: httpHandlerFunc(h.Rollback)},
+		server.Route{Pattern: "POST /v1/apps/{id}/remix", Handler: httpHandlerFunc(h.Remix)},
+		server.Route{Pattern: "POST /v1/apps/{id}/ticket", Handler: httpHandlerFunc(h.IssueTicket)},
+		server.Route{Pattern: "GET /v1/apps/{id}/kv", Handler: httpHandlerFunc(h.ListKV)},
+		server.Route{Pattern: "GET /v1/apps/{id}/kv/{key}", Handler: httpHandlerFunc(h.GetKV)},
+		server.Route{Pattern: "PUT /v1/apps/{id}/kv/{key}", Handler: httpHandlerFunc(h.PutKV)},
+		server.Route{Pattern: "DELETE /v1/apps/{id}/kv/{key}", Handler: httpHandlerFunc(h.DeleteKV)},
+		server.Route{Pattern: "POST /v1/apps/{id}/ai/complete", Handler: httpHandlerFunc(h.AIComplete)},
+		server.Route{Pattern: "POST /v1/apps/{id}/tools/call", Handler: httpHandlerFunc(h.CallTool)},
+		server.Route{Pattern: "POST /v1/boards/{id}/apps", Handler: httpHandlerFunc(h.AssignToBoard)},
 	)
 }
 
@@ -341,10 +376,24 @@ func HookRoute(handler *hooksapi.Handler) server.PublicRoute {
 	}
 }
 
-func NewPublicRoutes(handler *previewapi.Handler) server.PublicRoutes {
-	return server.PublicRoutes{
-		{Match: handler.IsPublicHostRequest, Handler: handler},
+type publicRoutesDeps struct {
+	fx.In
+
+	Preview *previewapi.Handler
+	Apps    *appsapi.Handler `optional:"true"`
+}
+
+func NewPublicRoutes(deps publicRoutesDeps) server.PublicRoutes {
+	routes := server.PublicRoutes{
+		{Match: deps.Preview.IsPublicHostRequest, Handler: deps.Preview},
 	}
+	if deps.Apps != nil {
+		routes = append(routes, server.PublicRoute{
+			Match:   appsapi.IsAppContentRequest,
+			Handler: httpHandlerFunc(deps.Apps.ServeContent),
+		})
+	}
+	return routes
 }
 
 type httpHandlerFunc func(http.ResponseWriter, *http.Request)

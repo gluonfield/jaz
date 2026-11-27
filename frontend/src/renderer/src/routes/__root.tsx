@@ -64,7 +64,7 @@ export const Route = createRootRoute({
 // (they use the native OS titlebar). windowKind is fixed per window, so the
 // branch never changes within a window's lifetime.
 function RootComponent() {
-  if (clientRuntime.windowKind === 'board') {
+  if (clientRuntime.windowKind === 'board' || clientRuntime.windowKind === 'app') {
     return <BoardRoot />
   }
   if (clientRuntime.windowKind === 'launcher') {

@@ -67,11 +67,14 @@ type Placement struct {
 
 type BoardItem struct {
 	Placement
+	WidgetKind        string    `json:"widget_kind,omitempty"`
 	LoopID            string    `json:"loop_id"`
 	LoopName          string    `json:"loop_name"`
 	LoopStatus        string    `json:"loop_status"`
 	LoopLastRunStatus string    `json:"loop_last_run_status,omitempty"`
 	LoopLastRunAt     time.Time `json:"loop_last_run_at,omitzero"`
+	AppID             string    `json:"app_id,omitempty"`
+	AppKind           string    `json:"app_kind,omitempty"`
 	Title             string    `json:"title"`
 	CurrentVersion    int       `json:"current_version"`
 	SizeHint          string    `json:"size_hint,omitempty"`

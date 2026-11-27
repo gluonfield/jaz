@@ -1,4 +1,4 @@
-export type WorkspaceSwitchRoute = '/new' | '/bots' | '/boards' | '/loops'
+export type WorkspaceSwitchRoute = '/new' | '/bots' | '/boards' | '/loops' | '/apps'
 
 export interface WorkspaceSwitchNavigation {
   to: WorkspaceSwitchRoute
@@ -13,7 +13,7 @@ export function workspaceSwitchDestination(pathname: string): WorkspaceSwitchRou
   if (pathname.startsWith('/boards/') && pathname !== '/boards/') return '/boards'
   if (pathname.startsWith('/loops/') && pathname !== '/loops/') return '/loops'
   if (pathname.startsWith('/plugins/')) return '/new'
-  if (pathname.startsWith('/apps/')) return '/new'
+  if (pathname.startsWith('/apps/')) return '/apps'
   return null
 }
 

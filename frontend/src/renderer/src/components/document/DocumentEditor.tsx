@@ -2,8 +2,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import type { EditorView } from '@tiptap/pm/view'
 import { EditorContent, ReactNodeViewRenderer, useEditor } from '@tiptap/react'
-import { FileText, X } from 'lucide-react'
+import { FileText, Share2, X } from 'lucide-react'
 import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { PublishAppModal } from '@/components/apps/PublishAppModal'
 import { FileReaderLinkProvider, usePreviewLink } from '@/components/session/MessageMarkdown'
 import { SidePanelCloseGuard } from '@/components/session/SidePanelState'
 import { FileActions } from '@/components/session/FileActions'
@@ -69,6 +70,7 @@ export function DocumentEditor({
   const navigate = useNavigate()
   const openPreview = usePreviewLink()
   const toast = useToast()
+  const [publishOpen, setPublishOpen] = useState(false)
   const runId = effectiveCloudRunId(sessionId, cloudRunId)
   const readOnly = Boolean(runId) || Boolean(file.read_only)
   const query = sessionFileQuery(sessionId, path, runId)
@@ -164,6 +166,10 @@ export function DocumentEditor({
             {state === 'failed' ? <Button size="sm" variant="ghost" onClick={() => void save()}>Retry</Button> : null}
           </>
         )}
+        <Button size="sm" variant="ghost" onClick={() => setPublishOpen(true)} title="Publish document as Jaz App">
+          <Share2 size={12} />
+          Publish
+        </Button>
         <FileActions sessionId={sessionId} cloudRunId={runId} path={file.path} beforeDownload={readOnly ? undefined : async () => !(await unsaved())} />
       </DocumentHeader>
       {state === 'conflict' ? (
@@ -187,6 +193,17 @@ export function DocumentEditor({
           <TableMenu editor={editor} />
           <DocumentToolbar editor={editor} />
         </>
+      ) : null}
+      {publishOpen ? (
+        <PublishAppModal
+          open
+          onClose={() => setPublishOpen(false)}
+          initialTitle={markdownDocumentTitle(file.content ?? '', path)}
+          kind="document"
+          entry="index.md"
+          markdown={file.content ?? ''}
+          sourceThreadId={sessionId}
+        />
       ) : null}
     </div>
   )

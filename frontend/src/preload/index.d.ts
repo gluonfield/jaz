@@ -17,6 +17,7 @@ import type { BrowserDownloadAPI } from '@shared/browserDownloads'
 import type { VoiceOverlayAPI } from '@shared/voice'
 import type { ConnectionSessionAPI } from '@shared/connectionSession'
 import type { FileActionsAPI, InspectDroppedFile } from '@shared/fileActions'
+import type { DesktopAppsAPI } from '@shared/desktopApps'
 
 declare global {
   interface Window {
@@ -24,6 +25,7 @@ declare global {
       claudeVoice: ClaudeVoiceAPI
       connectionSession: ConnectionSessionAPI
       fileActions: FileActionsAPI
+      desktopApps: DesktopAppsAPI
       computer: ComputerAPI
       systemPermissions: SystemPermissionsAPI
       permissionGuide: PermissionGuideAPI

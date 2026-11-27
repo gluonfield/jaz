@@ -1,6 +1,6 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { GripVertical, Pencil, Play, X } from 'lucide-react'
+import { AppWindow, ExternalLink, GripVertical, Pencil, Play, X } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import {
   type MouseEvent as ReactMouseEvent,
@@ -9,8 +9,10 @@ import {
   useRef,
   useState,
 } from 'react'
+import { AppRenderer } from '@/components/apps/AppRenderer'
 import { IconButton } from '@/components/ui/IconButton'
 import { SCANLINE_BACKGROUND, SCANLINE_MASK } from '@/components/ui/rainbow'
+import { appDetailQuery } from '@/lib/api/apps'
 import {
   fetchWidgetContent,
   reportWidgetError,
@@ -133,11 +135,16 @@ export function WidgetTile({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const reduce = useReducedMotion()
+  const isAppTile = item.widget_kind === 'app' || Boolean(item.app_id)
+  const appDetail = useQuery({
+    ...appDetailQuery(item.app_id ?? ''),
+    enabled: isAppTile && Boolean(item.app_id),
+  })
   // Keyed by version + theme: a new version or theme change builds a fresh
   // document and crossfades; zoom changes are applied live (postMessage) and
   // deliberately stay out of the key so they never reload the tile.
   const contentKey =
-    item.current_version > 0 ? `${item.widget_id}:${item.current_version}:${theme}` : ''
+    !isAppTile && item.current_version > 0 ? `${item.widget_id}:${item.current_version}:${theme}` : ''
 
   // Double-buffered content: the old document stays visible until the new one
   // has loaded. Fresh versions are then wiped in by the rainbow scanline;
@@ -160,7 +167,7 @@ export function WidgetTile({
   }, [item.current_version])
 
   useEffect(() => {
-    if (item.current_version <= 0) {
+    if (isAppTile || item.current_version <= 0) {
       setLayers([])
       return
     }
@@ -300,20 +307,41 @@ export function WidgetTile({
             className="-ml-1 shrink-0 text-ink-3 transition-colors duration-150 group-hover:text-ink-2"
           />
         ) : null}
-        <TileStatusDot item={item} />
-        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink" title={item.loop_name}>
+        {isAppTile ? (
+          <AppWindow size={12} className="shrink-0 text-primary" aria-hidden />
+        ) : (
+          <TileStatusDot item={item} />
+        )}
+        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink" title={isAppTile ? item.title : item.loop_name}>
           {item.title}
         </span>
         <span
           className={`shrink-0 text-[11px] tabular-nums text-ink-3 ${
-            onEdit || onRemove ? 'group-hover:hidden' : ''
+            isAppTile || onEdit || onRemove ? 'group-hover:hidden' : ''
           }`}
         >
           {updated}
         </span>
-        {onEdit || onRemove ? (
+        {isAppTile || onEdit || onRemove ? (
           <div className="hidden shrink-0 items-center group-hover:flex">
-            {onEdit ? (
+            {isAppTile && item.app_id ? (
+              <IconButton
+                variant="ghost"
+                size="xs"
+                aria-label="Open app"
+                title="Open app"
+                onClick={(e) => {
+                  if (clientRuntime.windowKind === 'board') {
+                    clientRuntime.openInMain?.(`/apps/${item.app_id}`)
+                    onOpenedInMain(e.clientX, e.clientY)
+                  } else {
+                    void navigate({ to: '/apps/$appId', params: { appId: item.app_id! } })
+                  }
+                }}
+              >
+                <ExternalLink size={12} />
+              </IconButton>
+            ) : onEdit ? (
               <>
                 <IconButton
                   variant="ghost"
@@ -349,7 +377,21 @@ export function WidgetTile({
           </div>
         ) : null}
       </div>
-      {item.current_version > 0 && layers.length > 0 ? (
+      {isAppTile ? (
+        <div className={`relative m-2 min-h-0 flex-1 overflow-hidden ${dragging ? 'pointer-events-none' : ''}`}>
+          {appDetail.data?.app ? (
+            <AppRenderer app={appDetail.data.app} fillHeight />
+          ) : appDetail.isError ? (
+            <div className="flex h-full items-center justify-center p-3 text-[12px] text-ink-3">
+              App unavailable
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center p-3 text-[12px] text-ink-3">
+              Loading app…
+            </div>
+          )}
+        </div>
+      ) : item.current_version > 0 && layers.length > 0 ? (
         <div className="relative m-2.5 min-h-0 flex-1">
           {layers.map((layer) => {
             // Fresh data is wiped in left-to-right behind the rainbow

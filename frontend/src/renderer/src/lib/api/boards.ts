@@ -79,6 +79,10 @@ export function assignLoopsToBoard(boardId: string, loopIds: string[]): Promise<
   return post<{ ok: boolean }>(`/v1/boards/${encodeURIComponent(boardId)}/loops`, { loop_ids: loopIds })
 }
 
+export function assignAppsToBoard(boardId: string, appIds: string[]): Promise<{ ok: boolean }> {
+  return post<{ ok: boolean }>(`/v1/boards/${encodeURIComponent(boardId)}/apps`, { app_ids: appIds })
+}
+
 export function reportWidgetError(widgetId: string, message: string): Promise<{ ok: boolean }> {
   return post<{ ok: boolean }>(`/v1/widgets/${widgetId}/errors`, { message })
 }

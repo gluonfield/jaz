@@ -18,6 +18,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/app"
+	appscore "github.com/wins/jaz/backend/internal/apps"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/cloudsync"
@@ -275,6 +276,7 @@ func startServer(
 	sourceProjectionQueue app.SourceProjectionQueue,
 	memorySourceQueue app.MemorySourceQueue,
 	jazTools *jaztools.Service,
+	appsService *appscore.Service,
 	terminals *terminal.Manager,
 	threadService *threads.Service,
 	runtimeAuthKey app.RuntimeAuthKey,
@@ -347,6 +349,7 @@ func startServer(
 		loops.WithScope(botService.BotOf),
 	)
 	jazTools.SetBots(bots.NewMCPTools(botService))
+	jazTools.SetApps(appsService)
 	handler.Routes = append(handler.Routes, app.BotRoutes(botsapi.NewHandler(botService, events).WithCloud(cloud))...)
 	handler.PublicRoutes = append(handler.PublicRoutes, app.HookRoute(hooksapi.NewHandler(loopService)))
 	handler.RoutineOwner = botService.RoutineOwner

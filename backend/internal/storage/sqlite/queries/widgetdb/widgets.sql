@@ -185,6 +185,9 @@ WHERE widget_id = sqlc.arg(widget_id);
 SELECT
   bw.board_id,
   bw.widget_id,
+  CAST('loop' AS TEXT) AS widget_kind,
+  CAST('' AS TEXT) AS app_id,
+  CAST('' AS TEXT) AS app_kind,
   bw.x,
   bw.y,
   bw.w,
@@ -204,8 +207,36 @@ FROM board_widgets bw
 JOIN widgets w ON w.id = bw.widget_id
 JOIN loops l ON l.id = w.loop_id
 WHERE bw.board_id = sqlc.arg(board_id)
+  AND bw.app_id IS NULL
   AND l.status <> sqlc.arg(deleted_status)
-ORDER BY bw.y ASC, bw.x ASC;
+UNION ALL
+SELECT
+  bw.board_id,
+  bw.widget_id,
+  CAST('app' AS TEXT) AS widget_kind,
+  a.id AS app_id,
+  a.kind AS app_kind,
+  bw.x,
+  bw.y,
+  bw.w,
+  bw.h,
+  bw.placed_by,
+  CAST('' AS TEXT) AS loop_id,
+  a.title,
+  a.current_version,
+  CAST('' AS TEXT) AS size_hint,
+  NULL AS last_error,
+  a.updated_at_ms AS widget_updated_at_ms,
+  CAST('' AS TEXT) AS loop_name,
+  CAST('' AS TEXT) AS loop_status,
+  NULL AS loop_last_run_status,
+  0 AS loop_last_run_at_ms
+FROM board_widgets bw
+JOIN apps a ON a.id = bw.app_id
+WHERE bw.board_id = sqlc.arg(board_id)
+  AND bw.app_id IS NOT NULL
+  AND a.status = 'active'
+ORDER BY y ASC, x ASC;
 
 -- name: ListAllPlacements :many
 SELECT board_id, widget_id, x, y, w, h, placed_by, created_at_ms, updated_at_ms
@@ -213,7 +244,9 @@ FROM board_widgets
 WHERE board_id = sqlc.arg(board_id);
 
 -- name: DeleteOrphanBoardWidgets :exec
-DELETE FROM board_widgets WHERE widget_id IN (
+DELETE FROM board_widgets
+WHERE app_id IS NULL
+  AND widget_id IN (
   SELECT w.id FROM widgets w
   LEFT JOIN loops l ON l.id = w.loop_id
   WHERE l.id IS NULL OR l.status = sqlc.arg(deleted_status));

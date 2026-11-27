@@ -347,7 +347,7 @@ test('workspaceSwitchNavigation leaves workspace-specific routes cleanly and pre
     { pathname: '/boards/brd_9', search: {}, expected: { to: '/boards' } },
     { pathname: '/loops/lp_3', search: {}, expected: { to: '/loops' } },
     { pathname: '/plugins/tenders', search: {}, expected: { to: '/new' } },
-    { pathname: '/apps/crm/show_crm', search: {}, expected: { to: '/new' } },
+    { pathname: '/apps/crm/show_crm', search: {}, expected: { to: '/apps' } },
     { pathname: '/new', search: { space: 'spc_old' }, expected: { to: '/new', search: {}, replace: true } },
     {
       pathname: '/bots/bot_42',

@@ -13,14 +13,27 @@ import (
 )
 
 const (
-	maxProxyRequestBytes  int64 = 4 << 20
-	maxProxyResponseBytes int64 = 16 << 20
+	maxProxyRequestBytes     int64 = 4 << 20
+	maxAppDraftProxyBytes    int64 = 32 << 20
+	maxProxyResponseBytes    int64 = 16 << 20
+	maxAppContentProxyBytes  int64 = 25 << 20
 )
 
 func cleanProxyPath(raw string) (string, error) {
 	if !strings.HasPrefix(raw, "/v1/") || strings.ContainsAny(raw, "\\\x00\r\n") {
 		return "", ErrInvalidPath
 	}
+	return escapeProxySegments(raw)
+}
+
+func cleanAppContentProxyPath(raw string) (string, error) {
+	if !strings.HasPrefix(raw, "/app-content/") || strings.ContainsAny(raw, "\\\x00\r\n") {
+		return "", ErrInvalidPath
+	}
+	return escapeProxySegments(raw)
+}
+
+func escapeProxySegments(raw string) (string, error) {
 	parts := strings.Split(strings.TrimPrefix(raw, "/"), "/")
 	escaped := make([]string, len(parts))
 	for i, seg := range parts {
@@ -95,6 +108,11 @@ func (p preparedProxy) buildRequest(r *http.Request, token string) (*http.Reques
 		if accHdr := strings.TrimSpace(r.Header.Get("Accept")); accHdr != "" {
 			req.Header.Set("Accept", accHdr)
 		}
+		for _, hdr := range []string{"If-Match", "If-None-Match"} {
+			if v := strings.TrimSpace(r.Header.Get(hdr)); v != "" {
+				req.Header.Set(hdr, v)
+			}
+		}
 	}
 	return req, nil
 }
@@ -119,7 +137,11 @@ func (s *Service) prepareProxy(w http.ResponseWriter, r *http.Request, sse bool)
 	}
 	var raw []byte
 	if !sse && r.Body != nil && (r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodDelete) {
-		raw, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxProxyRequestBytes))
+		limit := maxProxyRequestBytes
+		if cleanPath == "/v1/apps/drafts" {
+			limit = maxAppDraftProxyBytes
+		}
+		raw, err = io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 		if err != nil {
 			var maxErr *http.MaxBytesError
 			if errors.As(err, &maxErr) {
@@ -174,6 +196,77 @@ func (s *Service) ProxyActiveWorkspace(w http.ResponseWriter, r *http.Request) b
 	w.WriteHeader(resp.StatusCode)
 	if resp.StatusCode != http.StatusNoContent {
 		_, _ = io.Copy(w, io.LimitReader(resp.Body, maxProxyResponseBytes))
+	}
+	return true
+}
+
+// ProxyActiveWorkspaceAppContent forwards ticket-authenticated GET/HEAD
+// /app-content/* requests to the active Cloud workspace without attaching
+// Cloud session bearer tokens or cookies.
+func (s *Service) ProxyActiveWorkspaceAppContent(w http.ResponseWriter, r *http.Request) bool {
+	if s.ActiveWorkspaceID() == LocalWorkspaceID {
+		return false
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		writeProxyJSONError(w, http.StatusMethodNotAllowed, "only GET and HEAD are allowed on app content endpoints")
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(r.Header.Get("Service-Worker")), "script") {
+		writeProxyJSONError(w, http.StatusForbidden, "service worker registration is forbidden on app content origin")
+		return true
+	}
+	cleanPath, err := cleanAppContentProxyPath(r.URL.Path)
+	if err != nil {
+		writeProxyJSONError(w, http.StatusBadRequest, "invalid app content path")
+		return true
+	}
+	acc, err := s.activeAuthedAccount()
+	if err != nil {
+		writeProxyJSONError(w, http.StatusUnauthorized, err.Error())
+		return true
+	}
+	target := acc.BaseURL + cleanPath
+	if ticket := strings.TrimSpace(r.URL.Query().Get("ticket")); ticket != "" {
+		target += "?ticket=" + url.QueryEscape(ticket)
+	}
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, target, nil)
+	if err != nil {
+		writeProxyJSONError(w, http.StatusBadRequest, "invalid app content request")
+		return true
+	}
+	if hdrTicket := strings.TrimSpace(r.Header.Get("X-Jaz-App-Ticket")); hdrTicket != "" {
+		req.Header.Set("X-Jaz-App-Ticket", hdrTicket)
+	}
+	resp, err := s.client.http.Do(req)
+	if err != nil {
+		writeProxyJSONError(w, http.StatusBadGateway, "cloud app content request failed")
+		return true
+	}
+	defer resp.Body.Close()
+
+	w.Header().Del("Set-Cookie")
+	w.Header().Del("Access-Control-Allow-Credentials")
+	for _, hdr := range []string{
+		"Content-Type",
+		"Content-Length",
+		"Content-Security-Policy",
+		"X-Robots-Tag",
+		"Referrer-Policy",
+		"X-Content-Type-Options",
+		"Cache-Control",
+		"X-Jaz-App-Bundle-SHA256",
+	} {
+		if v := resp.Header.Get(hdr); v != "" {
+			w.Header().Set(hdr, v)
+		}
+	}
+	if w.Header().Get("Content-Security-Policy") == "" {
+		w.Header().Set("Content-Security-Policy", "sandbox allow-scripts allow-forms; default-src 'none'")
+	}
+	w.WriteHeader(resp.StatusCode)
+	if r.Method != http.MethodHead && resp.StatusCode != http.StatusNoContent {
+		_, _ = io.Copy(w, io.LimitReader(resp.Body, maxAppContentProxyBytes))
 	}
 	return true
 }

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, linkOptions, useRouterState } from '@tanstack/react-router'
-import { LayoutDashboard, MessageSquare, Settings } from 'lucide-react'
+import { AppWindow, LayoutDashboard, MessageSquare, Settings } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { PluginIcon } from '@/components/plugins/PluginIcon'
@@ -9,7 +9,7 @@ import type { SettingsSection } from '@/components/settings/sections'
 import { botsQuery } from '@/lib/api/bots'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { pluginsQuery } from '@/lib/api/plugins'
-import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
+import { useCloudSession } from '@/lib/cloudSession'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
@@ -20,6 +20,7 @@ export const RAIL_WIDTH = 48
 export const SECTIONS = [
   { to: '/bots', label: 'Bots', Icon: BotsGlyph },
   { to: '/boards', label: 'Boards', Icon: LayoutDashboard },
+  { to: '/apps', label: 'Apps', Icon: AppWindow },
 ] as const
 
 export type RailTab = 'chat' | 'settings' | (typeof SECTIONS)[number]['to'] | `/apps/${string}/${string}` | `/plugins/${string}`
@@ -27,20 +28,19 @@ export type RailTab = 'chat' | 'settings' | (typeof SECTIONS)[number]['to'] | `/
 // Settings rides in the URL search over any page, so it outranks the path.
 export function railTab(pathname: string, settingsOpen: boolean): RailTab {
   if (settingsOpen) return 'settings'
-  const app = /^\/apps\/([^/]+\/[^/]+)/.exec(pathname)?.[1]
-  if (app) return `/apps/${app}` as RailTab
+  const mcpApp = /^\/apps\/([^/]+\/[^/]+)/.exec(pathname)?.[1]
+  if (mcpApp) return `/apps/${mcpApp}` as RailTab
   const plugin = /^\/plugins\/([^/]+)$/.exec(pathname)?.[1]
   if (plugin) return `/plugins/${plugin}`
   // Loops open from the Bots panel, so they keep it.
   const section = pathname.startsWith('/loops') ? '/bots' : pathname
-  return SECTIONS.find(({ to }) => section.startsWith(to))?.to ?? 'chat'
+  return SECTIONS.find(({ to }) => section === to || section.startsWith(`${to}/`))?.to ?? 'chat'
 }
 
 // Everything beside Chat takes the whole content card: the built-in sections,
 // then each sidebar app a connected MCP server declares.
 export function useRailSections() {
-  const isCloudOnly = useIsCloudOnly()
-  const apps = (useQuery({ ...mcpEntrypointsQuery, enabled: !isCloudOnly }).data ?? []).filter((entry) => entry.type === 'global')
+  const apps = (useQuery(mcpEntrypointsQuery).data ?? []).filter((entry) => entry.type === 'global')
   const plugins = useQuery(pluginsQuery).data ?? []
   return [
     ...SECTIONS.map(({ to, label, Icon }) => ({ path: to, label, icon: <Icon aria-hidden />, link: linkOptions({ to }) })),
