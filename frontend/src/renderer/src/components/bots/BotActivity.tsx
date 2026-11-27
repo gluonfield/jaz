@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { CornerDownRight } from 'lucide-react'
-import { useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotOwed, BotOwedThread, BotThreadActivity } from '@/lib/api/types'
@@ -11,12 +11,11 @@ import { clockTime, formatDuration, shortDate } from '@/lib/format/time'
 const EMPTY_OWED: BotOwed[] = []
 const EMPTY_ITEMS: BotActivity[] = []
 const EMPTY_STARTED: Record<string, BotThreadActivity[]> = {}
-const EMPTY_CONNECTED: ConnectedTaskThread[] = []
 
-// What a bot is working on and what it did: its open tasks, then by day the
-// tasks it closed and the threads it started, one line each. A task opens a
-// modal with what it is, its next step, and all connected threads; a thread
-// line opens its thread.
+// What a bot is working on and what it did: its open tasks with their states,
+// then by day the tasks it closed and the threads it started, one line each.
+// A task opens a modal with what it is, its next step, and all connected
+// threads; a thread line opens its thread.
 export function BotActivity({ bot }: { bot: Bot }) {
   const activity = useQuery(botActivityQuery(bot.id))
   const [shown, setShown] = useState<number>()
@@ -24,28 +23,12 @@ export function BotActivity({ bot }: { bot: Bot }) {
   const owed = activity.data?.owed ?? EMPTY_OWED
   const items = activity.data?.items ?? EMPTY_ITEMS
   const started = activity.data?.started ?? EMPTY_STARTED
-  const connectedByTask = useMemo(() => {
-    const map = new Map<number, ConnectedTaskThread[]>()
-    for (const item of owed) {
-      map.set(item.id, connectedTaskThreads(item, started))
-    }
-    for (const item of items) {
-      if (item.kind === 'task') {
-        map.set(item.task.id, connectedTaskThreads(item.task, started))
-      }
-    }
-    return map
-  }, [owed, items, started])
   if (activity.isPending) {
     return <p className="text-[13px] text-ink-3">Loading activity…</p>
   }
   if (activity.isError && !activity.data) {
     return <p role="alert" className="text-[13px] text-danger">Couldn’t load activity.</p>
   }
-  const groups = [
-    { title: '', tasks: owed.filter((task) => task.status !== 'waiting_for_user') },
-    { title: 'Waiting for you', tasks: owed.filter((task) => task.status === 'waiting_for_user') },
-  ]
   const days = groupByDay(items, now)
   const task = [...owed, ...items.flatMap((item) => item.kind === 'task' ? [item.task] : [])].find((item) => item.id === shown)
   if (!owed.length && !days.length) {
@@ -56,23 +39,13 @@ export function BotActivity({ bot }: { bot: Bot }) {
       {owed.length ? (
         <section aria-label="Tasks" className="flex flex-col">
           <h3 className="mb-1 text-[13px] font-semibold text-ink">Tasks <span className="ml-1 text-ink-3 tabular-nums">{owed.length}</span></h3>
-          {groups.map(({ title, tasks }) => tasks.length ? (
-            <div key={title} className="flex flex-col">
-              {title ? <h4 className="mt-3 mb-1 text-[11px] font-medium text-ink-3">{title} <span className="ml-1 tabular-nums">{tasks.length}</span></h4> : null}
-              <ul className="flex flex-col">
-                {tasks.map((item) => (
-                  <li key={item.id} className="flex flex-col">
-                    <TaskButton
-                      task={item}
-                      stated={!title}
-                      threadCount={connectedByTask.get(item.id)?.length ?? 0}
-                      onOpen={setShown}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null)}
+          <ul className="flex flex-col">
+            {owed.map((item) => (
+              <li key={item.id} className="flex flex-col">
+                <TaskButton task={item} state={taskStateLabel(item)} onOpen={setShown} />
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
       {days.map(([day, list]) => (
@@ -84,8 +57,7 @@ export function BotActivity({ bot }: { bot: Bot }) {
                   <li key={`task-${item.task.id}`} className="flex flex-col">
                     <TaskButton
                       task={item.task}
-                      stated
-                      threadCount={connectedByTask.get(item.task.id)?.length ?? 0}
+                      state={item.task.status === 'completed' ? clockTime(item.at) : taskStateLabel(item.task)}
                       onOpen={setShown}
                     />
                   </li>
@@ -98,7 +70,7 @@ export function BotActivity({ bot }: { bot: Bot }) {
         <TaskModal
           botId={bot.id}
           task={task}
-          threads={connectedByTask.get(task.id) ?? EMPTY_CONNECTED}
+          threads={connectedTaskThreads(task, started)}
           now={now}
           onClose={() => setShown(undefined)}
         />
@@ -109,16 +81,14 @@ export function BotActivity({ bot }: { bot: Bot }) {
 
 const LINE = '-mx-2 flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-left text-[13px] transition-colors duration-150 hover:bg-list-hover'
 
-function TaskButton({ task, stated, threadCount, onOpen }: { task: BotOwed; stated: boolean; threadCount: number; onOpen: (id: number) => void }) {
+// Work under way and a question for the person stand out from the rest.
+const TASK_TONES: Partial<Record<string, Tone>> = { Working: 'running', 'Waiting for you': 'waiting' }
+
+function TaskButton({ task, state, onOpen }: { task: BotOwed; state: string; onOpen: (id: number) => void }) {
   const title = taskName(task)
   return (
     <button type="button" title={title} onClick={() => onOpen(task.id)} className={`${LINE} cursor-pointer`}>
-      <Line
-        title={title}
-        count={threadCount > 0 ? threadCount : undefined}
-        state={stated ? taskStateLabel(task) : undefined}
-        tone={task.moving ? 'running' : undefined}
-      />
+      <Line title={title} state={state} tone={TASK_TONES[state]} />
     </button>
   )
 }
@@ -233,22 +203,13 @@ function ThreadLink({ line, depth = 0, onClick }: { line: ThreadLine; depth?: nu
   )
 }
 
-const TONES = { running: 'text-running', danger: 'text-danger' }
+const TONES = { running: 'text-running', waiting: 'font-medium text-accent-strong', danger: 'text-danger' }
 type Tone = keyof typeof TONES
 
-function Line({ title, count, state, tone }: { title: string; count?: number; state?: string; tone?: Tone }) {
+function Line({ title, state, tone }: { title: string; state?: string; tone?: Tone }) {
   return (
     <>
       <span className="min-w-0 flex-1 truncate text-ink">{title}</span>
-      {count ? (
-        <span
-          aria-label={`${count} ${count === 1 ? 'thread' : 'threads'}`}
-          title={`${count} connected ${count === 1 ? 'thread' : 'threads'}`}
-          className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[11px] leading-none text-ink-3 tabular-nums"
-        >
-          {count}
-        </span>
-      ) : null}
       {state ? <span className={`shrink-0 text-[12px] tabular-nums ${tone ? TONES[tone] : 'text-ink-3'}`}>{state}</span> : null}
     </>
   )
