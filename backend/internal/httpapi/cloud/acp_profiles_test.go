@@ -25,11 +25,11 @@ func TestACPProfilesFollowsSelectedAccountAndDiscardsStaleResponses(t *testing.T
 			_, _ = w.Write([]byte(`{"org_id":"org","user_id":"member","role":"admin"}`))
 		case "/v1/models":
 			if connected.Load() {
-				_, _ = w.Write([]byte(`{"models":[{"profile_id":"acp:claude","scope":"user"}]}`))
+				_, _ = w.Write([]byte(`{"models":[{"profile_id":"acp:grok","scope":"user"}]}`))
 			} else {
 				_, _ = w.Write([]byte(`{"models":[]}`))
 			}
-		case "/v1/acp/profiles/claude":
+		case "/v1/acp/profiles/grok":
 			if r.Header.Get("Authorization") != "Bearer member-session" {
 				t.Error("selected account session token was not forwarded")
 			}
@@ -44,7 +44,7 @@ func TestACPProfilesFollowsSelectedAccountAndDiscardsStaleResponses(t *testing.T
 			} else {
 				connected.Store(false)
 			}
-			_, _ = w.Write([]byte(`{"agent":"claude"}`))
+			_, _ = w.Write([]byte(`{"agent":"grok"}`))
 		case "/v1/acp/profiles":
 			close(started)
 			select {
@@ -81,12 +81,12 @@ func TestACPProfilesFollowsSelectedAccountAndDiscardsStaleResponses(t *testing.T
 		return rec
 	}
 
-	const profile = "/v1/acp/profiles/claude"
+	const profile = "/v1/acp/profiles/grok"
 	for _, step := range []struct{ method, path, body, want string }{
 		{"GET", "/v1/models", "", `"models":[]`},
-		{"PUT", profile, `{"api_key":"test-key"}`, `"agent":"claude"`},
-		{"GET", "/v1/models", "", "acp:claude"},
-		{"DELETE", profile, "", `"agent":"claude"`},
+		{"PUT", profile, `{"api_key":"test-key"}`, `"agent":"grok"`},
+		{"GET", "/v1/models", "", "acp:grok"},
+		{"DELETE", profile, "", `"agent":"grok"`},
 		{"GET", "/v1/models", "", `"models":[]`},
 	} {
 		rec := call(step.method, step.path, step.body)

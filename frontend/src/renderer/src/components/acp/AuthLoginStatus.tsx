@@ -12,10 +12,12 @@ export function AuthLoginStatus({
   job,
   running,
   allowCodeInput = true,
+  submitCode = submitACPAuthLoginInput,
 }: {
   job?: ACPAuthLogin
   running: boolean
   allowCodeInput?: boolean
+  submitCode?: (id: string, code: string) => Promise<unknown>
 }) {
   const toast = useToast()
   const opened = useRef('')
@@ -33,7 +35,7 @@ export function AuthLoginStatus({
     setSending(true)
     setSendError('')
     try {
-      await submitACPAuthLoginInput(job.id, value)
+      await submitCode(job.id, value)
       setCode('')
     } catch (error) {
       setSendError(error instanceof Error ? error.message : 'Could not send the code')
@@ -128,6 +130,7 @@ export function AuthLoginStatus({
           <p className="text-ink-3">Did the browser show a code to paste back? Enter it here to finish.</p>
           <div className="flex items-center gap-1.5">
             <Input
+              aria-label="Authorization code"
               value={code}
               onChange={(event) => setCode(event.target.value)}
               placeholder="Paste the code from the browser"

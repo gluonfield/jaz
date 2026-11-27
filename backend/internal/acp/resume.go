@@ -26,19 +26,26 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 		return nil, fmt.Errorf("active acp session not found: %s", ref)
 	}
 	defer m.resumeLocks.Lock(session.ID)()
-	return m.resumeLocked(ctx, session.ID)
+	return m.resumeLocked(ctx, session.ID, 0)
 }
 
 func (m *Manager) restart(ctx context.Context, stale *jobState) (*jobState, error) {
 	defer m.resumeLocks.Lock(stale.ID)()
-	if current := m.jobByID(stale.ID); current != nil && current != stale {
+	m.mu.RLock()
+	current, process := m.jobsByID[stale.ID], m.processes[stale.ID]
+	m.mu.RUnlock()
+	if current != nil && current != stale {
 		return current, nil
 	}
+	var rejectedVersion int64
+	if process != nil && stale.claudeAuthFailed() {
+		rejectedVersion = process.cloudOAuth.version
+	}
 	m.teardown(stale.ID)
-	return m.resumeLocked(ctx, stale.ID)
+	return m.resumeLocked(ctx, stale.ID, rejectedVersion)
 }
 
-func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, err error) {
+func (m *Manager) resumeLocked(ctx context.Context, ref string, rejectedVersion int64) (_ *jobState, err error) {
 	ctx, finish, err := m.beginLaunch(ctx)
 	if err != nil {
 		return nil, err
@@ -83,6 +90,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 	if err != nil {
 		return nil, err
 	}
+	cfg.cloudRejectedVersion = rejectedVersion
 	overview, err := m.store.LoadSessionOverviewEvents(session.ID)
 	if err != nil {
 		return nil, fmt.Errorf("restore agent session state: %w", err)

@@ -60,7 +60,8 @@ type cloudLaunchAuth struct {
 	resolve     func(context.Context, int64) (acpcredentials.Profile, error)
 }
 
-func (m *Manager) cloudLaunchAuth(ctx context.Context, agent, profileID string) (*cloudLaunchAuth, error) {
+func (m *Manager) cloudLaunchAuth(ctx context.Context, agent string, cfg AgentConfig) (*cloudLaunchAuth, error) {
+	profileID := cfg.cloudCredentialProfileID
 	if profileID == "" {
 		return nil, nil
 	}
@@ -73,19 +74,17 @@ func (m *Manager) cloudLaunchAuth(ctx context.Context, agent, profileID string) 
 		if err != nil {
 			return acpcredentials.Profile{}, fmt.Errorf("resolve %s on this machine: %w", profileID, err)
 		}
-		valid := profile.Kind == acpcredentials.APIKey && profile.APIKey != "" && profile.ChatGPT == nil
-		if agent == AgentCodex {
-			valid = profile.Kind == acpcredentials.OAuthBundle && profile.APIKey == "" &&
-				profile.ChatGPT != nil && profile.ChatGPT.AccessToken != "" && profile.ChatGPT.AccountID != ""
-		}
-		if !valid || profile.Agent != agent {
+		if profile.Agent != agent || !profile.Valid() {
 			return acpcredentials.Profile{}, errors.New("Cloud returned incompatible native credentials")
 		}
 		return profile, nil
 	}
-	initial, err := resolve(ctx, 0)
+	initial, err := resolve(ctx, cfg.cloudRejectedVersion)
 	if err != nil {
 		return nil, err
+	}
+	if agent == AgentAntigravity && initial.OAuth != nil {
+		return nil, errors.New("use the Antigravity Cloud profile with Cloud execution, or choose your local Antigravity sign-in")
 	}
 	return &cloudLaunchAuth{workspaceID: workspaceID, initial: initial, resolve: resolve}, nil
 }
@@ -117,8 +116,12 @@ func (a *cloudLaunchAuth) prepare(ctx context.Context, agent, root string, env m
 		delete(env, "OPENAI_BASE_URL")
 		return codexauthbridge.Install(ctx, env, codex, a.resolve)
 	case AgentClaude:
-		for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"} {
+		for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"} {
 			delete(env, key)
+		}
+		if a.initial.OAuth != nil {
+			env["CLAUDE_CODE_OAUTH_TOKEN"] = a.initial.OAuth.AccessToken
+			return func() {}, nil
 		}
 	case AgentAntigravity:
 		delete(env, "GOOGLE_API_KEY")

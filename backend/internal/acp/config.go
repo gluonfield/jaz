@@ -138,6 +138,7 @@ type Config struct {
 
 type AgentConfig struct {
 	cloudCredentialProfileID string
+	cloudRejectedVersion     int64
 	Command                  string
 	Args                     []string
 	ManagedAdapter           string

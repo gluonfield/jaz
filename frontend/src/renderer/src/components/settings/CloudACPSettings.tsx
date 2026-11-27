@@ -6,11 +6,14 @@ import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Button } from '@/components/ui/Button'
 import { Collapse } from '@/components/ui/Collapse'
+import { Input } from '@/components/ui/Input'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import {
   cloudACPProfilesQuery,
+  completeCloudACPLogin,
   deleteCloudACPProfile,
   getCloudACPLogin,
+  refreshCloudACPProfile,
   saveCloudACPKey,
   startCloudACPLogin,
   toACPAuthLogin,
@@ -18,6 +21,7 @@ import {
   type CloudACPProfile,
 } from '@/lib/api/cloudACP'
 import type { ACPAuthLogin } from '@/lib/api/types'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { useCloudCatalogScope } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
@@ -43,7 +47,7 @@ export function CloudACPSettings() {
       <div>
         <h1 className="text-lg font-semibold text-ink">Agents (ACP)</h1>
         <p className="mt-0.5 text-[13px] text-ink-2">
-          Connect an agent for Cloud runs and native runs on this workspace’s paired Desktop.
+          Connect your agent accounts for this Cloud workspace.
         </p>
       </div>
       {isLoading && <SkeletonRows count={4} />}
@@ -64,10 +68,10 @@ export function CloudACPSettings() {
   )
 }
 
-const keyLabels: Record<string, string> = {
-  claude: 'Anthropic Console API key',
-  antigravity: 'Gemini Developer API key',
-  grok: 'xAI API key',
+const signInLabels = {
+  device_code: 'Sign in with ChatGPT',
+  oauth_code: 'Sign in with Claude',
+  oauth_redirect: 'Sign in with Google',
 }
 
 function CloudACPAgentRow({ spec, profile, workspaceID, refresh }: {
@@ -82,14 +86,18 @@ function CloudACPAgentRow({ spec, profile, workspaceID, refresh }: {
   const [login, setLogin] = useState<ACPAuthLogin>()
   const operation = useRef<AbortController | undefined>(undefined)
   const keyId = useId()
+  const projectId = useId()
+  const locationId = useId()
   useEffect(() => () => operation.current?.abort(), [])
 
-  const connectKey = spec.credential_kind === 'api_key'
-  const connected = profile?.status === 'connected' || profile?.status === 'refreshing'
+  const connectKey = spec.agent === 'grok' && spec.credential_kind === 'api_key'
+  const authKind = spec.supports_web_auth ? spec.web_auth_kind : undefined
+  const connected = profile?.credential_kind === spec.credential_kind &&
+    (profile.status === 'connected' || profile.status === 'refreshing')
   const running = login?.status === 'running'
-  const status = connected ? 'Connected' : profile ? 'Needs authentication' : 'Disconnected'
+  const status = connected ? (profile?.status === 'refreshing' ? 'Refreshing' : 'Connected') : profile ? 'Needs authentication' : 'Disconnected'
 
-  async function perform(action: (signal: AbortSignal) => Promise<void>, errorMessage: string) {
+  async function perform(action: (signal: AbortSignal) => Promise<void>, onError: (error: unknown) => void) {
     if (operation.current) return
     const controller = new AbortController()
     operation.current = controller
@@ -97,12 +105,18 @@ function CloudACPAgentRow({ spec, profile, workspaceID, refresh }: {
     setError('')
     try {
       await action(controller.signal)
-    } catch {
-      if (!controller.signal.aborted) setError(errorMessage)
+    } catch (cause) {
+      if (!controller.signal.aborted) onError(cause)
     } finally {
-      operation.current = undefined
-      if (!controller.signal.aborted) setBusy(false)
+      if (operation.current === controller) {
+        operation.current = undefined
+        setBusy(false)
+      }
     }
+  }
+
+  function showError(cause: unknown) {
+    setError(cause instanceof Error ? cause.message : 'The request failed. Try again.')
   }
 
   function save(event: FormEvent<HTMLFormElement>) {
@@ -113,23 +127,58 @@ function CloudACPAgentRow({ spec, profile, workspaceID, refresh }: {
     void perform(async (signal) => {
       await saveCloudACPKey(spec.agent, key, workspaceID, signal)
       await refresh()
-    }, 'Could not save the API key. Try again.')
+    }, showError)
   }
 
-  function signIn() {
+  function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const fields = new FormData(event.currentTarget)
+    const options = authKind === 'oauth_redirect' ? {
+      gcp_project: String(fields.get('gcpProject') ?? '').trim() || undefined,
+      gcp_location: String(fields.get('gcpLocation') ?? '').trim() || undefined,
+    } : undefined
+    setLogin(undefined)
     void perform(async (signal) => {
-      const session = await startCloudACPLogin(workspaceID, signal)
-      let next = toACPAuthLogin(session)
+      let session = await startCloudACPLogin(spec.agent, workspaceID, signal, options)
       while (!signal.aborted) {
+        const next = toACPAuthLogin(session)
         setLogin(next)
-        if (next.status !== 'running') break
+        if (next.status === 'succeeded') await refresh()
+        if (next.status !== 'running' || authKind === 'oauth_code') return
         await new Promise((resolve) => window.setTimeout(resolve, 1_000))
         if (signal.aborted) return
-        const polled = await getCloudACPLogin(session.id, workspaceID, signal)
-        next = toACPAuthLogin(polled)
+        session = await getCloudACPLogin(spec.agent, session.id, workspaceID, signal)
       }
-      if (next.status === 'succeeded') await refresh()
-    }, 'Could not complete Codex sign-in. Try again.')
+    }, (cause) => {
+      setLogin(undefined)
+      showError(cause)
+    })
+  }
+
+  function cancelSignIn() {
+    operation.current?.abort()
+    operation.current = undefined
+    setLogin(undefined)
+    setBusy(false)
+  }
+
+  function completeSignIn(id: string, code: string) {
+    return perform(async (signal) => {
+      const session = await completeCloudACPLogin(spec.agent, id, code, workspaceID, signal)
+      if (signal.aborted) return
+      setLogin(toACPAuthLogin(session))
+      await refresh()
+    }, showError)
+  }
+
+  function refreshCredentials() {
+    void perform(async (signal) => {
+      try {
+        await refreshCloudACPProfile(spec.agent, workspaceID, signal)
+      } finally {
+        if (!signal.aborted) await refresh()
+      }
+    }, showError)
   }
 
   function disconnect() {
@@ -137,7 +186,7 @@ function CloudACPAgentRow({ spec, profile, workspaceID, refresh }: {
       await deleteCloudACPProfile(spec.agent, workspaceID, signal)
       if (!signal.aborted) setLogin(undefined)
       await refresh()
-    }, 'Could not disconnect the agent. Try again.')
+    }, showError)
   }
 
   return (
@@ -164,7 +213,7 @@ function CloudACPAgentRow({ spec, profile, workspaceID, refresh }: {
         <div className="flex flex-col gap-2.5 border-t border-border/70 px-3 py-2.5">
           {connectKey ? (
             <form onSubmit={save} className="flex flex-col gap-1.5">
-              <label htmlFor={keyId} className="text-[13px] font-medium text-ink">{keyLabels[spec.agent] ?? 'API key'}</label>
+              <label htmlFor={keyId} className="text-[13px] font-medium text-ink">xAI API key</label>
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   id={keyId}
@@ -180,17 +229,40 @@ function CloudACPAgentRow({ spec, profile, workspaceID, refresh }: {
                 </Button>
               </div>
             </form>
-          ) : !connected && spec.supports_web_auth && (
-            <div>
-              <Button variant="primary" size="sm" disabled={busy} onClick={signIn}>Sign in with ChatGPT</Button>
-              <AuthLoginStatus job={login} running={Boolean(running && busy)} allowCodeInput={false} />
-            </div>
+          ) : !connected && authKind && (
+            <>
+              {!running && (
+                <form onSubmit={signIn} className="grid gap-2">
+                  {authKind === 'oauth_redirect' && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="grid gap-1">
+                        <label htmlFor={projectId} className="text-[13px] text-ink-2">GCP project ID (optional)</label>
+                        <Input id={projectId} name="gcpProject" spellCheck={false} disabled={busy} />
+                      </div>
+                      <div className="grid gap-1">
+                        <label htmlFor={locationId} className="text-[13px] text-ink-2">GCP location (optional)</label>
+                        <Input id={locationId} name="gcpLocation" spellCheck={false} disabled={busy} />
+                      </div>
+                    </div>
+                  )}
+                  <Button type="submit" variant="primary" size="sm" className="justify-self-start" disabled={busy}>
+                    {signInLabels[authKind]}
+                  </Button>
+                </form>
+              )}
+              {running && authKind === 'oauth_redirect' && clientRuntime.kind === 'electron' && (
+                <p className="text-[12px] text-ink-2">Use a browser where you’re signed in to this Jaz Cloud account.</p>
+              )}
+              <AuthLoginStatus key={login?.id} job={login} running={busy} allowCodeInput={authKind === 'oauth_code'} submitCode={completeSignIn} />
+            </>
           )}
-          <div className="flex items-center gap-2">
-            {profile && <Button variant="ghost" size="sm" disabled={busy} onClick={disconnect}>Disconnect</Button>}
-            {busy && <LoaderCircle size={14} aria-label="Working" className="animate-spin text-ink-3" />}
-            {error && <p role="alert" className="text-[12px] text-danger">{error}</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            {running && <Button variant="ghost" size="sm" disabled={authKind === 'oauth_code' && busy} onClick={cancelSignIn}>Cancel sign-in</Button>}
+            {connected && authKind && <Button variant="ghost" size="sm" disabled={busy || profile?.status === 'refreshing'} onClick={refreshCredentials}>Refresh credentials</Button>}
+            {profile && <Button variant="ghost" size="sm" disabled={busy || running} onClick={disconnect}>Disconnect</Button>}
+            {busy && (connected || connectKey) && <LoaderCircle size={14} aria-label="Working" className="animate-spin text-ink-3" />}
           </div>
+          {error && <p role="alert" className="text-[12px] text-danger">{error}</p>}
         </div>
       </Collapse>
     </SettingsCard>

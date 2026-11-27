@@ -14,9 +14,11 @@ if (typeof globalThis.window === 'undefined') {
 }
 
 const {
+  completeCloudACPLogin,
   deleteCloudACPProfile,
   getCloudACPLogin,
   listCloudACPProfiles,
+  refreshCloudACPProfile,
   startCloudACPLogin,
   saveCloudACPKey,
   toACPAuthLogin,
@@ -29,8 +31,9 @@ afterEach(() => {
   globalThis.fetch = originalFetch
 })
 
-test('cloudACP routes Codex device login and provider keys to the selected workspace', async () => {
+test('Cloud ACP routes OAuth sign-in, refresh, and the Grok key to the selected workspace', async () => {
   const seen = []
+  const signal = new AbortController().signal
   globalThis.fetch = async (url, init) => {
     const parsed = new URL(String(url))
     const method = init?.method || 'GET'
@@ -82,7 +85,23 @@ test('cloudACP routes Codex device login and provider keys to the selected works
         },
       })
     }
-    if (method === 'PUT' && /^\/v1\/acp\/profiles\/(claude|antigravity|grok)$/.test(parsed.pathname)) {
+    const [, , , , agent, action, id, command] = parsed.pathname.split('/')
+    if (method === 'POST' && action === 'login' && !id && agent !== 'codex') {
+      if (agent === 'antigravity') expect(JSON.parse(init.body)).toEqual({ gcp_project: 'fixture-project', gcp_location: 'global' })
+      return Response.json({ session: { id: 'acplog_2', agent, status: 'awaiting_user' } })
+    }
+    if (method === 'POST' && agent === 'claude' && command === 'complete') {
+      expect(JSON.parse(init.body)).toEqual({ code: 'test-code#test-state' })
+      return Response.json({ session: { id, agent, status: 'completed' } })
+    }
+    if (method === 'GET' && agent === 'antigravity' && action === 'login') {
+      return Response.json({ session: { id, agent, status: 'completed' } })
+    }
+    if (method === 'POST' && action === 'refresh') {
+      expect(JSON.parse(init.body)).toEqual({ force: true })
+      return Response.json({ profile: { agent, status: 'connected', version: 2 } })
+    }
+    if (method === 'PUT' && parsed.pathname === '/v1/acp/profiles/grok') {
       expect(JSON.parse(init.body)).toEqual({ api_key: 'fake-workspace-key' })
       return Response.json({ profile: { status: 'connected' } })
     }
@@ -95,8 +114,8 @@ test('cloudACP routes Codex device login and provider keys to the selected works
   const list = await listCloudACPProfiles(undefined, 'workspace-a')
   expect(list.profiles).toHaveLength(1)
 
-  const codexStart = await startCloudACPLogin('workspace-a')
-  const codexPoll = await getCloudACPLogin(codexStart.id, 'workspace-a')
+  const codexStart = await startCloudACPLogin('codex', 'workspace-a', signal)
+  const codexPoll = await getCloudACPLogin('codex', codexStart.id, 'workspace-a', signal)
   expect(toACPAuthLogin(codexPoll)).toMatchObject({
     id: 'acplog_1',
     agent: 'codex',
@@ -105,9 +124,16 @@ test('cloudACP routes Codex device login and provider keys to the selected works
     auth_code: 'ABCD-1234',
   })
 
-  for (const agent of ['claude', 'antigravity', 'grok']) {
-    await saveCloudACPKey(agent, 'fake-workspace-key', 'workspace-a', new AbortController().signal)
+  const claude = await startCloudACPLogin('claude', 'workspace-a', signal)
+  const completed = await completeCloudACPLogin('claude', claude.id, 'test-code#test-state', 'workspace-a', signal)
+  expect(toACPAuthLogin(completed).status).toBe('succeeded')
+  const antigravity = await startCloudACPLogin('antigravity', 'workspace-a', signal, { gcp_project: 'fixture-project', gcp_location: 'global' })
+  const googlePoll = await getCloudACPLogin('antigravity', antigravity.id, 'workspace-a', signal)
+  expect(toACPAuthLogin(googlePoll).status).toBe('succeeded')
+  for (const agent of ['claude', 'antigravity']) {
+    expect((await refreshCloudACPProfile(agent, 'workspace-a', signal)).profile.version).toBe(2)
   }
+  await saveCloudACPKey('grok', 'fake-workspace-key', 'workspace-a', signal)
 
   const deleted = await deleteCloudACPProfile('codex', 'workspace-a')
   expect(deleted.deleted).toBe(true)
@@ -116,8 +142,12 @@ test('cloudACP routes Codex device login and provider keys to the selected works
     'GET /v1/acp/profiles',
     'POST /v1/acp/profiles/codex/login',
     'GET /v1/acp/profiles/codex/login/acplog_1',
-    'PUT /v1/acp/profiles/claude',
-    'PUT /v1/acp/profiles/antigravity',
+    'POST /v1/acp/profiles/claude/login',
+    'POST /v1/acp/profiles/claude/login/acplog_2/complete',
+    'POST /v1/acp/profiles/antigravity/login',
+    'GET /v1/acp/profiles/antigravity/login/acplog_2',
+    'POST /v1/acp/profiles/claude/refresh',
+    'POST /v1/acp/profiles/antigravity/refresh',
     'PUT /v1/acp/profiles/grok',
     'DELETE /v1/acp/profiles/codex',
   ])

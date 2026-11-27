@@ -74,6 +74,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		_ = file.Close()
 	}
 	appendLine(os.Getenv("JAZ_FAKE_ACP_START_LOG"), os.Getpid())
+	appendLine(os.Getenv("JAZ_FAKE_ACP_CLAUDE_AUTH_LOG"), os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"))
 	appendLine(os.Getenv("JAZ_FAKE_ACP_SUGGESTIONS_LOG"), strconv.Quote(os.Getenv("CODEX_ACP_PROMPT_SUGGESTIONS")))
 	// Startup waits while a hold file sits in the agent's directory, as a
 	// slow login refresh holds an agent up.

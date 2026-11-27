@@ -279,6 +279,7 @@ func (m *Manager) providers() map[string]provider.ModelProviderConfig {
 }
 
 type agentConn struct {
+	cloudOAuth    cloudOAuthLease
 	state         *connectionState
 	conn          jsonrpc.MessageConn
 	peer          *jsonrpc.Peer
@@ -319,7 +320,7 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 }
 
 func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (_ *agentConn, err error) {
-	launchAuth, err := m.cloudLaunchAuth(ctx, name, cfg.cloudCredentialProfileID)
+	launchAuth, err := m.cloudLaunchAuth(ctx, name, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -356,6 +357,9 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 	state := newConnectionState()
 	peer := jsonrpc.NewPeer(promptTracker, state.handler(m, handler))
 	ac := &agentConn{state: state, conn: promptTracker, peer: peer, cancel: cancel, closed: runCtx.Done(), stderr: stderr, promptTracker: promptTracker}
+	if launchAuth != nil && launchAuth.initial.OAuth != nil {
+		ac.cloudOAuth = cloudOAuthLease{version: launchAuth.initial.Version, expiresAt: launchAuth.initial.OAuth.ExpiresAt}
+	}
 	defer func() {
 		if err != nil {
 			ac.close()

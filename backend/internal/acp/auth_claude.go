@@ -33,6 +33,9 @@ func (j *jobState) claudeAuthFailed() bool {
 }
 
 func claudeAuthFailure(message string) bool {
+	if strings.HasPrefix(message, signInHint+":") {
+		return true
+	}
 	message = strings.ToLower(message)
 	for _, text := range []string{
 		"authentication required",

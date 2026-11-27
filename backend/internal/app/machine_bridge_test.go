@@ -116,6 +116,23 @@ func TestMachineBridgeSupervisorFollowsActiveCloudWorkspace(t *testing.T) {
 						}
 						result := json.RawMessage(`{"profile_id":"acp:codex","agent":"codex","credential_kind":"oauth_bundle","version":11,"chatgpt":{"accessToken":"fake-access","chatgptAccountId":"test"}}`)
 						_ = conn.WriteJSON(machinebridge.Frame{ID: request.ID, Result: result})
+					case "acp:claude", "acp:antigravity":
+						var version int64 = 4
+						token := "fixture-access"
+						if params.Rejected == version {
+							version++
+							token = "fixture-replacement"
+						}
+						agent := strings.TrimPrefix(params.Profile, "acp:")
+						oauth := map[string]string{"access_token": token, "token_type": "Bearer", "expires_at": "2030-01-01T00:00:00Z"}
+						if agent == "antigravity" {
+							oauth["gcp_project"] = "fixture-project"
+							oauth["gcp_location"] = "global"
+						} else {
+							oauth["account_id"] = "fixture-account"
+						}
+						result, _ := json.Marshal(map[string]any{"profile_id": params.Profile, "agent": agent, "credential_kind": "oauth_bundle", "version": version, "oauth": oauth})
+						_ = conn.WriteJSON(machinebridge.Frame{ID: request.ID, Result: result})
 					default:
 						_ = conn.WriteJSON(machinebridge.Frame{ID: request.ID, Error: &machinebridge.RPCError{Code: machinebridge.CodeNotFound}})
 					}
@@ -177,6 +194,23 @@ func TestMachineBridgeSupervisorFollowsActiveCloudWorkspace(t *testing.T) {
 	profile, err := bridge.ResolveACPProfile(ctx, stA.ActiveWorkspaceID, "acp:codex", 0)
 	if err != nil || profile.ChatGPT == nil || profile.ChatGPT.AccountID != "test" || profile.Version != 11 {
 		t.Fatalf("could not resolve the Codex profile over the paired socket: %v", err)
+	}
+	for _, agent := range []string{"claude", "antigravity"} {
+		id := "acp:" + agent
+		initial, err := bridge.ResolveACPProfile(ctx, stA.ActiveWorkspaceID, id, 0)
+		if err != nil || initial.OAuth == nil || initial.OAuth.AccessToken != "fixture-access" || initial.Version != 4 {
+			t.Fatalf("could not resolve the %s OAuth profile: %v", agent, err)
+		}
+		updated, err := bridge.ResolveACPProfile(ctx, stA.ActiveWorkspaceID, id, initial.Version)
+		if err != nil || updated.OAuth == nil || updated.OAuth.AccessToken != "fixture-replacement" || updated.Version != 5 || updated.OAuth.ExpiresAt.Year() != 2030 {
+			t.Fatalf("could not replace the rejected %s OAuth token: %v", agent, err)
+		}
+		if agent == "antigravity" && (updated.OAuth.GCPProject != "fixture-project" || updated.OAuth.GCPLocation != "global") {
+			t.Fatal("the bridge dropped Antigravity project or location")
+		}
+		if agent == "claude" && updated.OAuth.AccountID != "fixture-account" {
+			t.Fatal("the bridge dropped the Claude account ID")
+		}
 	}
 	resolveErr := make(chan error, 1)
 	go func() {

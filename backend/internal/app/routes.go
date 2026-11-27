@@ -167,6 +167,7 @@ func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge ma
 		server.Route{Pattern: "POST /v1/acp/profiles/{agent}/refresh", Handler: httpHandlerFunc(h.ACPProfiles)},
 		server.Route{Pattern: "POST /v1/acp/profiles/{agent}/login", Handler: httpHandlerFunc(h.ACPProfiles)},
 		server.Route{Pattern: "GET /v1/acp/profiles/{agent}/login/{id}", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "POST /v1/acp/profiles/{agent}/login/{id}/complete", Handler: httpHandlerFunc(h.ACPProfiles)},
 		server.Route{Pattern: "GET /v1/auth/me", Handler: httpHandlerFunc(h.Me)},
 		server.Route{Pattern: "/v1/admin/", Handler: httpHandlerFunc(h.Proxy)},
 		server.Route{Pattern: "GET /v1/org/icon", Handler: httpHandlerFunc(h.Proxy)},

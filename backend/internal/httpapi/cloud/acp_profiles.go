@@ -11,6 +11,7 @@ import (
 const WorkspaceHeader = "X-Jaz-Cloud-Workspace"
 
 func (h *Handler) ACPProfiles(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	var body []byte
 	if r.Body != nil && (r.Method == http.MethodPost || r.Method == http.MethodPut) {
 		var err error

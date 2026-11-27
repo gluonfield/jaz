@@ -19,13 +19,14 @@ export interface CloudACPAgentSpec {
   executable?: boolean
   credential_kind: 'oauth_bundle' | 'api_key'
   supports_web_auth: boolean
-  web_auth_kind?: string
+  web_auth_kind?: 'device_code' | 'oauth_code' | 'oauth_redirect'
 }
 
 export interface CloudACPProfile {
   agent: string
   profile_id: string
   display_name: string
+  credential_kind: CloudACPAgentSpec['credential_kind']
   status: CloudACPProfileStatus
   account_label?: string
   version: number
@@ -54,7 +55,13 @@ export interface CloudACPLoginSession {
 }
 
 const profilesPath = '/v1/acp/profiles'
-const loginPath = profilesPath + '/codex/login'
+const profilePath = (agent: string) => `${profilesPath}/${encodeURIComponent(agent)}`
+const loginPath = (agent: string, sessionId: string) => `${profilePath(agent)}/login/${encodeURIComponent(sessionId)}`
+
+interface CloudACPLoginOptions {
+  gcp_project?: string
+  gcp_location?: string
+}
 
 export async function listCloudACPProfiles(signal?: AbortSignal, workspaceID?: string): Promise<CloudACPProfilesResponse> {
   try {
@@ -82,7 +89,7 @@ export const cloudACPProfilesQuery = (account: string, workspaceID?: string) => 
 })
 
 export async function saveCloudACPKey(agent: string, apiKey: string, workspaceID: string, signal: AbortSignal) {
-  await request(`${profilesPath}/${encodeURIComponent(agent)}`, {
+  await request(profilePath(agent), {
     method: 'PUT',
     headers: { ...cloudWorkspaceHeaders(workspaceID), 'Content-Type': 'application/json' },
     body: JSON.stringify({ api_key: apiKey }),
@@ -91,28 +98,42 @@ export async function saveCloudACPKey(agent: string, apiKey: string, workspaceID
 }
 
 export async function deleteCloudACPProfile(agent: string, workspaceID: string, signal?: AbortSignal) {
-  return request<{ deleted: boolean; agent: string }>(`${profilesPath}/${encodeURIComponent(agent)}`, {
+  return request<{ deleted: boolean; agent: string }>(profilePath(agent), {
     method: 'DELETE',
     headers: cloudWorkspaceHeaders(workspaceID),
     signal,
   })
 }
 
-export async function startCloudACPLogin(workspaceID: string, signal?: AbortSignal): Promise<CloudACPLoginSession> {
-  const res = await request<{ session: CloudACPLoginSession }>(loginPath, {
+function postCloudACP<T>(path: string, workspaceID: string, signal: AbortSignal, body?: object) {
+  return request<T>(path, {
     method: 'POST',
-    headers: cloudWorkspaceHeaders(workspaceID),
+    headers: { ...cloudWorkspaceHeaders(workspaceID), 'Content-Type': 'application/json' },
+    body: body && JSON.stringify(body),
     signal,
+  })
+}
+
+export async function startCloudACPLogin(agent: string, workspaceID: string, signal: AbortSignal, options?: CloudACPLoginOptions) {
+  const res = await postCloudACP<{ session: CloudACPLoginSession }>(`${profilePath(agent)}/login`, workspaceID, signal, options)
+  return res.session
+}
+
+export async function getCloudACPLogin(agent: string, sessionId: string, workspaceID: string, signal: AbortSignal) {
+  const res = await request<{ session: CloudACPLoginSession }>(loginPath(agent, sessionId), {
+    signal,
+    headers: cloudWorkspaceHeaders(workspaceID),
   })
   return res.session
 }
 
-export async function getCloudACPLogin(sessionId: string, workspaceID: string, signal?: AbortSignal): Promise<CloudACPLoginSession> {
-  const res = await request<{ session: CloudACPLoginSession }>(
-    `${loginPath}/${encodeURIComponent(sessionId)}`,
-    { signal, headers: cloudWorkspaceHeaders(workspaceID) },
-  )
+export async function completeCloudACPLogin(agent: string, sessionId: string, code: string, workspaceID: string, signal: AbortSignal) {
+  const res = await postCloudACP<{ session: CloudACPLoginSession }>(`${loginPath(agent, sessionId)}/complete`, workspaceID, signal, { code })
   return res.session
+}
+
+export function refreshCloudACPProfile(agent: string, workspaceID: string, signal: AbortSignal) {
+  return postCloudACP<{ profile: CloudACPProfile }>(`${profilePath(agent)}/refresh`, workspaceID, signal, { force: true })
 }
 
 export function toACPAuthLogin(session: CloudACPLoginSession): ACPAuthLogin {
