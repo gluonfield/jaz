@@ -1,14 +1,11 @@
 import { useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { snapshotWindow } from '@/lib/domSnapshot'
 import { PASSAGE_OPEN_MS, runPassage } from './workspaceSwitchPassage'
 
 const FADE_MS = 140
-// Time for the new workspace to draw itself before it is pictured.
-const SETTLE_MS = 120
 // The new workspace is not opened before its name has been readable.
-const NAMED_MS = 1000
+const NAMED_MS = 1150
 const NAME_FADE_MS = 140
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -20,15 +17,10 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 export function WorkspaceSwitchTransition({ name }: { name: string | null }) {
   const reduce = useReducedMotion()
   const [scene, setScene] = useState<{ name: string; phase: 'leaving' | 'landing' | 'done' } | null>(null)
-  const root = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const label = useRef<HTMLParagraphElement>(null)
-  const passage = useRef<Promise<ReturnType<typeof runPassage>>>(Promise.resolve(null))
+  const passage = useRef<ReturnType<typeof runPassage>>(null)
   const started = useRef(0)
-
-  // The window without this overlay or the menu that is closing behind the switch.
-  const picture = () =>
-    snapshotWindow(window.devicePixelRatio, (element) => element === root.current || element.hasAttribute('data-escape-surface'))
 
   useEffect(() => {
     if (name !== null) {
@@ -38,15 +30,14 @@ export function WorkspaceSwitchTransition({ name }: { name: string | null }) {
     }
     let cancelled = false
     void (async () => {
-      const running = await passage.current
+      const running = passage.current
       if (running) {
-        await wait(Math.max(SETTLE_MS, NAMED_MS - (performance.now() - started.current)))
-        const arrival = await picture()
+        await wait(NAMED_MS - (performance.now() - started.current))
         if (cancelled) return
         setScene((current) => current && { ...current, phase: 'landing' })
         await wait(NAME_FADE_MS)
         if (cancelled) return
-        running.arrive(arrival)
+        running.arrive()
         await wait(PASSAGE_OPEN_MS)
       }
       if (cancelled) return
@@ -62,22 +53,17 @@ export function WorkspaceSwitchTransition({ name }: { name: string | null }) {
   const shown = scene !== null
   useEffect(() => {
     if (!shown || reduce) return
-    const running = picture().then((picture) =>
-      canvas.current && label.current
-        ? runPassage(canvas.current, picture, [label.current.offsetWidth, label.current.offsetHeight])
-        : null,
-    )
+    const running = runPassage(canvas.current!, [label.current!.offsetWidth, label.current!.offsetHeight])
     passage.current = running
     return () => {
-      passage.current = Promise.resolve(null)
-      void running.then((started) => started?.stop())
+      passage.current = null
+      running?.stop()
     }
   }, [shown, reduce])
 
   if (typeof document === 'undefined' || !scene) return null
   return createPortal(
     <div
-      ref={root}
       role="status"
       aria-label={`Switching to ${scene.name}`}
       style={{ zIndex: 'calc(var(--z-modal) + 2)', transitionDuration: `${FADE_MS}ms` }}
