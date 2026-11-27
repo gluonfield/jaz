@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client'
 import type { WindowKind } from '@shared/windowKind'
 import { NotchIsland } from '@/components/notifications/NotchIsland'
 import { DesktopNotifications } from '@/components/notifications/DesktopNotifications'
+import { QuickDictatePill } from '@/components/assistant/QuickDictatePill'
 import { VoiceOverlay } from '@/components/session/VoiceOverlay'
 import { PermissionGuide } from '@/components/settings/PermissionGuide'
 import { installFileDropGuard } from './components/ui/FileDrop'
@@ -37,7 +38,7 @@ if (clientRuntime.windowKind === 'main') telemetry.appOpened()
 
 // These windows are barely larger than their content, so they keep the
 // browser's tooltips, which may draw outside the window.
-const floating = ['launcher', 'voice', 'permission', 'island'].includes(clientRuntime.windowKind)
+const floating = ['launcher', 'voice', 'permission', 'island', 'quick-dictate'].includes(clientRuntime.windowKind)
 if (floating) {
   document.documentElement.classList.add('launcher')
   // zoom 1 keeps drag coordinates 1:1 with screen pixels for region capture.
@@ -58,7 +59,12 @@ declare module '@tanstack/react-router' {
   }
 }
 
-const surfaces: Partial<Record<WindowKind, ReactNode>> = { voice: <VoiceOverlay />, permission: <PermissionGuide />, island: <NotchIsland /> }
+const surfaces: Partial<Record<WindowKind, ReactNode>> = {
+  voice: <VoiceOverlay />,
+  permission: <PermissionGuide />,
+  island: <NotchIsland />,
+  'quick-dictate': <QuickDictatePill />,
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -35,6 +35,7 @@ import { workspaceSwitchNavigation } from '@/lib/workspaceNavigation'
 import { VoiceProvider } from '@/lib/voice/VoiceProvider'
 import { GlobalVoice } from '@/components/session/FloatingVoice'
 import { VoiceDesktopBridge } from '@/lib/voice/VoiceDesktopBridge'
+import { AssistantBridge } from '@/lib/assistant/AssistantBridge'
 import { drawerSlide } from '@/lib/dom/drawer'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { isMobileViewport, useIsMobile } from '@/lib/hooks/useIsMobile'
@@ -447,6 +448,7 @@ function RootLayout() {
           onOpenConnect={() => setConnectOpen(true)}
         />
         <GlobalVoice />
+        <AssistantBridge />
       </ToastProvider>
     </TitlebarProvider>
   )

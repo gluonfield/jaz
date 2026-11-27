@@ -36,6 +36,13 @@ import { readNodeCloudConfig } from '@shared/cloudConfig'
 import { LOCAL_BACKEND_TRANSPORT_URL, LOCAL_BACKEND_URL } from '@shared/localBackend'
 import { FILE_ACTIONS_CHANNEL, type FileActionsAPI } from '@shared/fileActions'
 import { DESKTOP_APPS_CHANNEL, type DesktopAppsAPI } from '@shared/desktopApps'
+import {
+  ASSISTANT_CHANNEL,
+  type AssistantAPI,
+  type AssistantAction,
+  type QuickDictateCommand,
+  type QuickDictateState,
+} from '@shared/assistant'
 
 const cloudConfig = readNodeCloudConfig(process.env)
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? (cloudConfig.localEnabled ? LOCAL_BACKEND_URL : cloudConfig.cloudUrl || LOCAL_BACKEND_URL)
@@ -154,6 +161,29 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
       },
       command: (command) => ipcRenderer.send(`${ISLAND_CHANNEL}command`, command),
     } satisfies IslandAPI,
+    assistant: {
+      onTrigger: (handler) => {
+        const listener = (_event: unknown, action: AssistantAction) => handler(action)
+        ipcRenderer.on(`${ASSISTANT_CHANNEL}trigger`, listener)
+        ipcRenderer.send(`${ASSISTANT_CHANNEL}ready`)
+        return () => ipcRenderer.removeListener(`${ASSISTANT_CHANNEL}trigger`, listener)
+      },
+      trigger: (action) => ipcRenderer.send(`${ASSISTANT_CHANNEL}trigger`, action),
+      focusMain: () => ipcRenderer.send(`${ASSISTANT_CHANNEL}focus-main`),
+      publishQuickDictate: (state) => ipcRenderer.send(`${ASSISTANT_CHANNEL}publish`, state),
+      onQuickDictateCommand: (handler) => {
+        const listener = (_event: unknown, command: QuickDictateCommand) => handler(command)
+        ipcRenderer.on(`${ASSISTANT_CHANNEL}pill-command`, listener)
+        return () => ipcRenderer.removeListener(`${ASSISTANT_CHANNEL}pill-command`, listener)
+      },
+      subscribeQuickDictate: (handler) => {
+        const listener = (_event: unknown, state: QuickDictateState | null) => handler(state)
+        ipcRenderer.on(`${ASSISTANT_CHANNEL}pill-state`, listener)
+        ipcRenderer.send(`${ASSISTANT_CHANNEL}pill-ready`)
+        return () => ipcRenderer.removeListener(`${ASSISTANT_CHANNEL}pill-state`, listener)
+      },
+      sendQuickDictateCommand: (command) => ipcRenderer.send(`${ASSISTANT_CHANNEL}pill-command`, command),
+    } satisfies AssistantAPI,
     dictation: {
       availability: () => ipcRenderer.invoke('jaz:dictation:availability'),
       start: (id) => ipcRenderer.invoke('jaz:dictation:start', id),

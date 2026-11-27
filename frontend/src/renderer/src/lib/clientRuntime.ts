@@ -2,6 +2,7 @@ import type { BrowserNavigationDirection } from '../../../shared/browserNavigati
 import type { NotchAccess, NotificationConfig } from '../../../shared/notifications'
 import type { UpdateStatus } from '../../../shared/update'
 import type { VoiceOverlayAPI } from '@shared/voice'
+import type { AssistantAPI } from '@shared/assistant'
 import type { WindowKind } from '@shared/windowKind'
 import type { ConnectionSessionAPI } from '@shared/connectionSession'
 import type { DesktopAppsAPI } from '@shared/desktopApps'
@@ -17,6 +18,7 @@ export interface ClientRuntime {
   connectionSession?: ConnectionSessionAPI
   desktopApps?: DesktopAppsAPI
   voiceOverlay?: VoiceOverlayAPI
+  assistant?: AssistantAPI
   kind: ClientRuntimeKind
   platform: ClientPlatform
   deviceKind: ClientPlatform
@@ -129,6 +131,7 @@ function createRuntime(): ClientRuntime {
       onBrowserCloseShortcut: electron.onBrowserCloseShortcut,
       onPreviewFindShortcut: electron.onPreviewFindShortcut,
       voiceOverlay: electron.voiceOverlay,
+      assistant: electron.assistant,
     }
   }
   return {

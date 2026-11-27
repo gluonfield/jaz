@@ -18,6 +18,7 @@ import type { VoiceOverlayAPI } from '@shared/voice'
 import type { ConnectionSessionAPI } from '@shared/connectionSession'
 import type { FileActionsAPI, InspectDroppedFile } from '@shared/fileActions'
 import type { DesktopAppsAPI } from '@shared/desktopApps'
+import type { AssistantAPI } from '@shared/assistant'
 
 declare global {
   interface Window {
@@ -31,6 +32,7 @@ declare global {
       permissionGuide: PermissionGuideAPI
       voiceOverlay: VoiceOverlayAPI
       island: IslandAPI
+      assistant: AssistantAPI
       dictation: DictationAPI
       browserProfiles: BrowserProfileAPI
       browserPasswords: BrowserPasswordAPI

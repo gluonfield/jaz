@@ -49,6 +49,8 @@ import {
   parseDesktopAppDeepLink,
   type DesktopAppsController,
 } from '@main/desktopApps'
+import { createAssistant } from '@main/assistant'
+import { extractAssistantDeepLinkArg, parseAssistantDeepLink } from '@shared/assistant'
 import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
@@ -85,10 +87,18 @@ if (app.isPackaged) {
 let mainWindow: BrowserWindow | null = null
 let desktopApps: DesktopAppsController | null = null
 let pendingAppDeepLink: string | null = extractDesktopAppDeepLinkArg(process.argv)
+let pendingAssistantDeepLink = extractAssistantDeepLinkArg(process.argv)
 const oidcGate = createOidcCallbackGate()
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
 const notifications = createNotifications(openInMain)
+const assistant = createAssistant(
+  () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
+  () => {
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow()
+    return mainWindow!
+  },
+)
 const cloudConfig = readNodeCloudConfig(process.env)
 const connectionSession = createConnectionSession({
   rendererPath,
@@ -99,6 +109,12 @@ const connectionSession = createConnectionSession({
 
 app.on('open-url', (event, url) => {
   event.preventDefault()
+  const assistantAction = parseAssistantDeepLink(url)
+  if (assistantAction) {
+    if (app.isReady()) assistant.dispatch(assistantAction)
+    else pendingAssistantDeepLink = assistantAction
+    return
+  }
   const appId = parseDesktopAppDeepLink(url)
   if (appId) {
     if (desktopApps) desktopApps.openAppWindow(appId)
@@ -109,6 +125,11 @@ app.on('open-url', (event, url) => {
 })
 
 app.on('second-instance', (_event, argv) => {
+  const assistantAction = extractAssistantDeepLinkArg(argv)
+  if (assistantAction) {
+    assistant.dispatch(assistantAction)
+    return
+  }
   const appId = extractDesktopAppDeepLinkArg(argv)
   if (appId) {
     if (desktopApps) desktopApps.openAppWindow(appId)
@@ -251,6 +272,7 @@ function createWindow(): void {
 
   mainWindow = win
   connectionSession.attach(win, true)
+  assistant.attach(win)
   attachVoiceOverlay(win)
   attachWindowLifecycle(win, { label: 'main', onDidFinishLoad: () => updates.sendStatusTo(win) })
   attachBrowserNavigationCommands(win)
@@ -456,6 +478,11 @@ if (singleInstanceLock) {
   }
   setupLauncher((window) => connectionSession.attach(window))
   createWindow()
+  if (pendingAssistantDeepLink) {
+    const action = pendingAssistantDeepLink
+    pendingAssistantDeepLink = null
+    assistant.dispatch(action)
+  }
   if (pendingAppDeepLink && desktopApps) {
     const id = pendingAppDeepLink
     pendingAppDeepLink = null
@@ -480,6 +507,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   oidcGate.clear()
   notifications.stop()
+  assistant.teardown()
   desktopApps?.teardown()
   teardownLauncher()
   stopLocalBackend('before_quit')
