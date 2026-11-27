@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
-import { BrowserWindow, ipcMain, screen, type Display, type IpcMainEvent } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, type Display, type IpcMainEvent } from 'electron'
 import {
   ASSISTANT_CHANNEL,
   parseAssistantAction,
@@ -9,9 +9,9 @@ import {
   type QuickDictatePublishState,
   type QuickDictateState,
 } from '@shared/assistant'
-import { ISLAND_CAPSULE_WIDTH, ISLAND_EAR_WIDTH, ISLAND_HEIGHT, ISLAND_RETRACT_MS } from '@shared/notifications'
+import { ISLAND_RETRACT_MS } from '@shared/notifications'
 import { restoreWindowContentsFocus } from './diagnostics'
-import { islandShape } from './islandPolicy'
+import { islandBounds, islandShape } from './islandPolicy'
 import { notchStatus } from './notchHelper'
 
 type Placement = {
@@ -27,6 +27,19 @@ function playCue(sound: string): void {
   spawn('afplay', [sound], { stdio: 'ignore' }).on('error', () => {})
 }
 
+function isQuickDictateCommand(value: unknown): value is QuickDictateCommand {
+  if (!value || typeof value !== 'object' || !('type' in value)) return false
+  const cmd = value as { type: unknown; inside?: unknown }
+  if (cmd.type === 'send' || cmd.type === 'cancel' || cmd.type === 'open') return true
+  return cmd.type === 'hover' && typeof cmd.inside === 'boolean'
+}
+
+function isQuickDictatePublishState(value: unknown): value is QuickDictatePublishState {
+  if (!value || typeof value !== 'object') return false
+  const s = value as Record<string, unknown>
+  return typeof s.phase === 'string' && typeof s.botName === 'string' && typeof s.text === 'string' && typeof s.level === 'number'
+}
+
 async function resolvePlacement(): Promise<Placement> {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
   if (process.platform !== 'darwin') {
@@ -38,25 +51,10 @@ async function resolvePlacement(): Promise<Placement> {
   return { display, notch: shape === 'notch' ? notch : null }
 }
 
-function pillBounds({ display, notch }: Placement) {
-  if (notch) {
-    return {
-      x: display.bounds.x + notch.x - ISLAND_EAR_WIDTH,
-      y: display.bounds.y,
-      width: notch.width + 2 * ISLAND_EAR_WIDTH,
-      height: ISLAND_HEIGHT,
-    }
-  }
-  const { workArea } = display
-  return {
-    x: Math.round(workArea.x + (workArea.width - ISLAND_CAPSULE_WIDTH) / 2),
-    y: workArea.y + 8,
-    width: ISLAND_CAPSULE_WIDTH,
-    height: ISLAND_HEIGHT,
-  }
-}
-
-export function createAssistant(getMainWindow: () => BrowserWindow | null, ensureMainWindow: () => BrowserWindow) {
+export function createAssistant(
+  getMainWindow: () => BrowserWindow | null,
+  ensureMainWindow: (showOnReady?: boolean) => BrowserWindow,
+) {
   let owner: BrowserWindow | null = null
   let ownerReady = false
   let ownerThrottled = true
@@ -64,6 +62,7 @@ export function createAssistant(getMainWindow: () => BrowserWindow | null, ensur
   let pill: BrowserWindow | null = null
   let pillLoaded = false
   let placement: Placement | null = null
+  let placementReady = false
   let current: QuickDictatePublishState | null = null
   let hideTimer: NodeJS.Timeout | null = null
   let hovering = false
@@ -85,6 +84,7 @@ export function createAssistant(getMainWindow: () => BrowserWindow | null, ensur
 
   const publishToPill = () => {
     if (!pill || pill.isDestroyed() || !pillLoaded) return
+    if (current && !placementReady) return
     pill.webContents.send(`${ASSISTANT_CHANNEL}pill-state`, pillState())
   }
 
@@ -148,6 +148,7 @@ export function createAssistant(getMainWindow: () => BrowserWindow | null, ensur
     current = next
     if (!next) {
       placementSerial += 1
+      placementReady = false
       hovering = false
       pill?.setIgnoreMouseEvents(true, { forward: true })
       publishToPill()
@@ -167,12 +168,14 @@ export function createAssistant(getMainWindow: () => BrowserWindow | null, ensur
       hideTimer = null
     }
     if (!wasActive) {
+      placementReady = false
       const serial = ++placementSerial
       void resolvePlacement().then((resolved) => {
         if (!current || serial !== placementSerial) return
         placement = resolved
+        placementReady = true
         const win = ensurePill()
-        win.setBounds(pillBounds(resolved))
+        win.setBounds(islandBounds(resolved.display, resolved.notch))
         win.showInactive()
         publishToPill()
       })
@@ -189,7 +192,7 @@ export function createAssistant(getMainWindow: () => BrowserWindow | null, ensur
   }
 
   function focusMain(): void {
-    const win = getMainWindow() ?? ensureMainWindow()
+    const win = getMainWindow() ?? ensureMainWindow(true)
     if (win.isDestroyed()) return
     if (win.isMinimized()) win.restore()
     win.show()
@@ -213,30 +216,31 @@ export function createAssistant(getMainWindow: () => BrowserWindow | null, ensur
     focusMain()
   }
 
-  const onPublish = (event: IpcMainEvent, state: QuickDictatePublishState | null) => {
+  const onPublish = (event: IpcMainEvent, raw: unknown) => {
     if (!isOwner(event)) return
-    updatePill(state)
+    if (raw === null) updatePill(null)
+    else if (isQuickDictatePublishState(raw)) updatePill(raw)
   }
 
   const onPillReady = (event: IpcMainEvent) => {
     if (!isPill(event)) return
     pillLoaded = true
     publishToPill()
-    if (current && placement && pill && !pill.isDestroyed() && !pill.isVisible()) {
+    if (current && placementReady && pill && !pill.isDestroyed() && !pill.isVisible()) {
       pill.showInactive()
     }
   }
 
-  const onPillCommand = (event: IpcMainEvent, command: QuickDictateCommand) => {
-    if (!isPill(event) || !command) return
-    if (command.type === 'hover') {
-      if (command.inside === hovering) return
-      hovering = command.inside
+  const onPillCommand = (event: IpcMainEvent, raw: unknown) => {
+    if (!isPill(event) || !isQuickDictateCommand(raw)) return
+    if (raw.type === 'hover') {
+      if (raw.inside === hovering) return
+      hovering = raw.inside
       pill?.setIgnoreMouseEvents(!hovering, { forward: true })
       return
     }
     if (owner && !owner.isDestroyed()) {
-      owner.webContents.send(`${ASSISTANT_CHANNEL}pill-command`, command)
+      owner.webContents.send(`${ASSISTANT_CHANNEL}pill-command`, raw)
     }
   }
 
@@ -249,8 +253,9 @@ export function createAssistant(getMainWindow: () => BrowserWindow | null, ensur
 
   function dispatch(action: AssistantAction): void {
     pending = action
+    if (!app.isReady()) return
     if (!owner || owner.isDestroyed()) {
-      ensureMainWindow()
+      ensureMainWindow(action.mode === 'voice')
       return
     }
     flushPending()

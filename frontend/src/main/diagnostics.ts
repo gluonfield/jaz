@@ -14,6 +14,7 @@ const WINDOW_SHOW_FALLBACK_MS = 3_000
 
 type WindowLifecycleOptions = {
   label: string
+  showOnReady?: boolean
   onDidFinishLoad?: () => void
 }
 
@@ -54,11 +55,11 @@ export function installMainDiagnostics(): void {
 }
 
 export function attachWindowLifecycle(win: BrowserWindow, options: WindowLifecycleOptions): void {
-  const { label, onDidFinishLoad } = options
+  const { label, showOnReady = true, onDidFinishLoad } = options
   let shown = false
 
   const show = (reason: string): void => {
-    if (win.isDestroyed()) return
+    if (!showOnReady || win.isDestroyed()) return
     if (!win.isVisible()) win.show()
     if (shown || !win.isVisible()) return
     shown = true

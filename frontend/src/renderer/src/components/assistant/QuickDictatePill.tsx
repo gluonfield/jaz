@@ -86,7 +86,7 @@ function Pill({ state, open }: { state: QuickDictateState; open: boolean }) {
       className={`group absolute top-0 left-1/2 w-(--width) -translate-x-1/2 text-white starting:w-(--closed) starting:opacity-0 starting:[--island-open:0] ${reduced ? 'duration-150!' : ''} ${open ? '' : 'pointer-events-none opacity-0'} ${shown ? '[--island-open:1]' : ''}`}
       style={
         {
-          '--width': `${shown ? Math.max(fit, width) : closed}px`,
+          '--width': `${shown ? fit : closed}px`,
           '--closed': `${closed}px`,
           height: band + card,
           borderRadius: notch ? `0 0 ${radius}px ${radius}px` : radius,

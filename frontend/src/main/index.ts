@@ -87,18 +87,19 @@ if (app.isPackaged) {
 let mainWindow: BrowserWindow | null = null
 let desktopApps: DesktopAppsController | null = null
 let pendingAppDeepLink: string | null = extractDesktopAppDeepLinkArg(process.argv)
-let pendingAssistantDeepLink = extractAssistantDeepLinkArg(process.argv)
 const oidcGate = createOidcCallbackGate()
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
 const notifications = createNotifications(openInMain)
 const assistant = createAssistant(
   () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
-  () => {
-    if (!mainWindow || mainWindow.isDestroyed()) createWindow()
+  (showOnReady = true) => {
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow(showOnReady)
     return mainWindow!
   },
 )
+const initialAssistantAction = extractAssistantDeepLinkArg(process.argv)
+if (initialAssistantAction) assistant.dispatch(initialAssistantAction)
 const cloudConfig = readNodeCloudConfig(process.env)
 const connectionSession = createConnectionSession({
   rendererPath,
@@ -111,8 +112,7 @@ app.on('open-url', (event, url) => {
   event.preventDefault()
   const assistantAction = parseAssistantDeepLink(url)
   if (assistantAction) {
-    if (app.isReady()) assistant.dispatch(assistantAction)
-    else pendingAssistantDeepLink = assistantAction
+    assistant.dispatch(assistantAction)
     return
   }
   const appId = parseDesktopAppDeepLink(url)
@@ -247,7 +247,7 @@ app.on('web-contents-created', (_event, contents) => {
   attachWindowOpenHandler(contents, shell.openExternal, (url) => openPreviewURL(url, contents))
 })
 
-function createWindow(): void {
+function createWindow(showOnReady = true): void {
   const mac = process.platform === 'darwin'
   // Opens filling the screen the pointer is on, under the boot splash.
   const { x, y, width, height } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
@@ -274,7 +274,7 @@ function createWindow(): void {
   connectionSession.attach(win, true)
   assistant.attach(win)
   attachVoiceOverlay(win)
-  attachWindowLifecycle(win, { label: 'main', onDidFinishLoad: () => updates.sendStatusTo(win) })
+  attachWindowLifecycle(win, { label: 'main', showOnReady, onDidFinishLoad: () => updates.sendStatusTo(win) })
   attachBrowserNavigationCommands(win)
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
@@ -478,11 +478,6 @@ if (singleInstanceLock) {
   }
   setupLauncher((window) => connectionSession.attach(window))
   createWindow()
-  if (pendingAssistantDeepLink) {
-    const action = pendingAssistantDeepLink
-    pendingAssistantDeepLink = null
-    assistant.dispatch(action)
-  }
   if (pendingAppDeepLink && desktopApps) {
     const id = pendingAppDeepLink
     pendingAppDeepLink = null

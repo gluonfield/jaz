@@ -6,6 +6,7 @@ import { ISLAND_CAPSULE_WIDTH, ISLAND_HEIGHT } from '../shared/notifications'
 
 if (process.env.JAZ_ASSISTANT_TEST_CHILD === '1') {
   Object.defineProperty(process, 'platform', { value: 'darwin' })
+  let appReady = false
   let notchReply = {
     model: 'Mac16,5',
     screens: [{ id: 1, notch: { x: 918, width: 220, height: 38 } }],
@@ -17,6 +18,7 @@ if (process.env.JAZ_ASSISTANT_TEST_CHILD === '1') {
   let internalDisplay = true
   const listeners = new Map()
   const windows = []
+  const ensured = []
 
   const emitIpc = (channel, event, ...args) => {
     for (const handler of listeners.get(channel) ?? []) handler(event, ...args)
@@ -31,7 +33,7 @@ if (process.env.JAZ_ASSISTANT_TEST_CHILD === '1') {
   }))
 
   mock.module('electron', () => ({
-    app: { isPackaged: true, getAppPath: () => '/Jaz' },
+    app: { isPackaged: true, isReady: () => appReady, getAppPath: () => '/Jaz' },
     ipcMain: {
       on(channel, handler) {
         const list = listeners.get(channel) ?? []
@@ -117,12 +119,26 @@ if (process.env.JAZ_ASSISTANT_TEST_CHILD === '1') {
   const { BrowserWindow } = await import('electron')
   const { createAssistant } = await import('./assistant')
 
-  test('queues assistant deep links until renderer is ready and keeps Mode B non-activating even when Focus/Notifications are blocked', async () => {
-    const main = new BrowserWindow({})
-    const assistant = createAssistant(() => main, () => main)
-    assistant.attach(main)
+  test('queues pre-ready deep links, creates hidden window for Mode B when closed, and places top pill without focusing Jaz', async () => {
+    let main = null
+    const assistant = createAssistant(
+      () => main,
+      (showOnReady) => {
+        ensured.push(showOnReady)
+        main = new BrowserWindow({})
+        assistant.attach(main)
+        return main
+      },
+    )
 
+    // Pre-ready cold launch queues without trying to create a window yet.
     assistant.dispatch({ mode: 'dictate' })
+    expect(ensured).toEqual([])
+
+    // Ready + no main window: Mode B requests a hidden main window (showOnReady: false).
+    appReady = true
+    assistant.dispatch({ mode: 'dictate' })
+    expect(ensured).toEqual([false])
     expect(main.sent).toEqual([])
     expect(main.focused).toBe(0)
 
