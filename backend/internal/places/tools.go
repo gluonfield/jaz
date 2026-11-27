@@ -1,4 +1,4 @@
-package maps
+package places
 
 import (
 	"context"
@@ -100,9 +100,9 @@ func (t *MCPTools) Show(ctx context.Context, req *mcp.CallToolRequest, input Sho
 // locate tries the place's name with its address, then the address alone,
 // since a street address resolves where a venue's name is unknown to OSM.
 func (t *MCPTools) locate(ctx context.Context, place sessionevents.Place) (Match, bool, error) {
-	queries := []string{strings.Trim(place.Name+", "+place.Address, ", ")}
+	queries := []string{place.Name}
 	if place.Address != "" {
-		queries = append(queries, place.Address)
+		queries = []string{place.Name + ", " + place.Address, place.Address}
 	}
 	for _, query := range queries {
 		match, ok, err := t.Geocoder.Geocode(ctx, query)

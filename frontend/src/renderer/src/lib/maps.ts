@@ -81,7 +81,3 @@ export function directionsURL(place: MapPlace): string {
 export function googleMapsURL(place: MapPlace): string {
   return `https://www.google.com/maps/search/?${new URLSearchParams({ api: '1', query: destination(place) })}`
 }
-
-export function mapStyleURL(theme: 'light' | 'dark'): string {
-  return `https://tiles.openfreemap.org/styles/${theme === 'dark' ? 'dark' : 'positron'}`
-}

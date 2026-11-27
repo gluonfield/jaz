@@ -3,7 +3,7 @@ import './map.css'
 import { LngLatBounds, Map as MapLibre, Marker, NavigationControl, setWorkerUrl, type MapOptions } from 'maplibre-gl'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { useEffect, useRef, useState } from 'react'
-import { mapStyleURL, type MapPlace } from '@/lib/maps'
+import type { MapPlace } from '@/lib/maps'
 import { useTheme } from '@/lib/theme'
 
 // The worker's default location is resolved from import.meta.url, which is
@@ -13,6 +13,10 @@ setWorkerUrl(workerUrl)
 const PIN = 'group/pin cursor-pointer p-1 outline-none'
 const PIN_FACE =
   'grid size-6 place-items-center rounded-full bg-ink text-[11px] font-semibold tabular-nums text-bg shadow-raised ring-2 ring-bg transition-[scale,background-color,color] duration-150 ease-out group-hover/pin:scale-110 group-focus-visible/pin:ring-primary group-data-[active=true]/pin:scale-[1.2] group-data-[active=true]/pin:bg-primary group-data-[active=true]/pin:text-on-primary'
+
+function styleURL(theme: 'light' | 'dark'): string {
+  return `https://tiles.openfreemap.org/styles/${theme === 'dark' ? 'dark' : 'positron'}`
+}
 
 function camera(places: MapPlace[]): Pick<MapOptions, 'center' | 'zoom' | 'bounds' | 'fitBoundsOptions'> {
   if (places.length === 1) return { center: [places[0].longitude, places[0].latitude], zoom: 15 }
@@ -33,7 +37,7 @@ export default function MapCanvas({ places, selected, highlighted, onSelect }: {
   const select = useRef(onSelect)
   select.current = onSelect
   const { resolved } = useTheme()
-  const style = useRef(mapStyleURL(resolved))
+  const style = useRef(styleURL(resolved))
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
@@ -53,13 +57,9 @@ export default function MapCanvas({ places, selected, highlighted, onSelect }: {
       setFailed(true)
       return
     }
-    let loaded = false
-    instance.once('load', () => {
-      loaded = true
-    })
-    instance.on('error', () => {
-      if (!loaded) setFailed(true)
-    })
+    const fail = () => setFailed(true)
+    instance.on('error', fail)
+    instance.once('load', () => instance.off('error', fail))
     instance.touchZoomRotate.disableRotation()
     instance.addControl(new NavigationControl({ showCompass: false }), 'top-right')
     pins.current = places.map((place, index) => {
@@ -86,7 +86,7 @@ export default function MapCanvas({ places, selected, highlighted, onSelect }: {
   }, [places])
 
   useEffect(() => {
-    const next = mapStyleURL(resolved)
+    const next = styleURL(resolved)
     if (next === style.current) return
     style.current = next
     map.current?.setStyle(next)
@@ -107,8 +107,10 @@ export default function MapCanvas({ places, selected, highlighted, onSelect }: {
     instance.easeTo({ center: [place.longitude, place.latitude], zoom: Math.max(instance.getZoom(), 14), duration: 450 })
   }, [selected, places])
 
-  if (failed) {
-    return <p className="grid h-full place-items-center px-6 text-center text-[12.5px] text-ink-3">The map could not load. The places and their directions are below.</p>
-  }
-  return <div ref={container} className="jaz-map h-full w-full" />
+  return (
+    <>
+      <div ref={container} className="jaz-map isolate h-full w-full" />
+      {failed ? <p className="absolute inset-0 grid place-items-center bg-surface px-6 text-center text-[12.5px] text-ink-3">The map could not load. The places and their directions are below.</p> : null}
+    </>
+  )
 }

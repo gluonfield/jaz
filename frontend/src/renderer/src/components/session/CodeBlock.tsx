@@ -107,10 +107,11 @@ export function CodeBlock({ node, children }: ComponentProps<'pre'> & ExtraProps
   const code = codeChild(node)
   const language = languageFromClass(code?.properties?.className)
   const text = nodeText(code).replace(/\n$/, '')
-  const isMermaid = language.toLowerCase() === 'mermaid'
+  const fence = language.toLowerCase()
+  const isMermaid = fence === 'mermaid'
   const artifacts = useContext(MarkdownArtifactContext)
-  const isArtifact = language.toLowerCase() === 'jaz-artifact' && artifacts.mode !== 'source'
-  const map = useMemo(() => (language.toLowerCase() === 'jaz-map' ? parseMapFence(text) : undefined), [language, text])
+  const isArtifact = fence === 'jaz-artifact' && artifacts.mode !== 'source'
+  const map = useMemo(() => (fence === 'jaz-map' ? parseMapFence(text) : undefined), [fence, text])
   const highlighted = useHighlightedCode(isMermaid || isArtifact || map ? '' : language, text)
 
   if (!code) return <pre>{children}</pre>

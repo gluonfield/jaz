@@ -1,4 +1,4 @@
-package maps
+package places
 
 import (
 	"context"
@@ -53,7 +53,7 @@ func (p *Photon) Geocode(ctx context.Context, query string) (Match, bool, error)
 			Geometry struct {
 				Coordinates []float64 `json:"coordinates"`
 			} `json:"geometry"`
-			Properties map[string]any `json:"properties"`
+			Properties photonPlace `json:"properties"`
 		} `json:"features"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -66,17 +66,21 @@ func (p *Photon) Geocode(ctx context.Context, query string) (Match, bool, error)
 	return Match{
 		Latitude:  feature.Geometry.Coordinates[1],
 		Longitude: feature.Geometry.Coordinates[0],
-		Label:     label(feature.Properties),
+		Label:     feature.Properties.label(),
 	}, true, nil
 }
 
-func label(properties map[string]any) string {
-	text := func(key string) string {
-		value, _ := properties[key].(string)
-		return value
-	}
+type photonPlace struct {
+	Name        string
+	HouseNumber string
+	Street      string
+	City        string
+	Country     string
+}
+
+func (p photonPlace) label() string {
 	parts := []string{}
-	for _, part := range []string{text("name"), strings.TrimSpace(text("housenumber") + " " + text("street")), text("city"), text("country")} {
+	for _, part := range []string{p.Name, strings.TrimSpace(p.HouseNumber + " " + p.Street), p.City, p.Country} {
 		if part != "" {
 			parts = append(parts, part)
 		}

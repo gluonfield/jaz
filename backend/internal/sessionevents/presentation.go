@@ -74,23 +74,25 @@ func (p *PresentationEvent) UnmarshalJSON(data []byte) error {
 			p.Artifact = &old.ArtifactEvent
 		}
 	}
+	// A presentation keeps only the payload its kind names.
+	artifact, view, placeMap := p.Artifact, p.View, p.Map
+	p.Artifact, p.View, p.Map = nil, nil, nil
 	switch p.Kind {
 	case PresentationCanvas:
-		p.Artifact, p.View, p.Map = nil, nil, nil
 		return nil
 	case PresentationArtifact:
-		if p.Artifact != nil && p.Artifact.Title != "" && p.Artifact.WidgetCode != "" {
-			p.View, p.Map = nil, nil
+		if artifact != nil && artifact.Title != "" && artifact.WidgetCode != "" {
+			p.Artifact = artifact
 			return nil
 		}
 	case PresentationPluginView:
-		if p.View != nil && p.View.Title != "" && p.View.WidgetCode != "" && p.View.File != "" {
-			p.Artifact, p.Map = nil, nil
+		if view != nil && view.Title != "" && view.WidgetCode != "" && view.File != "" {
+			p.View = view
 			return nil
 		}
 	case PresentationMap:
-		if p.Map != nil && len(p.Map.Places) > 0 {
-			p.Artifact, p.View = nil, nil
+		if placeMap != nil && len(placeMap.Places) > 0 {
+			p.Map = placeMap
 			return nil
 		}
 	}
