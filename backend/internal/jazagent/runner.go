@@ -162,12 +162,15 @@ func ToolDefinitionsForSurface(registry *tools.Registry, surface string) []tools
 	})
 }
 
+// A routine run on a board publishes its tile's app with the native
+// publish_app, which stands in for the inline renderer and for the library
+// publish_app that jaztools serves under a prefixed name.
 func includeToolForArtifactSurface(name, surface string) bool {
-	onBoard := visualize.NormalizeSurface(surface) == visualize.SurfaceWidget
-	if name == widgets.PublishMCPToolName {
-		return onBoard
+	boardPublish := name == widgets.PublishMCPToolName
+	if visualize.NormalizeSurface(surface) != visualize.SurfaceWidget {
+		return !boardPublish
 	}
-	return !onBoard || !matchesToolName(name, visualize.ShowArtifactMCPToolName) && !matchesToolName(name, widgets.PublishMCPToolName)
+	return boardPublish || !matchesToolName(name, visualize.ShowArtifactMCPToolName) && !matchesToolName(name, widgets.PublishMCPToolName)
 }
 
 func matchesToolName(name, candidate string) bool {

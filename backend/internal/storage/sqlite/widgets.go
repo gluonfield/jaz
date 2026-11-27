@@ -71,7 +71,6 @@ func upsertWidgetParams(widget widgets.Widget) widgetdb.UpsertWidgetParams {
 		ID:             widget.ID,
 		LoopID:         widget.LoopID,
 		Title:          widget.Title,
-		CurrentVersion: int64(widget.CurrentVersion),
 		SizeHint:       widget.SizeHint,
 		LastError:      nullDBString(widget.LastError),
 		LastLayout:     widget.LastLayout,
@@ -82,20 +81,16 @@ func upsertWidgetParams(widget widgets.Widget) widgetdb.UpsertWidgetParams {
 	}
 }
 
-func (s *Store) LoadWidgetVersion(widgetID string, version int) (widgets.Version, error) {
-	row, err := widgetdb.New(s.db).GetWidgetVersion(context.Background(), widgetdb.GetWidgetVersionParams{
-		WidgetID: widgetID,
-		Version:  int64(version),
-	})
+func (s *Store) ListLegacyWidgetHTML() ([]widgets.LegacyHTML, error) {
+	rows, err := widgetdb.New(s.db).ListLegacyWidgetHTML(context.Background(), string(loops.StatusDeleted))
 	if err != nil {
-		return widgets.Version{}, err
+		return nil, err
 	}
-	return widgets.Version{
-		WidgetID:  row.WidgetID,
-		Version:   int(row.Version),
-		HTML:      row.Html,
-		CreatedAt: msToTime(row.CreatedAtMs),
-	}, nil
+	out := make([]widgets.LegacyHTML, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, widgets.LegacyHTML{WidgetID: row.ID, LoopID: row.LoopID, Title: row.Title, HTML: row.Html})
+	}
+	return out, nil
 }
 
 func (s *Store) DeleteWidgetVersions(widgetID string) error {
@@ -284,7 +279,6 @@ func widgetFromDB(row widgetdb.Widget) widgets.Widget {
 		WorkspaceID:    firstNonEmpty(row.WorkspaceID, storage.LocalWorkspaceID),
 		LoopID:         row.LoopID,
 		Title:          row.Title,
-		CurrentVersion: int(row.CurrentVersion),
 		SizeHint:       row.SizeHint,
 		LastError:      row.LastError.String,
 		LastLayout:     row.LastLayout,

@@ -119,42 +119,43 @@ func TestAssignedLoopPublishesItsAppOntoTheBoard(t *testing.T) {
 	}
 }
 
-func TestPublishReplacesHTMLFromBeforeTilesWereApps(t *testing.T) {
+func TestAdoptLegacyHTMLTurnsOldTileHTMLIntoTheLoopApp(t *testing.T) {
 	service, store, loop := newTestService(t)
 	board := makeBoard(t, service, "Desk")
 	widget, err := service.AssignLoopBoards(loop, []string{board.ID})
 	if err != nil {
 		t.Fatalf("assign: %v", err)
 	}
-	widget.CurrentVersion = 4
-	if err := store.SaveWidget(widget); err != nil {
-		t.Fatalf("save widget: %v", err)
-	}
 	db, err := sql.Open("sqlite", filepath.Join(store.RootDir(), "jaz.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`INSERT INTO widget_versions (widget_id, version, html, created_at_ms) VALUES (?, 4, '<p>old</p>', 1)`, widget.ID); err != nil {
-		t.Fatalf("seed version: %v", err)
+	if _, err := db.Exec(`INSERT INTO widget_versions (widget_id, version, html, created_at_ms) VALUES (?, 3, '<p>stale</p>', 1), (?, 4, '<p>old</p>', 2)`, widget.ID, widget.ID); err != nil {
+		t.Fatalf("seed versions: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE widgets SET current_version = 4 WHERE id = ?`, widget.ID); err != nil {
+		t.Fatalf("seed widget: %v", err)
 	}
 
-	// Until the loop runs again the tile still shows what it published before.
+	// A second pass finds nothing left to convert.
+	for range 2 {
+		if err := service.AdoptLegacyHTML(context.Background()); err != nil {
+			t.Fatalf("adopt: %v", err)
+		}
+	}
+	app := loopApp(t, store, loop)
+	version, err := store.GetAppVersion(context.Background(), app.ID, 1)
+	if err != nil {
+		t.Fatalf("app version: %v", err)
+	}
+	html, err := os.ReadFile(filepath.Join(version.StorageDir, version.EntryPath))
+	if err != nil || string(html) != "<p>old</p>" {
+		t.Fatalf("app content = %q (%v)", html, err)
+	}
 	items, err := service.ListBoardItems(board.ID)
-	if err != nil || len(items) != 1 || items[0].AppID != "" || items[0].CurrentVersion != 4 {
-		t.Fatalf("tile before the next run = %+v (%v)", items, err)
-	}
-	if old, err := store.LoadWidgetVersion(widget.ID, 4); err != nil || old.HTML != "<p>old</p>" {
-		t.Fatalf("old html = %+v (%v)", old, err)
-	}
-
-	published := publish(t, service, loop, "run-1", widgets.PublishInput{HTML: "<p>new</p>"})
-	items, err = service.ListBoardItems(board.ID)
-	if err != nil || len(items) != 1 || items[0].AppID != published.App.ID || items[0].CurrentVersion != 1 {
-		t.Fatalf("tile after the next run = %+v (%v)", items, err)
-	}
-	if _, err := store.LoadWidgetVersion(widget.ID, 4); err == nil {
-		t.Fatal("replaced html survived the publish")
+	if err != nil || len(items) != 1 || items[0].AppID != app.ID || items[0].CurrentVersion != 1 || items[0].Title != loop.Name {
+		t.Fatalf("tile = %+v (%v)", items, err)
 	}
 }
 

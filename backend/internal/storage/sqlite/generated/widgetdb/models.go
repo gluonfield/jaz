@@ -34,11 +34,3 @@ type Widget struct {
 	WorkspaceID    string         `json:"workspace_id"`
 	PublishedRunID string         `json:"published_run_id"`
 }
-
-type WidgetVersion struct {
-	WidgetID        string         `json:"widget_id"`
-	Version         int64          `json:"version"`
-	Html            string         `json:"html"`
-	ProducedByRunID sql.NullString `json:"produced_by_run_id"`
-	CreatedAtMs     int64          `json:"created_at_ms"`
-}

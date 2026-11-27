@@ -198,8 +198,6 @@ func (s *Service) Publish(ctx context.Context, loop loops.Loop, runID, sessionID
 	if hint := normalizeSizeHint(input.SizeHint); hint != "" {
 		widget.SizeHint = hint
 	}
-	legacy := widget.CurrentVersion > 0
-	widget.CurrentVersion = 0
 	widget.PublishedRunID = runID
 	widget.LastError = ""
 	widget.LastLayout = ""
@@ -207,13 +205,30 @@ func (s *Service) Publish(ctx context.Context, loop loops.Loop, runID, sessionID
 	if err := s.Repo.SaveWidget(widget); err != nil {
 		return Published{}, err
 	}
-	if legacy {
-		if err := s.Repo.DeleteWidgetVersions(widget.ID); err != nil {
-			s.Log.Warn("deleting replaced widget versions failed", "widget", widget.ID, "error", err)
-		}
-	}
 	s.applySizeHintLocked(widget, boards, now)
 	return Published{App: app, SizeHint: widget.SizeHint, Warnings: LintHTML(html)}, nil
+}
+
+// AdoptLegacyHTML turns HTML that routines published before tiles became apps
+// into their apps. Each conversion deletes its source, so a routine converts
+// once.
+func (s *Service) AdoptLegacyHTML(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	legacy, err := s.Repo.ListLegacyWidgetHTML()
+	if err != nil {
+		return err
+	}
+	for _, tile := range legacy {
+		if _, err := s.apps.PublishLoopApp(ctx, tile.LoopID, tile.Title, tile.HTML, ""); err != nil {
+			s.Log.Warn("converting board tile to an app failed", "loop", tile.LoopID, "error", err)
+			continue
+		}
+		if err := s.Repo.DeleteWidgetVersions(tile.WidgetID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // StateForLoop reports the loop's tile and assigned boards.
@@ -234,11 +249,8 @@ func (s *Service) LoopPromptExtra(loop loops.Loop, _ loops.Run) string {
 	if err != nil || !found || len(boards) == 0 {
 		return ""
 	}
-	version := widget.CurrentVersion
-	if app, err := s.apps.LoopApp(context.Background(), loop.ID); err == nil {
-		version = app.CurrentVersion
-	}
-	return PromptSection(loop, widget, version)
+	app, _ := s.apps.LoopApp(context.Background(), loop.ID)
+	return PromptSection(loop, widget, app.CurrentVersion)
 }
 
 func (s *Service) LoopArtifactSurface(loop loops.Loop, _ loops.Run) string {

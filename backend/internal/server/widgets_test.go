@@ -1,11 +1,9 @@
 package server
 
 import (
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -150,51 +148,21 @@ func TestBoardsAPIAssignmentFlow(t *testing.T) {
 	}
 }
 
-func TestWidgetContentAndErrorsAPI(t *testing.T) {
+func TestWidgetErrorsAPI(t *testing.T) {
 	srv, store, service := newWidgetTestServer(t)
 	loop := saveTestLoop(t, store, "Inbox")
 	board, err := service.CreateBoard("Desk")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.AssignLoopBoards(loop, []string{board.ID}); err != nil {
-		t.Fatal(err)
-	}
-	widget, _, _, err := service.StateForLoop(loop.ID)
+	widget, err := service.AssignLoopBoards(loop, []string{board.ID})
 	if err != nil {
 		t.Fatal(err)
-	}
-	// HTML published before tiles became apps stays readable until the loop
-	// publishes its app.
-	widget.CurrentVersion = 1
-	if err := store.SaveWidget(widget); err != nil {
-		t.Fatal(err)
-	}
-	db, err := sql.Open("sqlite", filepath.Join(store.RootDir(), "jaz.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`INSERT INTO widget_versions (widget_id, version, html, created_at_ms) VALUES (?, 1, '<p id="hello">hi</p>', 1)`, widget.ID); err != nil {
-		t.Fatal(err)
-	}
-
-	res := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/widgets/"+widget.ID+"/content", nil))
-	if res.Code != http.StatusOK {
-		t.Fatalf("content = %d: %s", res.Code, res.Body.String())
-	}
-	if got := res.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
-		t.Fatalf("content type = %q", got)
-	}
-	body := res.Body.String()
-	if strings.TrimSpace(body) != `<p id="hello">hi</p>` {
-		t.Fatalf("content should be the raw fragment, got: %q", body)
 	}
 
 	report := httptest.NewRequest(http.MethodPost, "/v1/widgets/"+widget.ID+"/errors",
 		strings.NewReader(`{"message":"TypeError: x is undefined"}`))
-	res = httptest.NewRecorder()
+	res := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(res, report)
 	if res.Code != http.StatusOK {
 		t.Fatalf("report error = %d: %s", res.Code, res.Body.String())

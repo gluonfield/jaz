@@ -231,31 +231,6 @@ func (q *Queries) GetWidgetByLoop(ctx context.Context, loopID string) (Widget, e
 	return i, err
 }
 
-const getWidgetVersion = `-- name: GetWidgetVersion :one
-SELECT widget_id, version, html, produced_by_run_id, created_at_ms
-FROM widget_versions
-WHERE widget_id = ?1 AND version = ?2
-LIMIT 1
-`
-
-type GetWidgetVersionParams struct {
-	WidgetID string `json:"widget_id"`
-	Version  int64  `json:"version"`
-}
-
-func (q *Queries) GetWidgetVersion(ctx context.Context, arg GetWidgetVersionParams) (WidgetVersion, error) {
-	row := q.db.QueryRowContext(ctx, getWidgetVersion, arg.WidgetID, arg.Version)
-	var i WidgetVersion
-	err := row.Scan(
-		&i.WidgetID,
-		&i.Version,
-		&i.Html,
-		&i.ProducedByRunID,
-		&i.CreatedAtMs,
-	)
-	return i, err
-}
-
 const listAllPlacements = `-- name: ListAllPlacements :many
 SELECT board_id, widget_id, x, y, w, h, placed_by, created_at_ms, updated_at_ms
 FROM board_widgets
@@ -320,7 +295,7 @@ SELECT
   bw.placed_by,
   CAST(COALESCE(l.id, '') AS TEXT) AS loop_id,
   CAST(COALESCE(a.title, w.title, '') AS TEXT) AS title,
-  CAST(COALESCE(a.current_version, w.current_version, 0) AS INTEGER) AS current_version,
+  CAST(COALESCE(a.current_version, 0) AS INTEGER) AS current_version,
   CAST(COALESCE(w.size_hint, '') AS TEXT) AS size_hint,
   CAST(COALESCE(w.last_error, '') AS TEXT) AS last_error,
   CAST(COALESCE(a.updated_at_ms, w.updated_at_ms, 0) AS INTEGER) AS updated_at_ms,
@@ -477,6 +452,48 @@ func (q *Queries) ListBoardsForWidget(ctx context.Context, widgetID string) ([]s
 	return items, nil
 }
 
+const listLegacyWidgetHTML = `-- name: ListLegacyWidgetHTML :many
+SELECT w.id, w.loop_id, CAST(COALESCE(NULLIF(w.title, ''), l.name) AS TEXT) AS title, v.html
+FROM widgets w
+JOIN loops l ON l.id = w.loop_id AND l.status <> ?1
+JOIN widget_versions v ON v.widget_id = w.id AND v.version = w.current_version
+`
+
+type ListLegacyWidgetHTMLRow struct {
+	ID     string `json:"id"`
+	LoopID string `json:"loop_id"`
+	Title  string `json:"title"`
+	Html   string `json:"html"`
+}
+
+func (q *Queries) ListLegacyWidgetHTML(ctx context.Context, deletedStatus string) ([]ListLegacyWidgetHTMLRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLegacyWidgetHTML, deletedStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLegacyWidgetHTMLRow{}
+	for rows.Next() {
+		var i ListLegacyWidgetHTMLRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LoopID,
+			&i.Title,
+			&i.Html,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const releaseOrphanLoopApps = `-- name: ReleaseOrphanLoopApps :exec
 UPDATE apps SET loop_id = ''
 WHERE loop_id <> ''
@@ -616,7 +633,6 @@ INSERT INTO widgets (
   id,
   loop_id,
   title,
-  current_version,
   size_hint,
   last_error,
   last_layout,
@@ -634,13 +650,11 @@ INSERT INTO widgets (
   ?7,
   ?8,
   ?9,
-  ?10,
-  ?11
+  ?10
 )
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
   title = excluded.title,
-  current_version = excluded.current_version,
   size_hint = excluded.size_hint,
   last_error = excluded.last_error,
   last_layout = excluded.last_layout,
@@ -654,7 +668,6 @@ type UpsertWidgetParams struct {
 	ID             string         `json:"id"`
 	LoopID         string         `json:"loop_id"`
 	Title          string         `json:"title"`
-	CurrentVersion int64          `json:"current_version"`
 	SizeHint       string         `json:"size_hint"`
 	LastError      sql.NullString `json:"last_error"`
 	LastLayout     string         `json:"last_layout"`
@@ -669,7 +682,6 @@ func (q *Queries) UpsertWidget(ctx context.Context, arg UpsertWidgetParams) erro
 		arg.ID,
 		arg.LoopID,
 		arg.Title,
-		arg.CurrentVersion,
 		arg.SizeHint,
 		arg.LastError,
 		arg.LastLayout,

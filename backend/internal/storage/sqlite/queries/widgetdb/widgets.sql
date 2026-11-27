@@ -3,7 +3,6 @@ INSERT INTO widgets (
   id,
   loop_id,
   title,
-  current_version,
   size_hint,
   last_error,
   last_layout,
@@ -15,7 +14,6 @@ INSERT INTO widgets (
   sqlc.arg(id),
   sqlc.arg(loop_id),
   sqlc.arg(title),
-  sqlc.arg(current_version),
   sqlc.arg(size_hint),
   sqlc.narg(last_error),
   sqlc.arg(last_layout),
@@ -27,7 +25,6 @@ INSERT INTO widgets (
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
   title = excluded.title,
-  current_version = excluded.current_version,
   size_hint = excluded.size_hint,
   last_error = excluded.last_error,
   last_layout = excluded.last_layout,
@@ -48,11 +45,11 @@ FROM widgets
 WHERE loop_id = sqlc.arg(loop_id)
 LIMIT 1;
 
--- name: GetWidgetVersion :one
-SELECT widget_id, version, html, produced_by_run_id, created_at_ms
-FROM widget_versions
-WHERE widget_id = sqlc.arg(widget_id) AND version = sqlc.arg(version)
-LIMIT 1;
+-- name: ListLegacyWidgetHTML :many
+SELECT w.id, w.loop_id, CAST(COALESCE(NULLIF(w.title, ''), l.name) AS TEXT) AS title, v.html
+FROM widgets w
+JOIN loops l ON l.id = w.loop_id AND l.status <> sqlc.arg(deleted_status)
+JOIN widget_versions v ON v.widget_id = w.id AND v.version = w.current_version;
 
 -- name: DeleteWidgetVersions :exec
 DELETE FROM widget_versions
@@ -175,7 +172,7 @@ SELECT
   bw.placed_by,
   CAST(COALESCE(l.id, '') AS TEXT) AS loop_id,
   CAST(COALESCE(a.title, w.title, '') AS TEXT) AS title,
-  CAST(COALESCE(a.current_version, w.current_version, 0) AS INTEGER) AS current_version,
+  CAST(COALESCE(a.current_version, 0) AS INTEGER) AS current_version,
   CAST(COALESCE(w.size_hint, '') AS TEXT) AS size_hint,
   CAST(COALESCE(w.last_error, '') AS TEXT) AS last_error,
   CAST(COALESCE(a.updated_at_ms, w.updated_at_ms, 0) AS INTEGER) AS updated_at_ms,

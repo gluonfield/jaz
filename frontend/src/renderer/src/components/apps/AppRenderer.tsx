@@ -1,5 +1,5 @@
 import { AlertTriangle, LoaderCircle } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -215,9 +215,10 @@ export function AppRenderer({
   }, [app, confirmSharedWrite, desktopPermissions, desktopPermissionsPaused, fillHeight, isMarkdownEntry, ticket])
 
   const shownWithoutFrame = !loading && (isMarkdownEntry || Boolean(error))
+  const ready = useEffectEvent(() => onReady?.())
   useEffect(() => {
-    if (shownWithoutFrame) onReady?.()
-  }, [onReady, shownWithoutFrame])
+    if (shownWithoutFrame) ready()
+  }, [shownWithoutFrame])
 
   if (loading) {
     return (

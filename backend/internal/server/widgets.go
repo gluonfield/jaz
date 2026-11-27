@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/widgets"
@@ -194,8 +193,6 @@ func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
-	case action == "content" && r.Method == http.MethodGet:
-		s.handleWidgetContent(w, r, widgetID)
 	case action == "errors" && r.Method == http.MethodPost:
 		if _, err := s.Widgets.LoadWidget(widgetID); err != nil {
 			writeError(w, http.StatusNotFound, err)
@@ -233,33 +230,4 @@ func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 	}
-}
-
-func (s *Server) handleWidgetContent(w http.ResponseWriter, r *http.Request, widgetID string) {
-	widget, err := s.Widgets.LoadWidget(widgetID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, err)
-		return
-	}
-	version := widget.CurrentVersion
-	if raw := strings.TrimSpace(r.URL.Query().Get("version")); raw != "" {
-		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
-			version = v
-		}
-	}
-	if version == 0 {
-		writeError(w, http.StatusNotFound, fmt.Errorf("widget %s has no published version", widgetID))
-		return
-	}
-	snapshot, err := s.Widgets.Repo.LoadWidgetVersion(widget.ID, version)
-	if err != nil {
-		writeError(w, http.StatusNotFound, err)
-		return
-	}
-	// HTML a routine published before tiles became apps, served until its next
-	// run publishes the app. The board wraps the raw fragment in the shared
-	// artifact document client-side.
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(snapshot.HTML))
 }

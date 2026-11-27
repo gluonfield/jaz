@@ -409,6 +409,9 @@ func startServer(
 			if err := loopService.EnsureMemoryPaths(); err != nil {
 				return err
 			}
+			if err := widgetService.AdoptLegacyHTML(ctx); err != nil {
+				logger.WithPrefix("widgets").Warn("converting board tiles to apps failed", "error", err)
+			}
 			// Events and webhooks can arrive before the scheduler's first tick.
 			if err := loopService.GuardAway(); err != nil {
 				logger.WithPrefix("loops").Error("away guard failed", "error", err)

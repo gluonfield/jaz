@@ -23,11 +23,8 @@ type Widget struct {
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	LoopID      string `json:"loop_id"`
 	Title       string `json:"title"`
-	// CurrentVersion counts HTML published before tiles became apps. It is
-	// zero once the routine has published its app.
-	CurrentVersion int    `json:"current_version"`
-	SizeHint       string `json:"size_hint,omitempty"`
-	LastError      string `json:"last_error,omitempty"`
+	SizeHint    string `json:"size_hint,omitempty"`
+	LastError   string `json:"last_error,omitempty"`
 	// LastLayout holds the board's most recent layout telemetry for the
 	// current version (JSON from the bridge); cleared on publish.
 	LastLayout     string    `json:"last_layout,omitempty"`
@@ -36,12 +33,12 @@ type Widget struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-// Version is HTML a routine published before tiles became apps.
-type Version struct {
-	WidgetID  string    `json:"widget_id"`
-	Version   int       `json:"version"`
-	HTML      string    `json:"html"`
-	CreatedAt time.Time `json:"created_at"`
+// LegacyHTML is the HTML a routine last published before tiles became apps.
+type LegacyHTML struct {
+	WidgetID string
+	LoopID   string
+	Title    string
+	HTML     string
 }
 
 type Board struct {
@@ -92,7 +89,7 @@ type Repository interface {
 	LoadWidget(id string) (Widget, error)
 	LoadWidgetByLoop(loopID string) (Widget, bool, error)
 	SaveWidget(widget Widget) error
-	LoadWidgetVersion(widgetID string, version int) (Version, error)
+	ListLegacyWidgetHTML() ([]LegacyHTML, error)
 	DeleteWidgetVersions(widgetID string) error
 	SaveBoard(board Board) error
 	LoadBoard(id string) (Board, error)

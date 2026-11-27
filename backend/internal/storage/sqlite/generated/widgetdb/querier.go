@@ -20,11 +20,11 @@ type Querier interface {
 	GetDefaultBoard(ctx context.Context, workspaceID string) (Board, error)
 	GetWidget(ctx context.Context, id string) (Widget, error)
 	GetWidgetByLoop(ctx context.Context, loopID string) (Widget, error)
-	GetWidgetVersion(ctx context.Context, arg GetWidgetVersionParams) (WidgetVersion, error)
 	ListAllPlacements(ctx context.Context, boardID string) ([]ListAllPlacementsRow, error)
 	ListBoardItems(ctx context.Context, arg ListBoardItemsParams) ([]ListBoardItemsRow, error)
 	ListBoards(ctx context.Context, filterWorkspaceID string) ([]Board, error)
 	ListBoardsForWidget(ctx context.Context, widgetID string) ([]string, error)
+	ListLegacyWidgetHTML(ctx context.Context, deletedStatus string) ([]ListLegacyWidgetHTMLRow, error)
 	ReleaseOrphanLoopApps(ctx context.Context, deletedStatus string) error
 	UpsertBoard(ctx context.Context, arg UpsertBoardParams) error
 	UpsertBoardWidget(ctx context.Context, arg UpsertBoardWidgetParams) error

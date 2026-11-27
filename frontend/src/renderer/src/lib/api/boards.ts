@@ -103,8 +103,8 @@ export function reportWidgetLayout(
   return post<{ ok: boolean }>(`/v1/widgets/${widgetId}/layout`, layout)
 }
 
-// HTML a loop published before board tiles became apps, as a raw fragment the
-// board wraps in the shared artifact document.
+// The tile HTML a Jaz Cloud routine published, as a raw fragment the board
+// wraps in the shared artifact document.
 export function widgetContentPath(widgetId: string, version: number): string {
   return `/v1/widgets/${encodeURIComponent(widgetId)}/content?version=${version}`
 }

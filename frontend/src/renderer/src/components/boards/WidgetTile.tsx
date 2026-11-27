@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { AppWindow, ExternalLink, GripVertical, Pencil, Play, X } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
@@ -47,7 +47,7 @@ function TileStatusDot({ item }: { item: BoardItem }) {
 
 interface Layer {
   key: string
-  // Absent for HTML a loop published before board tiles became apps.
+  // Absent on Jaz Cloud, whose routines still publish tile HTML.
   app?: JazApp
   version: number
   ready: boolean
@@ -64,8 +64,8 @@ function postScale(stack: HTMLElement | null, scale: number) {
 const WIPE_DURATION = 0.65
 const WIPE_EASE = [0.65, 0, 0.35, 1] as const
 
-// HTML a loop published before board tiles became apps. It shows until the
-// loop's next run publishes its app.
+// A routine's tile on Jaz Cloud, whose routines still publish tile HTML rather
+// than an app.
 function LegacyWidgetFrame({
   widgetId,
   version,
@@ -188,11 +188,11 @@ export function WidgetTile({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const reduce = useReducedMotion()
-  const appDetail = useQuery({ ...appDetailQuery(item.app_id ?? ''), enabled: Boolean(item.app_id) })
-  const { refetch: refetchApp } = appDetail
-  useEffect(() => {
-    if (item.app_id) void refetchApp({ cancelRefetch: false })
-  }, [item.app_id, item.current_version, refetchApp])
+  const appDetail = useQuery({
+    ...appDetailQuery(item.app_id ?? '', item.current_version),
+    enabled: Boolean(item.app_id),
+    placeholderData: keepPreviousData,
+  })
   const app = appDetail.data?.app
   const version = item.app_id ? (app?.current_version ?? 0) : item.current_version
   const contentKey = version > 0 ? `${item.app_id ?? item.widget_id}:${version}` : ''

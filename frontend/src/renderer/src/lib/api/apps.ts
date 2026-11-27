@@ -190,9 +190,11 @@ export function appsQuery(filter?: AppListFilter) {
   })
 }
 
-export function appDetailQuery(id: string) {
+// A caller that learns of new versions elsewhere passes the version it knows,
+// so a newer one fetches the detail again.
+export function appDetailQuery(id: string, version?: number) {
   return queryOptions({
-    queryKey: keys.appDetail(id),
+    queryKey: version === undefined ? keys.appDetail(id) : [...keys.appDetail(id), version],
     queryFn: async () =>
       get<{ app: JazApp; current_version: AppVersion | null }>(`/v1/apps/${encodeURIComponent(id)}`),
   })
