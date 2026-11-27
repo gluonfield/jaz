@@ -31,7 +31,7 @@ func TestOpenCodeFailedLaunchRemovesOnlyItsOwnInstructions(t *testing.T) {
 	if err := os.WriteFile(legacy, []byte("another process"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := manager.openConn(context.Background(), AgentOpenCode, cfg, env, root, "private instructions"); err == nil {
+	if _, _, err := manager.openConn(context.Background(), AgentOpenCode, cfg, env, root, "private instructions", nil); err == nil {
 		t.Fatal("missing executable started")
 	}
 	files, err := os.ReadDir(profile)

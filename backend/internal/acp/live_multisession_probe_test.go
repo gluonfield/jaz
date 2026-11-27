@@ -69,7 +69,7 @@ func TestLiveACPMultiSessionProbe(t *testing.T) {
 	})
 	initDuration := time.Since(initStarted)
 	authDuration := time.Duration(0)
-	if methodID, missing := autoAuthMethod(agent, init.Result, env); methodID != "" {
+	if methodID, missing := autoAuthMethod(agent, init.Result, env, false); methodID != "" {
 		authStarted := time.Now()
 		_ = probeCall(t, ctx, conn, "2", acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID})
 		authDuration = time.Since(authStarted)

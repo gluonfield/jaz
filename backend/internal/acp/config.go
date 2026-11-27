@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/acpcredentials"
 	"github.com/wins/jaz/backend/internal/m365copilot"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
@@ -107,13 +108,14 @@ func systemPromptMeta(agent, prompt string, fresh bool) map[string]any {
 }
 
 type Config struct {
-	Budget      *BudgetPolicy
-	Agents      map[string]AgentConfig
-	AgentSource AgentConfigSource
-	Adapters    AdapterResolver
-	Root        string
-	Workspace   string
-	Env         map[string]string
+	ResolveCloudProfile acpcredentials.Resolver `mapstructure:"-"`
+	Budget              *BudgetPolicy
+	Agents              map[string]AgentConfig
+	AgentSource         AgentConfigSource
+	Adapters            AdapterResolver
+	Root                string
+	Workspace           string
+	Env                 map[string]string
 	// Providers is a static snapshot used by the read-time auth/readiness probes
 	// (and tests). ProviderSource, when set, is the live merged registry the
 	// manager reads per spawn so runtime provider changes reach new agents.

@@ -12,7 +12,6 @@ import (
 	"github.com/charmbracelet/log"
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
-	"github.com/wins/jaz/backend/internal/acpcredentials"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -92,8 +91,7 @@ type Manager struct {
 	// prompt.
 	ThreadStarted func(storage.Session, string)
 
-	Events              *sessionevents.Bus
-	ResolveCloudProfile acpcredentials.Resolver
+	Events *sessionevents.Bus
 	// PublishWidget backs the _jaz.dev/widget/publish extension method; the
 	// session id is the jaz session linked to the calling agent's ACP session.
 	PublishWidget func(WidgetPublishRequest) (WidgetPublishResult, error)
@@ -349,7 +347,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		}
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	conn, stderr, err := m.openConnWithAuth(runCtx, name, cfg, env, cwd, launchPrompt, launchAuth)
+	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd, launchPrompt, launchAuth)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -403,7 +401,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		return nil, fmt.Errorf("unsupported acp protocol version %d", initialized.ProtocolVersion)
 	}
 	state.initialized(initRaw)
-	methodID, missingAuth := autoAuthMethod(name, initRaw, env)
+	methodID, missingAuth := autoAuthMethod(name, initRaw, env, launchAuth != nil)
 	if methodID != "" {
 		if _, err := peer.Call(ctx, acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID}); err != nil {
 			return nil, fmt.Errorf("authenticate acp agent: %w", withProcessStderr(err, stderr))

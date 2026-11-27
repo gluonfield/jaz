@@ -57,7 +57,7 @@ func TestLiveGrokRulesPromptExtensionProbe(t *testing.T) {
 			FS:   &acpschema.FileSystemCapabilities{ReadTextFile: true, WriteTextFile: true},
 		},
 	})
-	if methodID, missing := autoAuthMethod(AgentGrok, init.Result, env); methodID != "" {
+	if methodID, missing := autoAuthMethod(AgentGrok, init.Result, env, false); methodID != "" {
 		_ = probeCall(t, ctx, conn, "2", acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID})
 	} else if len(missing) > 0 {
 		t.Fatalf("missing auth for grok: %s", strings.Join(missing, ", "))

@@ -79,12 +79,9 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 		session.RuntimeRef.MCPServerPolicy = mcpServerPolicy
 		sessionChanged = true
 	}
-	cfg, ok, err := m.configuredAgent(agentName)
+	cfg, err := m.sessionAgentConfig(agentName, session.RuntimeRef.CloudCredentialProfileID)
 	if err != nil {
 		return nil, err
-	}
-	if !ok {
-		return nil, fmt.Errorf("acp agent %q is not configured", agentName)
 	}
 	overview, err := m.store.LoadSessionOverviewEvents(session.ID)
 	if err != nil {
@@ -93,16 +90,12 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 	cfg.Model = strings.TrimSpace(session.Model)
 	cfg.ReasoningEffort = strings.TrimSpace(session.ReasoningEffort)
 	restoreConfiguredChoices(&cfg, overview)
-	if cfg.UsesModelProvider() {
+	if cfg.UsesModelProvider() && cfg.cloudCredentialProfileID == "" {
 		cfg.ModelProvider = strings.TrimSpace(session.ModelProvider)
 		cfg = cfg.NormalizeProviderModel(cfg.ModelProvider)
 		if err := m.validateAgentModelProvider(agentName, cfg); err != nil {
 			return nil, err
 		}
-	}
-	cfg, err = nativeProfileConfig(agentName, session.RuntimeRef.CloudCredentialProfileID, cfg)
-	if err != nil {
-		return nil, err
 	}
 	if cfg.Local {
 		if sessionChanged {

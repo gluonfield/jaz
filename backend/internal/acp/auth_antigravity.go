@@ -48,7 +48,7 @@ func withAntigravityAccountPeer(ctx context.Context, cfg AgentConfig, root, cwd 
 	}
 	var conn jsonrpc.MessageConn
 	if cfg.URL != "" {
-		remote, _, err := manager.openConn(ctx, AgentAntigravity, cfg, env, cwd, "")
+		remote, _, err := manager.openConn(ctx, AgentAntigravity, cfg, env, cwd, "", nil)
 		if err != nil {
 			return err
 		}

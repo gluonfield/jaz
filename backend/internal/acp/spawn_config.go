@@ -45,12 +45,9 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	if req.MCPServerPolicy == "" && visualize.NormalizeSurface(req.ArtifactSurface) == visualize.SurfaceWidget {
 		req.MCPServerPolicy = MCPServerPolicyWidget
 	}
-	cfg, ok, err := m.configuredAgent(req.ACPAgent)
+	cfg, err := m.sessionAgentConfig(req.ACPAgent, req.CloudCredentialProfileID)
 	if err != nil {
 		return SpawnRequest{}, AgentConfig{}, "", err
-	}
-	if !ok {
-		return SpawnRequest{}, AgentConfig{}, "", fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
 	}
 	if err := validateAgentLaunch(req.ACPAgent, cfg); err != nil {
 		return SpawnRequest{}, AgentConfig{}, "", err
@@ -64,15 +61,11 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	if modelOverridden {
 		cfg.Model = model
 	}
-	if providerID := strings.TrimSpace(req.ModelProvider); providerID != "" {
+	if providerID := strings.TrimSpace(req.ModelProvider); providerID != "" && req.CloudCredentialProfileID == "" {
 		if !modelOverridden && providerID != strings.TrimSpace(cfg.ModelProvider) && cfg.UsesProvider() {
 			cfg.Model = agentProviderDefaultModel(req.ACPAgent, providerID, m.providers())
 		}
 		cfg.ModelProvider = providerID
-	}
-	cfg, err = nativeProfileConfig(req.ACPAgent, req.CloudCredentialProfileID, cfg)
-	if err != nil {
-		return SpawnRequest{}, AgentConfig{}, "", err
 	}
 	cfg = cfg.NormalizeProviderModel(cfg.ModelProvider)
 	if err := m.validateAgentModelProvider(req.ACPAgent, cfg); err != nil {

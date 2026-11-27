@@ -13,6 +13,7 @@ import (
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/acpadapter"
+	"github.com/wins/jaz/backend/internal/acpcredentials"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/cloudsync"
@@ -247,8 +248,9 @@ type machineBridgeDeps struct {
 type machineBridgeOut struct {
 	fx.Out
 
-	Supervisor *MachineBridgeSupervisor
-	Controller machinebridge.Controller
+	Supervisor        *MachineBridgeSupervisor
+	Controller        machinebridge.Controller
+	ResolveACPProfile acpcredentials.Resolver
 }
 
 func NewMachineBridge(deps machineBridgeDeps) machineBridgeOut {
@@ -257,8 +259,9 @@ func NewMachineBridge(deps machineBridgeDeps) machineBridgeOut {
 	}
 	sup := NewMachineBridgeSupervisor(deps.Cloud, deps.Store, string(deps.Workspace), deps.Logger)
 	return machineBridgeOut{
-		Supervisor: sup,
-		Controller: sup,
+		Supervisor:        sup,
+		Controller:        sup,
+		ResolveACPProfile: sup.ResolveACPProfile,
 	}
 }
 
@@ -268,7 +271,6 @@ type cloudSyncDeps struct {
 	Lifecycle fx.Lifecycle
 	Cloud     *cloudsync.Service
 	MCP       *mcpruntime.Manager
-	ACP       *acp.Manager
 	Bridge    *MachineBridgeSupervisor `optional:"true"`
 }
 
@@ -277,7 +279,6 @@ func StartCloudSync(deps cloudSyncDeps) {
 		deps.MCP.Refresh(ctx)
 	})
 	if deps.Bridge != nil {
-		deps.ACP.ResolveCloudProfile = deps.Bridge.ResolveACPProfile
 		deps.Cloud.AddOnAccountChanged(deps.Bridge.Reconcile)
 	}
 	var cancel context.CancelFunc
@@ -421,7 +422,7 @@ func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, log
 	})
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, inst instructions.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service, installed *plugins.Store, msCopilot *m365copilot.AuthService) (acp.Config, error) {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, inst instructions.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service, installed *plugins.Store, msCopilot *m365copilot.AuthService, resolveCloudProfile acpcredentials.Resolver) (acp.Config, error) {
 	if err := bots.MigrateHomes(store); err != nil {
 		return acp.Config{}, err
 	}
@@ -437,6 +438,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, inst instructions.Store,
 	cfg.ACP.ClaudePlugins = installed.ClaudePlugins
 	cfg.ACP.MCPStore = mcpServers
 	cfg.ACP.MicrosoftCopilot = msCopilot
+	cfg.ACP.ResolveCloudProfile = resolveCloudProfile
 	promptBuilder := loops.RuntimePromptBuilder{Repo: store, PromptExtras: []func(loops.Loop, loops.Run) string{bots.RoutineInstructions(store)}}
 	if widgetService != nil {
 		promptBuilder.PromptExtras = append(promptBuilder.PromptExtras, widgetService.LoopPromptExtra)

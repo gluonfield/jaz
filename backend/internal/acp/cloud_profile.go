@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -10,10 +11,22 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acpcredentials"
 	"github.com/wins/jaz/backend/internal/codexauthbridge"
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 )
 
-func nativeProfileConfig(agent, profileID string, cfg AgentConfig) (AgentConfig, error) {
+func (m *Manager) sessionAgentConfig(agent, profileID string) (AgentConfig, error) {
+	lookup := m.agents.AgentConfig
+	if source, ok := m.agents.(agentMetadataSource); profileID != "" && ok {
+		lookup = source.MetadataConfig
+	}
+	cfg, ok, err := lookup(agent)
+	if err != nil {
+		return AgentConfig{}, err
+	}
+	if !ok {
+		return AgentConfig{}, fmt.Errorf("acp agent %q is not configured", agent)
+	}
 	if profileID == "" {
 		return cfg, nil
 	}
@@ -24,7 +37,7 @@ func nativeProfileConfig(agent, profileID string, cfg AgentConfig) (AgentConfig,
 		return AgentConfig{}, errors.New("Cloud credential profiles require a native agent subprocess")
 	}
 	if agent == AgentCodex {
-		cfg.ModelProvider = AgentCodex
+		cfg.ModelProvider = provider.ProviderOpenAI
 	}
 	cfg.cloudCredentialProfileID = profileID
 	return cfg, nil
@@ -51,12 +64,12 @@ func (m *Manager) cloudLaunchAuth(ctx context.Context, agent, profileID string) 
 	if profileID == "" {
 		return nil, nil
 	}
-	if m.ResolveCloudProfile == nil {
+	if m.cfg.ResolveCloudProfile == nil {
 		return nil, errors.New("connect this machine in Cloud workspace settings to use its agent profiles")
 	}
 	workspaceID := sessioncontext.WorkspaceID(ctx)
 	resolve := func(ctx context.Context, rejectedVersion int64) (acpcredentials.Profile, error) {
-		profile, err := m.ResolveCloudProfile(ctx, workspaceID, profileID, rejectedVersion)
+		profile, err := m.cfg.ResolveCloudProfile(ctx, workspaceID, profileID, rejectedVersion)
 		if err != nil {
 			return acpcredentials.Profile{}, fmt.Errorf("resolve %s on this machine: %w", profileID, err)
 		}
@@ -81,6 +94,7 @@ func (a *cloudLaunchAuth) prepare(ctx context.Context, agent, root string, env m
 	if a == nil {
 		return func() {}, nil
 	}
+	profileRoot := filepath.Join(root, "acp", "cloud", fmt.Sprintf("%x", sha256.Sum256([]byte(a.workspaceID))))
 	switch agent {
 	case AgentCodex:
 		codex := env["CODEX_PATH"]
@@ -91,7 +105,7 @@ func (a *cloudLaunchAuth) prepare(ctx context.Context, agent, root string, env m
 				return nil, errors.New("Codex CLI is required to use the workspace profile")
 			}
 		}
-		home := filepath.Join(root, "acp", "cloud", a.workspaceID, "codex")
+		home := filepath.Join(profileRoot, "codex")
 		if err := os.MkdirAll(home, 0o700); err != nil {
 			return nil, err
 		}
@@ -109,7 +123,16 @@ func (a *cloudLaunchAuth) prepare(ctx context.Context, agent, root string, env m
 	case AgentAntigravity:
 		delete(env, "GOOGLE_API_KEY")
 		delete(env, "GOOGLE_GENAI_USE_VERTEXAI")
-		cfg.Args = append([]string{"--settings", `{"modelProvider":"gemini"}`}, cfg.Args...)
+		delete(env, "GOOGLE_GEMINI_BASE_URL")
+		geminiDir := filepath.Join(profileRoot, "gemini")
+		settings := filepath.Join(geminiDir, "antigravity-cli")
+		if err := os.MkdirAll(settings, 0o700); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(filepath.Join(settings, "settings.json"), []byte(`{"modelProvider":"gemini"}`), 0o600); err != nil {
+			return nil, err
+		}
+		cfg.Args = append(slices.Clone(cfg.Args), "--gemini-dir", geminiDir)
 	case AgentGrok:
 		delete(env, "XAI_API_BASE_URL")
 		delete(env, "CLI_CHAT_PROXY_BASE_URL")

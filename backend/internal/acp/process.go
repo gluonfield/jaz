@@ -88,11 +88,7 @@ func withProcessStderr(err error, stderr *processStderrTail) error {
 	return err
 }
 
-func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, systemPrompt string) (connection jsonrpc.MessageConn, tail *processStderrTail, err error) {
-	return m.openConnWithAuth(ctx, name, cfg, env, cwd, systemPrompt, nil)
-}
-
-func (m *Manager) openConnWithAuth(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, systemPrompt string, auth *cloudLaunchAuth) (connection jsonrpc.MessageConn, tail *processStderrTail, err error) {
+func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, systemPrompt string, auth *cloudLaunchAuth) (connection jsonrpc.MessageConn, tail *processStderrTail, err error) {
 	if err := validateAgentLaunch(name, cfg); err != nil {
 		return nil, nil, err
 	}
@@ -135,10 +131,12 @@ func (m *Manager) openConnWithAuth(ctx context.Context, name string, cfg AgentCo
 	if err != nil {
 		return nil, nil, err
 	}
-	configCleanup := func() {}
+	var configCleanup func()
 	cleanup := func() {
 		authCleanup()
-		configCleanup()
+		if configCleanup != nil {
+			configCleanup()
+		}
 	}
 	defer func() {
 		if err != nil {
@@ -500,7 +498,7 @@ func normalizeEnv(env map[string]string, canonical, alias string) {
 	}
 }
 
-func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (acpschema.AuthMethodID, []string) {
+func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string, preferProfileKey bool) (acpschema.AuthMethodID, []string) {
 	var init struct {
 		AuthMethods []agentAuthMethod `json:"authMethods"`
 	}
@@ -509,7 +507,7 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (a
 	}
 	if agent == AgentGrok {
 		for _, method := range init.AuthMethods {
-			if method.ID == "cached_token" && grokAuthAvailable(env) {
+			if method.ID == "cached_token" && !preferProfileKey && grokAuthAvailable(env) {
 				return method.ID, nil
 			}
 		}
