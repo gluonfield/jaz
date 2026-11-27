@@ -44,6 +44,7 @@ export interface MachineCapabilities {
 
 export interface ConnectedMachine {
   device_id: string
+  user_id?: string
   display_name: string
   platform: string
   online: boolean

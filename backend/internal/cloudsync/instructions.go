@@ -9,8 +9,6 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-const CloudMCPServerID = "jaz_cloud"
-
 type InstructionsStore struct {
 	cloud    *Service
 	fallback instructions.Store

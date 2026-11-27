@@ -373,7 +373,8 @@ export function cloudThreadToSession(thread: CloudThread): Session {
 export async function listCloudThreads(spaceId?: string, signal?: AbortSignal): Promise<CloudThread[]> {
   const query = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : ''
   const response = await cloudGet<{ threads?: CloudThread[] | null } | CloudThread[]>(`/v1/threads${query}`, { signal })
-  return Array.isArray(response) ? response : (response.threads ?? [])
+  const threads = Array.isArray(response) ? response : response.threads ?? []
+  return threads.filter((thread) => thread.source_type !== 'native_mcp_context')
 }
 
 export async function createCloudThread(input: CreateCloudThreadInput): Promise<CloudThread> {

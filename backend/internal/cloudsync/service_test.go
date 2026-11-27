@@ -216,12 +216,6 @@ func TestCloudSyncConnectMirrorStreamAndInstructions(t *testing.T) {
 		t.Fatalf("prompt must not mention deleted SOUL:\n%s", prompt)
 	}
 
-	// Verify Cloud MCP server config is exposed while connected.
-	mcpSrv, ok := svc.MCPServer(ctx)
-	if !ok || mcpSrv.URL != srv.URL+"/v1/mcp" || len(mcpSrv.Headers) != 1 {
-		t.Fatalf("unexpected MCPServer: %+v ok=%v", mcpSrv, ok)
-	}
-
 	// Verify offline read-only cache still serves transcript after upstream shuts down.
 	srv.Close()
 	offlineTranscript, found, err := svc.LoadTranscript(ctx, "ct_1")
@@ -248,9 +242,6 @@ func TestCloudSyncConnectMirrorStreamAndInstructions(t *testing.T) {
 	}
 	if after := svc.Status(ctx); after.Connected || after.ActiveWorkspaceID != cloudsync.LocalWorkspaceID || len(after.Workspaces) != 0 {
 		t.Fatalf("expected disconnected local status after Disconnect, got %+v", after)
-	}
-	if _, ok := svc.MCPServer(ctx); ok {
-		t.Fatalf("expected MCPServer absent after Disconnect")
 	}
 	if svc.CloudScope(ctx) != nil {
 		t.Fatalf("expected CloudScope nil after Disconnect")
@@ -361,10 +352,6 @@ func TestCloudSyncMultiWorkspaceSwitchAndIsolation(t *testing.T) {
 	if err != nil || docB.Content != "Beta Rule Only" {
 		t.Fatalf("Cloud B org AGENTS = %+v err=%v", docB, err)
 	}
-	mcpB, ok := svc.MCPServer(ctx)
-	if !ok || mcpB.URL != srvB.URL+"/v1/mcp" {
-		t.Fatalf("Cloud B MCPServer = %+v ok=%v", mcpB, ok)
-	}
 
 	// Switch unknown workspace returns ErrNotFound.
 	if _, err := svc.SwitchWorkspace(ctx, "does-not-exist"); !errors.Is(err, cloudsync.ErrNotFound) {
@@ -386,10 +373,6 @@ func TestCloudSyncMultiWorkspaceSwitchAndIsolation(t *testing.T) {
 	docA, err := instStore.Get(ctx, instructions.Key{Scope: instructions.ScopeOrg, Kind: instructions.KindAgents})
 	if err != nil || docA.Content != "Acme Rule Only" {
 		t.Fatalf("Cloud A org AGENTS = %+v err=%v", docA, err)
-	}
-	mcpA, ok := svc.MCPServer(ctx)
-	if !ok || mcpA.URL != srvA.URL+"/v1/mcp" {
-		t.Fatalf("Cloud A MCPServer = %+v ok=%v", mcpA, ok)
 	}
 
 	// Disconnect Cloud A deletes ONLY Cloud A, switches active to local, and preserves Cloud B intact!

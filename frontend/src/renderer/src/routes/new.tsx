@@ -21,9 +21,11 @@ import { spaceDefaultGitRepos, spacesQuery } from '@/lib/api/cloudSpaces'
 import { useCloudMachinesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
+import { machineBridgeQuery } from '@/lib/api/machineBridge'
 import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
 import { useCloudCatalogScope, useCloudSession, useIsCloudOnly, useIsCloudViewer } from '@/lib/cloudSession'
+import { isLocalBackendUrl, useConnection } from '@/lib/connection'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useTaskWorkspace } from '@/lib/hooks/useTaskWorkspace'
 import { modelSuggestionLabel } from '@/lib/models'
@@ -69,6 +71,8 @@ function NewSessionPage() {
   const cloud = useCloudSession()
   const cloudOnly = useIsCloudOnly()
   const isViewer = useIsCloudViewer()
+  const connection = useConnection()
+  const canRunHere = !cloudOnly && !isViewer && isLocalBackendUrl(connection.url)
   const navigate = useNavigate()
   const search = Route.useSearch()
   const queryClient = useQueryClient()
@@ -79,16 +83,24 @@ function NewSessionPage() {
   const [repoOverride, setRepoOverride] = useState<CloudGitRepoSpec[]>()
 
   const { account } = useCloudCatalogScope()
-  const [execution, setExecution] = useState<{ account: string; location: ExecutionLocation; executor: string }>()
-  const selection = execution?.account === account ? execution : undefined
-  const effectiveLocation = cloudOnly || isViewer ? 'cloud' : cloud.active ? selection?.location ?? 'cloud' : 'local'
-  const targetIsCloud = effectiveLocation === 'cloud'
-  const executor = selection?.executor ?? ''
-  const machines = useQuery({
+  const [execution, setExecution] = useState<{ account: string; location: ExecutionLocation }>()
+  const localDevice = useQuery({
+    ...machineBridgeQuery,
+    enabled: cloud.active && canRunHere,
+  })
+  const connectedMachines = useQuery({
     ...useCloudMachinesQuery(),
     enabled: cloud.active && !isViewer,
-  }).data?.filter((machine) => machine.online) ?? []
-  const executorTarget = machines.find((machine) => machine.device_id === executor)?.device_id
+  })
+  const owner = cloud.user?.id
+  const machines = owner && (!canRunHere || localDevice.data) && !isViewer
+    ? (connectedMachines.data ?? []).filter((machine) =>
+        machine.online && machine.user_id === owner && (!canRunHere || machine.device_id !== localDevice.data?.device_id),
+      )
+    : []
+  const selection = execution?.account === account ? execution.location : undefined
+  const effectiveLocation = cloud.active ? (canRunHere ? selection ?? 'cloud' : 'cloud') : cloudOnly ? 'cloud' : 'local'
+  const targetIsCloud = effectiveLocation === 'cloud'
 
   const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !cloudOnly && !targetIsCloud }).data
   const spaces = useQuery({ ...spacesQuery, enabled: targetIsCloud && cloud.active })
@@ -180,7 +192,6 @@ function NewSessionPage() {
         ? {
             ...baseInput,
             ...(spaceId ? { space_id: spaceId } : {}),
-            ...(executorTarget ? { executor_target: executorTarget } : {}),
             git_repos: repoOverride,
           }
         : baseInput
@@ -271,12 +282,9 @@ function NewSessionPage() {
       {cloud.active && (
         <ExecutionLocationPicker
           location={effectiveLocation}
-          localMachine
-          lockedCloud={cloudOnly || isViewer}
+          lockedCloud={!canRunHere}
           machines={machines}
-          executorTarget={executorTarget}
-          onChange={(location) => setExecution({ account, location, executor: '' })}
-          onChangeExecutor={(executor) => setExecution({ account, location: 'cloud', executor })}
+          onChange={(location) => setExecution({ account, location })}
           placement={controlPlacement}
           disabled={creating || readOnly}
         />

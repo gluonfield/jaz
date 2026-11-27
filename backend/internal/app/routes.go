@@ -140,6 +140,10 @@ func NewRoutes(deps routeDeps) server.Routes {
 	routes = appendAppsRoutes(routes, deps.Apps)
 	routes = appendVaultRoutes(routes, deps.Vault)
 	routes = appendCloudRoutes(routes, deps.Cloud, deps.MachineBridge)
+	if deps.Cloud != nil {
+		handler := cloudapi.NewMCPHandler(deps.Cloud, deps.Store)
+		routes = append(routes, server.Route{Pattern: "POST " + serverconfig.CloudMCPPath, Handler: handler})
+	}
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
 }
 

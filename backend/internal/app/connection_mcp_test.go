@@ -11,6 +11,7 @@ import (
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/tools"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
@@ -163,44 +164,23 @@ func TestConnectionMCPServerReaderIsolatesCloudWorkspaceFromLocalMCP(t *testing.
 		},
 		tokens: map[string]integrationoauth.Token{"slack:personal": {AccessToken: "xoxp-personal"}},
 	}
-	cloudActive := true
-	reader := connectionMCPServerReader{
-		store:   store,
-		catalog: connections.NewCatalog(nil),
-		cloudMCP: func(context.Context) (mcpconfig.Server, bool) {
-			if !cloudActive {
-				return mcpconfig.Server{}, false
-			}
-			return mcpconfig.Server{
-				ID:      "jaz_cloud",
-				Name:    "jaz_cloud",
-				URL:     "https://cloud.example/v1/mcp",
-				Enabled: true,
-			}, true
-		},
-	}
-
-	// Active Cloud workspace exposes ONLY Cloud MCP (suppresses local custom MCP + personal Slack).
+	workspace := "cloud-workspace"
+	reader := connectionReader(store)
+	reader.workspace = func() string { return workspace }
 	cloudServers, err := reader.ListMCPServers()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cloudServers) != 1 || cloudServers[0].ID != "jaz_cloud" {
-		t.Fatalf("cloud workspace MCP servers = %#v, want only jaz_cloud", cloudServers)
+	if len(cloudServers) != 0 {
+		t.Fatalf("cloud workspace exposed local MCP servers: %#v", cloudServers)
 	}
 
-	// Local workspace exposes local MCP + personal Slack, and NO Cloud MCP.
-	cloudActive = false
+	workspace = storage.LocalWorkspaceID
 	localServers, err := reader.ListMCPServers()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(localServers) != 2 {
 		t.Fatalf("local workspace MCP servers = %#v, want local-mcp + slack:personal", localServers)
-	}
-	for _, s := range localServers {
-		if s.ID == "jaz_cloud" {
-			t.Fatalf("local workspace must not attach jaz_cloud: %#v", localServers)
-		}
 	}
 }

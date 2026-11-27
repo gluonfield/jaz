@@ -13,7 +13,6 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/coordinator"
-	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -47,6 +46,7 @@ type Service struct {
 	persistMu      sync.Mutex
 	refreshMu      sync.Mutex
 	refreshFlights map[string]*refreshFlight
+	mcpThreads     sync.Map
 }
 
 func New(store storage.CloudMirrorStore, logger *log.Logger) *Service {
@@ -157,23 +157,6 @@ func (s *Service) CloudScope(ctx context.Context) *coordinator.CloudScope {
 		return nil
 	}
 	return &coordinator.CloudScope{OrgID: acc.OrgID, UserID: acc.UserID}
-}
-
-func (s *Service) MCPServer(ctx context.Context) (mcpconfig.Server, bool) {
-	acc, _, ok := s.activeAccountWithGen()
-	if !ok || acc.BaseURL == "" || acc.Token == "" {
-		return mcpconfig.Server{}, false
-	}
-	return mcpconfig.Server{
-		ID:        CloudMCPServerID,
-		Name:      CloudMCPServerID,
-		Transport: mcpconfig.TransportStreamableHTTP,
-		URL:       acc.BaseURL + "/v1/mcp",
-		Enabled:   true,
-		Headers: []mcpconfig.Header{
-			{Name: "Authorization", Value: "Bearer " + acc.Token},
-		},
-	}, true
 }
 
 func (s *Service) activeAccountWithGen() (storage.CloudAccount, uint64, bool) {

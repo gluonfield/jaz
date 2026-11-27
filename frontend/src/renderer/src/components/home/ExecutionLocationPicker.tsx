@@ -11,9 +11,6 @@ export type ExecutionLocation = 'local' | 'cloud'
 export function ExecutionLocationPicker({
   location,
   machines = [],
-  executorTarget,
-  onChangeExecutor,
-  localMachine = false,
   lockedCloud = false,
   placement,
   disabled,
@@ -21,9 +18,6 @@ export function ExecutionLocationPicker({
 }: {
   location: ExecutionLocation
   machines?: ConnectedMachine[]
-  executorTarget?: string
-  onChangeExecutor?: (deviceId: string) => void
-  localMachine?: boolean
   lockedCloud?: boolean
   placement?: 'above' | 'below'
   disabled?: boolean
@@ -33,19 +27,20 @@ export function ExecutionLocationPicker({
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
 
-  // Cloud-only packaging has no Local; the Local workspace stays strictly Local
-  // while Cloud workspaces are connected, so Cloud threads never leak into it.
-  const cloudOnly = lockedCloud || !clientRuntime.capabilities.localBackend
-  const cloudDevice = cloud.active ? machines.find((machine) => machine.device_id === executorTarget) : undefined
-  const fixed = cloudOnly ? (machines.length ? null : 'cloud') : !cloud.active && cloud.workspaces.length > 0 ? 'local' : null
-  const localLabel = localMachine ? 'This machine' : 'Local'
-  const shown = cloudOnly ? 'cloud' : fixed ?? location
-  const Icon = shown === 'local' ? Laptop : Cloud
-  const label = shown === 'local' ? localLabel : cloudDevice ? `Cloud · ${cloudDevice.display_name}` : 'Cloud'
+  const showLocal = !lockedCloud && clientRuntime.capabilities.localBackend
+  const showCloud = cloud.active || !showLocal || cloud.workspaces.length === 0
+  const choices = [
+    ...(showLocal ? [{ id: 'local' as const, label: cloud.active ? 'This machine' : 'Local' }] : []),
+    ...(showCloud ? [{ id: 'cloud' as const, label: 'Cloud' }] : []),
+  ]
+  const selected = choices.find(({ id }) => id === location) ?? choices[0]
+  const { label } = selected
+  const Icon = selected.id === 'cloud' ? Cloud : Laptop
+  const peers = cloud.active ? machines : []
 
   return (
     <>
-      {fixed ? (
+      {choices.length === 1 && peers.length === 0 ? (
         <span className="inline-flex h-7 items-center gap-1.5 px-2.5 text-[12px] font-medium text-ink-2">
           <Icon size={13} className="shrink-0" />
           {label}
@@ -73,46 +68,32 @@ export function ExecutionLocationPicker({
           }
         >
           <div role="menu" aria-label="Work in">
-            {!cloudOnly && <MenuRow
-              role="menuitemradio"
-              selected={shown === 'local'}
-              onClick={() => {
-                setOpen(false)
-                onChange('local')
-              }}
-            >
-              {localLabel}
-            </MenuRow>}
-            <MenuRow
-              role="menuitemradio"
-              selected={shown === 'cloud' && !cloudDevice}
-              trailing={
-                cloud.status === 'checking' ? (
+            {choices.map(({ id, label }) => (
+              <MenuRow
+                key={id}
+                role="menuitemradio"
+                selected={selected.id === id}
+                trailing={id === 'cloud' && cloud.status === 'checking' ? (
                   <LoaderCircle size={12} className="shrink-0 animate-spin text-ink-3" />
-                ) : null
-              }
-              onClick={() => {
-                setOpen(false)
-                onChange('cloud')
-                onChangeExecutor?.('')
-                if (!cloud.active) setAdding(true)
-              }}
-            >
-              Cloud
-            </MenuRow>
-            {machines.map((machine) => (
+                ) : null}
+                onClick={() => {
+                  setOpen(false)
+                  onChange(id)
+                  if (id === 'cloud' && !cloud.active) setAdding(true)
+                }}
+              >
+                {label}
+              </MenuRow>
+            ))}
+            {peers.map((machine) => (
               <MenuRow
                 key={machine.device_id}
                 role="menuitemradio"
-                selected={shown === 'cloud' && machine.device_id === cloudDevice?.device_id}
-                onClick={() => {
-                  setOpen(false)
-                  onChange('cloud')
-                  onChangeExecutor?.(machine.device_id)
-                }}
+                disabled
+                onClick={() => {}}
+                trailing={<span className="text-ink-3">Available to Cloud tools</span>}
               >
                 {machine.display_name}
-                <span className="ml-1 text-ink-3">· Cloud with device tools</span>
               </MenuRow>
             ))}
           </div>

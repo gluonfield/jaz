@@ -3,6 +3,7 @@ package cloudsync
 import (
 	"context"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -111,6 +112,9 @@ func (s *Service) SyncNow(ctx context.Context) (Status, error) {
 	if err := s.store.ReplaceCloudSpaces(syncCtx, acc.ID, spaces); err != nil {
 		return s.Status(ctx), err
 	}
+	threads = slices.DeleteFunc(threads, func(thread storage.CloudThread) bool {
+		return thread.SourceType == nativeMCPSource
+	})
 	if err := s.store.SyncCloudThreads(syncCtx, acc.ID, threads); err != nil {
 		return s.Status(ctx), err
 	}

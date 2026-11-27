@@ -1,3 +1,4 @@
+import { Cloud, Laptop } from 'lucide-react'
 import { useState, type WheelEvent } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { agentLabel } from '@/lib/agentLabel'
@@ -70,6 +71,7 @@ export function AgentTabs({ value, options, items, onChange, disabled }: AgentCh
         const item = items?.find((entry) => entry.id === agent)
         const label = item?.label || agentLabel(agent)
         const logoId = item?.logoAgent || agent
+        const SourceIcon = item?.source === 'cloud' ? Cloud : item?.source === 'local' ? Laptop : null
         return (
           <button
             key={agent}
@@ -84,8 +86,9 @@ export function AgentTabs({ value, options, items, onChange, disabled }: AgentCh
             className={`group relative flex h-7 shrink-0 items-center overflow-hidden rounded-control px-[7px] text-[12px] font-medium transition-[width,color,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] active:scale-[0.92] motion-reduce:transition-none ${on ? 'text-ink' : 'text-ink-3 hover:text-ink focus-visible:text-ink'}`}
             style={{ width: on ? named : TAB }}
           >
-            <span className="grid size-3.5 shrink-0 place-items-center transition-transform duration-200 group-hover:scale-110">
+            <span className="relative grid size-3.5 shrink-0 place-items-center transition-transform duration-200 group-hover:scale-110">
               {hasAgentLogo(logoId) ? <AgentLogo agent={logoId} size={14} /> : label.slice(0, 1)}
+              {SourceIcon && <SourceIcon aria-hidden size={9} className="absolute -bottom-1 -right-1 bg-surface-1" />}
             </span>
             <span className={`ml-1.5 truncate transition-[opacity,translate] duration-200 motion-reduce:transition-none ${on ? 'delay-75' : '-translate-x-1 opacity-0'}`}>
               {label}

@@ -75,6 +75,8 @@ type ThreadGitRepoSpec struct {
 type CreateThreadRequest struct {
 	WorkspaceID     string              `json:"-"`
 	Title           string              `json:"title,omitempty"`
+	SourceType      string              `json:"source_type,omitempty"`
+	SourceID        string              `json:"source_id,omitempty"`
 	SpaceID         string              `json:"space_id,omitempty"`
 	ModelProfileID  string              `json:"model_profile_id,omitempty"`
 	Model           string              `json:"model,omitempty"`

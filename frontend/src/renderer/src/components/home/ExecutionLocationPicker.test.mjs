@@ -42,8 +42,8 @@ function loadPicker(cloudState, { forcePopoverOpen = false, localBackend = true,
       }
       if (name === '@/components/ui/Popover') {
         return {
-          MenuRow: ({ role, selected, onClick, children }) =>
-            React.createElement('button', { role, 'aria-checked': selected, onClick }, children),
+          MenuRow: ({ role, selected, onClick, disabled, children }) =>
+            React.createElement('button', { role, 'aria-checked': selected, onClick, disabled }, children),
           Popover: ({ open, trigger, children }) =>
             React.createElement(React.Fragment, null, trigger, open ? React.createElement('div', { 'data-popover': 'open' }, children) : null),
         }
@@ -146,10 +146,21 @@ test('ExecutionLocationPicker handles pure Local, Local workspace (with connecte
     }),
   )
   expect(connectedHtml).toContain('aria-label="Work in: Cloud"')
-  expect(connectedHtml).toContain('<button role="menuitemradio" aria-checked="false">Local</button>')
+  expect(connectedHtml).toContain('<button role="menuitemradio" aria-checked="false">This machine</button>')
   expect(connectedHtml).toContain('<button role="menuitemradio" aria-checked="true">Cloud</button>')
   expect(connectedHtml).not.toContain('Runs on this machine')
   expect(connectedHtml).not.toContain('Acme Org')
+
+  const remoteHtml = renderToStaticMarkup(
+    React.createElement(loadPicker(connectedCloud, { forcePopoverOpen: true }), {
+      location: 'cloud',
+      machines: [{ device_id: 'workstation', display_name: 'Workstation' }],
+      onChange: () => {},
+    }),
+  )
+  expect(remoteHtml).toContain('aria-label="Work in: Cloud"')
+  expect(remoteHtml).toContain('<button role="menuitemradio" disabled="">Workstation</button>')
+  expect(remoteHtml).not.toContain('Cloud with device tools')
 
   // 4. Locked cloud-only mode (via lockedCloud OR localBackend=false): strictly Cloud, zero Local option
   const lockedHtml = renderToStaticMarkup(

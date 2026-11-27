@@ -45,7 +45,15 @@ func enabledHTTPMCPServers(ctx context.Context, store mcpconfig.ServerReader, po
 	if store == nil {
 		return nil, nil
 	}
-	servers, err := store.ListMCPServers()
+	list := store.ListMCPServers
+	if scoped, ok := store.(interface {
+		ListMCPServersForSession(string) ([]mcpconfig.Server, error)
+	}); ok {
+		list = func() ([]mcpconfig.Server, error) {
+			return scoped.ListMCPServersForSession(mcpsession.ID(ctx))
+		}
+	}
+	servers, err := list()
 	if err != nil {
 		return nil, err
 	}

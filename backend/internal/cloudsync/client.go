@@ -33,6 +33,7 @@ type cloudClient struct {
 	stream        *http.Client
 	fileTransport *http.Transport
 	accountID     string
+	mcpThreadID   string
 	refresh       func(ctx context.Context, accountID, failedToken string) (string, error)
 }
 
@@ -229,11 +230,15 @@ func (c *cloudClient) doJSONOnce(ctx context.Context, method, baseURL, path, tok
 		return nil, 0, err
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "Mozilla/5.0")
 	if reqBody != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if c.mcpThreadID != "" {
+		req.Header.Set("X-Jaz-Thread-ID", c.mcpThreadID)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

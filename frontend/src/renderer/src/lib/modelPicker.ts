@@ -6,6 +6,7 @@ export interface PickerAgentOption {
   label?: string
   logoAgent?: string
   provider?: string
+  source?: 'local' | 'cloud'
 }
 
 export type ModelPickerOption = Pick<ModelSuggestion, 'value' | 'label' | 'aliases'> & { reasoning?: ModelSuggestion['reasoning'] }
