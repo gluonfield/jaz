@@ -1,18 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, MoreHorizontal, Pin } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ArrowLeft, Pin } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { AppRenderer } from '@/components/apps/AppRenderer'
 import { AppShareModal } from '@/components/apps/AppShareModal'
 import { DesktopAppPermissionsModal } from '@/components/apps/DesktopAppPermissionsModal'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconButton } from '@/components/ui/IconButton'
-import { MenuRow, Popover } from '@/components/ui/Popover'
+import { ActionMenu, type MenuAction } from '@/components/ui/ActionMenu'
 import { useToast } from '@/components/ui/toast'
 import {
   appDetailQuery,
   deleteApp,
+  detailApp,
   orgAppPolicyQuery,
   remixApp,
 } from '@/lib/api/apps'
@@ -40,18 +41,16 @@ function AppDetailPage() {
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [permOpen, setPermOpen] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
 
-  const app = detail.data?.app
+  const app = useMemo(() => detail.data && detailApp(detail.data), [detail.data])
 
   // Automatic version check on open: sync latest version & bundle_sha256 so any
   // update automatically pauses version-locked Tier 2/3 Desktop permissions.
   useEffect(() => {
     if (!isDesktop || !app) return
     let active = true
-    const sha = app.bundle_sha256 ?? detail.data?.current_version?.bundle_sha256 ?? ''
     void clientRuntime.desktopApps!
-      .syncVersion(app.id, app.current_version, sha, app.capabilities ?? [])
+      .syncVersion(app.id, app.current_version, app.bundle_sha256 ?? '', app.capabilities ?? [])
       .then((synced) => {
         if (!active) return
         setInstalled(synced)
@@ -63,7 +62,7 @@ function AppDetailPage() {
     return () => {
       active = false
     }
-  }, [isDesktop, app?.id, app?.current_version, app?.bundle_sha256, detail.data?.current_version?.bundle_sha256])
+  }, [isDesktop, app?.id, app?.current_version, app?.bundle_sha256])
 
   useEffect(() => {
     if (isStandaloneWindow && app?.title) {
@@ -110,8 +109,6 @@ function AppDetailPage() {
     )
   }
 
-  const effectiveSha = app.bundle_sha256 ?? detail.data?.current_version?.bundle_sha256 ?? ''
-  const appWithSha = effectiveSha ? { ...app, bundle_sha256: effectiveSha } : app
   const canToggleTop =
     isStandaloneWindow &&
     Boolean(installed) &&
@@ -125,14 +122,19 @@ function AppDetailPage() {
   }
 
   const paused = installed?.permissionsPaused ?? false
-  const menuRow = (label: string, action: () => void) => (
-    <MenuRow key={label} role="menuitem" onClick={() => {
-      setMenuOpen(false)
-      action()
-    }}>
-      {label}
-    </MenuRow>
-  )
+  const actions: MenuAction[] = [
+    ...(isViewer ? [] : [{ label: 'Remix in a new chat', onSelect: () => remixMutation.mutate() }]),
+    ...(!isDesktop || isStandaloneWindow ? []
+      : installed ? [{ label: 'Open in window', onSelect: () => void clientRuntime.desktopApps?.openWindow(app.id, { title: app.title }) }]
+        : [{ label: 'Install as desktop app', onSelect: () => setPermOpen(true) }]),
+    ...(isDesktop && installed ? [{ label: 'Permissions', onSelect: () => setPermOpen(true) }] : []),
+    ...(!isStandaloneWindow && !isViewer && app.can_edit !== false ? [{
+      label: 'Delete',
+      onSelect: () => {
+        if (window.confirm(`Delete "${app.title}" permanently?`)) deleteMutation.mutate()
+      },
+    }] : []),
+  ]
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg">
@@ -155,41 +157,24 @@ function AppDetailPage() {
           </IconButton>
         ) : null}
         <Button size="sm" onClick={() => setShareOpen(true)}>Share</Button>
-        <Popover open={menuOpen} onClose={() => setMenuOpen(false)} placement="below" align="end" trigger={
-          <IconButton size="sm" aria-label="More actions" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
-            <MoreHorizontal size={15} />
-          </IconButton>
-        }>
-          <div role="menu" aria-label="More actions">
-            {!isViewer ? menuRow('Remix in a new chat', () => remixMutation.mutate()) : null}
-            {isDesktop && !isStandaloneWindow
-              ? installed
-                ? menuRow('Open in window', () => void clientRuntime.desktopApps?.openWindow(app.id, { title: app.title }))
-                : menuRow('Install as desktop app', () => setPermOpen(true))
-              : null}
-            {isDesktop && installed ? menuRow('Permissions', () => setPermOpen(true)) : null}
-            {!isStandaloneWindow && !isViewer && app.can_edit !== false ? menuRow('Delete', () => {
-              if (window.confirm(`Delete "${app.title}" permanently?`)) deleteMutation.mutate()
-            }) : null}
-          </div>
-        </Popover>
+        {actions.length ? <ActionMenu label="More actions" actions={actions} /> : null}
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">
         <AppRenderer
-          app={appWithSha}
+          app={app}
           fillHeight
           desktopPermissions={installed?.permissions}
           desktopPermissionsPaused={installed?.permissionsPaused ?? false}
         />
       </div>
 
-      {shareOpen ? <AppShareModal open onClose={() => setShareOpen(false)} app={appWithSha} /> : null}
+      {shareOpen ? <AppShareModal open onClose={() => setShareOpen(false)} app={app} /> : null}
       {permOpen && isDesktop ? (
         <DesktopAppPermissionsModal
           open
           onClose={() => setPermOpen(false)}
-          app={appWithSha}
+          app={app}
           installed={installed}
           orgPolicy={orgPolicy.data}
           onSaved={(next) => {

@@ -56,30 +56,24 @@ export function VaultSettings() {
 
   const [filter, setFilter] = useState<FilterKind>('all')
   const [search, setSearch] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState<VaultItem | null>(null)
-  const [modalError, setModalError] = useState('')
+  // The item being edited, or 'new' while adding one.
+  const [editing, setEditing] = useState<VaultItem | 'new' | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: keys.vaultRoot })
 
   const saveMutation = useMutation({
-    mutationFn: async (payload: { id?: string; input: VaultItemInput & { kind: VaultKind } }) => {
-      if (payload.id) {
-        return updateVaultItem(payload.id, payload.input, workspaceID)
-      }
-      return createVaultItem(payload.input, workspaceID)
-    },
+    mutationFn: (input: VaultItemInput & { kind: VaultKind }) =>
+      editing && editing !== 'new' ? updateVaultItem(editing.id, input, workspaceID) : createVaultItem(input, workspaceID),
     onSuccess: () => {
       void invalidate()
-      setModalOpen(false)
       setEditing(null)
-      setModalError('')
-    },
-    onError: (err: Error) => {
-      setModalError(err.message)
     },
   })
+  const edit = (target: VaultItem | 'new') => {
+    saveMutation.reset()
+    setEditing(target)
+  }
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteVaultItem(id, workspaceID),
@@ -113,18 +107,6 @@ export function VaultSettings() {
     })
   }, [itemsQuery.data, filter, search])
 
-  const openAdd = () => {
-    setEditing(null)
-    setModalError('')
-    setModalOpen(true)
-  }
-
-  const openEdit = (item: VaultItem) => {
-    setEditing(item)
-    setModalError('')
-    setModalOpen(true)
-  }
-
   if (itemsQuery.isPending) {
     return <Skeleton className="my-4 h-36" />
   }
@@ -138,7 +120,7 @@ export function VaultSettings() {
     <section className="py-4">
       <header className="flex items-center justify-between gap-3">
         <h1 className="text-lg font-semibold text-ink">Vault</h1>
-        <Button variant="primary" onClick={openAdd}>
+        <Button variant="primary" onClick={() => edit('new')}>
           <Plus size={14} aria-hidden />
           Add
         </Button>
@@ -168,7 +150,7 @@ export function VaultSettings() {
                     <Icon className="size-4 shrink-0 text-ink-3" aria-hidden />
                     <button
                       type="button"
-                      onClick={() => openEdit(item)}
+                      onClick={() => edit(item)}
                       className="min-w-0 flex-1 cursor-pointer text-left after:absolute after:inset-0"
                     >
                       <p className="truncate text-[13.5px] font-medium text-ink">{item.label}</p>
@@ -209,22 +191,14 @@ export function VaultSettings() {
         </>
       )}
 
-      {modalOpen ? (
+      {editing ? (
         <VaultItemModal
-          item={editing}
+          item={editing === 'new' ? null : editing}
           initialKind={filter === 'all' ? 'login' : filter}
           saving={saveMutation.isPending}
-          error={modalError}
-          onClose={() => {
-            if (!saveMutation.isPending) {
-              setModalOpen(false)
-              setEditing(null)
-              setModalError('')
-            }
-          }}
-          onSubmit={async (input) => {
-            await saveMutation.mutateAsync({ id: editing?.id, input })
-          }}
+          error={saveMutation.error?.message ?? ''}
+          onClose={() => setEditing(null)}
+          onSubmit={saveMutation.mutate}
         />
       ) : null}
     </section>

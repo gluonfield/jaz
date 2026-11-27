@@ -9,6 +9,7 @@ import { ContextMenu, MenuRow, Popover } from '@/components/ui/Popover'
 import { Favicon } from '@/components/ui/Favicon'
 import { isMarkdownPath, isSpreadsheetPath, isWordPath } from '@shared/fileReader'
 import { appsQuery } from '@/lib/api/apps'
+import { publishedAppTab } from '@/lib/sidePanelTabs'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { useBrowserSessions } from '@/lib/browserSessions'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
@@ -59,7 +60,7 @@ export function SidePanelTabMenu({ sideChatAvailable, onAdd, empty = false }: {
       return row(kind, kind, <Icon size={14} />, label)
     }),
     ...apps.map((app) => row(entrypointKey(app), app, <AppIcon app={app} size={14} />, app.title)),
-    ...published.map((app) => row(app.id, { id: app.id, title: app.title }, <AppWindow size={14} />, app.title)),
+    ...published.map((app) => row(app.id, publishedAppTab(app), <AppWindow size={14} />, app.title)),
   ]
   if (empty) {
     return <div className="m-auto w-52 p-2">{rows}</div>

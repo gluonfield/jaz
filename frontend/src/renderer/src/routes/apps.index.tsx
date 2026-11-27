@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ListFilter, Users } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
-import { AppCard, type AppCardAction } from '@/components/apps/AppCard'
+import { useMemo, useState, type ComponentProps, type ReactNode } from 'react'
+import { AppCard } from '@/components/apps/AppCard'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { AppShareModal } from '@/components/apps/AppShareModal'
 import { AppThumbnail, ThumbnailSheet } from '@/components/apps/AppThumbnail'
@@ -14,6 +14,7 @@ import { MenuRow, Popover } from '@/components/ui/Popover'
 import { SearchField } from '@/components/ui/SearchField'
 import { Segmented } from '@/components/ui/Segmented'
 import { Skeleton } from '@/components/ui/Skeleton'
+import type { MenuAction } from '@/components/ui/ActionMenu'
 import { useToast } from '@/components/ui/toast'
 import {
   appsQuery,
@@ -141,10 +142,6 @@ function AppsLibraryPage() {
       (kindFilter === 'all' || app.kind === kindFilter) &&
       (!needle || app.title.toLowerCase().includes(needle) || (app.description ?? '').toLowerCase().includes(needle)))
   }, [allApps.data, desktopInstalled.data, kindFilter, needle, tab])
-  const connected = useMemo(
-    () => (mcpApps.data ?? []).filter((entry) => entry.type === 'global' && (!needle || entry.title.toLowerCase().includes(needle))),
-    [mcpApps.data, needle],
-  )
 
   const tabs = [
     { value: 'mine' as const, label: 'Yours' },
@@ -153,7 +150,7 @@ function AppsLibraryPage() {
     { value: 'connected' as const, label: 'Connected' },
   ]
 
-  const appActions = (app: JazApp, installed: InstalledDesktopApp | null): AppCardAction[] => [
+  const appActions = (app: JazApp, installed: InstalledDesktopApp | null): MenuAction[] => [
     ...(installed ? [
       { label: 'Open in window', onSelect: () => void clientRuntime.desktopApps?.openWindow(app.id, { title: app.title }) },
       { label: 'Permissions', onSelect: () => setPermTarget({ app, installed }) },
@@ -173,9 +170,41 @@ function AppsLibraryPage() {
     }] : []),
   ]
 
+  const cards: (ComponentProps<typeof AppCard> & { key: string })[] = tab === 'connected'
+    ? (mcpApps.data ?? []).filter((entry) => entry.type === 'global' && (!needle || entry.title.toLowerCase().includes(needle))).map((entry) => ({
+      key: `${entry.server_id}:${entry.tool}`,
+      title: entry.title,
+      detail: 'Connected',
+      preview: (
+        <ThumbnailSheet>
+          <span className="grid size-full place-items-center pb-[6%] text-ink-2">
+            <AppIcon app={entry} size={40} />
+          </span>
+        </ThumbnailSheet>
+      ),
+      onOpen: () => void navigate({ to: '/apps/$serverId/$tool', params: { serverId: entry.server_id, tool: entry.tool } }),
+    }))
+    : apps.map((app) => {
+      const installed = installedById.get(app.id) ?? null
+      return {
+        key: app.id,
+        title: app.title,
+        detail: `${app.kind === 'document' ? 'Document' : 'Interactive'} · ${shortDate(app.updated_at)}`,
+        mark: installed?.permissionsPaused ? (
+          <span title="Updated since you approved its permissions" className="size-2 shrink-0 rounded-full bg-running" />
+        ) : app.visibility !== 'private' ? (
+          <span title={app.visibility === 'team' ? 'Shared with your team' : app.visibility === 'space' ? 'Shared with a space' : 'Shared with selected people'} className="shrink-0 text-ink-3">
+            <Users size={15} aria-hidden />
+          </span>
+        ) : null,
+        preview: <AppThumbnail app={app} />,
+        actions: appActions(app, installed),
+        onOpen: () => void navigate({ to: '/apps/$appId', params: { appId: app.id } }),
+      }
+    })
+
   const filtered = Boolean(needle) || kindFilter !== 'all'
   const loading = tab === 'connected' ? mcpApps.isPending : tab === 'desktop' ? desktopInstalled.isPending || allApps.isPending : allApps.isPending
-  const count = tab === 'connected' ? connected.length : apps.length
 
   return (
     <div className="mx-auto flex w-full max-w-[1120px] flex-col px-8 pb-12 pt-10 max-sm:px-4 max-sm:pt-6">
@@ -223,7 +252,7 @@ function AppsLibraryPage() {
           <EmptyState title="Could not load apps">
             <Button className="mt-2" variant="primary" onClick={() => void allApps.refetch()}>Try again</Button>
           </EmptyState>
-        ) : count === 0 ? (
+        ) : cards.length === 0 ? (
           filtered ? (
             <EmptyState title="No matches">Try a different search or filter.</EmptyState>
           ) : (
@@ -234,46 +263,9 @@ function AppsLibraryPage() {
               ) : null}
             </EmptyState>
           )
-        ) : tab === 'connected' ? (
-          <Grid>
-            {connected.map((entry) => (
-              <AppCard
-                key={`${entry.server_id}:${entry.tool}`}
-                title={entry.title}
-                detail="Connected"
-                preview={
-                  <ThumbnailSheet>
-                    <span className="grid size-full place-items-center pb-[6%] text-ink-2">
-                      <AppIcon app={entry} size={40} />
-                    </span>
-                  </ThumbnailSheet>
-                }
-                onOpen={() => void navigate({ to: '/apps/$serverId/$tool', params: { serverId: entry.server_id, tool: entry.tool } })}
-              />
-            ))}
-          </Grid>
         ) : (
           <Grid>
-            {apps.map((app) => {
-              const installed = installedById.get(app.id) ?? null
-              return (
-                <AppCard
-                  key={app.id}
-                  title={app.title}
-                  detail={`${app.kind === 'document' ? 'Document' : 'Interactive'} · ${shortDate(app.updated_at)}`}
-                  mark={installed?.permissionsPaused ? (
-                    <span title="Updated since you approved its permissions" className="size-2 shrink-0 rounded-full bg-running" />
-                  ) : app.visibility !== 'private' ? (
-                    <span title={app.visibility === 'team' ? 'Shared with your team' : app.visibility === 'space' ? 'Shared with a space' : 'Shared with selected people'} className="shrink-0 text-ink-3">
-                      <Users size={15} aria-hidden />
-                    </span>
-                  ) : null}
-                  preview={<AppThumbnail app={app} />}
-                  actions={appActions(app, installed)}
-                  onOpen={() => void navigate({ to: '/apps/$appId', params: { appId: app.id } })}
-                />
-              )
-            })}
+            {cards.map((card) => <AppCard {...card} key={card.key} />)}
           </Grid>
         )}
       </div>

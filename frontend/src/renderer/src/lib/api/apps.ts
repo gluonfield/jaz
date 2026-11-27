@@ -209,6 +209,11 @@ export function appDetailQuery(id: string) {
   })
 }
 
+// The app of a detail response, with the bundle hash its current version carries.
+export function detailApp(detail: { app: JazApp; current_version: AppVersion | null }): JazApp {
+  return { ...detail.app, bundle_sha256: detail.app.bundle_sha256 ?? detail.current_version?.bundle_sha256 }
+}
+
 // The entry file of an app's current version, as its library thumbnail draws it.
 export function appPreviewQuery(app: Pick<JazApp, 'id' | 'current_version'>) {
   return queryOptions({

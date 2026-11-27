@@ -135,7 +135,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
   useSessionPreview(sessionId, followBrowser ? showPreview : undefined)
 
   const addTab = useCallback((tab: NewSidePanelTab, after?: string) => {
-    openTab(typeof tab === 'object' ? 'id' in tab ? publishedAppTab(tab) : { id: `app:${entrypointKey(tab)}`, kind: 'app', app: tab }
+    openTab(typeof tab === 'object' ? 'kind' in tab ? tab : { id: `app:${entrypointKey(tab)}`, kind: 'app', app: tab }
       : tab === 'preview' ? { id: browsers.openTab(sessionId), kind: tab }
         : tab === 'file' ? { id: 'file', kind: tab, file: null }
           : { id: tab, kind: tab }, after)

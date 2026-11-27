@@ -1,9 +1,5 @@
-import { MoreHorizontal } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
-import { IconButton } from '@/components/ui/IconButton'
-import { MenuRow, Popover } from '@/components/ui/Popover'
-
-export type AppCardAction = { label: string; onSelect: () => void }
+import type { ReactNode } from 'react'
+import { ActionMenu, type MenuAction } from '@/components/ui/ActionMenu'
 
 // One app in the library: its preview, its name and one quiet line of detail.
 // Everything else an app can do sits in the menu that appears on hover.
@@ -13,10 +9,9 @@ export function AppCard({ title, detail, mark, preview, actions = [], onOpen }: 
   // A small trailing sign of the app's state, such as shared or needing review.
   mark?: ReactNode
   preview: ReactNode
-  actions?: AppCardAction[]
+  actions?: MenuAction[]
   onOpen: () => void
 }) {
-  const [menuOpen, setMenuOpen] = useState(false)
   return (
     <div className="group/card relative">
       <button
@@ -34,23 +29,8 @@ export function AppCard({ title, detail, mark, preview, actions = [], onOpen }: 
         </span>
       </button>
       {actions.length ? (
-        <div className={`absolute right-2 top-2 transition-opacity duration-150 group-hover/card:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 ${menuOpen ? 'opacity-100' : 'opacity-0'}`}>
-          <Popover open={menuOpen} onClose={() => setMenuOpen(false)} placement="below" align="end" trigger={
-            <IconButton size="sm" aria-label={`Actions for ${title}`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)} className="bg-bg shadow-sm ring-1 ring-border hover:bg-surface-2">
-              <MoreHorizontal size={15} />
-            </IconButton>
-          }>
-            <div role="menu" aria-label={`Actions for ${title}`}>
-              {actions.map((action) => (
-                <MenuRow key={action.label} role="menuitem" onClick={() => {
-                  setMenuOpen(false)
-                  action.onSelect()
-                }}>
-                  {action.label}
-                </MenuRow>
-              ))}
-            </div>
-          </Popover>
+        <div className="absolute right-2 top-2 opacity-0 transition-opacity duration-150 group-hover/card:opacity-100 focus-within:opacity-100 has-[[aria-expanded=true]]:opacity-100 pointer-coarse:opacity-100">
+          <ActionMenu label={`Actions for ${title}`} actions={actions} className="bg-bg shadow-sm ring-1 ring-border hover:bg-surface-2" />
         </div>
       ) : null}
     </div>

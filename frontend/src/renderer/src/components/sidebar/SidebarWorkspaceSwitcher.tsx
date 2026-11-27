@@ -9,12 +9,19 @@ import { type CloudWorkspaceSummary, LOCAL_WORKSPACE_ID, switchWorkspace } from 
 import { useCloudSession } from '@/lib/cloudSession'
 import { activeCloudWorkspace, workspaceDisplayName } from '@/lib/cloudWorkspaceDisplay'
 
-const DEFAULT_CLASS_NAME = 'shrink-0 pl-1.5 pr-3 pt-1.5 pb-1 max-sm:px-4 max-sm:pt-2'
-const IDENTITY_CLASS =
-  'flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-semibold text-ink max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
-// In the rail the workspace is its mark alone, filling a section tab's whole slot.
-const RAIL_CLASS = 'grid size-9 place-items-center rounded-[10px]'
-const RAIL_MARK_CLASS = 'size-9 rounded-[10px] text-[16px]'
+// The switcher is a row heading a sidebar, or in the nav rail its mark alone,
+// filling a section tab's whole slot.
+const ROW = {
+  wrapper: 'shrink-0 pl-1.5 pr-3 pt-1.5 pb-1 max-sm:px-4 max-sm:pt-2',
+  identity:
+    'flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-semibold text-ink max-sm:h-11 max-sm:px-3 max-sm:text-[15px]',
+  trigger: 'hover:bg-list-hover aria-expanded:bg-list-hover',
+}
+const RAIL = {
+  wrapper: 'flex flex-col items-center gap-2 after:h-px after:w-4 after:bg-border',
+  identity: 'grid size-9 place-items-center rounded-[10px]',
+  trigger: 'ring-ink/25 hover:ring-2 aria-expanded:ring-2 active:scale-[0.96]',
+}
 
 // A Cloud workspace shows its org icon, or its initial; Local shows the device.
 function WorkspaceMark({
@@ -67,22 +74,21 @@ export function SidebarWorkspaceSwitcher({
   const workspaces = cloud.workspaces
   const activeCloud = activeCloudWorkspace(cloud)
   const activeName = activeCloud ? workspaceDisplayName(activeCloud) : 'Local'
-  const wrapperClass = className ?? (rail ? 'flex flex-col items-center gap-2 after:h-px after:w-4 after:bg-border' : DEFAULT_CLASS_NAME)
-  const railMark = <WorkspaceMark workspace={activeCloud} className={RAIL_MARK_CLASS} />
+  const look = rail ? RAIL : ROW
+  const wrapperClass = className ?? look.wrapper
+  const identity = rail
+    ? <WorkspaceMark workspace={activeCloud} className="size-9 rounded-[10px] text-[16px]" />
+    : <WorkspaceLabel workspace={activeCloud} />
+  // The rail's mark carries no name, so a tooltip gives it.
+  const tooltip = rail ? { title: activeName, 'data-tooltip-side': 'right' } : {}
 
   // Without Local there is nothing to switch to or add around a single Cloud workspace.
   if (!localAllowed && workspaces.length <= 1) {
     return activeCloud ? (
       <div className={wrapperClass}>
-        {rail ? (
-          <p aria-label={`Workspace: ${activeName}`} title={activeName} data-tooltip-side="right" className={RAIL_CLASS}>
-            {railMark}
-          </p>
-        ) : (
-          <p className={IDENTITY_CLASS}>
-            <WorkspaceLabel workspace={activeCloud} />
-          </p>
-        )}
+        <p aria-label={`Workspace: ${activeName}`} {...tooltip} className={look.identity}>
+          {identity}
+        </p>
       </div>
     ) : null
   }
@@ -127,23 +133,17 @@ export function SidebarWorkspaceSwitcher({
             onClick={() => {
               if (switchingTo === null) setOpen((value) => !value)
             }}
-            {...(rail && !open ? { title: activeName, 'data-tooltip-side': 'right' } : {})}
-            className={`group/workspace ${rail ? `${RAIL_CLASS} ring-ink/25 hover:ring-2 aria-expanded:ring-2 active:scale-[0.96]` : `${IDENTITY_CLASS} hover:bg-list-hover aria-expanded:bg-list-hover`} cursor-pointer transition-[background-color,box-shadow,transform] duration-150 aria-disabled:cursor-default aria-disabled:opacity-60`}
+            {...(open ? {} : tooltip)}
+            className={`group/workspace ${look.identity} ${look.trigger} cursor-pointer transition-[background-color,box-shadow,transform] duration-150 aria-disabled:cursor-default aria-disabled:opacity-60`}
           >
-            {rail ? (
-              switchingTo !== null ? <LoaderCircle size={16} className="animate-spin text-ink-3" /> : railMark
+            {identity}
+            {rail ? null : switchingTo !== null ? (
+              <LoaderCircle size={13} className="shrink-0 animate-spin text-ink-3" />
             ) : (
-              <>
-                <WorkspaceLabel workspace={activeCloud} />
-                {switchingTo !== null ? (
-                  <LoaderCircle size={13} className="shrink-0 animate-spin text-ink-3" />
-                ) : (
-                  <ChevronsUpDown
-                    size={13}
-                    className="shrink-0 text-ink-3 transition-colors duration-150 group-hover/workspace:text-ink-2 group-aria-expanded/workspace:text-ink-2"
-                  />
-                )}
-              </>
+              <ChevronsUpDown
+                size={13}
+                className="shrink-0 text-ink-3 transition-colors duration-150 group-hover/workspace:text-ink-2 group-aria-expanded/workspace:text-ink-2"
+              />
             )}
           </button>
         }

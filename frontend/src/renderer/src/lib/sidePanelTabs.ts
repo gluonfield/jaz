@@ -19,8 +19,9 @@ export type SidePanelTab =
   | { id: string; kind: 'artifact'; artifact: ArtifactInput }
   | { id: string; kind: 'published-app'; app: PublishedAppRef }
 export type PublishedAppRef = { id: string; title: string }
-// NewSidePanelTab is what the new-tab menu opens: a built-in kind, a thread app or a published app.
-export type NewSidePanelTab = Exclude<SidePanelTab['kind'], 'app' | 'view' | 'canvas' | 'artifact' | 'published-app'> | MCPEntrypoint | PublishedAppRef
+type PublishedAppTab = Extract<SidePanelTab, { kind: 'published-app' }>
+// NewSidePanelTab is what the new-tab menu opens: a built-in kind, a thread app or a published app's tab.
+export type NewSidePanelTab = Exclude<SidePanelTab['kind'], 'app' | 'view' | 'canvas' | 'artifact' | 'published-app'> | MCPEntrypoint | PublishedAppTab
 export type SidePanelMode = 'tabs' | 'overview'
 export const OVERVIEW_PANEL_WIDTH = 300
 
@@ -86,7 +87,7 @@ export function artifactTab(artifact: ArtifactInput): Extract<SidePanelTab, { ki
   return { id: `artifact:${artifact.title}:${hash}`, kind: 'artifact', artifact }
 }
 
-export function publishedAppTab(app: PublishedAppRef): Extract<SidePanelTab, { kind: 'published-app' }> {
+export function publishedAppTab(app: PublishedAppRef): PublishedAppTab {
   return { id: `published-app:${app.id}`, kind: 'published-app', app: { id: app.id, title: app.title } }
 }
 
