@@ -60,8 +60,7 @@ type cloudLaunchAuth struct {
 	resolve     func(context.Context, int64) (acpcredentials.Profile, error)
 }
 
-func (m *Manager) cloudLaunchAuth(ctx context.Context, agent string, cfg AgentConfig) (*cloudLaunchAuth, error) {
-	profileID := cfg.cloudCredentialProfileID
+func (m *Manager) cloudLaunchAuth(ctx context.Context, profileID string, rejectedVersion int64) (*cloudLaunchAuth, error) {
 	if profileID == "" {
 		return nil, nil
 	}
@@ -74,16 +73,16 @@ func (m *Manager) cloudLaunchAuth(ctx context.Context, agent string, cfg AgentCo
 		if err != nil {
 			return acpcredentials.Profile{}, fmt.Errorf("resolve %s on this machine: %w", profileID, err)
 		}
-		if profile.Agent != agent || !profile.Valid() {
+		if !profile.ValidFor(profileID) {
 			return acpcredentials.Profile{}, errors.New("Cloud returned incompatible native credentials")
 		}
 		return profile, nil
 	}
-	initial, err := resolve(ctx, cfg.cloudRejectedVersion)
+	initial, err := resolve(ctx, rejectedVersion)
 	if err != nil {
 		return nil, err
 	}
-	if agent == AgentAntigravity && initial.OAuth != nil {
+	if initial.Agent == AgentAntigravity && initial.OAuth != nil {
 		return nil, errors.New("use the Antigravity Cloud profile with Cloud execution, or choose your local Antigravity sign-in")
 	}
 	return &cloudLaunchAuth{workspaceID: workspaceID, initial: initial, resolve: resolve}, nil

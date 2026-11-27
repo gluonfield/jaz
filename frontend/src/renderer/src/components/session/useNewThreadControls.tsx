@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { acpAgentChecking, enabledACPAgents, enabledACPAgentsChecking, runtimeModelState } from '@/lib/agentRuntimes'
 import { agentLabel } from '@/lib/agentLabel'
+import { cloudACPProfilesQuery } from '@/lib/api/cloudACP'
 import { cloudProfileToAgentOption, resolveCloudProfileModel } from '@/lib/api/cloudThreads'
 import { useCloudModelProfilesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import type { CreateSessionInput } from '@/lib/api/sessions'
@@ -29,12 +30,20 @@ export function useNewThreadControls(targetLocation?: 'local' | 'cloud') {
   const cloudOnly = useIsCloudOnly()
   const cloudTarget = cloudOnly || targetLocation === 'cloud'
   const mixed = !cloudTarget && cloud.active
-  const { workspaceID } = useCloudCatalogScope()
+  const { account, workspaceID } = useCloudCatalogScope()
   const localQuery = useQuery({ ...agentSettingsQuery, enabled: !cloudTarget })
   const cloudQuery = useQuery({ ...useCloudModelProfilesQuery(), enabled: cloud.active })
+  const { data: legacyAntigravity } = useQuery({
+    ...cloudACPProfilesQuery(account, workspaceID),
+    enabled: mixed && cloudQuery.data?.some((profile) => profile.scope === 'user' && profile.profile_id === 'acp:antigravity') === true,
+    select: ({ profiles, supported_agents }) =>
+      supported_agents.some((spec) => spec.agent === 'antigravity' && spec.credential_kind === 'api_key') &&
+      profiles.some((profile) => profile.agent === 'antigravity' && profile.credential_kind === 'api_key'),
+  })
   const agentSettings = cloudTarget ? undefined : localQuery.data
   const cloudProfiles = cloud.active ? (cloudQuery.data ?? []).filter((profile) =>
-    cloudTarget || (profile.scope === 'user' && profile.profile_id === `acp:${profile.agent}`),
+    cloudTarget || (profile.scope === 'user' && profile.profile_id === `acp:${profile.agent}` &&
+      (profile.agent !== 'antigravity' || legacyAntigravity)),
   ) : []
 
   const runtimeKey = cloudTarget ? NEW_SESSION_CLOUD_PROFILE_KEY : mixed ? NEW_SESSION_WORKSPACE_AGENT_KEY : NEW_SESSION_AGENT_KEY

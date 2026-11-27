@@ -4,20 +4,18 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/toast'
 import { submitACPAuthLoginInput } from '@/lib/api/settings'
-import type { ACPAuthLogin } from '@/lib/api/types'
+import type { ACPAuthLoginChallenge } from '@/lib/api/types'
 import { openExternal } from '@/lib/clientRuntime'
 import { writeClipboard } from '@/lib/clipboard'
 
 export function AuthLoginStatus({
   job,
   running,
-  allowCodeInput = true,
   submitCode = submitACPAuthLoginInput,
 }: {
-  job?: ACPAuthLogin
+  job?: ACPAuthLoginChallenge
   running: boolean
-  allowCodeInput?: boolean
-  submitCode?: (id: string, code: string) => Promise<unknown>
+  submitCode?: false | ((id: string, code: string) => Promise<unknown>)
 }) {
   const toast = useToast()
   const opened = useRef('')
@@ -26,12 +24,9 @@ export function AuthLoginStatus({
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
 
-  // The remote/headless flow: the browser prints a code the CLI couldn't
-  // capture, so the user hands it back here and the backend relays it to the
-  // login process's stdin. The poll then reflects the result.
   const onSubmitCode = async () => {
     const value = code.trim()
-    if (!job || !value) return
+    if (!job || !submitCode || !value) return
     setSending(true)
     setSendError('')
     try {
@@ -119,7 +114,7 @@ export function AuthLoginStatus({
         </div>
       ) : null}
 
-      {allowCodeInput && job && showAuthDetails ? (
+      {submitCode && job && showAuthDetails ? (
         <form
           onSubmit={(event) => {
             event.preventDefault()
@@ -143,14 +138,14 @@ export function AuthLoginStatus({
               Submit
             </Button>
           </div>
-          {sendError ? <p className="text-danger">{sendError}</p> : null}
+          {sendError ? <p role="alert" className="text-danger">{sendError}</p> : null}
         </form>
       ) : null}
     </div>
   )
 }
 
-function authDetails(job?: ACPAuthLogin): { url: string; code: string } {
+function authDetails(job?: ACPAuthLoginChallenge): { url: string; code: string } {
   const output = stripANSI(job?.output ?? '')
   return {
     url: job?.auth_url || firstAuthURL(output),

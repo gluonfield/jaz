@@ -104,7 +104,7 @@ func (c *Client) ResolveACPProfile(ctx context.Context, profileID string, reject
 			return acpcredentials.Profile{}, err
 		}
 		var profile acpcredentials.Profile
-		if json.Unmarshal(raw, &profile) != nil || profile.ID != profileID || profile.ID != "acp:"+profile.Agent || profile.Version <= 0 || !profile.Valid() {
+		if json.Unmarshal(raw, &profile) != nil || !profile.ValidFor(profileID) {
 			return acpcredentials.Profile{}, errors.New("invalid Cloud ACP profile response")
 		}
 		return profile, nil

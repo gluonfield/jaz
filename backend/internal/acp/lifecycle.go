@@ -25,8 +25,10 @@ type agentProcess struct {
 }
 
 type cloudOAuthLease struct {
-	version   int64
-	expiresAt time.Time
+	workspaceID string
+	profileID   string
+	version     int64
+	expiresAt   time.Time
 }
 
 func newAgentProcess(ac *agentConn) *agentProcess {

@@ -28,7 +28,7 @@ func (m *Manager) kimiModels(ctx context.Context, cfg AgentConfig) (catalog Agen
 	if err := os.MkdirAll(cwd, 0o700); err != nil {
 		return catalog, err
 	}
-	ac, err := m.connectWithHandler(ctx, AgentKimi, cfg, cwd, "", "", nil, jsonrpc.HandlerFunc(func(_ context.Context, req jsonrpc.Request) (json.RawMessage, *jsonrpc.Error) {
+	ac, err := m.connectWithHandler(ctx, AgentKimi, cfg, cwd, "", "", nil, nil, jsonrpc.HandlerFunc(func(_ context.Context, req jsonrpc.Request) (json.RawMessage, *jsonrpc.Error) {
 		return nil, jsonrpc.MethodNotFound(req.Method)
 	}))
 	if err != nil {

@@ -49,7 +49,7 @@ func (m *Manager) SwitchAgent(ctx context.Context, sessionID, agent string) erro
 		return err
 	}
 	ctx = sessioncontext.WithWorkspaceID(ctx, session.WorkspaceID)
-	if _, err := m.cloudLaunchAuth(ctx, req.ACPAgent, cfg); err != nil {
+	if _, err := m.cloudLaunchAuth(ctx, profileID, 0); err != nil {
 		return err
 	}
 	m.teardown(sessionID)

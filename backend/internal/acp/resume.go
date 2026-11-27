@@ -26,7 +26,7 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 		return nil, fmt.Errorf("active acp session not found: %s", ref)
 	}
 	defer m.resumeLocks.Lock(session.ID)()
-	return m.resumeLocked(ctx, session.ID, 0)
+	return m.resumeLocked(ctx, session.ID, nil)
 }
 
 func (m *Manager) restart(ctx context.Context, stale *jobState) (*jobState, error) {
@@ -37,15 +37,24 @@ func (m *Manager) restart(ctx context.Context, stale *jobState) (*jobState, erro
 	if current != nil && current != stale {
 		return current, nil
 	}
-	var rejectedVersion int64
-	if process != nil && stale.claudeAuthFailed() {
-		rejectedVersion = process.cloudOAuth.version
+	var auth *cloudLaunchAuth
+	if process != nil && process.cloudOAuth.version > 0 {
+		oauth := process.cloudOAuth
+		var rejectedVersion int64
+		if stale.claudeAuthFailed() {
+			rejectedVersion = oauth.version
+		}
+		var err error
+		auth, err = m.cloudLaunchAuth(sessioncontext.WithWorkspaceID(ctx, oauth.workspaceID), oauth.profileID, rejectedVersion)
+		if err != nil {
+			return nil, err
+		}
 	}
 	m.teardown(stale.ID)
-	return m.resumeLocked(ctx, stale.ID, rejectedVersion)
+	return m.resumeLocked(ctx, stale.ID, auth)
 }
 
-func (m *Manager) resumeLocked(ctx context.Context, ref string, rejectedVersion int64) (_ *jobState, err error) {
+func (m *Manager) resumeLocked(ctx context.Context, ref string, auth *cloudLaunchAuth) (_ *jobState, err error) {
 	ctx, finish, err := m.beginLaunch(ctx)
 	if err != nil {
 		return nil, err
@@ -90,7 +99,6 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string, rejectedVersion 
 	if err != nil {
 		return nil, err
 	}
-	cfg.cloudRejectedVersion = rejectedVersion
 	overview, err := m.store.LoadSessionOverviewEvents(session.ID)
 	if err != nil {
 		return nil, fmt.Errorf("restore agent session state: %w", err)
@@ -132,7 +140,13 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string, rejectedVersion 
 	if err != nil {
 		return nil, err
 	}
-	ac, err := m.connect(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
+	if auth == nil || auth.initial.ID != cfg.cloudCredentialProfileID || auth.workspaceID != session.WorkspaceID {
+		auth, err = m.cloudLaunchAuth(ctx, cfg.cloudCredentialProfileID, 0)
+		if err != nil {
+			return nil, err
+		}
+	}
+	ac, err := m.connect(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions, auth)
 	if err != nil {
 		return nil, err
 	}

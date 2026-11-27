@@ -315,15 +315,11 @@ func (m *Manager) trackPromptSends(c *agentConn, job *jobState) {
 	}
 }
 
-func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (*agentConn, error) {
-	return m.connectWithHandler(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions, jsonrpc.HandlerFunc(m.handleJSONRPC))
+func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, auth *cloudLaunchAuth) (*agentConn, error) {
+	return m.connectWithHandler(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions, auth, jsonrpc.HandlerFunc(m.handleJSONRPC))
 }
 
-func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (_ *agentConn, err error) {
-	launchAuth, err := m.cloudLaunchAuth(ctx, name, cfg)
-	if err != nil {
-		return nil, err
-	}
+func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, launchAuth *cloudLaunchAuth, handler jsonrpc.Handler) (_ *agentConn, err error) {
 	modelMetadata, err := m.resolveCodexCustomProviderModelMetadata(name, cfg)
 	if err != nil {
 		return nil, err
@@ -358,7 +354,12 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 	peer := jsonrpc.NewPeer(promptTracker, state.handler(m, handler))
 	ac := &agentConn{state: state, conn: promptTracker, peer: peer, cancel: cancel, closed: runCtx.Done(), stderr: stderr, promptTracker: promptTracker}
 	if launchAuth != nil && launchAuth.initial.OAuth != nil {
-		ac.cloudOAuth = cloudOAuthLease{version: launchAuth.initial.Version, expiresAt: launchAuth.initial.OAuth.ExpiresAt}
+		ac.cloudOAuth = cloudOAuthLease{
+			workspaceID: launchAuth.workspaceID,
+			profileID:   launchAuth.initial.ID,
+			version:     launchAuth.initial.Version,
+			expiresAt:   launchAuth.initial.OAuth.ExpiresAt,
+		}
 	}
 	defer func() {
 		if err != nil {
@@ -628,7 +629,11 @@ func (m *Manager) startSession(ctx context.Context, created createdSession, stat
 	if cfg.Local {
 		return m.spawnLocalSession(session, req.ACPAgent, absCwd, req.SystemPromptExtensions, state)
 	}
-	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
+	auth, err := m.cloudLaunchAuth(ctx, cfg.cloudCredentialProfileID, 0)
+	if err != nil {
+		return nil, err
+	}
+	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions, auth)
 	if err != nil {
 		return nil, err
 	}

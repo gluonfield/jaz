@@ -22,10 +22,13 @@ type Profile struct {
 	OAuth   *OAuthTokens   `json:"oauth,omitempty"`
 }
 
-func (p Profile) Valid() bool {
+func (p Profile) ValidFor(id string) bool {
+	if p.ID != id || p.ID != "acp:"+p.Agent || p.Version <= 0 {
+		return false
+	}
 	switch p.Kind {
 	case APIKey:
-		return p.Agent != "codex" && p.APIKey != "" && p.ChatGPT == nil && p.OAuth == nil
+		return (p.Agent == "claude" || p.Agent == "antigravity" || p.Agent == "grok") && p.APIKey != "" && p.ChatGPT == nil && p.OAuth == nil
 	case OAuthBundle:
 		if p.APIKey != "" {
 			return false

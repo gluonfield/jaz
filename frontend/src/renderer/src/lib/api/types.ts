@@ -1305,7 +1305,7 @@ export interface ACPAgentAuthStatus {
   managed_tool?: ACPManagedToolStatus
 }
 
-export interface ACPAuthLogin {
+export interface ACPAuthLoginChallenge {
   id: string
   agent: string
   status: 'running' | 'succeeded' | 'failed'
@@ -1313,6 +1313,9 @@ export interface ACPAuthLogin {
   auth_url?: string
   auth_code?: string
   error?: string
+}
+
+export interface ACPAuthLogin extends ACPAuthLoginChallenge {
   started_at: string
   finished_at?: string
 }

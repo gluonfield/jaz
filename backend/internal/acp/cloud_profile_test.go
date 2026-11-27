@@ -2,6 +2,7 @@ package acp_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -24,6 +25,7 @@ func TestCloudClaudeRestoresNativeSessionWithRefreshedCredentials(t *testing.T) 
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	var versions []int64
+	refreshUnavailable := errors.New("Cloud refresh temporarily unavailable")
 	const workspace, profileID = "fixture-workspace", "acp:claude"
 	manager := newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentClaude, map[string]string{
 		"JAZ_FAKE_ACP_CLAUDE_AUTH_LOG":      tokens,
@@ -36,6 +38,9 @@ func TestCloudClaudeRestoresNativeSessionWithRefreshedCredentials(t *testing.T) 
 			versions = append(versions, rejectedVersion)
 			version, token := int64(1), "fixture-initial"
 			if rejectedVersion == version {
+				if len(versions) == 2 {
+					return acpcredentials.Profile{}, refreshUnavailable
+				}
 				version, token = 2, "fixture-refreshed"
 			}
 			return acpcredentials.Profile{ID: id, Agent: acp.AgentClaude, Kind: acpcredentials.OAuthBundle, Version: version,
@@ -60,9 +65,12 @@ func TestCloudClaudeRestoresNativeSessionWithRefreshedCredentials(t *testing.T) 
 	if err := os.Remove(rejected); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "next turn", Completion: acp.CompletionInline}); !errors.Is(err, refreshUnavailable) {
+		t.Fatalf("expected temporary refresh error, got %v", err)
+	}
 	sendAndWait(t, ctx, manager, spawned.SessionID, "next turn")
 	raw, err := os.ReadFile(tokens)
-	if err != nil || !slices.Equal(strings.Fields(string(raw)), []string{"fixture-initial", "fixture-refreshed"}) || !slices.Equal(versions, []int64{0, 1}) {
+	if err != nil || !slices.Equal(strings.Fields(string(raw)), []string{"fixture-initial", "fixture-refreshed"}) || !slices.Equal(versions, []int64{0, 1, 1}) {
 		t.Fatalf("native Claude did not receive the refreshed credential after rejection: versions %v, read error %v", versions, err)
 	}
 }

@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
-import type { ACPAuthLogin } from '@/lib/api/types'
+import type { ACPAuthLoginChallenge } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { request } from '@/lib/api/client'
 import { cloudWorkspaceHeaders } from '@/lib/api/cloudScope'
@@ -136,8 +136,8 @@ export function refreshCloudACPProfile(agent: string, workspaceID: string, signa
   return postCloudACP<{ profile: CloudACPProfile }>(`${profilePath(agent)}/refresh`, workspaceID, signal, { force: true })
 }
 
-export function toACPAuthLogin(session: CloudACPLoginSession): ACPAuthLogin {
-  const status: ACPAuthLogin['status'] =
+export function toACPAuthLogin(session: CloudACPLoginSession): ACPAuthLoginChallenge {
+  const status: ACPAuthLoginChallenge['status'] =
     session.status === 'completed'
       ? 'succeeded'
       : session.status === 'failed' || session.status === 'expired'
@@ -150,6 +150,5 @@ export function toACPAuthLogin(session: CloudACPLoginSession): ACPAuthLogin {
     auth_url: session.verification_url,
     auth_code: session.user_code,
     error: session.error || (session.status === 'expired' ? 'Sign-in timed out. Start sign-in again.' : undefined),
-    started_at: '',
   }
 }
