@@ -84,7 +84,7 @@ export async function listVaultItems(options?: {
 
 export const vaultItemsQuery = (kind: VaultKind | '' = '', domain = '', workspaceID?: string) =>
   queryOptions({
-    queryKey: keys.vaultItems(kind, domain),
+    queryKey: keys.vaultItems(kind, domain, workspaceID ?? ''),
     queryFn: ({ signal }) => listVaultItems({ kind, domain, workspaceID, signal }),
     staleTime: 15_000,
     retry: false,

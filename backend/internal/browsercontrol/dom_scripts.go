@@ -87,11 +87,19 @@ func probeRefScript(ref string) string {
 }
 
 func formInputScript(ref string, value any) string {
+	return setControlValueScript(ref, value, false)
+}
+
+func setControlValueScript(ref string, value any, vaultMode bool) string {
 	encoded, _ := json.Marshal(value)
 	return elementResolverJS() + `
-	(function(q, value){
+	(function(q, value, vaultMode){
 	const el = jazFindElement(q);
 	if (!el) return {found:false};
+	if (vaultMode) {
+	  globalThis.__jazVaultRedacted = globalThis.__jazVaultRedacted || new WeakSet();
+	  globalThis.__jazVaultRedacted.add(el);
+	}
 	el.scrollIntoView({block:"center", inline:"center"});
 	el.focus();
 	let changed = true;
@@ -101,7 +109,10 @@ func formInputScript(ref string, value any) string {
 	  changed = false;
 	  reason = "target is disabled or read-only";
 	} else if (el instanceof HTMLInputElement && (type === "checkbox" || type === "radio")) {
-	  if (typeof value !== "boolean" || (type === "radio" && !value)) {
+	  if (vaultMode) {
+	    changed = false;
+	    reason = "vault cannot fill " + type + " inputs";
+	  } else if (typeof value !== "boolean" || (type === "radio" && !value)) {
 	    changed = false;
 	    reason = type + " requires " + (type === "radio" ? "true" : "a boolean value");
 	  }
@@ -120,7 +131,7 @@ func formInputScript(ref string, value any) string {
 	    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
 	    if (setter && setter.set) setter.set.call(el, option.value); else el.value = option.value;
 	  }
-	} else if (el instanceof HTMLInputElement && ["button","submit","reset","file","image"].includes(type)) {
+	} else if (el instanceof HTMLInputElement && ["button","submit","reset","file","image","hidden"].includes(type)) {
 	  changed = false;
 	  reason = "input type " + type + " is not editable";
 	} else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
@@ -132,9 +143,9 @@ func formInputScript(ref string, value any) string {
 	  if (next && el.value !== next) {
 	    if (setter && setter.set) setter.set.call(el, previous); else el.value = previous;
 	    changed = false;
-	    reason = "browser rejected the form value";
+	    reason = vaultMode ? "browser rejected the vault value" : "browser rejected the form value";
 	  }
-	} else if (el.isContentEditable) {
+	} else if (!vaultMode && el.isContentEditable) {
 	  el.textContent = String(value);
 	} else {
 	  changed = false;
@@ -145,7 +156,7 @@ func formInputScript(ref string, value any) string {
 	  el.dispatchEvent(new Event("change", {bubbles:true, composed:true}));
 	}
 	return {found:true, changed, label: jazLabel(el), reason};
-	})` + "(" + jsString(strings.TrimSpace(ref)) + "," + string(encoded) + ");"
+	})` + "(" + jsString(strings.TrimSpace(ref)) + "," + string(encoded) + "," + fmt.Sprint(vaultMode) + ");"
 }
 
 func textPresentScript(text string) string {

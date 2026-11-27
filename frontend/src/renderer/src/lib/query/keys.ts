@@ -35,7 +35,7 @@ export const keys = {
   onboardingState: ['onboarding', 'state'] as const,
   memory: ['memory'] as const,
   vaultRoot: ['vault'] as const,
-  vaultItems: (kind = '', domain = '') => ['vault', 'items', kind, domain] as const,
+  vaultItems: (kind = '', domain = '', workspaceID = '') => ['vault', 'items', workspaceID, kind, domain] as const,
   pluginQR: (id: string) => ['plugins', 'qr', id] as const,
   computerSettings: ['computer', 'settings'] as const,
   computerStatus: ['computer', 'status'] as const,

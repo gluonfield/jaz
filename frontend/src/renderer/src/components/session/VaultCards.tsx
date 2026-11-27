@@ -1,9 +1,17 @@
 import { Check, CreditCard, KeyRound, LoaderCircle, Lock, ShieldCheck, UserRound, X } from 'lucide-react'
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import {
+  buildVaultItemPayload,
+  initialVaultFormValues,
+  VaultItemFormFields,
+  type VaultFormValues,
+} from '@/components/vault/VaultItemFormFields'
 import { answerSessionInteractiveResponse } from '@/lib/api/sessions'
 import type { ACPPermission, SessionEvent } from '@/lib/api/types'
-import { createVaultItem, type VaultItemInput, type VaultKind } from '@/lib/api/vault'
+import { createVaultItem, type VaultKind } from '@/lib/api/vault'
+import { useCloudSession } from '@/lib/cloudSession'
+import { activeCloudWorkspace } from '@/lib/cloudWorkspaceDisplay'
 import { keys } from '@/lib/query/keys'
 import { normalized } from './TranscriptUtils'
 
@@ -146,26 +154,13 @@ export function VaultRequestCard({
   const permission = event.permission
   const req = permission?.vault_request
   const queryClient = useQueryClient()
+  const cloud = useCloudSession()
+  const workspaceID = activeCloudWorkspace(cloud)?.id
   const kind = normalizeRequestKind(req?.kind)
 
-  const [label, setLabel] = useState(req?.label || '')
-  const [origin, setOrigin] = useState(req?.domain || '')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [totpSecret, setTotpSecret] = useState('')
-  const [cardholderName, setCardholderName] = useState('')
-  const [cardNumber, setCardNumber] = useState('')
-  const [cardExpMonth, setCardExpMonth] = useState('')
-  const [cardExpYear, setCardExpYear] = useState('')
-  const [cardCvv, setCardCvv] = useState('')
-  const [billingAddress, setBillingAddress] = useState('')
-  const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
-  const [addressLines, setAddressLines] = useState('')
-  const [postalCode, setPostalCode] = useState('')
-  const [country, setCountry] = useState('')
-
+  const [values, setValues] = useState<VaultFormValues>(() =>
+    initialVaultFormValues({ label: req?.label, domain: req?.domain }),
+  )
   const [localSelection, setLocalSelection] = useState('')
   const [submitting, setSubmitting] = useState<'save' | 'cancel' | ''>('')
   const [error, setError] = useState('')
@@ -187,41 +182,14 @@ export function VaultRequestCard({
     setSubmitting('save')
     setError('')
     try {
-      const payload: VaultItemInput & { kind: VaultKind } = {
-        kind,
-        label: label.trim() || undefined,
-      }
-      if (kind === 'login') {
-        payload.origins = origin.trim() ? [origin.trim()] : []
-        payload.username = username.trim()
-        payload.password = password
-        if (totpSecret.trim()) payload.totp_secret = totpSecret.trim()
-      } else if (kind === 'card') {
-        payload.cardholder_name = cardholderName.trim()
-        payload.pan = cardNumber.trim()
-        payload.card_exp_month = Number.parseInt(cardExpMonth, 10) || 0
-        payload.card_exp_year = Number.parseInt(cardExpYear, 10) || 0
-        payload.cvv = cardCvv.trim()
-        if (billingAddress.trim()) payload.billing_address = billingAddress.trim()
-      } else {
-        payload.full_name = fullName.trim()
-        payload.email = email.trim()
-        payload.phone = phone.trim()
-        payload.address_lines = addressLines.trim()
-        payload.postal_code = postalCode.trim()
-        payload.country = country.trim()
-      }
-      const created = await createVaultItem(payload)
+      const created = await createVaultItem(buildVaultItemPayload(kind, values, false), workspaceID)
       const optionID = `saved:${created.id}`
       await answerSessionInteractiveResponse(event.session_id, {
         request_id: permission.id,
         option_id: optionID,
       })
       setLocalSelection(optionID)
-      setPassword('')
-      setTotpSecret('')
-      setCardNumber('')
-      setCardCvv('')
+      setValues((prev) => ({ ...prev, password: '', totpSecret: '', pan: '', cvv: '' }))
       void queryClient.invalidateQueries({ queryKey: keys.vaultRoot })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save to Vault.')
@@ -246,9 +214,6 @@ export function VaultRequestCard({
       setSubmitting('')
     }
   }
-
-  const inputClass =
-    'h-8 w-full rounded-control border border-border bg-bg px-2.5 text-[12px] text-ink placeholder:text-ink-3 focus:border-primary focus:outline-none disabled:opacity-60'
 
   return (
     <div className="rounded-card border border-border bg-surface px-3.5 py-3">
@@ -285,188 +250,13 @@ export function VaultRequestCard({
 
       {!saved && !cancelled ? (
         <form onSubmit={(e) => void handleSave(e)} className="mt-3 space-y-2">
-          <input
-            type="text"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="Label (optional)"
+          <VaultItemFormFields
+            kind={kind}
+            values={values}
+            compact
             disabled={locked}
-            className={inputClass}
+            onChange={(patch) => setValues((prev) => ({ ...prev, ...patch }))}
           />
-
-          {kind === 'login' ? (
-            <>
-              <input
-                type="text"
-                value={origin}
-                onChange={(e) => setOrigin(e.target.value)}
-                placeholder="Website origin (e.g. https://github.com)"
-                required
-                disabled={locked}
-                className={inputClass}
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Username or email"
-                  required
-                  autoComplete="off"
-                  disabled={locked}
-                  className={inputClass}
-                />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
-                  required
-                  autoComplete="new-password"
-                  disabled={locked}
-                  className={inputClass}
-                />
-              </div>
-              <input
-                type="password"
-                value={totpSecret}
-                onChange={(e) => setTotpSecret(e.target.value)}
-                placeholder="Authenticator TOTP secret (optional)"
-                autoComplete="off"
-                disabled={locked}
-                className={inputClass}
-              />
-            </>
-          ) : null}
-
-          {kind === 'card' ? (
-            <>
-              <input
-                type="text"
-                value={cardholderName}
-                onChange={(e) => setCardholderName(e.target.value)}
-                placeholder="Cardholder name"
-                autoComplete="off"
-                disabled={locked}
-                className={inputClass}
-              />
-              <input
-                type="password"
-                inputMode="numeric"
-                value={cardNumber}
-                onChange={(e) => setCardNumber(e.target.value)}
-                placeholder="Card number"
-                required
-                autoComplete="off"
-                disabled={locked}
-                className={inputClass}
-              />
-              <div className="grid grid-cols-3 gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  max={12}
-                  value={cardExpMonth}
-                  onChange={(e) => setCardExpMonth(e.target.value)}
-                  placeholder="MM"
-                  required
-                  disabled={locked}
-                  className={inputClass}
-                />
-                <input
-                  type="number"
-                  min={2024}
-                  max={2100}
-                  value={cardExpYear}
-                  onChange={(e) => setCardExpYear(e.target.value)}
-                  placeholder="YYYY"
-                  required
-                  disabled={locked}
-                  className={inputClass}
-                />
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  value={cardCvv}
-                  onChange={(e) => setCardCvv(e.target.value)}
-                  placeholder="CVV"
-                  required
-                  autoComplete="off"
-                  disabled={locked}
-                  className={inputClass}
-                />
-              </div>
-              <input
-                type="text"
-                value={billingAddress}
-                onChange={(e) => setBillingAddress(e.target.value)}
-                placeholder="Billing address (optional)"
-                autoComplete="off"
-                disabled={locked}
-                className={inputClass}
-              />
-            </>
-          ) : null}
-
-          {kind === 'identity' ? (
-            <>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Full name"
-                  disabled={locked}
-                  className={inputClass}
-                />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email"
-                  disabled={locked}
-                  className={inputClass}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="Phone"
-                  disabled={locked}
-                  className={inputClass}
-                />
-                <input
-                  type="text"
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  placeholder="Country"
-                  disabled={locked}
-                  className={inputClass}
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <input
-                  type="text"
-                  value={addressLines}
-                  onChange={(e) => setAddressLines(e.target.value)}
-                  placeholder="Street address"
-                  disabled={locked}
-                  className={`${inputClass} col-span-2`}
-                />
-                <input
-                  type="text"
-                  value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
-                  placeholder="Postal code"
-                  disabled={locked}
-                  className={inputClass}
-                />
-              </div>
-            </>
-          ) : null}
-
           <div className="flex items-center gap-2 pt-1">
             <button
               type="submit"

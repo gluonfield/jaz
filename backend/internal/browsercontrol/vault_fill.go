@@ -2,7 +2,6 @@ package browsercontrol
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -102,9 +101,11 @@ func (p *browserPage) blindFill(ctx context.Context, req VaultFillRequest) (Vaul
 				return VaultFillResult{}, fmt.Errorf("target iframe origin %q is not authorized for slot %q", targetOrigin, field.Slot)
 			}
 			p.markRedactedNode(target.Frame.ID, target.BackendID)
+		} else if backendID := p.describeTopRefBackendID(ctx, ref); backendID != 0 {
+			p.markRedactedNode(top.ID, backendID)
 		}
 		var out elementResult
-		if err := p.evalRef(ctx, ref, vaultFillScript(ref, field.Value), &out); err != nil {
+		if err := p.evalRef(ctx, ref, setControlValueScript(ref, field.Value, true), &out); err != nil {
 			return VaultFillResult{}, fmt.Errorf("fill slot %q: %w", field.Slot, err)
 		}
 		if !out.Found {
@@ -120,6 +121,37 @@ func (p *browserPage) blindFill(ctx context.Context, req VaultFillRequest) (Vaul
 		filled = append(filled, field.Slot)
 	}
 	return VaultFillResult{FilledSlots: filled}, nil
+}
+
+func (p *browserPage) describeTopRefBackendID(ctx context.Context, ref string) int64 {
+	if p.contextID == 0 {
+		return 0
+	}
+	expr := elementResolverJS() + `(function(q){ return jazFindElement(q) || null; })(` + jsString(ref) + `);`
+	var evalOut struct {
+		Result struct {
+			ObjectID string `json:"objectId"`
+		} `json:"result"`
+	}
+	if err := p.conn.Call(ctx, "Runtime.evaluate", map[string]any{
+		"expression":    expr,
+		"contextId":     p.contextID,
+		"returnByValue": false,
+	}, &evalOut); err != nil || evalOut.Result.ObjectID == "" {
+		return 0
+	}
+	defer func() {
+		_ = p.conn.Call(ctx, "Runtime.releaseObject", map[string]any{"objectId": evalOut.Result.ObjectID}, nil)
+	}()
+	var described struct {
+		Node struct {
+			BackendNodeID int64 `json:"backendNodeId"`
+		} `json:"node"`
+	}
+	if err := p.conn.Call(ctx, "DOM.describeNode", map[string]any{"objectId": evalOut.Result.ObjectID}, &described); err != nil {
+		return 0
+	}
+	return described.Node.BackendNodeID
 }
 
 func (p *browserPage) markRedactedNode(frameID string, backendID int64) {
@@ -177,66 +209,16 @@ func (p *browserPage) maskSensitiveForScreenshot(ctx context.Context) func() {
 	}
 }
 
-func vaultFillScript(ref, value string) string {
-	encoded, _ := json.Marshal(value)
-	return elementResolverJS() + `
-	(function(q, value){
-	const el = jazFindElement(q);
-	if (!el) return {found:false};
-	globalThis.__jazVaultRedacted = globalThis.__jazVaultRedacted || new WeakSet();
-	globalThis.__jazVaultRedacted.add(el);
-	el.scrollIntoView({block:"center", inline:"center"});
-	el.focus();
-	let changed = true;
-	let reason = "";
-	const type = String(el.getAttribute("type") || "").toLowerCase();
-	if (el.disabled || el.readOnly || el.getAttribute("aria-disabled") === "true" || el.getAttribute("aria-readonly") === "true") {
-	  changed = false;
-	  reason = "target is disabled or read-only";
-	} else if (el instanceof HTMLSelectElement) {
-	  const needle = jazNorm(value);
-	  const option = Array.from(el.options).find(o => jazNorm(o.value) === needle || jazNorm(o.textContent) === needle);
-	  if (!option || option.disabled) {
-	    changed = false;
-	    reason = "select option was not found or is disabled";
-	  } else {
-	    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
-	    if (setter && setter.set) setter.set.call(el, option.value); else el.value = option.value;
-	  }
-	} else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-	  const proto = el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
-	  const setter = Object.getOwnPropertyDescriptor(proto, "value");
-	  const previous = el.value;
-	  const next = String(value);
-	  if (setter && setter.set) setter.set.call(el, next); else el.value = next;
-	  if (next && el.value !== next) {
-	    if (setter && setter.set) setter.set.call(el, previous); else el.value = previous;
-	    changed = false;
-	    reason = "browser rejected the vault value";
-	  }
-	} else if (el.isContentEditable) {
-	  el.textContent = String(value);
-	} else {
-	  changed = false;
-	  reason = "target is not a supported form control";
-	}
-	if (changed) {
-	  el.dispatchEvent(new InputEvent("input", {bubbles:true, composed:true, inputType:"insertText"}));
-	  el.dispatchEvent(new Event("change", {bubbles:true, composed:true}));
-	}
-	return {found:true, changed, label: jazLabel(el), reason};
-	})` + "(" + jsString(strings.TrimSpace(ref)) + "," + string(encoded) + ");"
-}
-
 func screenshotMaskScript(enable bool) string {
 	if enable {
 		return elementResolverJS() + `
 	(function(){
 	  const list = globalThis.__jazMaskedNodes || [];
+	  const seen = new WeakSet(list.map(item => item && item.el).filter(Boolean));
 	  globalThis.__jazMaskedNodes = list;
 	  let count = 0;
-	  for (const el of jazAll("input,textarea")) {
-	    if (!jazIsSensitiveControl(el)) continue;
+	  for (const el of jazAll("input,textarea,select")) {
+	    if (seen.has(el) || !jazIsSensitiveControl(el)) continue;
 	    list.push({
 	      el,
 	      filter: el.style.filter,

@@ -22,18 +22,6 @@ var (
 	ErrSessionRequired = errors.New("vault action requires an active Jaz thread")
 )
 
-var allowlistedPaymentIframeHosts = map[string]bool{
-	"js.stripe.com":                  true,
-	"checkout.stripe.com":            true,
-	"elements.stripe.com":            true,
-	"assets.braintreegateway.com":    true,
-	"elements.braintreegateway.com":  true,
-	"checkoutshopper-live.adyen.com": true,
-	"checkoutshopper-test.adyen.com": true,
-	"pci-connect.squareup.com":       true,
-	"www.paypal.com":                 true,
-}
-
 var nonDigitRe = regexp.MustCompile(`\D+`)
 
 type CreateInput struct {
@@ -190,18 +178,6 @@ func DomainMatchesFilter(itemOrigins []string, domain string) bool {
 		}
 	}
 	return false
-}
-
-func IsAllowlistedPaymentIframeOrigin(origin string) bool {
-	norm, err := NormalizeOrigin(origin)
-	if err != nil {
-		return false
-	}
-	u, err := url.Parse(norm)
-	if err != nil || u.Scheme != "https" || (u.Port() != "" && u.Port() != "443") {
-		return false
-	}
-	return allowlistedPaymentIframeHosts[strings.ToLower(u.Hostname())]
 }
 
 func NormalizeDigits(raw string) string {

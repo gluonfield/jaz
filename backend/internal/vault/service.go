@@ -82,7 +82,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (storage.VaultI
 			UpdatedAt: now,
 		},
 	}
-	if err := applyCreateFields(&record, input); err != nil {
+	if err := s.applyCreateFields(&record, input); err != nil {
 		return storage.VaultItem{}, err
 	}
 	return s.store.CreateVaultItem(ctx, record)
@@ -99,14 +99,9 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (sto
 	switch record.Item.Kind {
 	case storage.VaultKindLogin:
 		if input.ReplaceOrigins || len(input.Origins) > 0 {
-			origins, err := NormalizeOrigins(input.Origins)
-			if err != nil {
+			if err := setLoginOrigins(&record, input.Origins); err != nil {
 				return storage.VaultItem{}, err
 			}
-			if len(origins) == 0 {
-				return storage.VaultItem{}, fmt.Errorf("%w: login requires at least one origin", ErrInvalidInput)
-			}
-			record.Item.Origins = origins
 		}
 		if input.Username != nil {
 			record.Item.Username = strings.TrimSpace(*input.Username)
@@ -115,47 +110,33 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (sto
 			record.Secret.Password = *input.Password
 		}
 		if input.TOTPSecret != nil {
-			secret := strings.TrimSpace(*input.TOTPSecret)
-			if secret != "" {
-				if _, err := GenerateTOTP(secret, s.now()); err != nil {
-					return storage.VaultItem{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
-				}
+			if err := s.setLoginTOTP(&record, *input.TOTPSecret); err != nil {
+				return storage.VaultItem{}, err
 			}
-			record.Secret.TOTPSecret = secret
-			record.Item.HasTOTP = secret != ""
 		}
 	case storage.VaultKindCard:
 		if input.CardholderName != nil {
 			record.Item.CardholderName = strings.TrimSpace(*input.CardholderName)
 		}
 		if input.PAN != nil && strings.TrimSpace(*input.PAN) != "" {
-			pan := NormalizeDigits(*input.PAN)
-			if len(pan) < 12 || len(pan) > 19 {
-				return storage.VaultItem{}, fmt.Errorf("%w: card number must be 12 to 19 digits", ErrInvalidInput)
+			if err := setCardPAN(&record, *input.PAN); err != nil {
+				return storage.VaultItem{}, err
 			}
-			record.Secret.PAN = pan
-			record.Item.CardBrand = DetectCardBrand(pan)
-			record.Item.CardLast4 = pan[len(pan)-4:]
 		}
 		if input.CardExpMonth != nil {
-			if *input.CardExpMonth < 1 || *input.CardExpMonth > 12 {
-				return storage.VaultItem{}, fmt.Errorf("%w: card expiration month must be 1-12", ErrInvalidInput)
+			if err := setCardExpMonth(&record, *input.CardExpMonth); err != nil {
+				return storage.VaultItem{}, err
 			}
-			record.Item.CardExpMonth = *input.CardExpMonth
 		}
 		if input.CardExpYear != nil {
-			year := normalizeExpYear(*input.CardExpYear)
-			if year < 2000 || year > 2100 {
-				return storage.VaultItem{}, fmt.Errorf("%w: card expiration year is invalid", ErrInvalidInput)
+			if err := setCardExpYear(&record, *input.CardExpYear); err != nil {
+				return storage.VaultItem{}, err
 			}
-			record.Item.CardExpYear = year
 		}
 		if input.CVV != nil && strings.TrimSpace(*input.CVV) != "" {
-			cvv := NormalizeDigits(*input.CVV)
-			if len(cvv) < 3 || len(cvv) > 4 {
-				return storage.VaultItem{}, fmt.Errorf("%w: card CVV must be 3 or 4 digits", ErrInvalidInput)
+			if err := setCardCVV(&record, *input.CVV); err != nil {
+				return storage.VaultItem{}, err
 			}
-			record.Secret.CVV = cvv
 		}
 		if input.BillingAddress != nil {
 			record.Secret.BillingAddress = strings.TrimSpace(*input.BillingAddress)
@@ -396,50 +377,34 @@ func csvCell(row []string, idx int) string {
 	return row[idx]
 }
 
-func applyCreateFields(record *storage.VaultItemRecord, input CreateInput) error {
+func (s *Service) applyCreateFields(record *storage.VaultItemRecord, input CreateInput) error {
 	switch record.Item.Kind {
 	case storage.VaultKindLogin:
-		origins, err := NormalizeOrigins(input.Origins)
-		if err != nil {
+		if err := setLoginOrigins(record, input.Origins); err != nil {
 			return err
-		}
-		if len(origins) == 0 {
-			return fmt.Errorf("%w: login requires at least one origin", ErrInvalidInput)
 		}
 		if input.Password == "" {
 			return fmt.Errorf("%w: login requires a password", ErrInvalidInput)
 		}
-		totp := strings.TrimSpace(input.TOTPSecret)
-		if totp != "" {
-			if _, err := GenerateTOTP(totp, time.Now().UTC()); err != nil {
-				return fmt.Errorf("%w: %v", ErrInvalidInput, err)
-			}
+		if err := s.setLoginTOTP(record, input.TOTPSecret); err != nil {
+			return err
 		}
-		record.Item.Origins = origins
 		record.Item.Username = strings.TrimSpace(input.Username)
-		record.Item.HasTOTP = totp != ""
 		record.Secret.Password = input.Password
-		record.Secret.TOTPSecret = totp
 	case storage.VaultKindCard:
-		pan := NormalizeDigits(input.PAN)
-		if len(pan) < 12 || len(pan) > 19 {
-			return fmt.Errorf("%w: card number must be 12 to 19 digits", ErrInvalidInput)
+		if err := setCardPAN(record, input.PAN); err != nil {
+			return err
 		}
-		cvv := NormalizeDigits(input.CVV)
-		if len(cvv) < 3 || len(cvv) > 4 {
-			return fmt.Errorf("%w: card CVV must be 3 or 4 digits", ErrInvalidInput)
+		if err := setCardCVV(record, input.CVV); err != nil {
+			return err
 		}
-		year := normalizeExpYear(input.CardExpYear)
-		if input.CardExpMonth < 1 || input.CardExpMonth > 12 || year < 2000 || year > 2100 {
-			return fmt.Errorf("%w: card expiration month/year is invalid", ErrInvalidInput)
+		if err := setCardExpMonth(record, input.CardExpMonth); err != nil {
+			return err
 		}
-		record.Item.CardBrand = DetectCardBrand(pan)
-		record.Item.CardLast4 = pan[len(pan)-4:]
-		record.Item.CardExpMonth = input.CardExpMonth
-		record.Item.CardExpYear = year
+		if err := setCardExpYear(record, input.CardExpYear); err != nil {
+			return err
+		}
 		record.Item.CardholderName = strings.TrimSpace(input.CardholderName)
-		record.Secret.PAN = pan
-		record.Secret.CVV = cvv
 		record.Secret.BillingAddress = strings.TrimSpace(input.BillingAddress)
 		record.Item.BillingSummary = SummarizeBillingAddress(record.Secret.BillingAddress, input.BillingSummary)
 	case storage.VaultKindIdentity:
@@ -462,6 +427,67 @@ func applyCreateFields(record *storage.VaultItemRecord, input CreateInput) error
 	if record.Item.Label == "" {
 		record.Item.Label = defaultLabel(record.Item)
 	}
+	return nil
+}
+
+func setLoginOrigins(record *storage.VaultItemRecord, rawOrigins []string) error {
+	origins, err := NormalizeOrigins(rawOrigins)
+	if err != nil {
+		return err
+	}
+	if len(origins) == 0 {
+		return fmt.Errorf("%w: login requires at least one origin", ErrInvalidInput)
+	}
+	record.Item.Origins = origins
+	return nil
+}
+
+func (s *Service) setLoginTOTP(record *storage.VaultItemRecord, rawSecret string) error {
+	secret := strings.TrimSpace(rawSecret)
+	if secret != "" {
+		if _, err := GenerateTOTP(secret, s.now()); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidInput, err)
+		}
+	}
+	record.Secret.TOTPSecret = secret
+	record.Item.HasTOTP = secret != ""
+	return nil
+}
+
+func setCardPAN(record *storage.VaultItemRecord, raw string) error {
+	pan := NormalizeDigits(raw)
+	if len(pan) < 12 || len(pan) > 19 {
+		return fmt.Errorf("%w: card number must be 12 to 19 digits", ErrInvalidInput)
+	}
+	record.Secret.PAN = pan
+	record.Item.CardBrand = DetectCardBrand(pan)
+	record.Item.CardLast4 = pan[len(pan)-4:]
+	return nil
+}
+
+func setCardCVV(record *storage.VaultItemRecord, raw string) error {
+	cvv := NormalizeDigits(raw)
+	if len(cvv) < 3 || len(cvv) > 4 {
+		return fmt.Errorf("%w: card CVV must be 3 or 4 digits", ErrInvalidInput)
+	}
+	record.Secret.CVV = cvv
+	return nil
+}
+
+func setCardExpMonth(record *storage.VaultItemRecord, month int) error {
+	if month < 1 || month > 12 {
+		return fmt.Errorf("%w: card expiration month must be 1-12", ErrInvalidInput)
+	}
+	record.Item.CardExpMonth = month
+	return nil
+}
+
+func setCardExpYear(record *storage.VaultItemRecord, rawYear int) error {
+	year := normalizeExpYear(rawYear)
+	if year < 2000 || year > 2100 {
+		return fmt.Errorf("%w: card expiration year is invalid", ErrInvalidInput)
+	}
+	record.Item.CardExpYear = year
 	return nil
 }
 

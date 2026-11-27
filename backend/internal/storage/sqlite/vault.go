@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
@@ -94,7 +93,7 @@ func (s *Store) decryptVaultSecret(id, ciphertext string) (storage.VaultSecretPa
 }
 
 func (s *Store) ListVaultItems(ctx context.Context, kind string) ([]storage.VaultItem, error) {
-	rows, err := vaultdb.New(s.db).ListVaultItems(ctx, strings.TrimSpace(kind))
+	rows, err := vaultdb.New(s.db).ListVaultItems(ctx, kind)
 	if err != nil {
 		return nil, err
 	}

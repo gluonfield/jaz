@@ -14,6 +14,8 @@ import {
   type VaultItemInput,
   type VaultKind,
 } from '@/lib/api/vault'
+import { useCloudSession } from '@/lib/cloudSession'
+import { activeCloudWorkspace } from '@/lib/cloudWorkspaceDisplay'
 import { keys } from '@/lib/query/keys'
 import { VaultItemModal } from './VaultItemModal'
 
@@ -37,7 +39,9 @@ function itemSubtitle(item: VaultItem): string {
 export function VaultSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
-  const itemsQuery = useQuery(vaultItemsQuery())
+  const cloud = useCloudSession()
+  const workspaceID = activeCloudWorkspace(cloud)?.id
+  const itemsQuery = useQuery(vaultItemsQuery('', '', workspaceID))
 
   const [filter, setFilter] = useState<FilterKind>('all')
   const [search, setSearch] = useState('')
@@ -54,9 +58,9 @@ export function VaultSettings() {
   const saveMutation = useMutation({
     mutationFn: async (payload: { id?: string; input: VaultItemInput & { kind: VaultKind } }) => {
       if (payload.id) {
-        return updateVaultItem(payload.id, payload.input)
+        return updateVaultItem(payload.id, payload.input, workspaceID)
       }
-      return createVaultItem(payload.input)
+      return createVaultItem(payload.input, workspaceID)
     },
     onSuccess: () => {
       void invalidate()
@@ -71,7 +75,7 @@ export function VaultSettings() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteVaultItem(id),
+    mutationFn: (id: string) => deleteVaultItem(id, workspaceID),
     onSuccess: () => {
       void invalidate()
       setConfirmDeleteId(null)
@@ -81,14 +85,18 @@ export function VaultSettings() {
   })
 
   const importMutation = useMutation({
-    mutationFn: (csv: string) => importVaultCSV(csv),
+    mutationFn: (csv: string) => importVaultCSV(csv, workspaceID),
     onSuccess: (res) => {
       void invalidate()
       setCsvText('')
       setImportOpen(false)
+      const extras = [
+        res.skipped ? `${res.skipped} skipped` : '',
+        res.failed ? `${res.failed} failed` : '',
+      ].filter(Boolean)
       toast(
-        `Imported ${res.imported} login${res.imported === 1 ? '' : 's'}${res.skipped ? ` (${res.skipped} skipped)` : ''}.`,
-        'ok',
+        `Imported ${res.imported} login${res.imported === 1 ? '' : 's'}${extras.length ? ` (${extras.join(', ')})` : ''}.`,
+        res.failed && !res.imported ? 'danger' : 'ok',
       )
     },
     onError: (err: Error) => toast(`CSV import failed: ${err.message}`, 'danger'),
