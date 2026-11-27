@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AddCloudWorkspaceModal } from '@/components/connection/AddCloudWorkspaceModal'
 import { TeamMembersCard } from '@/components/settings/TeamMembersCard'
-import { WorkspaceMark } from '@/components/sidebar/SidebarWorkspaceSwitcher'
+import { WorkspaceMark } from '@/components/sidebar/WorkspaceMark'
 import { ActionMenu } from '@/components/ui/ActionMenu'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'

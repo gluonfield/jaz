@@ -1,7 +1,8 @@
-import { ChevronsUpDown, Laptop, LoaderCircle, Plus } from 'lucide-react'
+import { ChevronsUpDown, LoaderCircle, Plus } from 'lucide-react'
 import { useRef, useState } from 'react'
-import { OrgIconMark } from '@/components/cloud/OrgIconMark'
 import { AddCloudWorkspaceModal } from '@/components/connection/AddCloudWorkspaceModal'
+import { WorkspaceMark } from '@/components/sidebar/WorkspaceMark'
+import { WorkspaceSwitchTransition } from '@/components/sidebar/WorkspaceSwitchTransition'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
 import { clientRuntime } from '@/lib/clientRuntime'
@@ -18,28 +19,15 @@ const ROW = {
   trigger: 'hover:bg-list-hover aria-expanded:bg-list-hover',
 }
 const RAIL = {
-  wrapper: 'flex flex-col items-center gap-2 after:h-px after:w-4 after:bg-border',
+  wrapper: 'flex flex-col items-center gap-[18px] after:h-px after:w-4 after:bg-border',
   identity: 'grid size-9 place-items-center rounded-[10px]',
-  trigger: 'ring-ink/25 hover:ring-2 aria-expanded:ring-2 active:scale-[0.96]',
+  trigger: 'active:scale-[0.96]',
 }
-
-// A Cloud workspace shows its org icon, or its initial; Local shows the device.
-export function WorkspaceMark({
-  workspace,
-  className = 'size-6 rounded-[7px] text-[12px]',
-}: {
-  workspace: CloudWorkspaceSummary | null
-  className?: string
-}) {
-  if (workspace) {
-    return <OrgIconMark name={workspaceDisplayName(workspace)} icon={workspace.org_icon} className={className} />
-  }
-  return (
-    <span className={`grid shrink-0 place-items-center bg-ink text-bg ${className}`}>
-      <Laptop className="size-[55%]" />
-    </span>
-  )
-}
+// Under the rail's mark, the edges of two more: other workspaces sit beneath this one.
+const STACK = [
+  'inset-x-[3px] -bottom-[5px] bg-ink/55 ring-[1.5px] ring-bg group-hover/workspace:translate-y-[2px] group-aria-expanded/workspace:translate-y-[2px]',
+  'inset-x-[7px] -bottom-[10px] -z-20 bg-ink/25 group-hover/workspace:translate-y-[4px] group-aria-expanded/workspace:translate-y-[4px]',
+]
 
 function WorkspaceLabel({ workspace }: { workspace: CloudWorkspaceSummary | null }) {
   return (
@@ -77,7 +65,7 @@ export function SidebarWorkspaceSwitcher({
   const look = rail ? RAIL : ROW
   const wrapperClass = className ?? look.wrapper
   const identity = rail
-    ? <WorkspaceMark workspace={activeCloud} className="size-9 rounded-[10px] text-[16px]" />
+    ? <WorkspaceMark workspace={activeCloud} className="size-9 rounded-[10px] text-[16px] ring-[1.5px] ring-bg" />
     : <WorkspaceLabel workspace={activeCloud} />
   // The rail's mark carries no name, so a tooltip gives it.
   const tooltip = rail ? { title: activeName, 'data-tooltip-side': 'right' } : {}
@@ -134,8 +122,11 @@ export function SidebarWorkspaceSwitcher({
               if (switchingTo === null) setOpen((value) => !value)
             }}
             {...(open ? {} : tooltip)}
-            className={`group/workspace ${look.identity} ${look.trigger} cursor-pointer transition-[background-color,box-shadow,transform] duration-150 aria-disabled:cursor-default aria-disabled:opacity-60`}
+            className={`group/workspace relative isolate ${look.identity} ${look.trigger} cursor-pointer transition-[background-color,box-shadow,transform] duration-150 aria-disabled:cursor-default aria-disabled:opacity-60`}
           >
+            {rail ? STACK.map((layer) => (
+              <span key={layer} aria-hidden className={`absolute top-0 -z-10 rounded-[10px] transition-transform duration-200 ease-out ${layer}`} />
+            )) : null}
             {identity}
             {rail ? null : switchingTo !== null ? (
               <LoaderCircle size={13} className="shrink-0 animate-spin text-ink-3" />
@@ -204,6 +195,10 @@ export function SidebarWorkspaceSwitcher({
           ) : null}
         </div>
       </Popover>
+      <WorkspaceSwitchTransition
+        destination={switchingTo === null ? null : { workspace: workspaces.find((ws) => ws.id === switchingTo) ?? null }}
+        anchor={triggerRef}
+      />
       <AddCloudWorkspaceModal open={adding} onClose={() => setAdding(false)} />
     </div>
   )
