@@ -34,6 +34,7 @@ import {
   visibleSettingsSections,
 } from './sections'
 import { UsageSettings } from './UsageSettings'
+import { VaultSettings } from './VaultSettings'
 import { VoiceSettings } from '@/components/settings/VoiceSettings'
 
 type SectionNavigationOptions = { replace?: boolean }
@@ -222,6 +223,8 @@ function SectionContent({
       return <PersonalizationSettings />
     case 'memory':
       return <MemorySettings />
+    case 'vault':
+      return <VaultSettings />
     case 'computer':
       return <ComputerSettings />
     case 'machines':

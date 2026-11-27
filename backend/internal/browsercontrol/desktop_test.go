@@ -108,8 +108,16 @@ func TestDesktopScreenshotTimeoutPreservesConnection(t *testing.T) {
 		result <- err
 	}()
 	var request desktopbridge.Message
-	if err := peer.ReadJSON(&request); err != nil || request.Method != "Page.captureScreenshot" {
-		t.Fatalf("screenshot command=%#v err=%v", request, err)
+	for {
+		if err := peer.ReadJSON(&request); err != nil {
+			t.Fatalf("screenshot command=%#v err=%v", request, err)
+		}
+		if request.Method == "Page.captureScreenshot" {
+			break
+		}
+		if err := peer.WriteJSON(desktopbridge.Message{ID: request.ID, Error: &desktopbridge.Error{Code: -1, Message: "unavailable"}}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	select {
 	case err := <-result:

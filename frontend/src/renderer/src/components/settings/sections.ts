@@ -10,6 +10,7 @@ import {
   Keyboard,
   Laptop,
   Layers,
+  Lock,
   type LucideIcon,
   MonitorSmartphone,
   Palette,
@@ -27,6 +28,7 @@ export type SettingsSection =
   | 'appearance'
   | 'personalization'
   | 'memory'
+  | 'vault'
   | 'browser'
   | 'computer'
   | 'machines'
@@ -62,6 +64,7 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'admin', label: 'Admin', icon: ShieldCheck, group: 'workspace', wide: true, requiresCloudAdmin: true },
   { id: 'personalization', label: 'Personalization', icon: Sparkles, group: 'workspace', fullHeight: true },
   { id: 'memory', label: 'Memory', icon: Brain, group: 'workspace', requiresLocal: true },
+  { id: 'vault', label: 'Vault', icon: Lock, group: 'workspace', requiresLocalOrCloud: true },
   { id: 'agents', label: 'Agents (ACP)', icon: Bot, group: 'workspace', requiresLocalOrCloud: true },
   { id: 'plugins', label: 'Plugins', icon: Puzzle, group: 'workspace', wide: true },
   { id: 'mcp', label: 'MCP servers', icon: Plug, group: 'workspace' },

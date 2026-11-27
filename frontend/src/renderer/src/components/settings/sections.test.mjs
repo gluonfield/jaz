@@ -80,6 +80,7 @@ test('SETTINGS_SECTIONS places Workspace group first and App group second with e
     'admin',
     'personalization',
     'memory',
+    'vault',
     'agents',
     'plugins',
     'mcp',
@@ -105,10 +106,11 @@ test('visibleSettingsSections enforces requiresCloud and requiresLocal boundarie
   const localOnlyIds = visibleSettingsSections(true, false, true).map((item) => item.id)
   expect(localOnlyIds).not.toContain('machines')
   expect(localOnlyIds).not.toContain('github')
-  expect(localOnlyIds).toEqual(expect.arrayContaining(['cloud', 'agents', 'providers', 'browser', 'computer']))
+  expect(localOnlyIds).toEqual(expect.arrayContaining(['cloud', 'vault', 'agents', 'providers', 'browser', 'computer']))
 
   const desktopCloudIds = visibleSettingsSections(true, true, true).map((item) => item.id)
   expect(desktopCloudIds).toContain('machines')
+  expect(desktopCloudIds).toContain('vault')
   expect(desktopCloudIds).not.toContain('github')
   expect(desktopCloudIds).not.toContain('memory')
   expect(desktopCloudIds).toEqual(expect.arrayContaining(['agents', 'providers', 'browser', 'computer']))
@@ -116,6 +118,7 @@ test('visibleSettingsSections enforces requiresCloud and requiresLocal boundarie
   const cloudOnlyIds = visibleSettingsSections(true, true, false).map((item) => item.id)
   expect(cloudOnlyIds).toContain('cloud')
   expect(cloudOnlyIds).toContain('machines')
+  expect(cloudOnlyIds).toContain('vault')
   expect(cloudOnlyIds).not.toContain('github')
   expect(cloudOnlyIds).toContain('agents')
   expect(cloudOnlyIds).toEqual(expect.arrayContaining(['general', 'appearance', 'notifications', 'keyboard']))
@@ -127,6 +130,7 @@ test('visibleSettingsSections enforces requiresCloud and requiresLocal boundarie
 
   const cloudOnlyDisconnectedIds = visibleSettingsSections(true, false, false).map((item) => item.id)
   expect(cloudOnlyDisconnectedIds).not.toContain('machines')
+  expect(cloudOnlyDisconnectedIds).not.toContain('vault')
   expect(cloudOnlyDisconnectedIds).not.toContain('github')
   expect(cloudOnlyDisconnectedIds).not.toContain('agents')
   expect(cloudOnlyDisconnectedIds).not.toContain('computer')

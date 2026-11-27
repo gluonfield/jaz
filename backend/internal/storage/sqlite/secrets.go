@@ -14,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/cloudmirror"
 	oauthdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationoauth"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/mcpdb"
+	vaultdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/vault"
 )
 
 const secretPrefix = "encrypted:v1:"
@@ -40,6 +41,11 @@ func (s *Store) protectSecrets() error {
 	if err != nil {
 		return err
 	}
+	vaultq := vaultdb.New(s.db).WithTx(tx)
+	vaultRows, err := vaultq.ListVaultItemSecrets(ctx)
+	if err != nil {
+		return err
+	}
 	keyPath := strings.TrimSpace(os.Getenv("JAZ_SECRET_KEY_FILE"))
 	if keyPath == "" {
 		keyPath = filepath.Join(s.root, "secrets.key")
@@ -60,6 +66,11 @@ func (s *Store) protectSecrets() error {
 		for _, row := range cloudAccounts {
 			if strings.HasPrefix(row.TokenEncrypted, secretPrefix) {
 				return fmt.Errorf("Cloud session secrets require their original key file: %s", keyPath)
+			}
+		}
+		for _, row := range vaultRows {
+			if strings.HasPrefix(row.SecretEncrypted, secretPrefix) {
+				return fmt.Errorf("Vault secrets require their original key file: %s", keyPath)
 			}
 		}
 		key = make([]byte, 32)
@@ -151,6 +162,24 @@ func (s *Store) protectSecrets() error {
 			if err := cloudq.UpdateCloudAccountToken(ctx, cloudmirror.UpdateCloudAccountTokenParams{
 				ID:             row.ID,
 				TokenEncrypted: sealed,
+			}); err != nil {
+				return err
+			}
+			changed = true
+		}
+	}
+	for _, row := range vaultRows {
+		if row.SecretEncrypted == "" {
+			continue
+		}
+		sealed, err := s.protectSecret(vaultSecretID(row.ID), row.SecretEncrypted)
+		if err != nil {
+			return err
+		}
+		if sealed != row.SecretEncrypted {
+			if err := vaultq.UpdateVaultItemSecret(ctx, vaultdb.UpdateVaultItemSecretParams{
+				SecretEncrypted: sealed,
+				ID:              row.ID,
 			}); err != nil {
 				return err
 			}

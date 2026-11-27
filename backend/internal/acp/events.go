@@ -151,8 +151,10 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 		return nil
 	}
 	if _, ok := permissionOption(pending.request.Options, req.OptionID); !ok {
-		m.permissionMu.Unlock()
-		return fmt.Errorf("unknown permission option: %s", req.OptionID)
+		if pending.request.VaultRequest == nil || !isVaultSavedOptionID(req.OptionID) {
+			m.permissionMu.Unlock()
+			return fmt.Errorf("unknown permission option: %s", req.OptionID)
+		}
 	}
 	delete(m.pendingPermission, req.RequestID)
 	m.permissionMu.Unlock()

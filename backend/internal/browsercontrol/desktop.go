@@ -81,6 +81,7 @@ func (b *DesktopBackend) Call(ctx context.Context, input ActionInput) (ActionOut
 			return ActionOutput{}, err
 		}
 		page.contextID = 0
+		page.redactedNodes = nil
 		if err := page.waitReady(ctx); err != nil {
 			return ActionOutput{}, err
 		}

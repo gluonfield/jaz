@@ -255,6 +255,18 @@ func elementResolverJS() string {
 	  const raw = jazName(el) || el.tagName;
 	  return el.tagName.toLowerCase() + " " + JSON.stringify(String(raw || "").replace(/\s+/g, " ").trim().slice(0, 120));
 	}
+	function jazIsSensitiveControl(el){
+	  if (!(el instanceof Element)) return false;
+	  if (globalThis.__jazVaultRedacted && globalThis.__jazVaultRedacted.has(el)) return true;
+	  const tag = el.tagName ? el.tagName.toLowerCase() : "";
+	  if (tag !== "input" && tag !== "textarea") return false;
+	  const inputType = tag === "input" ? String(el.getAttribute("type") || "text").toLowerCase() : "";
+	  if (inputType === "password") return true;
+	  const ac = String(el.getAttribute("autocomplete") || "").toLowerCase().split(/\s+/);
+	  if (ac.some(t => ["cc-number","cc-csc","cc-exp","cc-exp-month","cc-exp-year","current-password","new-password","one-time-code"].includes(t))) return true;
+	  const hint = [el.getAttribute("name"), el.getAttribute("id"), el.getAttribute("aria-label"), el.getAttribute("placeholder")].join(" ").toLowerCase();
+	  return /(card.?number|cc.?num|ccnumber|\bcvv\b|\bcvc\b|\bcsc\b|security.?code)/.test(hint);
+	}
 	function jazName(el){
 	  if (!el) return "";
 	  const labelledBy = el.getAttribute("aria-labelledby");
@@ -263,24 +275,25 @@ func elementResolverJS() string {
 	    const labels = labelledBy.split(/\s+/).map(id => (root && root.getElementById ? root.getElementById(id) : null) || document.getElementById(id)).filter(Boolean).map(label => label.textContent);
 	    if (labels.length) return jazShort(labels.join(" "), 180);
 	  }
-	  const password = el instanceof HTMLInputElement && String(el.getAttribute("type") || "").toLowerCase() === "password";
-	  const raw = el.getAttribute("aria-label") || el.getAttribute("name") || el.getAttribute("placeholder") || el.getAttribute("title") || el.innerText || el.textContent || (password ? "" : el.value) || "";
+	  const sensitive = jazIsSensitiveControl(el);
+	  const raw = el.getAttribute("aria-label") || el.getAttribute("name") || el.getAttribute("placeholder") || el.getAttribute("title") || el.innerText || el.textContent || (sensitive ? "" : el.value) || "";
 	  return jazShort(raw, 180);
 	}
 	function jazStateElement(el, ref){
 	  const tag = el.tagName.toLowerCase();
 	  const inputType = tag === "input" ? String(el.getAttribute("type") || "text").toLowerCase() : "";
-	  const sensitive = inputType === "password";
+	  const sensitive = jazIsSensitiveControl(el);
 	  const value = sensitive ? "" : ("value" in el ? String(el.value || "") : "");
 	  return {
 	    ref,
 	    tag,
 	    role: el.getAttribute("role") || jazImplicitRole(el),
 	    name: jazName(el),
-	    text: jazShort(el.innerText || el.textContent || "", 180),
+	    text: sensitive ? "" : jazShort(el.innerText || el.textContent || "", 180),
 	    href: el.href || "",
 	    input_type: inputType,
 	    value,
+	    sensitive,
 	    required: Boolean(el.required || el.getAttribute("aria-required") === "true"),
 	    disabled: Boolean(el.disabled || el.getAttribute("aria-disabled") === "true"),
 	    read_only: Boolean(el.readOnly || el.getAttribute("aria-readonly") === "true"),

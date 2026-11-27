@@ -153,6 +153,7 @@ func serveOptions(args []string) []fx.Option {
 			app.ConfigureComputerTools,
 			app.CloseComputerBackend,
 			app.ConfigureBrowserTools,
+			app.ConfigureVaultTools,
 			app.CloseBrowserBackend,
 			app.StartMemoryScheduler,
 			app.StartSourceProjectionWorker,

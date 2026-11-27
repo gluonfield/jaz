@@ -568,8 +568,32 @@ type ACPPermission struct {
 	Locations        []ACPPermissionLocation `json:"locations,omitempty"`
 	Questions        []ACPQuestion           `json:"questions,omitempty"`
 	Answers          map[string][]string     `json:"answers,omitempty"`
+	VaultApproval    *VaultApprovalSpec      `json:"vault_approval,omitempty"`
+	VaultRequest     *VaultRequestSpec       `json:"vault_request,omitempty"`
 	Status           string                  `json:"status,omitempty"`
 	SelectedOptionID string                  `json:"selected_option_id,omitempty"`
+}
+
+// VaultApprovalSpec carries non-secret confirmation details for a payment card autofill.
+type VaultApprovalSpec struct {
+	ItemID          string `json:"item_id"`
+	Kind            string `json:"kind"`
+	Label           string `json:"label"`
+	CardBrand       string `json:"card_brand,omitempty"`
+	CardLast4       string `json:"card_last4,omitempty"`
+	CardExpMonth    int    `json:"card_exp_month,omitempty"`
+	CardExpYear     int    `json:"card_exp_year,omitempty"`
+	MerchantOrigin  string `json:"merchant_origin"`
+	CheckoutSummary string `json:"checkout_summary,omitempty"`
+}
+
+// VaultRequestSpec prompts the user with an inline Secure Form card that writes
+// directly to the Vault API without placing secrets in chat history.
+type VaultRequestSpec struct {
+	Kind   string `json:"kind"`
+	Domain string `json:"domain,omitempty"`
+	Label  string `json:"label,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 type ACPQuestion struct {

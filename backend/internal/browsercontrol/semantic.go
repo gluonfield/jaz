@@ -40,6 +40,7 @@ type StateElement struct {
 	Href       string `json:"href,omitempty"`
 	InputType  string `json:"input_type,omitempty"`
 	Value      string `json:"value,omitempty"`
+	Sensitive  bool   `json:"sensitive,omitempty"`
 	Required   bool   `json:"required,omitempty"`
 	Disabled   bool   `json:"disabled,omitempty"`
 	ReadOnly   bool   `json:"read_only,omitempty"`
@@ -115,8 +116,11 @@ func formatStateElement(element StateElement) string {
 	if name := strings.TrimSpace(element.Name); name != "" {
 		parts = append(parts, fmt.Sprintf("%q", shortenText(name, 120)))
 	}
-	if text := strings.TrimSpace(element.Text); text != "" && !sameFold(text, element.Name) {
-		parts = append(parts, "text="+fmt.Sprintf("%q", shortenText(text, 120)))
+	sensitive := strings.EqualFold(element.InputType, "password") || element.Sensitive
+	if !sensitive {
+		if text := strings.TrimSpace(element.Text); text != "" && !sameFold(text, element.Name) {
+			parts = append(parts, "text="+fmt.Sprintf("%q", shortenText(text, 120)))
+		}
 	}
 	if href := strings.TrimSpace(element.Href); href != "" {
 		parts = append(parts, shortenText(href, 160))
@@ -124,8 +128,10 @@ func formatStateElement(element StateElement) string {
 	if inputType := strings.TrimSpace(element.InputType); inputType != "" {
 		parts = append(parts, "type="+inputType)
 	}
-	if value := strings.TrimSpace(element.Value); value != "" {
-		parts = append(parts, "value="+fmt.Sprintf("%q", shortenText(value, 120)))
+	if !sensitive {
+		if value := strings.TrimSpace(element.Value); value != "" {
+			parts = append(parts, "value="+fmt.Sprintf("%q", shortenText(value, 120)))
+		}
 	}
 	if element.Required {
 		parts = append(parts, "required")
@@ -176,7 +182,7 @@ func decodePageState(data json.RawMessage) (PageState, bool) {
 		element.InputType = shortenText(element.InputType, 100)
 		element.Value = truncateUTF8(element.Value, stateValueLimit)
 		element.Validation = shortenText(element.Validation, stateValidationLimit)
-		if strings.EqualFold(element.InputType, "password") {
+		if strings.EqualFold(element.InputType, "password") || element.Sensitive {
 			element.Text = ""
 			element.Value = ""
 		}

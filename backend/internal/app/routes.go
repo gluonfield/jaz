@@ -28,6 +28,7 @@ import (
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
+	vaultapi "github.com/wins/jaz/backend/internal/httpapi/vault"
 	voiceapi "github.com/wins/jaz/backend/internal/httpapi/voice"
 	"github.com/wins/jaz/backend/internal/m365copilot"
 	"github.com/wins/jaz/backend/internal/machinebridge"
@@ -70,6 +71,7 @@ type routeDeps struct {
 	Push             *mobilepush.Service
 	MicrosoftCopilot *m365copilotapi.Handler
 	Apps             *appsapi.Handler         `optional:"true"`
+	Vault            *vaultapi.Handler        `optional:"true"`
 	Cloud            *cloudsync.Service       `optional:"true"`
 	MachineBridge    machinebridge.Controller `optional:"true"`
 }
@@ -136,6 +138,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser, deps.Store)
 	routes = appendMCPRoutes(routes, deps.MCP, deps.Cloud)
 	routes = appendAppsRoutes(routes, deps.Apps)
+	routes = appendVaultRoutes(routes, deps.Vault)
 	routes = appendCloudRoutes(routes, deps.Cloud, deps.MachineBridge)
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
 }
@@ -271,6 +274,19 @@ func appendAppsRoutes(routes server.Routes, h *appsapi.Handler) server.Routes {
 		server.Route{Pattern: "POST /v1/apps/{id}/ai/complete", Handler: httpHandlerFunc(h.AIComplete)},
 		server.Route{Pattern: "POST /v1/apps/{id}/tools/call", Handler: httpHandlerFunc(h.CallTool)},
 		server.Route{Pattern: "POST /v1/boards/{id}/apps", Handler: httpHandlerFunc(h.AssignToBoard)},
+	)
+}
+
+func appendVaultRoutes(routes server.Routes, h *vaultapi.Handler) server.Routes {
+	if h == nil {
+		return routes
+	}
+	return append(routes,
+		server.Route{Pattern: "GET /v1/vault/items", Handler: httpHandlerFunc(h.List)},
+		server.Route{Pattern: "POST /v1/vault/items", Handler: httpHandlerFunc(h.Create)},
+		server.Route{Pattern: "PATCH /v1/vault/items/{id}", Handler: httpHandlerFunc(h.Update)},
+		server.Route{Pattern: "DELETE /v1/vault/items/{id}", Handler: httpHandlerFunc(h.Delete)},
+		server.Route{Pattern: "POST /v1/vault/import/csv", Handler: httpHandlerFunc(h.ImportCSV)},
 	)
 }
 

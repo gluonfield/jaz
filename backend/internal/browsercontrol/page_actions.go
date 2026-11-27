@@ -40,6 +40,8 @@ func (p *browserPage) screenshot(ctx context.Context) (ActionOutput, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	p.ax.forceFull = true
+	restore := p.maskSensitiveForScreenshot(ctx)
+	defer restore()
 	var out struct {
 		Data string `json:"data"`
 	}

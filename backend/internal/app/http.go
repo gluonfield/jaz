@@ -25,6 +25,7 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/transcript"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
+	vaultcore "github.com/wins/jaz/backend/internal/vault"
 	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/voice/live"
 	"go.uber.org/fx"
@@ -114,6 +115,8 @@ func HTTPModule() fx.Option {
 		m365copilotapi.NewHandler,
 		NewAppsService,
 		NewAppsHandler,
+		fx.Annotate(vaultcore.NewService, fx.From(new(*sqlitestore.Store))),
+		NewVaultHandler,
 		NewMachineBridge,
 		NewRoutes,
 		NewPublicRoutes,

@@ -25,6 +25,7 @@ import (
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/threads"
+	"github.com/wins/jaz/backend/internal/vault"
 	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/widgets"
 )
@@ -62,6 +63,9 @@ type Service struct {
 	Memory           *memoryservice.Service
 	browserSettings  storage.SettingsStorage
 	browserBackend   browsercontrol.Backend
+	vaultService     *vault.Service
+	vaultBrowser     vault.BrowserFiller
+	vaultBroker      vault.InteractionBroker
 	computerSettings storage.SettingsStorage
 	computerBackend  computercontrol.Backend
 
@@ -122,6 +126,7 @@ type serverSlot struct {
 	memoryTools   bool
 	agentTools    bool
 	browserTools  bool
+	vaultTools    bool
 	computerTools bool
 	threadTools   bool
 }
@@ -213,6 +218,21 @@ func (s *Service) SetBrowser(store storage.SettingsStorage, backend browsercontr
 	s.syncBrowserTools()
 }
 
+func (s *Service) SetVault(service *vault.Service, browser vault.BrowserFiller, broker vault.InteractionBroker) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.vaultService = service
+	s.vaultBrowser = browser
+	s.vaultBroker = broker
+	for _, current := range s.slots() {
+		if current.slot.server != nil && current.slot.vaultTools {
+			vault.RemoveMCPTools(current.slot.server)
+			current.slot.vaultTools = false
+		}
+	}
+	s.syncVaultTools()
+}
+
 func (s *Service) SetThreads(service *threads.Service) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -234,6 +254,7 @@ func (s *Service) server(surface toolSurface) *mcp.Server {
 		s.syncThreadToolsFor(slot, surface)
 		s.syncMemoryToolsFor(slot, surface)
 		s.syncBrowserToolsFor(slot, surface)
+		s.syncVaultToolsFor(slot, surface)
 		s.syncComputerToolsFor(slot, surface)
 		s.mu.Unlock()
 	})
@@ -334,6 +355,7 @@ func (s *Service) Sync() {
 	s.syncAgentTools()
 	s.syncMemoryTools()
 	s.syncBrowserTools()
+	s.syncVaultTools()
 	for _, current := range s.slots() {
 		s.syncComputerToolsFor(current.slot, current.surface)
 	}
@@ -437,6 +459,12 @@ func (s *Service) syncBrowserTools() {
 	}
 }
 
+func (s *Service) syncVaultTools() {
+	for _, current := range s.slots() {
+		s.syncVaultToolsFor(current.slot, current.surface)
+	}
+}
+
 func (s *Service) syncThreadTools() {
 	s.syncThreadToolsFor(&s.thread, threadSurface)
 	s.syncThreadToolsFor(&s.cloudThread, cloudThreadSurface)
@@ -491,6 +519,16 @@ func (s *Service) syncBrowserToolsFor(slot *serverSlot, surface toolSurface) {
 	if slot.browserTools {
 		browsercontrol.RemoveMCPTools(slot.server)
 		slot.browserTools = false
+	}
+}
+
+func (s *Service) syncVaultToolsFor(slot *serverSlot, surface toolSurface) {
+	if surface.workerOnly() || slot.server == nil || s.vaultService == nil {
+		return
+	}
+	if !slot.vaultTools {
+		vault.AddMCPTools(slot.server, s.vaultService, s.vaultBrowser, s.vaultBroker)
+		slot.vaultTools = true
 	}
 }
 

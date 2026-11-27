@@ -954,6 +954,25 @@ export interface ACPQuestion {
   options?: ACPQuestionOption[]
 }
 
+export interface VaultApprovalSpec {
+  item_id: string
+  kind: 'login' | 'card' | 'identity' | string
+  label: string
+  card_brand?: string
+  card_last4?: string
+  card_exp_month?: number
+  card_exp_year?: number
+  merchant_origin: string
+  checkout_summary?: string
+}
+
+export interface VaultRequestSpec {
+  kind: 'login' | 'card' | 'identity' | string
+  domain?: string
+  label?: string
+  reason?: string
+}
+
 export interface ACPPermission {
   after_message_seq?: number
   origin?: string
@@ -967,6 +986,8 @@ export interface ACPPermission {
   locations?: ACPPermissionLocation[]
   questions?: ACPQuestion[]
   answers?: Record<string, string[]>
+  vault_approval?: VaultApprovalSpec
+  vault_request?: VaultRequestSpec
   status?: string
   selected_option_id?: string
 }
