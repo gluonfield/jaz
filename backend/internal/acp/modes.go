@@ -82,10 +82,9 @@ func (m *Manager) prepareModeForTurn(ctx context.Context, job *jobState, planReq
 func (m *Manager) applyTurnConfig(ctx context.Context, job *jobState, configID, value string) error {
 	job.mu.RLock()
 	acpSessionID := job.ACPSession
-	jobID := job.ID
 	job.mu.RUnlock()
 
-	peer := m.peer(jobID)
+	peer := m.sessionPeer(job)
 	if peer == nil {
 		return fmt.Errorf("acp peer is not active")
 	}
@@ -114,10 +113,9 @@ func (m *Manager) applyTurnMode(ctx context.Context, job *jobState, target strin
 
 	job.mu.RLock()
 	acpSessionID := job.ACPSession
-	jobID := job.ID
 	job.mu.RUnlock()
 
-	peer := m.peer(jobID)
+	peer := m.sessionPeer(job)
 	if peer == nil {
 		if m.configuredLocal(job.ACPAgent) {
 			job.mu.Lock()

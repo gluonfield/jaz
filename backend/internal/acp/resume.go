@@ -160,15 +160,6 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string, auth *cloudLaunc
 		ac.close()
 		return nil, err
 	}
-	storedACP := session.RuntimeRef.SessionID
-	materializesOnPrompt := !loaded && sessionMaterializesOnPrompt(agentName, cfg)
-	if materializesOnPrompt && storedACP != "" {
-		session.RuntimeRef.SessionID = ""
-		sessionChanged = true
-	} else if !loaded && !materializesOnPrompt {
-		session.RuntimeRef.SessionID = acpSessionID
-		sessionChanged = true
-	}
 	if session.ModelProvider == "" {
 		session.ModelProvider = session.RuntimeRef.Agent
 		sessionChanged = true
@@ -177,6 +168,16 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string, auth *cloudLaunc
 		if err := m.store.SaveSession(session); err != nil {
 			ac.close()
 			return nil, err
+		}
+	}
+	providerID := acpSessionID
+	if !loaded && sessionMaterializesOnPrompt(agentName, cfg) {
+		providerID = ""
+	}
+	if storedID := session.RuntimeRef.SessionID; storedID != providerID {
+		if updated, err := m.store.ReplaceRuntimeSessionID(session.ID, storedID, providerID); !updated {
+			ac.close()
+			return nil, errors.Join(err, fmt.Errorf("replace provider session %s of %s", storedID, session.ID))
 		}
 	}
 	job := newIdleJob(session, agentName, acpSessionID, cwd, modes)
@@ -246,14 +247,11 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 				return "", ModeState{}, false, err
 			}
 			ac.state.initial = raw
-			var modes ModeState
-			modes, err = m.configuredModeState(ctx, ac, agentName, newACPSessionInfo(raw, acpschema.NewSessionResponse{
+			modes, err := m.configuredModeState(ctx, ac, agentName, newACPSessionInfo(raw, acpschema.NewSessionResponse{
 				SessionID: acpschema.SessionID(storedID),
 				Modes:     resp.Modes,
 			}), cfg)
-			if !isMissingACPSession(err) {
-				return storedID, modes, true, err
-			}
+			return storedID, modes, true, err
 		}
 		replaceable, inspectErr := m.replaceableMissingSession(session, agentName, cfg, err)
 		if inspectErr != nil {
@@ -265,7 +263,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 			}
 			return "", ModeState{}, false, withSignInHint(fmt.Errorf("resume ACP session %s: %w", storedID, err))
 		}
-		m.log.Warn("replacing unmaterialized agent session", "agent", agentName, "session", session.ID, "acp_session", storedID)
+		m.log.Warn("replacing missing agent session without transcript", "agent", agentName, "session", session.ID, "acp_session", storedID)
 	}
 	acpSession, err := m.newACPSession(ctx, ac, agentName, cfg, cwd, session, systemPromptExtensions)
 	if err != nil {

@@ -160,11 +160,19 @@ func (m *Manager) acquireSessionProcess(ctx context.Context, job *jobState) (*jo
 	}
 }
 
-func (m *Manager) sessionProcessCurrent(job *jobState) bool {
+func (m *Manager) sessionPeer(job *jobState) *jsonrpc.Peer {
 	job.mu.RLock()
 	retired := job.retired
 	job.mu.RUnlock()
-	return !retired && m.jobByID(job.ID) == job
+	if retired {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if process := m.processes[job.ID]; m.jobsByID[job.ID] == job && process != nil {
+		return process.peer
+	}
+	return nil
 }
 
 func (m *Manager) teardown(id string) {

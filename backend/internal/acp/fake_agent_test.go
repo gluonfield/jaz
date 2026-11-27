@@ -828,7 +828,7 @@ func validateFakeRulesPrompt(meta map[string]any) error {
 func fakeModes() map[string]any {
 	if os.Getenv("JAZ_FAKE_ACP_SESSION_EVICTION") != "" {
 		return map[string]any{
-			"currentModeId": "default",
+			"currentModeId": cmp.Or(os.Getenv("JAZ_FAKE_ACP_REPORTED_MODE"), "default"),
 			"availableModes": []map[string]any{
 				{"id": "default", "name": "Default"},
 				{"id": "plan", "name": "Plan"},

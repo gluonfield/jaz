@@ -33,6 +33,12 @@ func (e *turnInProgressError) Error() string {
 	return "session is already running"
 }
 
+type retryTurnSession string
+
+func (retryTurnSession) Error() string {
+	return "the agent lost its ACP session while preparing the turn"
+}
+
 // sendConflict refuses a turn while another runs or ends, and while a new
 // thread's agent waits for the turn it was created with unless this send
 // starts it.
@@ -120,11 +126,21 @@ func (m *Manager) Compact(ctx context.Context, req CompactRequest) (Job, error) 
 }
 
 func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (Job, error) {
-	for {
+	for retriedSession := false; ; {
 		if err := ctx.Err(); err != nil {
 			return Job{}, err
 		}
 		job, err := m.sendOnce(ctx, req, opts)
+		if ref, replaced := errors.AsType[retryTurnSession](err); replaced || isMissingACPSession(err) {
+			if retriedSession {
+				return Job{}, retryTurnSession(req.Session)
+			}
+			if replaced {
+				req.Session = string(ref)
+			}
+			retriedSession = true
+			continue
+		}
 		var active *turnInProgressError
 		if !errors.As(err, &active) || !active.finishing {
 			return job, err
@@ -166,11 +182,46 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 			return Job{}, err
 		}
 	}
-	job, unlock, err := m.prepareTurnSession(ctx, job, req, opts, local == nil)
+	if local == nil {
+		job, err = m.acquireSessionProcess(ctx, job)
+		if err != nil {
+			return Job{}, err
+		}
+		defer job.release()
+	}
+	job.sendMu.Lock()
+	defer job.sendMu.Unlock()
+	if local == nil && m.sessionPeer(job) == nil {
+		return Job{}, retryTurnSession(job.ID)
+	}
+	if opts.requireCompactSupport && !m.supportsSessionCommand(job, "compact") {
+		return Job{}, fmt.Errorf("compact is not available for acp agent %q", job.ACPAgent)
+	}
+	if err := job.sendConflict(opts.claimed); err != nil {
+		return Job{}, fmt.Errorf("%s: %w", job.Slug, err)
+	}
+	if opts.requireActiveGoal {
+		session, err := m.store.LoadSession(job.ID)
+		if err != nil {
+			return Job{}, err
+		}
+		if !goal.Continuable(session.Goal) {
+			return Job{}, sessiongoal.ErrNoActiveGoal
+		}
+	}
+	err = m.refreshMCPBeforeTurn(ctx, job)
+	if err == nil {
+		err = m.prepareModeForTurn(ctx, job, req.PlanRequested)
+	}
+	if isMissingACPSession(err) {
+		job.mu.Lock()
+		job.retired = true
+		job.mu.Unlock()
+		return Job{}, retryTurnSession(job.ID)
+	}
 	if err != nil {
 		return Job{}, err
 	}
-	defer unlock()
 	release, err := m.admit()
 	if err != nil {
 		return Job{}, err
@@ -241,70 +292,6 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		go m.runPrompt(context.Background(), job, prompt)
 	}
 	return job.Snapshot(), nil
-}
-
-// prepareTurnSession holds sendMu and the process lease through the turn claim.
-// An evicted session can be restored here before Jaz records or sends the prompt.
-func (m *Manager) prepareTurnSession(ctx context.Context, job *jobState, req SendRequest, opts sendOptions, useProcess bool) (*jobState, func(), error) {
-	for retried := false; ; {
-		if useProcess {
-			var err error
-			job, err = m.acquireSessionProcess(ctx, job)
-			if err != nil {
-				return nil, nil, err
-			}
-		}
-		locked := job
-		locked.sendMu.Lock()
-		unlock := func() {
-			locked.sendMu.Unlock()
-			if useProcess {
-				locked.release()
-			}
-		}
-		if useProcess && !m.sessionProcessCurrent(job) {
-			unlock()
-			continue
-		}
-		err := m.checkTurnSession(ctx, job, req, opts)
-		if err == nil {
-			return job, unlock, nil
-		}
-		if !isMissingACPSession(err) {
-			unlock()
-			return nil, nil, err
-		}
-		job.mu.Lock()
-		job.retired = true
-		job.mu.Unlock()
-		unlock()
-		if retried {
-			return nil, nil, errors.New("the agent lost its ACP session while preparing the turn")
-		}
-		retried = true
-	}
-}
-
-func (m *Manager) checkTurnSession(ctx context.Context, job *jobState, req SendRequest, opts sendOptions) error {
-	if opts.requireCompactSupport && !m.supportsSessionCommand(job, "compact") {
-		return fmt.Errorf("compact is not available for acp agent %q", job.ACPAgent)
-	}
-	if err := job.sendConflict(opts.claimed); err != nil {
-		return fmt.Errorf("%s: %w", job.Slug, err)
-	}
-	if opts.requireActiveGoal {
-		session, err := m.store.LoadSession(job.ID)
-		if err != nil {
-			return err
-		}
-		if !goal.Continuable(session.Goal) {
-			return sessiongoal.ErrNoActiveGoal
-		}
-	}
-	if err := m.refreshMCPBeforeTurn(ctx, job); err != nil {
-		return err
-	}
-	return m.prepareModeForTurn(ctx, job, req.PlanRequested)
 }
 
 // claimTurn starts a send's turn, with the user's messages, unless another
