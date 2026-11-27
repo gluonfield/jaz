@@ -75,6 +75,7 @@ export const keys = {
     ['apps', 'list', filter?.scope ?? 'all', filter?.spaceId ?? '', filter?.kind ?? '', filter?.q ?? ''] as const,
   appDetail: (id: string) => ['apps', 'detail', id] as const,
   appVersions: (id: string) => ['apps', 'versions', id] as const,
+  appPreview: (id: string, version: number) => ['apps', 'preview', id, version] as const,
   orgAppPolicy: ['apps', 'policy'] as const,
   desktopApps: ['desktop-apps'] as const,
   cloud: ['cloud'] as const,

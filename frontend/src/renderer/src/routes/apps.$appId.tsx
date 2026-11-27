@@ -1,23 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Download,
-  ExternalLink,
-  GitFork,
-  Pin,
-  Share2,
-  Shield,
-  Trash2,
-} from 'lucide-react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { ArrowLeft, MoreHorizontal, Pin } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { AppRenderer } from '@/components/apps/AppRenderer'
 import { AppShareModal } from '@/components/apps/AppShareModal'
 import { DesktopAppPermissionsModal } from '@/components/apps/DesktopAppPermissionsModal'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { SkeletonRows } from '@/components/ui/Skeleton'
+import { IconButton } from '@/components/ui/IconButton'
+import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
 import {
   appDetailQuery,
@@ -49,6 +40,7 @@ function AppDetailPage() {
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [permOpen, setPermOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const app = detail.data?.app
 
@@ -103,20 +95,14 @@ function AppDetailPage() {
     },
   })
 
-  if (detail.isPending) {
-    return (
-      <div className="mx-auto max-w-4xl p-6">
-        <SkeletonRows count={4} />
-      </div>
-    )
-  }
+  if (detail.isPending) return null
 
   if (detail.isError || !app) {
     return (
       <EmptyState title="App unavailable">
-        <p className="text-[13px] text-ink-3">This app may have been deleted or you no longer have access.</p>
+        <p>It may have been deleted, or you no longer have access.</p>
         {!isStandaloneWindow ? (
-          <Button className="mt-3" variant="secondary" onClick={() => void navigate({ to: '/apps' })}>
+          <Button className="mt-4" variant="primary" onClick={() => void navigate({ to: '/apps' })}>
             Back to Apps
           </Button>
         ) : null}
@@ -138,95 +124,55 @@ function AppDetailPage() {
     if (ok) setAlwaysOnTop(next)
   }
 
+  const paused = installed?.permissionsPaused ?? false
+  const menuRow = (label: string, action: () => void) => (
+    <MenuRow key={label} role="menuitem" onClick={() => {
+      setMenuOpen(false)
+      action()
+    }}>
+      {label}
+    </MenuRow>
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg">
-      <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-3">
-        <div className="flex min-w-0 items-center gap-2">
-          {!isStandaloneWindow ? (
-            <Link
-              to="/apps"
-              className="grid size-7 shrink-0 place-items-center rounded-control text-ink-2 hover:bg-surface-2 hover:text-ink"
-              aria-label="Back to Apps"
-            >
-              <ArrowLeft size={15} />
-            </Link>
-          ) : null}
-          <h1 className="truncate text-[13.5px] font-semibold text-ink">{app.title}</h1>
-          <button
-            type="button"
-            onClick={() => (isDesktop ? setPermOpen(true) : setShareOpen(true))}
-            title={
-              installed?.permissionsPaused
-                ? 'Permissions paused after update — click to review'
-                : 'Inspect version & permissions'
-            }
-            className={`inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
-              installed?.permissionsPaused
-                ? 'border-amber-500/50 bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                : 'border-border bg-bg text-ink-2 hover:bg-surface-2'
-            }`}
-          >
-            {installed?.permissionsPaused ? <AlertTriangle size={11} /> : <Shield size={11} />}
-            <span>v{app.current_version}</span>
-            {effectiveSha ? <span className="font-mono text-[10px] opacity-75">{effectiveSha.slice(0, 7)}</span> : null}
-            {installed ? (
-              <span className="text-[10.5px]">
-                · {installed.permissionsPaused ? 'Paused' : `${installed.permissions.length} perms`}
-              </span>
-            ) : null}
-          </button>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1">
-          {canToggleTop ? (
-            <Button
-              variant={alwaysOnTop ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => void toggleTop()}
-              title="Toggle always on top"
-            >
-              <Pin size={12} />
-            </Button>
-          ) : null}
-          {!isViewer ? (
-            <Button variant="ghost" size="sm" disabled={remixMutation.isPending} onClick={() => remixMutation.mutate()}>
-              <GitFork size={12} />
-              Remix
-            </Button>
-          ) : null}
-          <Button variant="ghost" size="sm" onClick={() => setShareOpen(true)}>
-            <Share2 size={12} />
-            Share
+      <header className="flex h-11 shrink-0 items-center gap-1 border-b border-border/70 px-2">
+        {!isStandaloneWindow ? (
+          <IconButton size="sm" aria-label="Back to Apps" title="Back to Apps" onClick={() => void navigate({ to: '/apps' })}>
+            <ArrowLeft size={15} />
+          </IconButton>
+        ) : null}
+        <h1 className="min-w-0 flex-1 truncate px-1.5 text-[13.5px] font-medium text-ink">{app.title}</h1>
+        {paused ? (
+          <Button size="sm" onClick={() => setPermOpen(true)}>
+            <span className="size-1.5 rounded-full bg-running" aria-hidden />
+            Review permissions
           </Button>
-          {isDesktop && !isStandaloneWindow ? (
-            installed ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => void clientRuntime.desktopApps?.openWindow(app.id, { title: app.title })}
-              >
-                <ExternalLink size={12} />
-                Open Window
-              </Button>
-            ) : (
-              <Button variant="secondary" size="sm" onClick={() => setPermOpen(true)}>
-                <Download size={12} />
-                Install as App
-              </Button>
-            )
-          ) : null}
-          {!isStandaloneWindow && !isViewer && app.can_edit !== false ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                if (window.confirm(`Delete "${app.title}" permanently?`)) deleteMutation.mutate()
-              }}
-            >
-              <Trash2 size={12} className="text-danger" />
-            </Button>
-          ) : null}
-        </div>
+        ) : null}
+        {canToggleTop ? (
+          <IconButton size="sm" aria-label="Keep on top" title="Keep on top" aria-pressed={alwaysOnTop} onClick={() => void toggleTop()} className={alwaysOnTop ? 'bg-ink/15 text-ink' : ''}>
+            <Pin size={14} />
+          </IconButton>
+        ) : null}
+        <Button size="sm" onClick={() => setShareOpen(true)}>Share</Button>
+        <Popover open={menuOpen} onClose={() => setMenuOpen(false)} placement="below" align="end" trigger={
+          <IconButton size="sm" aria-label="More actions" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
+            <MoreHorizontal size={15} />
+          </IconButton>
+        }>
+          <div role="menu" aria-label="More actions">
+            {!isViewer ? menuRow('Remix in a new chat', () => remixMutation.mutate()) : null}
+            {isDesktop && !isStandaloneWindow
+              ? installed
+                ? menuRow('Open in window', () => void clientRuntime.desktopApps?.openWindow(app.id, { title: app.title }))
+                : menuRow('Install as desktop app', () => setPermOpen(true))
+              : null}
+            {isDesktop && installed ? menuRow('Permissions', () => setPermOpen(true)) : null}
+            {!isStandaloneWindow && !isViewer && app.can_edit !== false ? menuRow('Delete', () => {
+              if (window.confirm(`Delete "${app.title}" permanently?`)) deleteMutation.mutate()
+            }) : null}
+          </div>
+        </Popover>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">

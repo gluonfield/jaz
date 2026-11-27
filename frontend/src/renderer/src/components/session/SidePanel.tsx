@@ -5,6 +5,8 @@ import type { Attachment, QueuedAction, Session, SessionEvent } from '@/lib/api/
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import { MCPAppFrame } from '@/components/apps/MCPAppFrame'
+import { PublishedAppPanel } from '@/components/apps/PublishedAppPanel'
+import { ArtifactFrame } from '@/components/artifacts/ArtifactFrame'
 import { ViewPanel } from '@/components/session/ViewPanel'
 import { BrowserPanelSlot } from '@/components/browser/BrowserWorkspace'
 import type { SendMessageHandler, SendMessageOptions } from '@/lib/sendMessage'
@@ -122,6 +124,12 @@ export function SidePanel({
                 <CodeDiffPanel sessionId={session.id} visible={visible} isCloud={isCloudSession} repo={tab.repo} onSelectRepo={panel.openDiff} />
               ) : tab.kind === 'app' ? (
                 <MCPAppFrame app={tab.app} file={tab.file} call={tab.call} active={visible} />
+              ) : tab.kind === 'artifact' ? (
+                <div className="scrollbar-quiet h-full overflow-auto px-4 pb-4">
+                  <ArtifactFrame input={tab.artifact} onSendPrompt={(text) => void onSend(text)} onOpenLink={panel.openFile} />
+                </div>
+              ) : tab.kind === 'published-app' ? (
+                <PublishedAppPanel appId={tab.app.id} />
               ) : tab.kind === 'view' ? (
                 <ViewPanel sessionId={session.id} cloudRunId={cloudRunId} view={tab.view} visible={visible} working={working} asking={asking} onOpenFile={panel.openFile} onOpenView={panel.openView} />
               ) : (

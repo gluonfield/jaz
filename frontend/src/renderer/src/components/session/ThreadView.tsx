@@ -18,6 +18,7 @@ import { useAppContexts } from '@/components/apps/useAppContexts'
 import { useCanvasContexts } from '@/components/canvas/useCanvasContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
+import { ArtifactPanelContext } from '@/lib/artifactPanel'
 import { SessionErrorNotice, type SessionErrorAction } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
 import { GoalStatusBar } from '@/components/session/GoalStatusBar'
@@ -287,6 +288,7 @@ export function ThreadView({
     openView,
   }), [sessionId, handleSend, appContexts.report, sidePanel.openApp, openView])
   const markdownArtifacts = useMemo(() => ({ mode: 'source' as const, onSendPrompt: handleSend }), [handleSend])
+  const artifactPanel = useMemo(() => ({ openArtifact: sidePanel.openArtifact, openPublishedApp: sidePanel.openPublishedApp }), [sidePanel.openArtifact, sidePanel.openPublishedApp])
   const threadFind = useThreadFind(sessionId, scrollRef, pauseFollowing)
   const [revealedMessageSeq, setRevealedMessageSeq] = useState<number>()
   const jumpedMessageRef = useRef(0)
@@ -573,6 +575,7 @@ export function ThreadView({
   return (
     <MCPAppThreadContext value={appThread}>
     <MarkdownArtifactContext value={markdownArtifacts}>
+    <ArtifactPanelContext value={artifactPanel}>
     <FileReaderLinkProvider sessionId={session.id} cloudRunId={cloudRunId} documentPath={session.runtime_ref?.cwd ? `${session.runtime_ref.cwd}/` : undefined} onOpen={sidePanel.openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         {/* Phone: the closed side panel slides off to the right (translateX 100%);
@@ -805,6 +808,7 @@ export function ThreadView({
         </FileDropScope>
       </PreviewLinkProvider>
     </FileReaderLinkProvider>
+    </ArtifactPanelContext>
     </MarkdownArtifactContext>
     </MCPAppThreadContext>
   )

@@ -209,6 +209,19 @@ export function appDetailQuery(id: string) {
   })
 }
 
+// The entry file of an app's current version, as its library thumbnail draws it.
+export function appPreviewQuery(app: Pick<JazApp, 'id' | 'current_version'>) {
+  return queryOptions({
+    queryKey: keys.appPreview(app.id, app.current_version),
+    queryFn: async ({ signal }) => {
+      const ticket = await issueAppTicket(app.id, app.current_version)
+      return { entryPath: ticket.entry_path, content: await fetchAppContentText(ticket, ticket.entry_path, signal) }
+    },
+    staleTime: Infinity,
+    retry: false,
+  })
+}
+
 export function appVersionsQuery(id: string) {
   return queryOptions({
     queryKey: keys.appVersions(id),

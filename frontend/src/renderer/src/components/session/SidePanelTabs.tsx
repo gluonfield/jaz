@@ -1,4 +1,4 @@
-import { Copy, PencilRuler, FileSpreadsheet, FileText, FileType, FolderGit2, Globe, LayoutDashboard, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
+import { AppWindow, Copy, PencilRuler, FileSpreadsheet, FileText, FileType, FolderGit2, Globe, LayoutDashboard, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, Reorder } from 'motion/react'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
@@ -8,6 +8,7 @@ import { IconButton } from '@/components/ui/IconButton'
 import { ContextMenu, MenuRow, Popover } from '@/components/ui/Popover'
 import { Favicon } from '@/components/ui/Favicon'
 import { isMarkdownPath, isSpreadsheetPath, isWordPath } from '@shared/fileReader'
+import { appsQuery } from '@/lib/api/apps'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { useBrowserSessions } from '@/lib/browserSessions'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
@@ -21,7 +22,8 @@ const MENU_TYPES = {
   diff: { label: 'Code diff', icon: FolderGit2 },
 }
 
-const TAB_TYPES = { ...MENU_TYPES, canvas: { label: 'Canvas', icon: PencilRuler } }
+const TAB_TYPES = { ...MENU_TYPES, canvas: { label: 'Canvas', icon: PencilRuler }, artifact: { label: 'Artifact', icon: AppWindow }, 'published-app': { label: 'App', icon: AppWindow } }
+const RECENT_APPS = 5
 
 function KindIcon({ kind, path = '' }: { kind: keyof typeof TAB_TYPES; path?: string }) {
   const spreadsheet = isSpreadsheetPath(path)
@@ -29,8 +31,8 @@ function KindIcon({ kind, path = '' }: { kind: keyof typeof TAB_TYPES; path?: st
   return <Icon size={14} className={`shrink-0 ${spreadsheet ? 'text-emerald-600 dark:text-emerald-400' : 'text-ink-3'}`} aria-hidden />
 }
 
-// The new-tab menu lists the built-in tabs, then the thread apps of connected
-// MCP servers.
+// The new-tab menu lists the built-in tabs, the thread apps of connected MCP
+// servers, then the most recently updated published apps.
 export function SidePanelTabMenu({ sideChatAvailable, onAdd, empty = false }: {
   sideChatAvailable: boolean
   onAdd: (tab: NewSidePanelTab) => void
@@ -38,6 +40,9 @@ export function SidePanelTabMenu({ sideChatAvailable, onAdd, empty = false }: {
 }) {
   const [open, setOpen] = useState(false)
   const apps = (useQuery(mcpEntrypointsQuery).data ?? []).filter((entry) => entry.type === 'thread')
+  const published = (useQuery(appsQuery({ scope: 'all' })).data ?? [])
+    .toSorted((a, b) => b.updated_at.localeCompare(a.updated_at))
+    .slice(0, RECENT_APPS)
   const options = (Object.keys(MENU_TYPES) as (keyof typeof MENU_TYPES)[]).filter((kind) => kind !== 'side-chat' || sideChatAvailable)
   const row = (key: string, tab: NewSidePanelTab, icon: ReactNode, label: string) => (
     <button type="button" className="flex h-7 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink pointer-coarse:h-10" key={key} onClick={() => {
@@ -45,7 +50,7 @@ export function SidePanelTabMenu({ sideChatAvailable, onAdd, empty = false }: {
       setOpen(false)
     }}>
       <span className="grid size-3.5 shrink-0 place-items-center text-ink-3">{icon}</span>
-      {label}
+      <span className="max-w-56 truncate">{label}</span>
     </button>
   )
   const rows = [
@@ -54,6 +59,7 @@ export function SidePanelTabMenu({ sideChatAvailable, onAdd, empty = false }: {
       return row(kind, kind, <Icon size={14} />, label)
     }),
     ...apps.map((app) => row(entrypointKey(app), app, <AppIcon app={app} size={14} />, app.title)),
+    ...published.map((app) => row(app.id, { id: app.id, title: app.title }, <AppWindow size={14} />, app.title)),
   ]
   if (empty) {
     return <div className="m-auto w-52 p-2">{rows}</div>
@@ -117,7 +123,11 @@ export function SidePanelTabs({ tabs, activeId, sideChatAvailable, onSelect, onR
     <div className="flex h-9 min-w-0 flex-1 items-center gap-1 px-1 pointer-coarse:h-11">
       <Reorder.Group as="div" axis="x" values={tabs.map((tab) => tab.id)} onReorder={onReorder} layoutScroll ref={list} role="tablist" aria-label="Side panel tabs" className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [-webkit-app-region:no-drag]">
         {tabs.map((tab, index) => {
-          const label = tab.kind === 'app' ? tab.file?.name ?? tab.app.title : tab.kind === 'view' ? tab.view.title : TAB_TYPES[tab.kind].label
+          const label = tab.kind === 'app' ? tab.file?.name ?? tab.app.title
+            : tab.kind === 'view' ? tab.view.title
+              : tab.kind === 'artifact' ? tab.artifact.title
+                : tab.kind === 'published-app' ? tab.app.title
+                  : TAB_TYPES[tab.kind].label
           const target = browsers.find((browser) => browser.id === tab.id)?.target
           const title = tab.kind === 'file' ? tab.file?.path.split(/[\\/]/).pop() || label : target?.title || target?.displayUrl || label
           const active = activeId === tab.id

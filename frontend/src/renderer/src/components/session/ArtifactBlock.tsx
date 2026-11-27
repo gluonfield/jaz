@@ -1,7 +1,9 @@
-import { Share2 } from 'lucide-react'
-import { memo, useCallback, useMemo, useState } from 'react'
+import { PanelRight, Share2 } from 'lucide-react'
+import { memo, use, useCallback, useMemo, useState } from 'react'
 import { PublishAppModal } from '@/components/apps/PublishAppModal'
 import { ArtifactFrame } from '@/components/artifacts/ArtifactFrame'
+import { IconButton } from '@/components/ui/IconButton'
+import { ArtifactPanelContext } from '@/lib/artifactPanel'
 import { useFileLinks } from '@/lib/fileLinks'
 import { resolveFileLink } from '@shared/fileReader'
 import type { ArtifactEvent } from '@/lib/api/types'
@@ -34,6 +36,7 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
   onResolveAsset?: (path: string) => Promise<ResolvedAsset>
 }) {
   const files = useFileLinks()
+  const panel = use(ArtifactPanelContext)
   const [publishOpen, setPublishOpen] = useState(false)
   const openLink = useCallback((href: string) => {
     if (onOpenFile) return onOpenFile(href)
@@ -55,16 +58,16 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
   return (
     <div className="group/artifact relative w-full">
       {canPublish ? (
-        <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-surface/70 px-3 py-1.5">
-          <span className="truncate text-[12px] font-medium text-ink-2">{input.title}</span>
-          <button
-            type="button"
-            onClick={() => setPublishOpen(true)}
-            className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-control px-2 py-0.5 text-[11.5px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            <Share2 size={12} aria-hidden />
-            Publish
-          </button>
+        <div className="flex h-8 items-center gap-0.5">
+          <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-3">{input.title}</span>
+          <IconButton size="sm" aria-label="Publish as app" title="Publish as app" onClick={() => setPublishOpen(true)}>
+            <Share2 size={14} />
+          </IconButton>
+          {panel ? (
+            <IconButton size="sm" aria-label="Open in side panel" title="Open in side panel" onClick={() => panel.openArtifact(input)}>
+              <PanelRight size={14} />
+            </IconButton>
+          ) : null}
         </div>
       ) : null}
       <ArtifactFrame input={input} data={data} agentState={agentState} viewState={viewState} pluginView={pluginView} assetOrigin={assetOrigin} pending={pending} executionError={execError} onSendPrompt={onSendPrompt} onOpenLink={openLink} onOpenView={onOpenView} onViewState={onViewState} onResolveAsset={onResolveAsset} />
@@ -75,6 +78,7 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
           initialTitle={input.title}
           kind="artifact"
           html={input.code}
+          onPublished={panel?.openPublishedApp}
         />
       ) : null}
     </div>

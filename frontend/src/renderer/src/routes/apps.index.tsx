@@ -1,30 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import {
-  AlertTriangle,
-  AppWindow,
-  Download,
-  ExternalLink,
-  FileText,
-  Folder,
-  GitFork,
-  Lock,
-  Plug,
-  Share2,
-  Shield,
-  Sparkles,
-  Trash2,
-  UserCheck,
-  Users,
-} from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { ListFilter, Users } from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { AppCard, type AppCardAction } from '@/components/apps/AppCard'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { AppShareModal } from '@/components/apps/AppShareModal'
+import { AppThumbnail, ThumbnailSheet } from '@/components/apps/AppThumbnail'
 import { DesktopAppPermissionsModal } from '@/components/apps/DesktopAppPermissionsModal'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { Input } from '@/components/ui/Input'
-import { SkeletonRows } from '@/components/ui/Skeleton'
+import { IconButton } from '@/components/ui/IconButton'
+import { MenuRow, Popover } from '@/components/ui/Popover'
+import { SearchField } from '@/components/ui/SearchField'
+import { Segmented } from '@/components/ui/Segmented'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import {
   appsQuery,
@@ -37,6 +26,7 @@ import {
 import { mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
+import { shortDate } from '@/lib/format/time'
 import { keys } from '@/lib/query/keys'
 import type { InstalledDesktopApp } from '@shared/desktopApps'
 
@@ -45,18 +35,42 @@ export const Route = createFileRoute('/apps/')({
 })
 
 type AppsTab = 'mine' | 'team' | 'desktop' | 'connected'
+type KindFilter = 'all' | AppKind
 
-function visibilityBadge(app: JazApp) {
-  switch (app.visibility) {
-    case 'team':
-      return { label: 'Team', Icon: Users }
-    case 'space':
-      return { label: 'Space', Icon: Folder }
-    case 'selected':
-      return { label: 'Selected', Icon: UserCheck }
-    default:
-      return { label: 'Private', Icon: Lock }
+const KINDS: { value: KindFilter; label: string }[] = [
+  { value: 'all', label: 'All kinds' },
+  { value: 'artifact', label: 'Interactive' },
+  { value: 'document', label: 'Documents' },
+]
+
+const EMPTY: Record<AppsTab, { title: string; text: string }> = {
+  mine: { title: 'No apps yet', text: 'Publish an artifact or document from a chat and it lives here.' },
+  team: { title: 'Nothing shared yet', text: 'Apps shared with your team or a space appear here.' },
+  desktop: { title: 'No desktop apps', text: 'Install any app to give it its own window.' },
+  connected: { title: 'No connected apps', text: 'Apps from your connected MCP servers appear here.' },
+}
+
+// An installed app whose published record is gone still shows, from what the
+// desktop kept at install time.
+function installedAsApp(installed: InstalledDesktopApp): JazApp {
+  return {
+    id: installed.appId,
+    owner_user_id: 'local',
+    title: installed.title,
+    description: installed.description,
+    kind: installed.kind,
+    visibility: 'private',
+    current_version: installed.installedVersion,
+    status: 'active',
+    bundle_sha256: installed.latestBundleSha256,
+    capabilities: installed.declaredCapabilities,
+    created_at: installed.installedAt,
+    updated_at: installed.updatedAt,
   }
+}
+
+function Grid({ children }: { children: ReactNode }) {
+  return <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-5">{children}</div>
 }
 
 function AppsLibraryPage() {
@@ -69,7 +83,8 @@ function AppsLibraryPage() {
 
   const [tab, setTab] = useState<AppsTab>('mine')
   const [search, setSearch] = useState('')
-  const [kindFilter, setKindFilter] = useState<'all' | AppKind>('all')
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all')
+  const [kindMenuOpen, setKindMenuOpen] = useState(false)
   const [shareApp, setShareApp] = useState<JazApp | null>(null)
   const [permTarget, setPermTarget] = useState<{ app: JazApp; installed: InstalledDesktopApp | null } | null>(null)
 
@@ -82,38 +97,10 @@ function AppsLibraryPage() {
     enabled: isDesktop,
   })
 
-  const installedById = useMemo(() => {
-    const map = new Map<string, InstalledDesktopApp>()
-    for (const item of desktopInstalled.data ?? []) {
-      map.set(item.appId, item)
-    }
-    return map
-  }, [desktopInstalled.data])
-
-  const myApps = useMemo(
-    () => (allApps.data ?? []).filter((a) => a.is_owner !== false),
-    [allApps.data],
+  const installedById = useMemo(
+    () => new Map((desktopInstalled.data ?? []).map((item) => [item.appId, item])),
+    [desktopInstalled.data],
   )
-  const teamApps = useMemo(
-    () => (allApps.data ?? []).filter((a) => a.visibility !== 'private'),
-    [allApps.data],
-  )
-  const connectedEntrypoints = useMemo(
-    () => (mcpApps.data ?? []).filter((e) => e.type === 'global'),
-    [mcpApps.data],
-  )
-
-  const filterList = (list: JazApp[]) => {
-    const needle = search.trim().toLowerCase()
-    return list.filter((a) => {
-      if (kindFilter !== 'all' && a.kind !== kindFilter) return false
-      if (!needle) return true
-      return (
-        a.title.toLowerCase().includes(needle) ||
-        (a.description ?? '').toLowerCase().includes(needle)
-      )
-    })
-  }
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteApp(id),
@@ -143,348 +130,153 @@ function AppsLibraryPage() {
     },
   })
 
-  const tabs: { id: AppsTab; label: string; count: number; visible: boolean }[] = [
-    { id: 'mine', label: 'My Apps', count: myApps.length, visible: true },
-    { id: 'team', label: 'Team & Spaces', count: teamApps.length, visible: cloud.active },
-    { id: 'desktop', label: 'Installed Desktop Apps', count: (desktopInstalled.data ?? []).length, visible: isDesktop },
-    { id: 'connected', label: 'Connected Apps', count: connectedEntrypoints.length, visible: true },
+  const needle = search.trim().toLowerCase()
+  const apps = useMemo(() => {
+    const published = allApps.data ?? []
+    const list = tab === 'mine' ? published.filter((app) => app.is_owner !== false)
+      : tab === 'team' ? published.filter((app) => app.visibility !== 'private')
+        : tab === 'desktop' ? (desktopInstalled.data ?? []).map((installed) => published.find((app) => app.id === installed.appId) ?? installedAsApp(installed))
+          : []
+    return list.filter((app) =>
+      (kindFilter === 'all' || app.kind === kindFilter) &&
+      (!needle || app.title.toLowerCase().includes(needle) || (app.description ?? '').toLowerCase().includes(needle)))
+  }, [allApps.data, desktopInstalled.data, kindFilter, needle, tab])
+  const connected = useMemo(
+    () => (mcpApps.data ?? []).filter((entry) => entry.type === 'global' && (!needle || entry.title.toLowerCase().includes(needle))),
+    [mcpApps.data, needle],
+  )
+
+  const tabs = [
+    { value: 'mine' as const, label: 'Yours' },
+    ...(cloud.active ? [{ value: 'team' as const, label: 'Shared' }] : []),
+    ...(isDesktop ? [{ value: 'desktop' as const, label: 'Installed' }] : []),
+    { value: 'connected' as const, label: 'Connected' },
   ]
 
-  const renderAppCard = (app: JazApp) => {
-    const badge = visibilityBadge(app)
-    const BadgeIcon = badge.Icon
-    const installed = installedById.get(app.id) ?? null
-    return (
-      <div
-        key={app.id}
-        className="flex flex-col justify-between gap-3 rounded-card border border-border bg-surface p-4 transition-colors hover:border-border/90"
-      >
-        <div className="space-y-1.5">
-          <div className="flex items-start justify-between gap-2">
-            <Link
-              to="/apps/$appId"
-              params={{ appId: app.id }}
-              className="flex min-w-0 items-center gap-2 hover:text-primary"
-            >
-              <span className="grid size-8 shrink-0 place-items-center rounded-control bg-surface-2 text-[15px] text-primary">
-                {app.icon?.kind === 'emoji' && app.icon.value ? (
-                  app.icon.value
-                ) : app.kind === 'document' ? (
-                  <FileText size={15} />
-                ) : (
-                  <Sparkles size={15} />
-                )}
-              </span>
-              <div className="min-w-0">
-                <h3 className="truncate text-[14px] font-semibold text-ink">{app.title}</h3>
-                <div className="flex items-center gap-1.5 text-[11px] text-ink-3">
-                  <span className="inline-flex items-center gap-1">
-                    <BadgeIcon size={11} />
-                    {badge.label}
-                  </span>
-                  <span>·</span>
-                  <span>v{app.current_version}</span>
-                  <span>·</span>
-                  <span className="capitalize">{app.kind}</span>
-                </div>
-              </div>
-            </Link>
-            {installed?.permissionsPaused ? (
-              <span
-                title="Permissions paused after version update"
-                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10.5px] font-medium text-amber-600 dark:text-amber-400"
-              >
-                <AlertTriangle size={11} />
-                Update
-              </span>
-            ) : null}
-          </div>
-          {app.description ? (
-            <p className="line-clamp-2 text-[12.5px] text-ink-2">{app.description}</p>
-          ) : null}
-        </div>
+  const appActions = (app: JazApp, installed: InstalledDesktopApp | null): AppCardAction[] => [
+    ...(installed ? [
+      { label: 'Open in window', onSelect: () => void clientRuntime.desktopApps?.openWindow(app.id, { title: app.title }) },
+      { label: 'Permissions', onSelect: () => setPermTarget({ app, installed }) },
+    ] : isDesktop ? [
+      { label: 'Install as desktop app', onSelect: () => setPermTarget({ app, installed: null }) },
+    ] : []),
+    { label: 'Share', onSelect: () => setShareApp(app) },
+    ...(isViewer ? [] : [{ label: 'Remix in a new chat', onSelect: () => remixMutation.mutate(app.id) }]),
+    ...(installed ? [{ label: 'Uninstall', onSelect: () => uninstallDesktopMutation.mutate(app.id) }] : []),
+    ...(!isViewer && app.can_edit !== false ? [{
+      label: 'Delete',
+      onSelect: () => {
+        if (window.confirm(`Delete "${app.title}" and all its stored data?`)) {
+          deleteMutation.mutate(app.id)
+        }
+      },
+    }] : []),
+  ]
 
-        <div className="flex flex-wrap items-center justify-between gap-1.5 border-t border-border/60 pt-2.5">
-          <div className="flex items-center gap-1">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void navigate({ to: '/apps/$appId', params: { appId: app.id } })}
-            >
-              Open
-            </Button>
-            {isDesktop ? (
-              installed ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void clientRuntime.desktopApps?.openWindow(app.id, { title: app.title })}
-                >
-                  <ExternalLink size={12} />
-                  Launch
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setPermTarget({ app, installed: null })}
-                >
-                  <Download size={12} />
-                  Install
-                </Button>
-              )
-            ) : null}
-          </div>
-
-          <div className="flex items-center gap-1">
-            {!isViewer ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                title="Remix into a new chat"
-                disabled={remixMutation.isPending}
-                onClick={() => remixMutation.mutate(app.id)}
-              >
-                <GitFork size={12} />
-              </Button>
-            ) : null}
-            <Button
-              variant="ghost"
-              size="sm"
-              title="Share & manage"
-              onClick={() => setShareApp(app)}
-            >
-              <Share2 size={12} />
-            </Button>
-            {!isViewer && app.can_edit !== false ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                title="Delete app"
-                onClick={() => {
-                  if (window.confirm(`Delete "${app.title}" and all its stored data?`)) {
-                    deleteMutation.mutate(app.id)
-                  }
-                }}
-              >
-                <Trash2 size={12} className="text-danger" />
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    )
-  }
+  const filtered = Boolean(needle) || kindFilter !== 'all'
+  const loading = tab === 'connected' ? mcpApps.isPending : tab === 'desktop' ? desktopInstalled.isPending || allApps.isPending : allApps.isPending
+  const count = tab === 'connected' ? connected.length : apps.length
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 place-items-center rounded-card bg-surface text-primary ring-1 ring-border/70">
-            <AppWindow size={20} />
-          </span>
-          <div>
-            <h1 className="text-[20px] font-semibold tracking-tight text-ink">Apps</h1>
-            <p className="text-[12.5px] text-ink-3">
-              Shareable artifacts, documents, installed Desktop Apps, and connected MCP Apps.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search apps…"
-            className="w-52"
-          />
-          {tab === 'mine' || tab === 'team' ? (
-            <select
-              value={kindFilter}
-              onChange={(e) => setKindFilter(e.target.value as 'all' | AppKind)}
-              aria-label="Filter by kind"
-              className="rounded-control border border-border bg-bg px-2.5 py-1.5 text-[12.5px] text-ink"
-            >
-              <option value="all">All kinds</option>
-              <option value="artifact">Interactive</option>
-              <option value="document">Documents</option>
-            </select>
+    <div className="mx-auto flex w-full max-w-[1120px] flex-col px-8 pb-12 pt-10 max-sm:px-4 max-sm:pt-6">
+      <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-ink">Apps</h1>
+
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        <Segmented value={tab} options={tabs} onChange={setTab} layoutId="apps-library-tab" />
+        <div className="flex items-center gap-1">
+          <SearchField value={search} onChange={setSearch} placeholder="Search apps…" className="h-8 w-52 max-sm:w-40" />
+          {tab !== 'connected' ? (
+            <Popover open={kindMenuOpen} onClose={() => setKindMenuOpen(false)} placement="below" align="end" trigger={
+              <IconButton aria-label="Filter by kind" title="Filter by kind" aria-haspopup="menu" aria-expanded={kindMenuOpen} onClick={() => setKindMenuOpen((open) => !open)} className={kindFilter === 'all' ? '' : 'bg-ink/10 text-ink'}>
+                <ListFilter size={15} />
+              </IconButton>
+            }>
+              <div role="menu" aria-label="Filter by kind">
+                {KINDS.map((kind) => (
+                  <MenuRow key={kind.value} role="menuitemradio" selected={kindFilter === kind.value} onClick={() => {
+                    setKindFilter(kind.value)
+                    setKindMenuOpen(false)
+                  }}>
+                    {kind.label}
+                  </MenuRow>
+                ))}
+              </div>
+            </Popover>
           ) : null}
         </div>
-      </header>
-
-      <div role="tablist" aria-label="App categories" className="flex items-center gap-1 border-b border-border/70">
-        {tabs
-          .filter((t) => t.visible)
-          .map((t) => {
-            const active = tab === t.id
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setTab(t.id)}
-                className={`-mb-px flex cursor-pointer items-center gap-1.5 border-b-2 px-3 py-2 text-[13px] font-medium transition-colors ${
-                  active ? 'border-primary text-ink' : 'border-transparent text-ink-3 hover:text-ink'
-                }`}
-              >
-                <span>{t.label}</span>
-                <span className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[11px] text-ink-3 tabular-nums">
-                  {t.count}
-                </span>
-              </button>
-            )
-          })}
       </div>
 
-      {tab === 'mine' || tab === 'team' ? (
-        allApps.isPending ? (
-          <SkeletonRows count={4} />
-        ) : (
-          (() => {
-            const list = filterList(tab === 'mine' ? myApps : teamApps)
-            if (list.length === 0) {
-              return (
-                <EmptyState
-                  title={tab === 'mine' ? 'No published apps yet' : 'No team or Space apps yet'}
-                >
-                  <p className="text-[13px] text-ink-3">
-                    Publish any inline artifact or Markdown document from a chat thread to see it here.
-                  </p>
-                </EmptyState>
-              )
-            }
-            return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{list.map(renderAppCard)}</div>
-          })()
-        )
-      ) : tab === 'desktop' ? (
-        (desktopInstalled.data ?? []).length === 0 ? (
-          <EmptyState title="No Desktop Apps installed">
-            <p className="text-[13px] text-ink-3">
-              Click Install on any Jaz App to create a standalone window and OS launcher shim.
-            </p>
-          </EmptyState>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {(desktopInstalled.data ?? []).map((inst) => {
-              const live = (allApps.data ?? []).find((a) => a.id === inst.appId)
-              const appModel: JazApp = live ?? {
-                id: inst.appId,
-                owner_user_id: 'local',
-                title: inst.title,
-                description: inst.description,
-                kind: inst.kind,
-                visibility: 'private',
-                current_version: inst.installedVersion,
-                status: 'active',
-                bundle_sha256: inst.latestBundleSha256,
-                capabilities: inst.declaredCapabilities,
-                created_at: inst.installedAt,
-                updated_at: inst.updatedAt,
-              }
-              return (
-                <div
-                  key={inst.appId}
-                  className="flex flex-col justify-between gap-3 rounded-card border border-border bg-surface p-4"
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h3 className="text-[14px] font-semibold text-ink">{inst.title}</h3>
-                        <p className="font-mono text-[11px] text-ink-3">
-                          v{inst.installedVersion} · {inst.approvedBundleSha256.slice(0, 12)}
-                        </p>
-                      </div>
-                      {inst.permissionsPaused ? (
-                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10.5px] font-medium text-amber-600 dark:text-amber-400">
-                          Paused
-                        </span>
-                      ) : null}
-                    </div>
-                    {inst.launcherPath ? (
-                      <p className="truncate font-mono text-[11px] text-ink-3" title={inst.launcherPath}>
-                        {inst.launcherPath}
-                      </p>
-                    ) : null}
-                    <p className="text-[12px] text-ink-2">
-                      {inst.permissions.length > 0
-                        ? `Permissions: ${inst.permissions.join(', ')}`
-                        : 'Sandbox only (Tier 0/1)'}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between gap-1.5 border-t border-border/60 pt-2.5">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => void clientRuntime.desktopApps?.openWindow(inst.appId, { title: inst.title })}
-                      >
-                        <ExternalLink size={12} />
-                        Launch
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setPermTarget({ app: appModel, installed: inst })}
-                      >
-                        <Shield size={12} />
-                        Permissions
-                      </Button>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => uninstallDesktopMutation.mutate(inst.appId)}
-                    >
-                      <Trash2 size={12} className="text-danger" />
-                    </Button>
-                  </div>
+      <div className="mt-7">
+        {loading ? (
+          <Grid>
+            {Array.from({ length: 6 }, (_, index) => (
+              <div key={index} className="overflow-hidden rounded-[14px] border border-border">
+                <Skeleton className="aspect-[16/10] rounded-none" />
+                <div className="space-y-2 px-3.5 py-3">
+                  <Skeleton className="h-3.5 w-2/3" />
+                  <Skeleton className="h-3 w-1/3" />
                 </div>
+              </div>
+            ))}
+          </Grid>
+        ) : tab !== 'connected' && allApps.isError ? (
+          <EmptyState title="Could not load apps">
+            <Button className="mt-2" variant="primary" onClick={() => void allApps.refetch()}>Try again</Button>
+          </EmptyState>
+        ) : count === 0 ? (
+          filtered ? (
+            <EmptyState title="No matches">Try a different search or filter.</EmptyState>
+          ) : (
+            <EmptyState title={EMPTY[tab].title}>
+              <p>{EMPTY[tab].text}</p>
+              {tab === 'mine' && !isViewer ? (
+                <Button className="mt-4" variant="primary" onClick={() => void navigate({ to: '/new' })}>Start a chat</Button>
+              ) : null}
+            </EmptyState>
+          )
+        ) : tab === 'connected' ? (
+          <Grid>
+            {connected.map((entry) => (
+              <AppCard
+                key={`${entry.server_id}:${entry.tool}`}
+                title={entry.title}
+                detail="Connected"
+                preview={
+                  <ThumbnailSheet>
+                    <span className="grid size-full place-items-center pb-[6%] text-ink-2">
+                      <AppIcon app={entry} size={40} />
+                    </span>
+                  </ThumbnailSheet>
+                }
+                onOpen={() => void navigate({ to: '/apps/$serverId/$tool', params: { serverId: entry.server_id, tool: entry.tool } })}
+              />
+            ))}
+          </Grid>
+        ) : (
+          <Grid>
+            {apps.map((app) => {
+              const installed = installedById.get(app.id) ?? null
+              return (
+                <AppCard
+                  key={app.id}
+                  title={app.title}
+                  detail={`${app.kind === 'document' ? 'Document' : 'Interactive'} · ${shortDate(app.updated_at)}`}
+                  mark={installed?.permissionsPaused ? (
+                    <span title="Updated since you approved its permissions" className="size-2 shrink-0 rounded-full bg-running" />
+                  ) : app.visibility !== 'private' ? (
+                    <span title={app.visibility === 'team' ? 'Shared with your team' : app.visibility === 'space' ? 'Shared with a space' : 'Shared with selected people'} className="shrink-0 text-ink-3">
+                      <Users size={15} aria-hidden />
+                    </span>
+                  ) : null}
+                  preview={<AppThumbnail app={app} />}
+                  actions={appActions(app, installed)}
+                  onOpen={() => void navigate({ to: '/apps/$appId', params: { appId: app.id } })}
+                />
               )
             })}
-          </div>
-        )
-      ) : connectedEntrypoints.length === 0 ? (
-        <EmptyState title="No Connected MCP Apps">
-          <p className="text-[13px] text-ink-3">
-            Connect an MCP server that declares interactive UI resources to open its apps here.
-          </p>
-        </EmptyState>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {connectedEntrypoints.map((entry) => (
-            <div
-              key={`${entry.server_id}:${entry.tool}`}
-              className="flex flex-col justify-between gap-3 rounded-card border border-border bg-surface p-4"
-            >
-              <div className="flex items-center gap-2.5">
-                <span className="grid size-8 place-items-center rounded-control bg-surface-2 text-primary">
-                  {entry.icon ? <AppIcon app={entry} /> : <Plug size={15} />}
-                </span>
-                <div className="min-w-0">
-                  <h3 className="truncate text-[14px] font-semibold text-ink">{entry.title}</h3>
-                  <p className="truncate font-mono text-[11px] text-ink-3">{entry.tool}</p>
-                </div>
-              </div>
-              <div className="flex justify-end border-t border-border/60 pt-2.5">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() =>
-                    void navigate({
-                      to: '/apps/$serverId/$tool',
-                      params: { serverId: entry.server_id, tool: entry.tool },
-                    })
-                  }
-                >
-                  Open Connected App
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+          </Grid>
+        )}
+      </div>
 
       {shareApp ? <AppShareModal open onClose={() => setShareApp(null)} app={shareApp} /> : null}
       {permTarget ? (

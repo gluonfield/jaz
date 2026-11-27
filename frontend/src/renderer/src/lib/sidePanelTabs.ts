@@ -1,5 +1,6 @@
 import type { FileReference } from '@shared/fileReader'
 import type { PluginView, PresentationEvent, MCPAppEvent, MCPEntrypoint } from '@/lib/api/types'
+import type { ArtifactInput } from '@/lib/artifacts'
 import type { OpenedFile } from '@/lib/mcpAppFiles'
 
 export type PanelView = PluginView
@@ -14,8 +15,12 @@ export type SidePanelTab =
   | { id: string; kind: 'app'; app: Pick<MCPEntrypoint, 'server_id' | 'tool' | 'title' | 'icon'>; file?: OpenedFile; call?: Pick<MCPAppEvent, 'arguments' | 'result'> }
   // A view tab shows a plugin's view, drawn from a file in the thread's folder.
   | { id: string; kind: 'view'; view: PanelView }
-// NewSidePanelTab is what the new-tab menu opens: a built-in kind or a thread app.
-export type NewSidePanelTab = Exclude<SidePanelTab['kind'], 'app' | 'view' | 'canvas'> | MCPEntrypoint
+  // An artifact tab shows an inline artifact larger, beside the chat.
+  | { id: string; kind: 'artifact'; artifact: ArtifactInput }
+  | { id: string; kind: 'published-app'; app: PublishedAppRef }
+export type PublishedAppRef = { id: string; title: string }
+// NewSidePanelTab is what the new-tab menu opens: a built-in kind, a thread app or a published app.
+export type NewSidePanelTab = Exclude<SidePanelTab['kind'], 'app' | 'view' | 'canvas' | 'artifact' | 'published-app'> | MCPEntrypoint | PublishedAppRef
 export type SidePanelMode = 'tabs' | 'overview'
 export const OVERVIEW_PANEL_WIDTH = 300
 
@@ -70,6 +75,19 @@ export function sidePanelTabs(state: SidePanelTabs, action: SidePanelTabAction):
     tabs,
     activeId: state.activeId === action.id ? tabs[Math.min(index, tabs.length - 1)]?.id ?? null : state.activeId,
   }
+}
+
+// The same artifact opens the same tab, so reopening it selects that tab.
+export function artifactTab(artifact: ArtifactInput): Extract<SidePanelTab, { kind: 'artifact' }> {
+  let hash = 0
+  for (let index = 0; index < artifact.code.length; index++) {
+    hash = (hash * 31 + artifact.code.charCodeAt(index)) | 0
+  }
+  return { id: `artifact:${artifact.title}:${hash}`, kind: 'artifact', artifact }
+}
+
+export function publishedAppTab(app: PublishedAppRef): Extract<SidePanelTab, { kind: 'published-app' }> {
+  return { id: `published-app:${app.id}`, kind: 'published-app', app: { id: app.id, title: app.title } }
 }
 
 export function pluginViewTab(view: PluginView): Extract<SidePanelTab, { kind: 'view' }> {

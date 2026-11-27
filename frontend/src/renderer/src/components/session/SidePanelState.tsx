@@ -13,7 +13,8 @@ import { useBrowserSessions, useSessionPreview } from '@/lib/browserSessions'
 import { SidebarVisibility } from '@/lib/sidebar'
 import type { PluginView } from '@/lib/api/types'
 import type { MCPAppThread } from '@/lib/mcpAppThread'
-import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, pluginViewTab, refreshPluginTabs, type NewSidePanelTab, type PanelPresentation, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
+import type { ArtifactInput } from '@/lib/artifacts'
+import { OVERVIEW_PANEL_WIDTH, artifactTab, publishedAppTab, sidePanelTabs, pluginViewTab, refreshPluginTabs, type NewSidePanelTab, type PanelPresentation, type PublishedAppRef, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
 
 const PANEL_MIN_THREAD_WIDTH = 360
 
@@ -134,7 +135,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
   useSessionPreview(sessionId, followBrowser ? showPreview : undefined)
 
   const addTab = useCallback((tab: NewSidePanelTab, after?: string) => {
-    openTab(typeof tab === 'object' ? { id: `app:${entrypointKey(tab)}`, kind: 'app', app: tab }
+    openTab(typeof tab === 'object' ? 'id' in tab ? publishedAppTab(tab) : { id: `app:${entrypointKey(tab)}`, kind: 'app', app: tab }
       : tab === 'preview' ? { id: browsers.openTab(sessionId), kind: tab }
         : tab === 'file' ? { id: 'file', kind: tab, file: null }
           : { id: tab, kind: tab }, after)
@@ -187,6 +188,8 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
       openTab(pluginViewTab(presentation.view))
     }
   }, [openTab, canvasAvailable])
+  const openArtifact = useCallback((artifact: ArtifactInput) => openTab(artifactTab(artifact)), [openTab])
+  const openPublishedApp = useCallback((app: PublishedAppRef) => openTab(publishedAppTab(app)), [openTab])
   const openPreview = useCallback((url: string) => {
     const display = previewDisplayUrl(url) ?? url
     if (openFile(display)) {
@@ -251,7 +254,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     containerRef, open, mode, tabs, activeTab,
     resize, resizing, setResizing, width, widthStyle, minWidth, maxWidth,
     resizable: mode === 'tabs',
-    toggleMode, close, selectTab, reorderTabs, addTab, openDiff, duplicateTab, closeTab, registerCloseGuard, openFile, openPreview, openApp, openView,
+    toggleMode, close, selectTab, reorderTabs, addTab, openDiff, duplicateTab, closeTab, registerCloseGuard, openFile, openPreview, openApp, openView, openArtifact, openPublishedApp,
   }
 }
 
