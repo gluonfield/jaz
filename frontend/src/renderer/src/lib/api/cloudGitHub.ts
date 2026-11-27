@@ -92,110 +92,6 @@ export interface CloudConnectorAccount {
   expires_at?: string | null
 }
 
-export interface CloudGitRepoSpec {
-  repo: string
-  base_branch?: string
-  mount_dir?: string
-}
-
-export interface CloudThreadGitRepoSpec extends CloudGitRepoSpec {
-  branch?: string
-}
-
-export interface CloudThreadRepoStatus {
-  repo: string
-  mount_dir?: string
-  base_branch?: string
-  branch?: string
-  base_sha?: string
-  head_sha?: string
-  dirty?: boolean
-  has_bundle?: boolean
-  ahead?: number
-  behind?: number
-  pr_number?: number
-  pr_url?: string
-  pr_state?: string
-  checks_status?: string
-}
-
-export interface CloudThreadRepo extends Partial<CloudThreadRepoStatus> {
-  attached: boolean
-  sandbox_warm?: boolean
-  repos?: CloudThreadRepoStatus[]
-}
-
-export function threadRepoStatuses(status?: CloudThreadRepo): CloudThreadRepoStatus[] {
-  if (!status?.attached) return []
-  if (status.repos) return status.repos
-  return status.repo ? [{ ...status, repo: status.repo }] : []
-}
-
-export interface CloudThreadRepoChange {
-  path: string
-  status: string
-  source: 'remote_compare' | 'workspace' | string
-  additions?: number
-  deletions?: number
-  size?: number
-}
-
-export interface CloudThreadRepoChanges {
-  repo: string
-  mount_dir?: string
-  base_branch: string
-  branch: string
-  changes: CloudThreadRepoChange[]
-}
-
-export interface CloudThreadRepoDiffEntry {
-  path: string
-  status: string
-  source: 'remote_compare' | 'workspace' | string
-  patch?: string
-  content?: string
-  additions?: number
-  deletions?: number
-}
-
-export interface CloudThreadRepoDiff {
-  repo: string
-  base_branch: string
-  branch: string
-  diffs: CloudThreadRepoDiffEntry[]
-}
-
-export interface CloudThreadRepoPushInput {
-  repo?: string
-  branch?: string
-  commit_message?: string
-}
-
-export interface CloudThreadRepoPushResult {
-  ok: boolean
-  repo: string
-  branch: string
-  head_sha?: string
-}
-
-export interface CloudThreadRepoPRInput {
-  repo?: string
-  title?: string
-  body?: string
-  head?: string
-  base?: string
-  draft?: boolean
-}
-
-export interface CloudThreadRepoPRResult {
-  pr_number?: number
-  pr_url?: string
-  pr_state?: string
-  connect_required?: boolean
-  connect_link?: string
-  compare_url?: string
-}
-
 export interface GitHubConnectRequiredError {
   connectRequired: true
   connectLink: string
@@ -397,12 +293,18 @@ export async function listCloudGitHubRepos(options: {
   if (q) params.set('q', q)
   if (options.includePersonal === false) params.set('include_personal', 'false')
   const suffix = params.size ? `?${params.toString()}` : ''
-  const raw = await get<CloudGitHubReposResult>(`/v1/github/repos${suffix}`, { signal: options.signal })
-  return {
-    repos: Array.isArray(raw.repos) ? raw.repos : [],
-    user_linked: Boolean(raw.user_linked),
-    connect_required: Boolean(raw.connect_required),
-    ...(raw.connect_link ? { connect_link: raw.connect_link } : {}),
+  try {
+    const raw = await get<CloudGitHubReposResult>(`/v1/github/repos${suffix}`, { signal: options.signal })
+    return {
+      repos: raw.repos ?? [],
+      user_linked: Boolean(raw.user_linked),
+      connect_required: Boolean(raw.connect_required),
+      connect_link: raw.connect_link,
+    }
+  } catch (error) {
+    const connect = parseGitHubConnectError(error)
+    if (!connect) throw error
+    return { repos: [], user_linked: false, connect_required: true, connect_link: connect.connectLink }
   }
 }
 
@@ -424,74 +326,6 @@ export async function listCloudGitHubBranches(
     }
     throw error
   }
-}
-
-export function getCloudThreadRepo(threadId: string, signal?: AbortSignal): Promise<CloudThreadRepo> {
-  return get<CloudThreadRepo>(`/v1/threads/${encodeURIComponent(threadId)}/repo`, { signal })
-}
-
-export async function getCloudThreadRepoChanges(
-  threadId: string,
-  repo = '',
-  signal?: AbortSignal,
-): Promise<CloudThreadRepoChanges> {
-  const suffix = repo ? `?${new URLSearchParams({ repo })}` : ''
-  const raw = await get<CloudThreadRepoChanges>(`/v1/threads/${encodeURIComponent(threadId)}/repo/changes${suffix}`, { signal })
-  return { ...raw, changes: Array.isArray(raw.changes) ? raw.changes : [] }
-}
-
-export async function getCloudThreadRepoDiff(
-  threadId: string,
-  path = '',
-  repo = '',
-  signal?: AbortSignal,
-): Promise<CloudThreadRepoDiff> {
-  const params = new URLSearchParams()
-  if (repo) params.set('repo', repo)
-  if (path) params.set('path', path)
-  const suffix = params.size ? `?${params.toString()}` : ''
-  const raw = await get<CloudThreadRepoDiff>(`/v1/threads/${encodeURIComponent(threadId)}/repo/diff${suffix}`, {
-    signal,
-  })
-  return { ...raw, diffs: Array.isArray(raw.diffs) ? raw.diffs : [] }
-}
-
-export function pushCloudThreadRepo(
-  threadId: string,
-  input: CloudThreadRepoPushInput = {},
-): Promise<CloudThreadRepoPushResult> {
-  return post<CloudThreadRepoPushResult>(`/v1/threads/${encodeURIComponent(threadId)}/repo/push`, {
-    ...(input.repo ? { repo: input.repo } : {}),
-    ...(input.branch?.trim() ? { branch: input.branch.trim() } : {}),
-    ...(input.commit_message?.trim() ? { commit_message: input.commit_message.trim() } : {}),
-  })
-}
-
-export function createCloudThreadRepoPR(
-  threadId: string,
-  input: CloudThreadRepoPRInput = {},
-): Promise<CloudThreadRepoPRResult> {
-  return post<CloudThreadRepoPRResult>(`/v1/threads/${encodeURIComponent(threadId)}/repo/pr`, {
-    ...(input.repo ? { repo: input.repo } : {}),
-    ...(input.title?.trim() ? { title: input.title.trim() } : {}),
-    ...(input.body !== undefined ? { body: input.body } : {}),
-    ...(input.head?.trim() ? { head: input.head.trim() } : {}),
-    ...(input.base?.trim() ? { base: input.base.trim() } : {}),
-    ...(input.draft !== undefined ? { draft: input.draft } : {}),
-  })
-}
-
-export function attachCloudThreadRepo(threadId: string, input: CloudThreadGitRepoSpec) {
-  return post<{ repo: CloudThreadGitRepoSpec; repos: CloudThreadGitRepoSpec[] }>(
-    `/v1/threads/${encodeURIComponent(threadId)}/repos`,
-    input,
-  )
-}
-
-export function detachCloudThreadRepo(threadId: string, mountDir: string) {
-  return del<{ deleted: boolean; repos: CloudThreadGitRepoSpec[] }>(
-    `/v1/threads/${encodeURIComponent(threadId)}/repos/${encodeURIComponent(mountDir)}`,
-  )
 }
 
 export const cloudGitHubStatusQuery = queryOptions({
@@ -521,28 +355,6 @@ export const cloudGitHubBranchesQuery = (owner: string, repo: string) =>
     staleTime: 30_000,
   })
 
-export const cloudThreadRepoQuery = (threadId: string) =>
-  queryOptions({
-    queryKey: keys.cloudThreadRepo(threadId),
-    queryFn: ({ signal }) => getCloudThreadRepo(threadId, signal),
-    staleTime: 15_000,
-    refetchInterval: 30_000,
-  })
-
-export const cloudThreadRepoChangesQuery = (threadId: string, repo: string) =>
-  queryOptions({
-    queryKey: keys.cloudThreadRepoChanges(threadId, repo),
-    queryFn: ({ signal }) => getCloudThreadRepoChanges(threadId, repo, signal),
-    staleTime: 30_000,
-  })
-
-export const cloudThreadRepoDiffQuery = (threadId: string, repo: string, path: string) =>
-  queryOptions({
-    queryKey: keys.cloudThreadRepoDiff(threadId, repo, path),
-    queryFn: ({ signal }) => getCloudThreadRepoDiff(threadId, path, repo, signal),
-    staleTime: 30_000,
-  })
-
 export function useCloudGitHubStatus(enabled = true, pollActive = false) {
   return useQuery({
     ...cloudGitHubStatusQuery,
@@ -551,41 +363,11 @@ export function useCloudGitHubStatus(enabled = true, pollActive = false) {
   })
 }
 
-export function useCloudGitHubRepos(options: { query?: string; includePersonal?: boolean; enabled?: boolean } = {}) {
-  const query = options.query?.trim() ?? ''
-  const includePersonal = options.includePersonal !== false
-  return useQuery({
-    ...cloudGitHubReposQuery(query, includePersonal),
-    enabled: options.enabled !== false,
-  })
-}
-
 export function useCloudGitHubBranches(repoFullName: string, enabled = true) {
   const parsed = splitRepoFullName(repoFullName)
   return useQuery({
     ...cloudGitHubBranchesQuery(parsed?.owner ?? '', parsed?.repo ?? ''),
     enabled: enabled && Boolean(parsed),
-  })
-}
-
-export function useCloudThreadRepo(threadId: string, enabled = true) {
-  return useQuery({
-    ...cloudThreadRepoQuery(threadId),
-    enabled: enabled && Boolean(threadId),
-  })
-}
-
-export function useCloudThreadRepoChanges(threadId: string, repo: string, enabled: boolean) {
-  return useQuery({
-    ...cloudThreadRepoChangesQuery(threadId, repo),
-    enabled: enabled && Boolean(threadId),
-  })
-}
-
-export function useCloudThreadRepoDiff(threadId: string, repo: string, path: string, enabled: boolean) {
-  return useQuery({
-    ...cloudThreadRepoDiffQuery(threadId, repo, path),
-    enabled: enabled && Boolean(threadId),
   })
 }
 

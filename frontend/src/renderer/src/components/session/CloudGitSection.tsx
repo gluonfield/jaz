@@ -17,12 +17,8 @@ import { SectionHeader } from '@/components/session/OverviewRuns'
 import { useCloudThreadRepoActions } from '@/components/session/useCloudThreadRepoActions'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
-import {
-  githubRepoWebUrl,
-  threadRepoStatuses,
-  useCloudThreadRepo,
-  type CloudThreadRepoStatus,
-} from '@/lib/api/cloudGitHub'
+import { githubRepoWebUrl } from '@/lib/api/cloudGitHub'
+import { useCloudThreadRepos, type CloudThreadRepoStatus } from '@/lib/api/cloudThreadRepos'
 import { sessionQuery } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
@@ -41,9 +37,9 @@ export function CloudGitSection({ session, onOpenDiff }: {
   })
   const owner = session.owner_user_id ?? thread.data?.owner_user_id
   const canManage = Boolean(cloud.user && !isViewer && (isAdmin || cloud.user.id === owner))
-  const query = useCloudThreadRepo(session.id)
+  const query = useCloudThreadRepos(session.id)
   const actions = useCloudThreadRepoActions(session.id)
-  const repos = threadRepoStatuses(query.data)
+  const repos = query.data ?? []
 
   return (
     <section className="flex flex-col gap-2" aria-busy={actions.busy || query.isPending}>
@@ -72,7 +68,7 @@ export function CloudGitSection({ session, onOpenDiff }: {
               value={repos}
               includePersonal={session.visibility !== 'space' || Boolean(session.personal_sources_enabled)}
               disabled={actions.busy}
-              onSelect={(repo) => actions.saveRepo(repo, `Attached ${repo.repo}`)}
+              onSelect={(repo) => void actions.run({ kind: 'attach', repo })}
             />
           ) : repos.length === 0 ? (
             <p className="px-2 text-[12px] text-ink-3">No repositories attached.</p>
@@ -88,6 +84,8 @@ export function CloudGitSection({ session, onOpenDiff }: {
   )
 }
 
+type RepoEdit = { kind: 'base'; branch: string } | { kind: 'detach' }
+
 function GitRepository({ repo, actions, canManage, isViewer, onOpenDiff }: {
   repo: CloudThreadRepoStatus
   actions: ReturnType<typeof useCloudThreadRepoActions>
@@ -95,14 +93,28 @@ function GitRepository({ repo, actions, canManage, isViewer, onOpenDiff }: {
   isViewer: boolean
   onOpenDiff?: (repo: string) => void
 }) {
-  const [baseBranch, setBaseBranch] = useState<string | null>(null)
-  const [confirmDetach, setConfirmDetach] = useState(false)
+  const [edit, setEdit] = useState<RepoEdit>()
   const toast = useToast()
   const branch = repo.branch || repo.base_branch || ''
   const base = repo.base_branch || ''
   const webUrl = githubRepoWebUrl(repo.repo)
   const canOpenPR = Boolean(repo.pr_url || (!isViewer && branch && branch !== base))
-  const mount = repo.mount_dir ? `/workspace/${repo.mount_dir}` : undefined
+  const mountDir = repo.mount_dir
+  const nextBase = edit?.kind === 'base' ? edit.branch.trim() : ''
+  const canSaveBase = nextBase && nextBase !== base && !actions.busy
+
+  async function saveBaseBranch() {
+    const saved = await actions.run({
+      kind: 'base',
+      repo: { repo: repo.repo, mount_dir: mountDir, base_branch: nextBase },
+    })
+    if (saved) setEdit(undefined)
+  }
+
+  async function detach(mountDir: string) {
+    const detached = await actions.run({ kind: 'detach', repo: repo.repo, mountDir })
+    if (detached) setEdit(undefined)
+  }
 
   async function copyBranch() {
     if (await writeClipboard(branch)) toast(`Copied ${branch}`)
@@ -116,13 +128,13 @@ function GitRepository({ repo, actions, canManage, isViewer, onOpenDiff }: {
             <span className="truncate">{repo.repo}</span><ExternalLink size={11} className="shrink-0 text-ink-3" />
           </button>
         ) : <span className="truncate text-[12px] font-medium text-ink" title={repo.repo}>{repo.repo}</span>}
-        {canManage ? (
-          <button type="button" aria-label={`Detach ${repo.repo}`} title="Detach repository" className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-control text-ink-3 hover:bg-surface-2 hover:text-ink disabled:opacity-50" disabled={actions.busy} onClick={() => setConfirmDetach(!confirmDetach)}>
+        {canManage && mountDir ? (
+          <button type="button" aria-label={`Detach ${repo.repo}`} title="Detach repository" className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-control text-ink-3 hover:bg-surface-2 hover:text-ink disabled:opacity-50" disabled={actions.busy} onClick={() => setEdit(edit?.kind === 'detach' ? undefined : { kind: 'detach' })}>
             <X size={13} />
           </button>
         ) : null}
       </div>
-      {mount ? <p className="truncate font-mono text-[11px] text-ink-3" title={mount}>{mount}</p> : null}
+      {mountDir ? <p className="truncate font-mono text-[11px] text-ink-3" title={`/workspace/${mountDir}`}>/workspace/{mountDir}</p> : null}
       {branch ? (
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => void copyBranch()} className="flex max-w-full cursor-pointer items-center gap-1.5 font-mono text-[12px] text-ink-2 hover:text-ink" title={`Copy branch name ${branch}`}>
@@ -136,7 +148,7 @@ function GitRepository({ repo, actions, canManage, isViewer, onOpenDiff }: {
               aria-label={`View ${branch} on GitHub`}
               title="View branch on GitHub"
               className="shrink-0 cursor-pointer text-ink-3 hover:text-ink"
-              onClick={() => actions.openUrl(`${webUrl}/tree/${encodeURIComponent(branch)}`)}
+              onClick={() => actions.openUrl(`${webUrl}/tree/${branch.split('/').map(encodeURIComponent).join('/')}`)}
             >
               <ExternalLink size={11} />
             </button>
@@ -151,30 +163,24 @@ function GitRepository({ repo, actions, canManage, isViewer, onOpenDiff }: {
         {repo.checks_status ? <span>Checks {repo.checks_status === 'success' ? 'passing' : repo.checks_status === 'failure' ? 'failing' : repo.checks_status}</span> : null}
         {repo.pr_state ? <span>PR {repo.pr_state}</span> : null}
       </div>
-      {canManage && confirmDetach ? (
+      {canManage && mountDir && edit?.kind === 'detach' ? (
         <div className="space-y-1">
           <p className="text-[12px] text-ink-2">Detach this repository from the thread?</p>
           <div className="flex gap-1">
-            <Button variant="ghost" size="sm" onClick={() => setConfirmDetach(false)}>Cancel</Button>
-            <Button variant="danger" size="sm" disabled={actions.busy} onClick={() => {
-              setConfirmDetach(false)
-              actions.removeRepo(repo)
-            }}>Detach</Button>
+            <Button variant="ghost" size="sm" disabled={actions.busy} onClick={() => setEdit(undefined)}>Cancel</Button>
+            <Button variant="danger" size="sm" disabled={actions.busy} onClick={() => void detach(mountDir)}>Detach</Button>
           </div>
         </div>
       ) : null}
-      {canManage && baseBranch !== null ? (
+      {canManage && edit?.kind === 'base' ? (
         <form className="space-y-1.5" onSubmit={(event) => {
           event.preventDefault()
-          const next = baseBranch.trim()
-          if (!next || next === base || actions.busy) return
-          actions.saveRepo({ repo: repo.repo, mount_dir: repo.mount_dir, base_branch: next }, `Updated base branch for ${repo.repo}`)
-          setBaseBranch(null)
+          if (canSaveBase) void saveBaseBranch()
         }}>
-          <GitHubBranchField repo={repo.repo} label="Base branch" value={baseBranch} disabled={actions.busy} onChange={setBaseBranch} />
+          <GitHubBranchField repo={repo.repo} value={edit.branch} disabled={actions.busy} onChange={(branch) => setEdit({ kind: 'base', branch })} />
           <div className="flex gap-1">
-            <Button variant="ghost" size="sm" onClick={() => setBaseBranch(null)}>Cancel</Button>
-            <Button type="submit" variant="secondary" size="sm" disabled={actions.busy || !baseBranch.trim() || baseBranch.trim() === base}>Save base branch</Button>
+            <Button variant="ghost" size="sm" disabled={actions.busy} onClick={() => setEdit(undefined)}>Cancel</Button>
+            <Button type="submit" variant="secondary" size="sm" disabled={!canSaveBase}>Save base branch</Button>
           </div>
         </form>
       ) : null}
@@ -183,18 +189,18 @@ function GitRepository({ repo, actions, canManage, isViewer, onOpenDiff }: {
           <Button variant="ghost" size="sm" onClick={() => onOpenDiff(repo.repo)}><FolderGit2 size={12} /> Changes</Button>
         ) : null}
         {!isViewer ? (
-          <Button variant="ghost" size="sm" disabled={actions.busy || !branch} onClick={() => actions.push(repo)}><ArrowUpFromLine size={12} /> Push</Button>
+          <Button variant="ghost" size="sm" disabled={actions.busy || !branch} onClick={() => void actions.run({ kind: 'push', repo: repo.repo })}><ArrowUpFromLine size={12} /> Push</Button>
         ) : null}
         {canOpenPR ? (
-          <Button variant="ghost" size="sm" disabled={actions.busy} onClick={() => actions.openPR(repo)}>
+          <Button variant="ghost" size="sm" disabled={actions.busy} onClick={() => repo.pr_url ? actions.openUrl(repo.pr_url) : void actions.run({ kind: 'pr', repo: repo.repo })}>
             <GitPullRequest size={12} /> {repo.pr_url ? (repo.pr_number ? `Open PR #${repo.pr_number}` : 'Open PR') : 'Create PR'}
           </Button>
         ) : null}
         {webUrl ? (
           <Button variant="ghost" size="sm" onClick={() => actions.openUrl(`${webUrl}/pulls`)}>Pull requests</Button>
         ) : null}
-        {canManage && baseBranch === null ? (
-          <Button variant="ghost" size="sm" disabled={actions.busy} onClick={() => setBaseBranch(base)}>Edit base branch</Button>
+        {canManage && edit?.kind !== 'base' ? (
+          <Button variant="ghost" size="sm" disabled={actions.busy} onClick={() => setEdit({ kind: 'base', branch: base })}>Edit base branch</Button>
         ) : null}
       </div>
     </div>

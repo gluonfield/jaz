@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
-import type { CloudGitRepoSpec } from '@/lib/api/cloudGitHub'
+import type { CloudGitRepoSpec } from '@/lib/api/cloudThreadRepos'
 import { ApiError } from '@/lib/api/response'
 import { keys } from '@/lib/query/keys'
 import {

@@ -1,4 +1,4 @@
-import type { CloudGitRepoSpec } from '@/lib/api/cloudGitHub'
+import type { CloudGitRepoSpec } from '@/lib/api/cloudThreadRepos'
 import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { ThreadRepoPicker } from '@/components/cloud/GitHubRepoPicker'

@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, GitBranch, LoaderCircle, Lock, Plus, Search, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
@@ -9,11 +9,11 @@ import { useToast } from '@/components/ui/toast'
 import {
   useCloudGitHubBranches,
   useCloudGitHubOAuth,
-  useCloudGitHubRepos,
+  cloudGitHubReposQuery,
   useCloudGitHubStatus,
   withGitHubPluginSearch,
-  type CloudGitRepoSpec,
 } from '@/lib/api/cloudGitHub'
+import type { CloudGitRepoSpec } from '@/lib/api/cloudThreadRepos'
 import { useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
@@ -24,10 +24,9 @@ interface PickerProps {
 }
 
 export function GitHubBranchField({
-  repo, label, value, disabled, onChange,
+  repo, value, disabled, onChange,
 }: {
   repo: string
-  label: string
   value: string
   disabled?: boolean
   onChange: (value: string) => void
@@ -36,9 +35,9 @@ export function GitHubBranchField({
   const branches = useCloudGitHubBranches(repo, !disabled)
   return (
     <label className="block min-w-0">
-      <span className="mb-1 block text-[11px] text-ink-3">{label}</span>
+      <span className="mb-1 block text-[11px] text-ink-3">Base branch</span>
       <Input
-        aria-label={`${label} for ${repo}`}
+        aria-label={`Base branch for ${repo}`}
         value={value}
         list={id}
         placeholder={branches.isLoading ? 'Loading branches…' : 'Default branch'}
@@ -59,18 +58,12 @@ export function ThreadRepoPicker({
   placement?: 'above' | 'below'
   onChange: (repos: CloudGitRepoSpec[]) => void
 }) {
-  const label = value.length
-    ? value.slice(0, 2).map(({ repo }) => shortRepoName(repo)).join(', ')
-    : 'Repositories'
-
   return (
     <RepositoryMenu
       value={value}
       includePersonal={includePersonal}
       disabled={disabled}
       placement={placement}
-      label={label}
-      icon={GitBranch}
       multiple
       onSelect={(next) => {
         const selected = value.some(({ repo }) => sameRepo(repo, next.repo))
@@ -109,8 +102,6 @@ export function AddGitHubRepository({
       value={value}
       includePersonal={includePersonal}
       disabled={disabled}
-      label="Add repository"
-      icon={Plus}
       onSelect={onSelect}
     />
   )
@@ -125,7 +116,6 @@ function RepositoryRows({
       <div className="min-w-0 flex-1">
         <GitHubBranchField
           repo={item.repo}
-          label="Base branch"
           value={item.base_branch ?? ''}
           disabled={disabled}
           onChange={(base_branch) => onChange(value.map((repo) => repo === item ? { ...repo, base_branch } : repo))}
@@ -146,11 +136,9 @@ function RepositoryRows({
 }
 
 function RepositoryMenu({
-  value, disabled, includePersonal, placement, label, icon: Icon, multiple, onSelect, children,
+  value, disabled, includePersonal, placement, multiple, onSelect, children,
 }: PickerProps & {
   placement?: 'above' | 'below'
-  label: string
-  icon: typeof GitBranch
   multiple?: boolean
   onSelect: (repo: CloudGitRepoSpec) => void
   children?: ReactNode
@@ -167,20 +155,30 @@ function RepositoryMenu({
     onError: (err) => toast(err.message || 'Could not start GitHub sign-in', 'danger'),
   })
   const queryClient = useQueryClient()
-  const status = useCloudGitHubStatus(showing, oauth.polling)
-  const repos = useCloudGitHubRepos({ includePersonal, enabled: showing && Boolean(status.data?.configured) })
+  const status = useCloudGitHubStatus(showing)
+  const repos = useQuery({
+    ...cloudGitHubReposQuery('', includePersonal),
+    enabled: showing && Boolean(status.data?.configured),
+    refetchInterval: oauth.polling ? 2_000 : false,
+  })
 
   useEffect(() => {
-    if (oauth.polling && status.data?.user_linked) {
+    if (oauth.polling && repos.data?.user_linked) {
       oauth.stopPolling()
       void queryClient.invalidateQueries({ queryKey: keys.cloudGitHubRoot })
     }
-  }, [oauth, queryClient, status.data?.user_linked])
+  }, [oauth, queryClient, repos.data?.user_linked])
 
+  const selected = new Set(value.map(({ repo }) => repo.toLowerCase()))
   const filter = search.trim().toLowerCase()
-  const matches = (repos.data?.repos ?? [])
-    .filter(({ full_name }) => full_name.toLowerCase().includes(filter))
-    .filter(({ full_name }) => multiple || !value.some(({ repo }) => sameRepo(repo, full_name)))
+  const matches = (repos.data?.repos ?? []).filter(({ full_name }) => {
+    const name = full_name.toLowerCase()
+    return name.includes(filter) && (multiple || !selected.has(name))
+  })
+  const Icon = multiple ? GitBranch : Plus
+  const label = multiple
+    ? value.slice(0, 2).map(({ repo }) => repo.split('/').at(-1)).join(', ') || 'Repositories'
+    : 'Add repository'
   const close = () => {
     setOpen(false)
     setSearch('')
@@ -223,7 +221,9 @@ function RepositoryMenu({
         <div className="space-y-1 px-2 text-[12px] text-ink-2">
           <p>{status.data?.configured ? 'Connect GitHub to browse repositories.' : 'GitHub is unavailable in this workspace.'}</p>
           {repos.data?.connect_required && !isViewer ? (
-            <Button variant="primary" size="sm" disabled={oauth.isPending} onClick={() => oauth.mutate(undefined)}>Connect GitHub</Button>
+            <Button variant="primary" size="sm" disabled={oauth.isPending || oauth.polling} onClick={() => oauth.mutate(undefined)}>
+              {oauth.polling ? 'Waiting for GitHub…' : 'Connect GitHub'}
+            </Button>
           ) : null}
           <Button variant="ghost" size="sm" onClick={manage}>Manage in Plugins</Button>
         </div>
@@ -260,7 +260,7 @@ function RepositoryMenu({
                 <label key={full_name} className={className} title={full_name}>
                   <input
                     type="checkbox"
-                    checked={value.some(({ repo }) => sameRepo(repo, full_name))}
+                    checked={selected.has(full_name.toLowerCase())}
                     onChange={pick}
                     className="accent-primary"
                   />
@@ -295,10 +295,6 @@ function RepositoryMenu({
       {showing ? <div className="rounded-control bg-surface-2/50">{content}</div> : null}
     </div>
   )
-}
-
-function shortRepoName(repo: string) {
-  return repo.split('/').at(-1) || repo
 }
 
 function sameRepo(left: string, right: string) {

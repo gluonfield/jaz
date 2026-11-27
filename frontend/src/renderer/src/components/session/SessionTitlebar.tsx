@@ -19,10 +19,9 @@ export function SessionTitlebar({ session, isMobile, panel, sideChatAvailable, h
   overviewLabel?: string
   pluginViews?: PluginView[]
 }) {
-  const { open, mode, tabs, activeTab, selectTab, reorderTabs, closeTab, addTab, duplicateTab, toggleMode } = panel
+  const { open, mode, tabs, activeTab, selectTab, reorderTabs, closeTab, addTab, openDiff, duplicateTab, toggleMode } = panel
   const activeId = activeTab?.id
   const [viewsOpen, setViewsOpen] = useState(false)
-  const openDiff = useMemo(() => () => addTab('diff'), [addTab])
   const openOverview = useMemo(
     () => () => {
       if (!open || mode !== 'overview') toggleMode('overview')

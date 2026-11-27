@@ -15,6 +15,7 @@ const bundle = await build({
       builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
         contents: [
           `export * from ${JSON.stringify(new URL('./cloudGitHub.ts', import.meta.url).pathname)}`,
+          `export * from ${JSON.stringify(new URL('./cloudThreadRepos.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./cloudSpaces.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./cloudThreads.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./sessions.ts', import.meta.url).pathname)}`,
@@ -153,9 +154,12 @@ test('disconnectCloudGitHubAccount deletes only github connector accounts', asyn
   expect(deleted).toEqual(['https://cloud.jaz.example/v1/connectors/conn_gh_1'])
 })
 
-test('listCloudGitHubBranches converts 428 connect_required into structured result and push parses connect error', async () => {
+test('GitHub repo and branch listing expose reconnect on 428 and push preserves its authorization error', async () => {
   const api = setupCloudApi()
   replace('fetch', async (url) => {
+    if (new URL(url).pathname === '/v1/github/repos') {
+      return Response.json({ error: 'GitHub authorization expired; reconnect required', connect_required: true }, { status: 428 })
+    }
     if (String(url).includes('/branches')) {
       return new Response(
         JSON.stringify({
@@ -176,6 +180,12 @@ test('listCloudGitHubBranches converts 428 connect_required into structured resu
     )
   })
 
+  expect(await api.listCloudGitHubRepos()).toEqual({
+    repos: [],
+    user_linked: false,
+    connect_required: true,
+    connect_link: 'jaz://plugin/github/connect',
+  })
   const branches = await api.listCloudGitHubBranches('acme', 'app')
   expect(branches).toEqual({
     branches: [],
@@ -185,7 +195,7 @@ test('listCloudGitHubBranches converts 428 connect_required into structured resu
 
   let caught
   try {
-    await api.pushCloudThreadRepo('th_1')
+    await api.pushCloudThreadRepo('th_1', { repo: 'acme/app' })
   } catch (err) {
     caught = err
   }
@@ -242,13 +252,13 @@ test('thread repo endpoints, compare-URL PR fallback, space defaults, and thread
     return Response.json({ ok: true })
   })
 
-  const prFallback = await api.createCloudThreadRepoPR('th_1', { title: 'Fix' })
+  const prFallback = await api.createCloudThreadRepoPR('th_1', { repo: 'acme/app', title: 'Fix' })
   expect(prFallback.connect_required).toBe(true)
   expect(prFallback.compare_url).toContain('github.com/acme/app/compare/main...jaz%2Ffix')
 
-  const diff = await api.getCloudThreadRepoDiff('th_1', 'src/a.ts')
+  const diff = await api.getCloudThreadRepoDiff('th_1', 'acme/app', 'src/a.ts')
   expect(diff.diffs).toHaveLength(1)
-  expect(calls.at(-1)?.url).toBe('https://cloud.jaz.example/v1/threads/th_1/repo/diff?path=src%2Fa.ts')
+  expect(calls.at(-1)?.url).toBe('https://cloud.jaz.example/v1/threads/th_1/repo/diff?repo=acme%2Fapp&path=src%2Fa.ts')
 
   const space = await api.createSpace({
     name: 'Core',
@@ -298,6 +308,9 @@ test('Cloud repo selections preserve inheritance, explicit empty lists, and per-
     if (pathname === '/v1/threads') {
       return Response.json({ id: 'thread', run_id: 'run', owner_user_id: 'owner', visibility: 'space', status: 'idle' })
     }
+    if (pathname === '/v1/threads/legacy/repo') {
+      return Response.json({ attached: true, ...repos[0] })
+    }
     if (pathname.endsWith('/repo')) {
       return Response.json({ attached: true, ...repos[0], repos })
     }
@@ -320,9 +333,9 @@ test('Cloud repo selections preserve inheritance, explicit empty lists, and per-
   expect(calls.at(-1).body.git_repos).toEqual(repos)
   expect(session.owner_user_id).toBe('owner')
 
-  expect(api.threadRepoStatuses(await api.getCloudThreadRepo('thread'))).toEqual(repos)
-  expect(api.threadRepoStatuses({ attached: true, ...repos[0] })).toMatchObject([repos[0]])
-  await api.attachCloudThreadRepo('thread', repos[1])
+  expect(await api.getCloudThreadRepos('thread')).toEqual(repos)
+  expect(await api.getCloudThreadRepos('legacy')).toEqual([repos[0]])
+  await api.saveCloudThreadRepo('thread', repos[1])
   expect(calls.at(-1)).toMatchObject({ method: 'POST', pathname: '/v1/threads/thread/repos', body: repos[1] })
   await api.detachCloudThreadRepo('thread', 'guide')
   expect(calls.at(-1)).toMatchObject({ method: 'DELETE', pathname: '/v1/threads/thread/repos/guide' })

@@ -1,4 +1,4 @@
-import type { CloudThreadGitRepoSpec } from '@/lib/api/cloudGitHub'
+import type { CloudThreadGitRepoSpec } from '@/lib/api/cloudThreadRepos'
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
 import { cloudWorkspaceHeaders } from '@/lib/api/cloudScope'

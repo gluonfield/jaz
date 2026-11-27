@@ -2,12 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, FolderGit2, LoaderCircle, RefreshCw } from 'lucide-react'
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
-  threadRepoStatuses,
-  useCloudThreadRepo,
+  useCloudThreadRepos,
   useCloudThreadRepoChanges,
   useCloudThreadRepoDiff,
   type CloudThreadRepoChange,
-} from '@/lib/api/cloudGitHub'
+} from '@/lib/api/cloudThreadRepos'
 import { sessionRepoChangesQuery, sessionRepoFileDiffQuery, sessionRepoQuery } from '@/lib/api/sessions'
 import { fileKey, type RepoFileChange } from '@/lib/api/types'
 import { DiffView, FileCounts } from './DiffView'
@@ -212,8 +211,8 @@ function CloudCodeDiffPanel({ sessionId, visible, selectedRepo, onSelectRepo }: 
   selectedRepo?: string
   onSelectRepo: (repo: string) => void
 }) {
-  const status = useCloudThreadRepo(sessionId, visible)
-  const repos = threadRepoStatuses(status.data)
+  const status = useCloudThreadRepos(sessionId, visible)
+  const repos = status.data ?? []
   const repo = repos.find((item) => item.repo === selectedRepo) ?? repos[0]
   const selector = repo?.repo ?? ''
   const changes = useCloudThreadRepoChanges(sessionId, selector, visible && Boolean(repo))

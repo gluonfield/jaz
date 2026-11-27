@@ -16,7 +16,8 @@ import { useEffect, useState } from 'react'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { isCloudApiSession } from '@/lib/api/client'
-import { openSafeGitHubUrl, threadRepoStatuses, useCloudThreadRepo } from '@/lib/api/cloudGitHub'
+import { openSafeGitHubUrl } from '@/lib/api/cloudGitHub'
+import { useCloudThreadRepos } from '@/lib/api/cloudThreadRepos'
 import { spacesQuery, updateThreadUserState } from '@/lib/api/cloudSpaces'
 import type { Session } from '@/lib/api/types'
 import { useHasCloud, useIsCloudViewer } from '@/lib/cloudSession'
@@ -30,7 +31,7 @@ export function CloudThreadControls({
   onOpenOverview,
 }: {
   session: Session
-  onOpenDiff?: () => void
+  onOpenDiff?: (repo: string) => void
   onOpenOverview?: () => void
 }) {
   const hasCloud = useHasCloud()
@@ -39,7 +40,7 @@ export function CloudThreadControls({
   const queryClient = useQueryClient()
   const toast = useToast()
   const spaces = useQuery({ ...spacesQuery, enabled: isCloudSession && hasCloud })
-  const repoQuery = useCloudThreadRepo(session.id, isCloudSession && hasCloud)
+  const repoQuery = useCloudThreadRepos(session.id, isCloudSession && hasCloud)
   const isShared = session.visibility === 'space'
   const spaceName = session.space_id
     ? spaces.data?.find((space) => space.id === session.space_id)?.name ?? 'Project'
@@ -74,10 +75,10 @@ export function CloudThreadControls({
     isShared ? 'bg-primary-soft text-primary hover:bg-primary-soft/80' : 'bg-surface-2 text-ink-2 hover:text-ink'
   }`
 
-  const repos = threadRepoStatuses(repoQuery.data)
+  const repos = repoQuery.data ?? []
   const repoInfo = repos.length === 1 ? repos[0] : undefined
   const repoFull = repoInfo?.repo ?? ''
-  const hasChanges = repos.some((repo) => repo.dirty || (repo.ahead ?? 0) > 0)
+  const changedRepo = repos.find((repo) => repo.dirty || (repo.ahead ?? 0) > 0)
   const repoShort = repoFull ? (repoFull.split('/').at(-1) || repoFull) : ''
   const branch = repoInfo?.branch || repoInfo?.base_branch || ''
   const prUrl = repoInfo?.pr_url || ''
@@ -107,8 +108,8 @@ export function CloudThreadControls({
         <button
           type="button"
           onClick={() => {
-            if (hasChanges && onOpenDiff) {
-              onOpenDiff()
+            if (changedRepo && onOpenDiff) {
+              onOpenDiff(changedRepo.repo)
             } else {
               onOpenOverview?.()
             }
@@ -120,7 +121,7 @@ export function CloudThreadControls({
           <span className="max-w-[150px] truncate font-mono text-[10.5px]">
             {repos.length > 1 ? `${repos.length} repositories` : branch ? `${repoShort}:${branch}` : repoShort}
           </span>
-          {hasChanges && (!repoInfo || repoInfo.dirty) ? (
+          {changedRepo && (!repoInfo || repoInfo.dirty) ? (
             <span className="size-1.5 shrink-0 rounded-full bg-running" aria-label={repoInfo ? 'Uncommitted changes' : 'Repository changes'} />
           ) : null}
           {(repoInfo?.ahead ?? 0) > 0 ? (
