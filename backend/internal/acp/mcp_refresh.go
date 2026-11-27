@@ -18,6 +18,7 @@ const grokMCPUpdateMethod = "_x.ai/session/update_mcp_servers"
 
 type MCPRevisionSource interface {
 	Revision() uint64
+	ListedRevision(session string) uint64
 }
 
 func (m *Manager) SetMCPRevisionSource(source MCPRevisionSource) {
@@ -27,13 +28,18 @@ func (m *Manager) SetMCPRevisionSource(source MCPRevisionSource) {
 }
 
 func (m *Manager) mcpRevision() uint64 {
+	revision, _ := m.mcpRevisions("")
+	return revision
+}
+
+func (m *Manager) mcpRevisions(session string) (revision, listed uint64) {
 	m.mu.RLock()
 	source := m.mcpRevisionSource
 	m.mu.RUnlock()
 	if source == nil {
-		return 0
+		return 0, 0
 	}
-	return source.Revision()
+	return source.Revision(), source.ListedRevision(session)
 }
 
 func supportedMCPRefresh(raw json.RawMessage, policy string) string {
@@ -58,10 +64,12 @@ func supportedMCPRefresh(raw json.RawMessage, policy string) string {
 	return ""
 }
 
-// Codex keeps a loaded thread's tool catalog through reloads and tool-list
-// notifications, so only a relaunch that resumes the thread reads the new one.
-func (m *Manager) retireStaleCodexCatalog(job *jobState, process *agentProcess) {
-	if job.ACPAgent != AgentCodex || process.mcpRefresh != "" || !fullMCPPolicy(process.mcpPolicy) || process.mcpRevision == m.mcpRevision() {
+// Agents are trusted to follow tools/list_changed only once their MCP client
+// has read the changed catalog. Codex never rereads it and other clients can
+// miss the notification, so a relaunch that resumes the thread reads it instead.
+func (m *Manager) retireStaleCatalog(job *jobState, process *agentProcess) {
+	revision, listed := m.mcpRevisions(job.ID)
+	if process.mcpRefresh != "" || !fullMCPPolicy(process.mcpPolicy) || process.mcpRevision == revision || listed == revision {
 		return
 	}
 	if !m.subagentsRunning(job) && !m.hasLivePermissionWaiter(job.ID) {

@@ -2,27 +2,82 @@ package mcp
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpdeferred"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
 func (m *Manager) Handler() http.Handler {
 	m.handlerOnce.Do(func() {
-		m.handler = mcpdeferred.Wrap(mcpsdk.NewStreamableHTTPHandler(func(req *http.Request) *mcpsdk.Server {
+		m.handler = mcpdeferred.Wrap(keepStreamingSessions(mcpsdk.NewStreamableHTTPHandler(func(req *http.Request) *mcpsdk.Server {
 			m.ensureProxyReady(req.Context())
 			return m.proxy
 		}, &mcpsdk.StreamableHTTPOptions{
 			JSONResponse:   true,
-			SessionTimeout: 30 * time.Minute,
-		}))
+			SessionTimeout: m.sessionTTL,
+		}), m.sessionTTL/3))
 	})
 	return m.handler
+}
+
+type discardResponse struct{ header http.Header }
+
+func (d discardResponse) Header() http.Header       { return d.header }
+func (discardResponse) WriteHeader(int)             {}
+func (discardResponse) Write(b []byte) (int, error) { return len(b), nil }
+
+// The SDK expires a session that sends no request, even one whose agent still
+// holds its notification stream, and an expired session never hears
+// tools/list_changed. Pinging on the stream's behalf ties the session to it.
+func keepStreamingSessions(next http.Handler, interval time.Duration) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			ping := r.Clone(r.Context())
+			ping.Method = http.MethodPost
+			ping.Header.Set("Content-Type", "application/json")
+			ping.Header.Set("Accept", "application/json, text/event-stream")
+			go func() {
+				ticker := time.NewTicker(interval)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ping.Context().Done():
+						return
+					case <-ticker.C:
+						ping.Body = io.NopCloser(strings.NewReader(`{"jsonrpc":"2.0","id":"jaz-keepalive","method":"ping"}`))
+						next.ServeHTTP(discardResponse{make(http.Header)}, ping)
+					}
+				}
+			}()
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (m *Manager) recordToolLists(next mcpsdk.MethodHandler) mcpsdk.MethodHandler {
+	return func(ctx context.Context, method string, req mcpsdk.Request) (mcpsdk.Result, error) {
+		if extra := req.GetExtra(); method == "tools/list" && extra != nil {
+			m.mu.Lock()
+			m.listed[extra.Header.Get(mcpsession.HeaderName)] = m.revision
+			m.mu.Unlock()
+		}
+		return next(ctx, method, req)
+	}
+}
+
+// ListedRevision is the catalog revision the agent session's MCP client last read.
+func (m *Manager) ListedRevision(session string) uint64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.listed[session]
 }
 
 func (m *Manager) ensureProxyReady(ctx context.Context) {

@@ -23,6 +23,8 @@ func (r *testMCPRevision) Revision() uint64 {
 	return r.value.Load()
 }
 
+func (*testMCPRevision) ListedRevision(string) uint64 { return 0 }
+
 func TestMCPRefreshRequiresAdvertisedCapabilityAndPolicy(t *testing.T) {
 	for _, test := range []struct{ name, raw, policy, want string }{
 		{"native", `{"agentCapabilities":{"mcpCapabilities":{"http":true},"_meta":{"mcpRefresh":{"method":"_session/mcp/refresh"}}}}`, MCPServerPolicyAll, mcpRefreshMethod},

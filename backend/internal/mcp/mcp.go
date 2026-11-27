@@ -67,6 +67,9 @@ type Manager struct {
 	proxy        *mcpsdk.Server
 	proxyCatalog map[string]remoteTool
 	revision     uint64
+	// listed is the catalog revision each agent session last read.
+	listed     map[string]uint64
+	sessionTTL time.Duration
 
 	// refreshed closes when the first full refresh finishes.
 	refreshed     chan struct{}
@@ -185,9 +188,12 @@ func NewManager(store mcpconfig.ServerReader, tokens tokenStore, registry *tools
 		authStates:   make(map[string]*authorizationPending),
 		authFlows:    make(map[string]*authorizationPending),
 		proxyCatalog: make(map[string]remoteTool),
+		listed:       make(map[string]uint64),
 		refreshed:    make(chan struct{}),
+		sessionTTL:   30 * time.Minute,
 		proxy:        mcpsdk.NewServer(&mcpsdk.Implementation{Name: ProxyServerName, Version: "0.1.0"}, &mcpsdk.ServerOptions{Capabilities: &mcpsdk.ServerCapabilities{Tools: &mcpsdk.ToolCapabilities{ListChanged: true}}}),
 	}
+	m.proxy.AddReceivingMiddleware(m.recordToolLists)
 	for _, opt := range opts {
 		opt(m)
 	}
