@@ -359,14 +359,14 @@ func TestTurnEndFailsAWidgetRunThatPublishedNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "visualise_publish_widget") {
+	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "publish_widget") {
 		t.Fatalf("run = %+v", stored)
 	}
 	widget, _, _, err := widgetService.StateForLoop(loop.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(widget.LastError, "visualise_publish_widget") {
+	if !strings.Contains(widget.LastError, "publish_widget") {
 		t.Fatalf("widget last error = %q", widget.LastError)
 	}
 }
@@ -387,7 +387,7 @@ func TestTurnEndFailsAWidgetRunThatOnlyWroteTheFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "visualise_publish_widget") {
+	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "publish_widget") {
 		t.Fatalf("run = %+v", stored)
 	}
 	state, err := widgetService.RunPublishState(loop.ID, run.ID)

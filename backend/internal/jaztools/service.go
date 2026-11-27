@@ -334,15 +334,15 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 	}
 	switch surface {
 	case widgetSurface:
-		s.visualizeTools.AddReadMeTo(server)
+		s.visualizeTools.AddGuideTo(server)
 		widgets.AddMCPTools(server, s.widgetPublisher)
 	case canvasSurface:
 		// A canvas thread's visuals belong on its board, not in the narrow chat
 		// beside it.
 		s.visualizeTools.AddCanvasTo(server)
 	default:
-		s.visualizeTools.AddReadMeTo(server)
-		s.visualizeTools.AddShowWidgetTo(server)
+		s.visualizeTools.AddGuideTo(server)
+		s.visualizeTools.AddShowArtifactTo(server)
 		s.visualizeTools.AddCanvasTo(server)
 		s.mapTools.AddTo(server)
 		if surface != cloudThreadSurface {

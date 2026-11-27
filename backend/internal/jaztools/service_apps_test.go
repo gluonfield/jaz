@@ -3,6 +3,7 @@ package jaztools
 import (
 	"context"
 	"encoding/json"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/mcpdeferred"
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
@@ -23,7 +25,7 @@ import (
 	"github.com/wins/jaz/backend/internal/widgets"
 )
 
-func TestAppToolsSaveDirectlyAndStageElevatedApps(t *testing.T) {
+func TestPublishAppSavesDirectlyHoldsElevatedAppsAndIsDiscoverable(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(root)
 	if err != nil {
@@ -77,7 +79,7 @@ func TestAppToolsSaveDirectlyAndStageElevatedApps(t *testing.T) {
 	saved, failed := call("publish_app", map[string]any{"title": "World Clock", "html": "<div><h1>Clock</h1></div>"})
 	appID, _ := saved["app_id"].(string)
 	app, version, err := appsSvc.GetApp(context.Background(), appID)
-	if failed || err != nil || version == nil || app.Title != "World Clock" || app.Visibility != storage.AppVisibilityPrivate || app.CurrentVersion != 1 {
+	if failed || saved["status"] != "saved" || err != nil || version == nil || app.Title != "World Clock" || app.Visibility != storage.AppVisibilityPrivate || app.CurrentVersion != 1 {
 		t.Fatalf("publish_app payload = %#v, app = %#v, version = %#v, err = %v", saved, app, version, err)
 	}
 
@@ -86,16 +88,42 @@ func TestAppToolsSaveDirectlyAndStageElevatedApps(t *testing.T) {
 		t.Fatalf("publish_app with target_app_id must save version 2 of the same app: %#v", updated)
 	}
 
-	elevated := map[string]any{"title": "Summariser", "html": "<div>Summarise</div>", "capabilities": []string{"ai:complete"}}
-	if _, failed := call("publish_app", elevated); !failed {
-		t.Fatal("publish_app must refuse an app that spends viewer AI credits")
-	}
-	draft, failed := call("prepare_app_draft", elevated)
-	if failed || draft["draft_id"] == "" || draft["requires_user_confirmation"] != true || draft["app_id"] != nil {
-		t.Fatalf("elevated app must wait for approval: %#v", draft)
+	held, failed := call("publish_app", map[string]any{"title": "Summariser", "html": "<div>Summarise</div>", "capabilities": []string{"ai:complete"}})
+	if failed || held["status"] != "awaiting_user_approval" || held["draft_id"] == "" || held["bundle_sha256"] == "" || held["app_id"] != nil {
+		t.Fatalf("an app that spends viewer AI credits must wait for approval: %#v", held)
 	}
 	all, err := appsSvc.ListApps(context.Background(), storage.AppListFilter{})
 	if err != nil || len(all) != 1 {
-		t.Fatalf("only the approved-free app is saved, got %d (err %v)", len(all), err)
+		t.Fatalf("only the approval-free app is saved, got %d (err %v)", len(all), err)
+	}
+
+	host := httptest.NewServer(service.Handler())
+	t.Cleanup(host.Close)
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
+	deferred, err := client.Connect(t.Context(), &mcp.StreamableClientTransport{Endpoint: host.URL + "?" + mcpdeferred.QueryParam + "=1"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = deferred.Close() })
+	for query, want := range map[string]string{
+		"publish artifact":           "publish_app",
+		"share this as an app":       "publish_app",
+		"save the dashboard":         "publish_app",
+		"install app":                "publish_app",
+		"show a chart inline":        "show_artifact",
+		"interactive widget":         "show_artifact",
+		"artifact design guidelines": "artifact_guide",
+	} {
+		found, err := deferred.CallTool(t.Context(), &mcp.CallToolParams{Name: "search_tools", Arguments: map[string]any{"query": query, "limit": 1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, _ := json.Marshal(found.StructuredContent)
+		var page struct {
+			Tools []mcp.Tool `json:"tools"`
+		}
+		if json.Unmarshal(data, &page) != nil || len(page.Tools) != 1 || page.Tools[0].Name != want {
+			t.Fatalf("search %q must lead with %s: %s", query, want, data)
+		}
 	}
 }

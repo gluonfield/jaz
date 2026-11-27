@@ -41,7 +41,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"Omit model overrides unless the user asks for a specific model",
 		"## Browser tools",
 		"Jaz has an integrated browser exposed through the Jaztools `browser_*` tools.",
-		"## Artifacts and visualisation",
+		"## Artifacts, apps and documents",
 		"## Skills",
 		"<name>deploy</name>",
 		"<description>ship &amp; verify</description>",
@@ -102,21 +102,15 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 			t.Fatalf("acp extension missing delegation guidance %q:\n%s", want, acp)
 		}
 	}
-	if !strings.Contains(acp, "Always call `visualise_read_me` before the first artifact") ||
-		!strings.Contains(acp, "visualise_show_widget") {
+	if !strings.Contains(acp, "Always call `artifact_guide` before the first artifact") ||
+		!strings.Contains(acp, "show_artifact") {
 		t.Fatalf("acp extension must carry the artifact policy:\n%s", acp)
 	}
-	for _, reject := range []string{"`visualize:", "visualize_", "`create_file`", "file-artifact tool", "coding-agent surface provides", "Claude-compatible"} {
+	for _, reject := range []string{"`visualize:", "visualize_", "visualise_", "prepare_app_draft", "`create_file`", "file-artifact tool", "coding-agent surface provides", "Claude-compatible"} {
 		if strings.Contains(acp, reject) {
 			t.Fatalf("artifact policy must use direct Jaz visualise tools only; found %q:\n%s", reject, acp)
 		}
 	}
-	for _, reject := range []string{"visualise:show_widget", "visualise:read_me"} {
-		if strings.Contains(acp, reject) {
-			t.Fatalf("artifact policy must use identifier-safe tool names; found %q:\n%s", reject, acp)
-		}
-	}
-
 	widgetACP, err := builder.ACPPromptForArtifactSurface(acpCwd, "widget")
 	if err != nil {
 		t.Fatal(err)
@@ -125,9 +119,9 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"## AGENTS.md\n\nalways cite sources",
 		"## Jaz threads",
 		"create_thread",
-		"## Artifacts and visualisation",
-		"visualise_read_me",
-		"Deliver with `visualise_publish_widget`",
+		"## Board widget",
+		"artifact_guide",
+		"deliver it with `publish_widget`",
 		"## memory/LONG_TERM.md",
 		"<name>deploy</name>",
 	} {
@@ -135,7 +129,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 			t.Fatalf("widget ACP extension missing shared section %q:\n%s", want, widgetACP)
 		}
 	}
-	for _, reject := range []string{"visualise_show_widget", "## Board Widget Runtime"} {
+	for _, reject := range []string{"show_artifact", "publish_app", "## Board Widget Runtime"} {
 		if strings.Contains(widgetACP, reject) {
 			t.Fatalf("widget ACP base extension must leave output details to the loop widget extension; found %q:\n%s", reject, widgetACP)
 		}

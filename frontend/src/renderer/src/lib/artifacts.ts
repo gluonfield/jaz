@@ -353,7 +353,8 @@ export function parseArtifactToolArgs(raw?: string): ArtifactInput | null {
   if (!parsed || typeof parsed !== 'object') return null
   const input = parsed as Record<string, unknown>
   const title = typeof input.title === 'string' ? input.title.trim() : ''
-  const code = typeof input.widget_code === 'string' ? input.widget_code : ''
+  const source = input.html ?? input.widget_code
+  const code = typeof source === 'string' ? source : ''
   if (!title || !code.trim()) return null
   return {
     title,

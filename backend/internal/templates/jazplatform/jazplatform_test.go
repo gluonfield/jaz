@@ -92,12 +92,12 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Do not locate or launch Chrome/Chromium binaries",
 		"unless the user explicitly requests it or an existing repository test requires it",
 		"check `browser_status` and report the blocker",
-		"## Artifacts and visualisation",
-		"An artifact, an app and a document are three different outputs",
-		"Always call `visualise_read_me` before the first artifact",
-		"Deliver with `visualise_show_widget`",
-		"call `publish_app` with its HTML or Markdown. It saves the app privately at once",
-		"Call `prepare_app_draft` instead only when the app declares MCP tool calls",
+		"## Artifacts, apps and documents",
+		"Show it with `show_artifact`",
+		"Publish it with `publish_app`",
+		"Always call `artifact_guide` before the first artifact",
+		"call `publish_app` with the same HTML or Markdown. It is saved at once",
+		"its card holds it until the user approves them",
 		"skills-block",
 		"## memory",
 		"broad context from the user's past behavior",
@@ -122,7 +122,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Omit model overrides unless the user asks for a specific model",
 		"Generic requests to use subagents, parallelize, or spawn child agents stay with the active agent's native collaboration tools",
 		"a Markdown file path on its own paragraph renders as a document preview card",
-		"Make one whenever a picture explains the answer better than text",
+		"Make an artifact whenever a picture explains the answer better than text",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("artifact policy missing %q:\n%s", want, prompt)
@@ -136,6 +136,8 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"the output tool",
 		"`visualize:",
 		"visualize_",
+		"visualise_",
+		"prepare_app_draft",
 		"`create_file`",
 		"file-artifact tool",
 		"coding-agent surface provides",
@@ -144,11 +146,6 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 	} {
 		if strings.Contains(prompt, reject) {
 			t.Fatalf("artifact policy must use direct Jaz visualise tools only; found %q:\n%s", reject, prompt)
-		}
-	}
-	for _, reject := range []string{"visualise:show_widget", "visualise:read_me"} {
-		if strings.Contains(prompt, reject) {
-			t.Fatalf("artifact policy must use identifier-safe tool names; found %q:\n%s", reject, prompt)
 		}
 	}
 }
@@ -227,7 +224,7 @@ func TestRenderStandaloneModules(t *testing.T) {
 	}
 }
 
-func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
+func TestRenderWidgetSurfaceNamesOnlyBoardWidgetTools(t *testing.T) {
 	data := testData("agents")
 	data.ArtifactSurface = "widget"
 	prompt, err := RenderThread(data)
@@ -240,9 +237,9 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 		"## Jaz threads",
 		"create_thread",
 		"list_agent_options",
-		"## Artifacts and visualisation",
-		"Always call `visualise_read_me` before the first artifact",
-		"Deliver with `visualise_publish_widget`",
+		"## Board widget",
+		"Call `artifact_guide` for the design rules",
+		"deliver it with `publish_widget`",
 		"Launching background work is not delivery",
 	} {
 		if !strings.Contains(prompt, want) {
@@ -250,7 +247,8 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 		}
 	}
 	for _, reject := range []string{
-		"visualise_show_widget",
+		"show_artifact",
+		"publish_app",
 		"## Board Widget Runtime",
 	} {
 		if strings.Contains(prompt, reject) {

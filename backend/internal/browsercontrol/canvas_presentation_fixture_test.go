@@ -35,7 +35,7 @@ func mountCanvasPresentationFixture(t *testing.T, mux *http.ServeMux, store *sql
 	bus := sessionevents.New()
 	tools := visualize.NewService(store, store, bus, boards)
 	server := mcp.NewServer(&mcp.Implementation{Name: "jaztools", Version: "test"}, nil)
-	tools.AddReadMeTo(server)
+	tools.AddGuideTo(server)
 	tools.AddCanvasTo(server)
 	mux.Handle("/mcp/canvas", mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil))
 	shell := (&serverapi.Server{Store: store, Events: bus}).Handler()
@@ -76,7 +76,7 @@ func mountCanvasPresentationFixture(t *testing.T, mux *http.ServeMux, store *sql
 func presentCanvasFixture(ctx context.Context, endpoint, session string) error {
 	directory := os.Getenv("JAZ_BROWSER_SMOKE_DIR")
 	if binary := os.Getenv("JAZ_BROWSER_CODEX_BINARY"); binary != "" {
-		config := fmt.Sprintf(`mcp_servers.jaztools={url=%q,http_headers={%q=%q},required=true,tools.visualise_read_me.approval_mode="approve",tools.visualise_show_canvas.approval_mode="approve"}`, endpoint, mcpsession.HeaderName, session)
+		config := fmt.Sprintf(`mcp_servers.jaztools={url=%q,http_headers={%q=%q},required=true,tools.artifact_guide.approval_mode="approve",tools.show_canvas.approval_mode="approve"}`, endpoint, mcpsession.HeaderName, session)
 		command := exec.CommandContext(ctx, binary, "exec", "--ignore-user-config", "--ephemeral", "--json", "--skip-git-repo-check", "--sandbox", "workspace-write", "--model", "gpt-6.1-sol", "-C", directory, "-c", config, "-")
 		for _, entry := range os.Environ() {
 			if !strings.HasPrefix(entry, "OPENAI_API_KEY=") && !strings.HasPrefix(entry, "CODEX_API_KEY=") {
@@ -98,7 +98,7 @@ func presentCanvasFixture(ctx context.Context, endpoint, session string) error {
 		if err != nil {
 			return fmt.Errorf("native canvas check: %w: %s", err, stderr.String())
 		}
-		if !bytes.Contains(output, []byte("JAZ_CANVAS_AGENT_OK")) || !bytes.Contains(output, []byte(visualize.ShowCanvasMCPToolName)) || !bytes.Contains(output, []byte(visualize.ReadMeMCPToolName)) {
+		if !bytes.Contains(output, []byte("JAZ_CANVAS_AGENT_OK")) || !bytes.Contains(output, []byte(visualize.ShowCanvasMCPToolName)) || !bytes.Contains(output, []byte(visualize.GuideMCPToolName)) {
 			return fmt.Errorf("native agent did not finish canvas discovery and presentation; see canvas-agent.jsonl")
 		}
 		fmt.Println("CANVAS_PRESENTATION_REAL_AGENT_PASSED")
@@ -109,7 +109,7 @@ func presentCanvasFixture(ctx context.Context, endpoint, session string) error {
 		return err
 	}
 	defer client.Close()
-	guide, err := client.CallTool(ctx, &mcp.CallToolParams{Name: visualize.ReadMeMCPToolName, Arguments: map[string]any{"modules": []string{"canvas"}}})
+	guide, err := client.CallTool(ctx, &mcp.CallToolParams{Name: visualize.GuideMCPToolName, Arguments: map[string]any{"modules": []string{"canvas"}}})
 	if err != nil || guide.IsError {
 		return fmt.Errorf("canvas guide: %+v, %v", guide, err)
 	}

@@ -3,9 +3,17 @@ import {
   artifactErrorForDisplay,
   buildArtifactCSP,
   buildArtifactDocument,
+  parseArtifactToolArgs,
   resolvePluginAssetRelpath,
   sanitizeAssetOrigin,
 } from './artifacts'
+
+test('a streaming show_artifact call renders from html, and from widget_code in older transcripts', () => {
+  const shown = { title: 'Clock', code: '<svg></svg>', loadingMessages: ['Winding'] }
+  expect(parseArtifactToolArgs(JSON.stringify({ title: ' Clock ', html: '<svg></svg>', loading_messages: ['Winding'] }))).toEqual(shown)
+  expect(parseArtifactToolArgs(JSON.stringify({ title: 'Clock', widget_code: '<svg></svg>', loading_messages: ['Winding'] }))).toEqual(shown)
+  expect(parseArtifactToolArgs(JSON.stringify({ title: 'Clock' }))).toBeNull()
+})
 
 test('artifact iframe layout warnings stay internal while real errors remain visible', () => {
   expect(artifactErrorForDisplay('ResizeObserver loop completed with undelivered notifications.')).toBeUndefined()

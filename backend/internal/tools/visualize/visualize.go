@@ -9,23 +9,23 @@ import (
 	visualizesvc "github.com/wins/jaz/backend/internal/visualize"
 )
 
-type ReadMeTool struct{ Visualize *visualizesvc.Service }
+type GuideTool struct{ Visualize *visualizesvc.Service }
 
 type ShowCanvasTool struct{ Visualize *visualizesvc.Service }
 
-type ShowWidgetTool struct{}
+type ShowArtifactTool struct{}
 
-func (ReadMeTool) Definition() tools.Definition {
+func (GuideTool) Definition() tools.Definition {
 	return tools.Function(
-		visualizesvc.ReadMeMCPToolName,
-		visualizesvc.ReadMeDescription,
+		visualizesvc.GuideMCPToolName,
+		visualizesvc.GuideDescription,
 		false,
-		visualizesvc.ReadMeInputSchema(),
+		visualizesvc.GuideInputSchema(),
 	)
 }
 
-func (t ReadMeTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
-	guide, err := t.Visualize.Guide(sessioncontext.SessionID(ctx), visualizesvc.ReadMeInput{Modules: moduleNames(inputs["modules"]), Platform: tools.StringInput(inputs, "platform")})
+func (t GuideTool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
+	guide, err := t.Visualize.Guide(sessioncontext.SessionID(ctx), visualizesvc.GuideInput{Modules: moduleNames(inputs["modules"]), Platform: tools.StringInput(inputs, "platform")})
 	return tools.Result{Content: guide}, err
 }
 
@@ -45,24 +45,24 @@ func moduleNames(value any) []string {
 	return out
 }
 
-func (ShowWidgetTool) Definition() tools.Definition {
+func (ShowArtifactTool) Definition() tools.Definition {
 	return tools.Function(
-		visualizesvc.ShowWidgetMCPToolName,
-		visualizesvc.ShowWidgetDescription,
+		visualizesvc.ShowArtifactMCPToolName,
+		visualizesvc.ShowArtifactDescription,
 		false,
-		visualizesvc.ShowWidgetInputSchema(),
+		visualizesvc.ShowArtifactInputSchema(),
 	)
 }
 
-func (ShowWidgetTool) Execute(_ context.Context, inputs map[string]any) (tools.Result, error) {
+func (ShowArtifactTool) Execute(_ context.Context, inputs map[string]any) (tools.Result, error) {
 	messages, err := stringSlice(inputs["loading_messages"])
 	if err != nil {
 		return tools.Result{}, err
 	}
-	output, _, err := visualizesvc.BuildArtifact(visualizesvc.ShowWidgetInput{
+	output, _, err := visualizesvc.BuildArtifact(visualizesvc.ShowArtifactInput{
 		LoadingMessages: messages,
 		Title:           tools.StringInput(inputs, "title"),
-		WidgetCode:      tools.StringInput(inputs, "widget_code"),
+		HTML:            tools.StringInput(inputs, "html"),
 	})
 	if err != nil {
 		return tools.Result{}, err

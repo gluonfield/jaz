@@ -156,7 +156,7 @@ func TestRequireRunPublishedRejectsMissingPublishToolCall(t *testing.T) {
 	}
 	run := loops.Run{ID: "run-1", LoopID: loop.ID, StartedAt: time.Now()}
 	err := service.RequireRunPublished(loop, run)
-	if err == nil || !strings.Contains(err.Error(), "visualise_publish_widget") {
+	if err == nil || !strings.Contains(err.Error(), "publish_widget") {
 		t.Fatalf("expected missing-publish error, got %v", err)
 	}
 	state, stateErr := service.RunPublishState(loop.ID, run.ID)
@@ -485,7 +485,7 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 	for _, want := range []string{
 		"## Board Widget Runtime",
 		widgets.WidgetFilePath(loop),
-		"visualise_publish_widget",
+		"publish_widget",
 		"A list or feed is fine",
 		"boom",
 	} {
@@ -494,13 +494,12 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 		}
 	}
 	if strings.Contains(section, "Visual Creation Suite") {
-		t.Fatal("design system leaked into the prompt; agents should fetch it with visualise_read_me")
+		t.Fatal("design system leaked into the prompt; agents should fetch it with artifact_guide")
 	}
 	for _, reject := range []string{
 		"visualize",
 		"visualise:",
-		"visualise_show_widget",
-		"`publish_widget`",
+		"show_artifact",
 		"if it is available",
 		"If no such tool",
 		"extension method",
@@ -510,7 +509,7 @@ func TestPromptSectionMentionsFileAndErrors(t *testing.T) {
 		"compact rows",
 	} {
 		if strings.Contains(section, reject) {
-			t.Fatalf("prompt must expose only the identifier-safe widget visualise contract; found %q:\n%s", reject, section)
+			t.Fatalf("prompt must expose only the board widget contract; found %q:\n%s", reject, section)
 		}
 	}
 	if strings.Contains(section, "AGENTS.md") || strings.Contains(section, "design guide next to it") {

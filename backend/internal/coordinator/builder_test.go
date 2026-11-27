@@ -298,7 +298,7 @@ func TestBuilderCanvasPromptNamesTheThreadsBoard(t *testing.T) {
 	if !strings.Contains(prompt, "## Canvas") || !strings.Contains(prompt, board) {
 		t.Fatalf("canvas prompt should name %s:\n%s", board, prompt)
 	}
-	if strings.Contains(prompt, "visualise_show_widget") {
+	if strings.Contains(prompt, "show_artifact") {
 		t.Fatal("a canvas thread has no transcript for inline artifacts")
 	}
 	if _, err := builder.ACPPromptForContext(context.Background(), root, string(visualize.SurfaceCanvas)); err == nil {

@@ -208,7 +208,7 @@ func TestSessionMetaSendsGrokModelWithRules(t *testing.T) {
 
 func TestSessionPromptMetaSendsGrokExtensionsAsRules(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("jaz platform prompt")}}
-	got, err := manager.sessionPromptMeta(context.Background(), AgentGrok, "", "widget", "", []string{"Scheduled Jaz loop run.\n\n## Board Widget Runtime\n\nPublish with visualise_publish_widget."})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentGrok, "", "widget", "", []string{"Scheduled Jaz loop run.\n\n## Board Widget Runtime\n\nPublish with publish_widget."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestSessionPromptMetaSendsGrokExtensionsAsRules(t *testing.T) {
 	if !ok {
 		t.Fatalf("grok rules missing: %#v", got)
 	}
-	for _, want := range []string{"jaz platform prompt", "Scheduled Jaz loop run.", "## Board Widget Runtime", "visualise_publish_widget"} {
+	for _, want := range []string{"jaz platform prompt", "Scheduled Jaz loop run.", "## Board Widget Runtime", "publish_widget"} {
 		if !strings.Contains(rules, want) {
 			t.Fatalf("grok rules missing %q:\n%s", want, rules)
 		}

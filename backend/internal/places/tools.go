@@ -48,7 +48,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ShowMCPToolName,
 		Title:       "Show places on a map",
-		Description: "Shows places on an interactive map in the user's chat, with a card per place and buttons for directions and Google Maps. Use it whenever an answer recommends, compares or locates real places: restaurants, venues, sights, offices, stops on a trip. Give each place its full street address; Jaz finds the coordinates. Do not draw maps with visualise_show_widget.",
+		Description: "Shows places on an interactive map in the user's chat, with a card per place and buttons for directions and Google Maps. Use it whenever an answer recommends, compares or locates real places: restaurants, venues, sights, offices, stops on a trip. Give each place its full street address; Jaz finds the coordinates. Do not draw maps with show_artifact.",
 	}, t.Show)
 }
 

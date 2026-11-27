@@ -165,7 +165,7 @@ func ToolDefinitionsForSurface(registry *tools.Registry, surface string) []tools
 func includeToolForArtifactSurface(name, surface string) bool {
 	switch visualize.NormalizeSurface(surface) {
 	case visualize.SurfaceWidget:
-		return !matchesToolName(name, visualize.ShowWidgetMCPToolName)
+		return !matchesToolName(name, visualize.ShowArtifactMCPToolName)
 	default:
 		return !matchesToolName(name, widgets.PublishMCPToolName)
 	}

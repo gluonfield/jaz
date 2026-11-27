@@ -283,7 +283,7 @@ func (s *Service) RequireRunPublished(loop loops.Loop, run loops.Run) error {
 	if err != nil || !state.Enabled || state.Published {
 		return err
 	}
-	err = fmt.Errorf("widget was not published by this run; call visualise_publish_widget after writing widget/index.html")
+	err = fmt.Errorf("widget was not published by this run; call publish_widget after writing widget/index.html")
 	s.reportPublishError(state.Widget.ID, err)
 	return err
 }

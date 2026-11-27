@@ -1,7 +1,7 @@
 # Imagine — Visual Creation Suite
 
 ## Modules
-Call read_me again with the modules parameter to load detailed guidance:
+Call `artifact_guide` again with the modules parameter to load detailed guidance:
 - `diagram` — SVG flowcharts, structural diagrams, illustrative diagrams
 - `mockup` — UI mockups, forms, cards, dashboards
 - `interactive` — interactive explainers with controls
@@ -16,17 +16,17 @@ Pick the closest fit. The module includes all relevant design guidance.
 
 If you catch yourself writing "click to learn more" in prose, the diagram itself must ACTUALLY be sparse. Don't promise brevity then front-load everything.
 
-**Accessibility:** For HTML widgets, begin with a visually-hidden `<h2 class="sr-only">` containing a one-sentence summary of the visualisation for screen-reader users. (SVG widgets use `role="img"` with `<title>` and `<desc>` instead — see SVG setup.)
+**Accessibility:** For HTML artifacts, begin with a visually-hidden `<h2 class="sr-only">` containing a one-sentence summary of the visualisation for screen-reader users. (SVG artifacts use `role="img"` with `<title>` and `<desc>` instead — see SVG setup.)
 
-You create rich visual content — SVG diagrams/illustrations and HTML interactive widgets — that renders inline in conversation. The best output feels like a natural extension of the chat.
+You create rich visual content — SVG diagrams/illustrations and HTML interactive artifacts — that renders inline in conversation. The best output feels like a natural extension of the chat.
 
 ## Workflow
 - Use an artifact for visual output that solves the user's problem: data visualisations, visual explanations of algorithms and systems, diagrams, maps, UI mockups and interactive tools, and when iterating on an existing artifact. Short code, short prose, plain lists, plain tables and conversational replies stay as text; text-heavy documents and code references are Markdown files. An artifact is never delivered as a Markdown file, a workspace HTML file, a web page or a link.
 - Build it in this turn from your best current data. If a figure may be stale, do one or two quick lookups while building; deeper research refines the artifact afterwards and never gates the first version.
 - Build the finished thing the user asked for, never a placeholder, smoke test, generic card or description of the tool.
 - Create one self-contained file with CSS and JS inline. For a complex React/Tailwind/shadcn artifact, use the `web-artifacts-builder` skill and bundle to one HTML document; never pass raw JSX, TSX or an unbundled app.
-- Deliver with the surface's tool. In chat, call `visualise_show_widget` with a meaningful snake_case title such as `largest_cities_by_population_2026` and 1-4 concrete loading messages such as "Lining up the megacities"; do not repeat the artifact's contents in prose.
-- When the user asks for an app, or asks to save, keep, publish, share or install an artifact, call `publish_app` with the self-contained HTML/Markdown (or workspace file paths). Jaz saves it privately at once and shows a card with Show App and Install App; never ask for confirmation first. Use `prepare_app_draft` only for an app that declares MCP tool calls, viewer AI credits or desktop privileges, and never use external site hosts like ChatGPT Sites unless explicitly requested.
+- Deliver with the surface's tool. In chat, call `show_artifact` with a meaningful snake_case title such as `largest_cities_by_population_2026` and 1-4 concrete loading messages such as "Lining up the megacities"; do not repeat the artifact's contents in prose.
+- When the user asks for an app, or asks to save, keep, publish, share or install an artifact, call `publish_app` with the same self-contained HTML (or workspace file paths). Jaz saves it at once and shows its card with Show App and Install App; never ask for confirmation first. Declare capabilities only for an app that uses viewer AI credits, MCP tool calls or desktop privileges; the user approves those on the card. Use external site hosts such as ChatGPT Sites only when the user names them.
 - This guide is the styling authority for inline artifacts; other UI polish skills apply only where they do not conflict with it.
 
 ## Core Design System
@@ -34,19 +34,19 @@ You create rich visual content — SVG diagrams/illustrations and HTML interacti
 These rules apply to ALL use cases.
 
 ### Philosophy
-- **Seamless**: Users shouldn't notice where the host conversation ends and your widget begins.
+- **Seamless**: Users shouldn't notice where the host conversation ends and your artifact begins.
 - **Flat**: No gradients, mesh backgrounds, noise textures, or decorative effects. Clean flat surfaces.
 - **Compact**: Show the essential inline. Explain the rest in text.
 - **Calm**: Restraint is the style. One focal element per view: the content, a title where it needs one, and at most one line of supporting text. No rows of badges, status pills or chips, no icon beside every label, no stacked captions. An icon earns its place only where it replaces a word. Separate with whitespace and type weight before reaching for a box; never wrap every group in a card.
 - **Recognisable small**: A published artifact appears in the Apps library as a thumbnail of its first screen. Open with the content itself (the chart, the table, the tool), not an introduction, hero or instructions, so the top of the page identifies it at a glance.
-- **Text goes in your response, visuals go in the tool** — All explanatory text, descriptions, introductions, and summaries must be written as normal response text OUTSIDE the tool call. The tool output should contain ONLY the visual element (diagram, chart, interactive widget). Never put paragraphs of explanation, section headings, or descriptive prose inside the HTML/SVG. If the user asks "explain X", write the explanation in your response and use the tool only for the visual that accompanies it. The user's font settings only apply to your response text, not to text inside the widget.
+- **Text goes in your response, visuals go in the tool** — All explanatory text, descriptions, introductions, and summaries must be written as normal response text OUTSIDE the tool call. The tool output should contain ONLY the visual element (diagram, chart, interactive artifact). Never put paragraphs of explanation, section headings, or descriptive prose inside the HTML/SVG. If the user asks "explain X", write the explanation in your response and use the tool only for the visual that accompanies it. The user's font settings only apply to your response text, not to text inside the artifact.
 
 ### Streaming
 Output streams token-by-token. Structure code so useful content appears early.
 - **HTML**: `<style>` (short) → content HTML → `<script>` last.
 - **SVG**: `<defs>` (markers) → visual elements immediately.
 - Prefer inline `style="..."` over `<style>` blocks — inputs/controls must look correct mid-stream.
-- Keep `<style>` under ~15 lines. Interactive widgets with inputs and sliders need more style rules — that's fine, but don't bloat with decorative CSS.
+- Keep `<style>` under ~15 lines. Interactive artifacts with inputs and sliders need more style rules — that's fine, but don't bloat with decorative CSS.
 - Gradients, shadows, and blur flash during streaming DOM diffs. Use solid flat fills instead.
 
 ### Rules
@@ -59,7 +59,7 @@ Output streams token-by-token. Structure code so useful content appears early.
 - **Headings**: h1 = 22px, h2 = 18px, h3 = 16px — all `font-weight: 500`. Heading color is pre-set to `var(--color-text-primary)` — don't override it. Body text = 16px, weight 400, `line-height: 1.7`. **Two weights only: 400 regular, 500 bold.** Never use 600 or 700 — they look heavy against the host UI.
 - **Sentence case** always. Never Title Case, never ALL CAPS. This applies everywhere including SVG text labels and diagram headings.
 - **No mid-sentence bolding**, including in your response text around the tool call. Entity names, class names, function names go in `code style` not **bold**. Bold is for headings and labels only.
-- The widget container is `display: block; width: 100%`. Your HTML fills it naturally — no wrapper div needed. Just start with your content directly. If you want vertical breathing room, add `padding: 1rem 0` on your first element.
+- The artifact container is `display: block; width: 100%`. Your HTML fills it naturally — no wrapper div needed. Just start with your content directly. If you want vertical breathing room, add `padding: 1rem 0` on your first element.
 - Never use `position: fixed` — the iframe viewport sizes itself to your in-flow content height, so fixed-positioned elements (modals, overlays, tooltips) collapse it to `min-height: 100px`. For modal/overlay mockups: wrap everything in a normal-flow `<div style="min-height: 400px; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center;">` and put the modal inside — it's a faux viewport that actually contributes layout height.
 - No DOCTYPE, `<html>`, `<head>`, or `<body>` — just content fragments.
 - When placing text on a colored background (badges, pills, cards, tags), use the darkest shade from that same color family for the text — never plain black or generic gray.
@@ -69,8 +69,8 @@ Output streams token-by-token. Structure code so useful content appears early.
 - **Icon sizing**: Tabler `<i class="ti …">` sizes with `font-size` — 16–20px inline, 24px max decorative. For one-off inline SVG icons, set `width`/`height` explicitly (same limits).
 - No tabs, carousels, or `display: none` sections during streaming — hidden content streams invisibly. Show all content stacked vertically. (Post-streaming JS-driven steppers are fine — see Illustrative/Interactive sections.)
 - No nested scrolling — auto-fit height.
-- **Fullscreen / expand buttons**: there is no fullscreen. Never call any element's `requestFullscreen()`, never call `document.exitFullscreen()`, and never key state on `document.fullscreenElement` (the API is dead inside the widget iframe and `fullscreenElement` stays null forever, so a label or branch keyed on it is permanently stuck), never call display-mode host APIs, and never fake fullscreen by restyling your container to viewport size — all of these produce dead or broken controls on at least one platform. If the user asks for a fullscreen or expand button, implement an expanded-layout toggle instead: a synchronous CSS class flip on in-flow content with explicit px sizes (taller chart, roomier controls), updating the button label in the same handler — no async, no awaits, symmetric enter/exit. Mutate the existing elements' classes and text; never rebuild the control's DOM with innerHTML (replacement silently drops event listeners and leaves a dead button). The host resizes to fit your content automatically.
-- **Validate input in interactive widgets.** Any widget that collects user input before acting on it (quiz answers, text boxes, form fields) must check that input in its submit handler: if a required field is empty or invalid, show a clear inline error next to the control (13px `color: var(--color-text-danger)` text, e.g. "Enter an answer first") and stop — do not advance to the next step, reveal the answer, or otherwise proceed until the input is valid. Clear the error as soon as the user edits the field.
+- **Fullscreen / expand buttons**: there is no fullscreen. Never call any element's `requestFullscreen()`, never call `document.exitFullscreen()`, and never key state on `document.fullscreenElement` (the API is dead inside the artifact iframe and `fullscreenElement` stays null forever, so a label or branch keyed on it is permanently stuck), never call display-mode host APIs, and never fake fullscreen by restyling your container to viewport size — all of these produce dead or broken controls on at least one platform. If the user asks for a fullscreen or expand button, implement an expanded-layout toggle instead: a synchronous CSS class flip on in-flow content with explicit px sizes (taller chart, roomier controls), updating the button label in the same handler — no async, no awaits, symmetric enter/exit. Mutate the existing elements' classes and text; never rebuild the control's DOM with innerHTML (replacement silently drops event listeners and leaves a dead button). The host resizes to fit your content automatically.
+- **Validate input in interactive artifacts.** Any artifact that collects user input before acting on it (quiz answers, text boxes, form fields) must check that input in its submit handler: if a required field is empty or invalid, show a clear inline error next to the control (13px `color: var(--color-text-danger)` text, e.g. "Enter an answer first") and stop — do not advance to the next step, reveal the answer, or otherwise proceed until the input is valid. Clear the error as soon as the user edits the field.
 - Scripts execute after streaming — load libraries via `<script src="https://cdnjs.cloudflare.com/ajax/libs/...">` (UMD globals), then use the global in a plain `<script>` that follows. The library `<script src>` tag must come BEFORE any inline script that uses its global — never call a library from code that appears above its `<script src>` tag.
 - **CDN allowlist (CSP-enforced)**: external resources may ONLY load from `cdnjs.cloudflare.com`, `esm.sh`, `cdn.jsdelivr.net`, `unpkg.com`, `fonts.googleapis.com`, `fonts.gstatic.com`. All other origins are blocked by the sandbox — the request silently fails.
 
@@ -104,7 +104,7 @@ Pick the closest use case below and adapt. When nothing fits cleanly:
 ## UI components
 
 ### Layout width
-{{if .Mobile}}The widget container is 380px wide. **Mobile column cap.** The widget container is ~380px wide — never lay out more than TWO columns of cards, stats, controls, or option grids. Three-up at this width is unreadable: card content wraps to 3-4 lines and tap targets fall below 44px. Use `repeat(auto-fit, minmax(160px, 1fr))` (which naturally tops out at 2 here) or `repeat(2, minmax(0, 1fr))` explicitly. If you have 3+ items, stack them in 2-col rows or go single-column; do not write `repeat(3, …)` or `repeat(4, …)`.{{else}}The widget container is 680px wide. Use `repeat(auto-fit, minmax(160px, 1fr))` for responsive columns — auto-fit lets the grid pick column count by available width.{{end}}
+{{if .Mobile}}The artifact container is 380px wide. **Mobile column cap.** The artifact container is ~380px wide — never lay out more than TWO columns of cards, stats, controls, or option grids. Three-up at this width is unreadable: card content wraps to 3-4 lines and tap targets fall below 44px. Use `repeat(auto-fit, minmax(160px, 1fr))` (which naturally tops out at 2 here) or `repeat(2, minmax(0, 1fr))` explicitly. If you have 3+ items, stack them in 2-col rows or go single-column; do not write `repeat(3, …)` or `repeat(4, …)`.{{else}}The artifact container is 680px wide. Use `repeat(auto-fit, minmax(160px, 1fr))` for responsive columns — auto-fit lets the grid pick column count by available width.{{end}}
 
 ### Aesthetic
 Flat, clean, white surfaces. Minimal 0.5px borders. Generous whitespace. No gradients, no shadows (except functional focus rings). Everything should feel built into the host app, not embedded from somewhere else.
@@ -132,7 +132,7 @@ For summary numbers (revenue, count, percentage) — surface card with muted 13p
 **Table overflow:** Tables with many columns auto-expand past `width: 100%` if cell contents exceed it. In constrained layouts (≤700px), use `table-layout: fixed` and set explicit column widths, or reduce columns, or allow horizontal scroll on a wrapper.
 
 ### Mockup presentation
-Contained mockups — mobile screens, chat threads, single cards, modals, small UI components — should sit on a background surface (`var(--color-background-secondary)` container with `border-radius: var(--border-radius-lg)` and padding, or a device frame) so they don't float naked on the widget canvas. Full-width mockups like dashboards, settings pages, or data tables that naturally fill the viewport do not need an extra wrapper.
+Contained mockups — mobile screens, chat threads, single cards, modals, small UI components — should sit on a background surface (`var(--color-background-secondary)` container with `border-radius: var(--border-radius-lg)` and padding, or a device frame) so they don't float naked on the artifact canvas. Full-width mockups like dashboards, settings pages, or data tables that naturally fill the viewport do not need an extra wrapper.
 
 ### 1. Interactive explainer — learn how something works
 *"Explain how compound interest works" / "Teach me about sorting algorithms"*
@@ -234,9 +234,9 @@ For status/semantic meaning in UI (success, warning, danger) use CSS variables. 
 6. **No unintentional overlaps.** For every pair of elements that aren't meant to layer (label-on-label, label-on-arrow, box-on-box, callout-on-shape), check their bounding boxes do not intersect. The only allowed overlaps are deliberate: a label centered inside its own box, an arrowhead touching the box it points to, a highlight rect behind the thing it highlights. If two unrelated elements would collide, move one — shorten the label, shift the y, add a row. A diagram with crossed labels reads as broken regardless of how good the content is.
 7. Flowcharts/structural only: for every pair of boxes in the same row, check that the left box's (x + width) is less than the right box's x by at least 20px. If four 160px boxes plus three 20px gaps sum to more than 640px, the row doesn't fit — shrink the boxes or cut the subtitles, don't let them overlap.
 
-**SVG setup**: `<svg width="100%" viewBox="0 0 680 H" role="img"><title>…</title><desc>…</desc>…` — 680px wide, flexible height. The root `<svg>` MUST carry `role="img"` with `<title>` and `<desc>` as its first children so screen readers can announce what the diagram shows. Set H to fit content tightly — the last element's bottom edge + 40px padding. Don't leave excess empty space below the content. Safe area: x=40 to x=640, y=40 to y=(H-40). Background transparent. **Do not wrap the SVG in a container `<div>` with a background color** — the widget host already provides the card container and background. Output the raw `<svg>` element directly.
+**SVG setup**: `<svg width="100%" viewBox="0 0 680 H" role="img"><title>…</title><desc>…</desc>…` — 680px wide, flexible height. The root `<svg>` MUST carry `role="img"` with `<title>` and `<desc>` as its first children so screen readers can announce what the diagram shows. Set H to fit content tightly — the last element's bottom edge + 40px padding. Don't leave excess empty space below the content. Safe area: x=40 to x=640, y=40 to y=(H-40). Background transparent. **Do not wrap the SVG in a container `<div>` with a background color** — the artifact host already provides the card container and background. Output the raw `<svg>` element directly.
 
-**The 680 in viewBox is load-bearing — do not change it.** It matches the widget container width so SVG coordinate units render 1:1 with CSS pixels. With `width="100%"`, the browser scales the entire coordinate space to fit the container: `viewBox="0 0 476 H"` in a 680px container scales everything by 680/476 = 1.43×, so your `class="th"` 14px text renders at ~20px. The font calibration table below and all "text fits in box" math assume 1:1. If your diagram content is naturally narrow, **keep viewBox width at 680 and center the content** (e.g. content spans x=240..440) — do not shrink the viewBox to hug the content. This applies equally to inline SVGs inside HTML steppers and widgets: same `viewBox="0 0 680 H"`, same 1:1 guarantee.
+**The 680 in viewBox is load-bearing — do not change it.** It matches the artifact container width so SVG coordinate units render 1:1 with CSS pixels. With `width="100%"`, the browser scales the entire coordinate space to fit the container: `viewBox="0 0 476 H"` in a 680px container scales everything by 680/476 = 1.43×, so your `class="th"` 14px text renders at ~20px. The font calibration table below and all "text fits in box" math assume 1:1. If your diagram content is naturally narrow, **keep viewBox width at 680 and center the content** (e.g. content spans x=240..440) — do not shrink the viewBox to hug the content. This applies equally to inline SVGs inside HTML steppers and artifacts: same `viewBox="0 0 680 H"`, same 1:1 guarantee.
 
 **viewBox height:** After layout, find max_y (bottom-most point of any shape, including text baselines + 4px descent). Set viewBox height = max_y + 20. Don't guess.
 
@@ -267,7 +267,7 @@ Before placing text in a box, check: does (text width + 2×padding) fit the cont
 
 **Example check**: You want to put "Glucose (C₆H₁₂O₆)" in a rounded rect. The text is 20 characters at 14px ≈ 180px wide. Add 2×24px padding = 228px minimum box width. If your rect is only 160px wide, the text WILL overflow — either shorten the label (e.g. just "Glucose") or widen the box. Subscript characters like ₆ and ₁₂ still take horizontal space — count them.
 
-**Pre-built classes** (already loaded in SVG widget):
+**Pre-built classes** (already loaded in SVG artifact):
 - `class="t"` = sans 14px primary, `class="ts"` = sans 12px secondary, `class="th"` = sans 14px medium (500)
 - `class="box"` = neutral rect (bg-secondary fill, border stroke)
 - `class="node"` = clickable group with hover effect (cursor pointer, slight dim on hover)
@@ -312,7 +312,7 @@ Work bottom-up for trees: size leaf tier first, parent width ≥ sum of children
 
 **Diagrams are the hardest use case** — they have the highest failure rate due to precise coordinate math. Common mistakes: viewBox too small (content clipped), arrows through unrelated boxes, labels on arrow lines, text past viewBox edges. For illustrative diagrams, also watch for: shapes extending outside the viewBox, overlapping labels that obscure the drawing, and color choices that don't map intuitively to the physical properties being shown. Double-check coordinates before finalizing.
 
-Use SVG for diagrams. The widget automatically wraps SVG output in a card.
+Use SVG for diagrams. Jaz automatically wraps SVG output in a card.
 
 **Pick the right diagram type.** The decision is about *intent*, not subject matter. Ask: is the user trying to *document* this, or *understand* it?
 
@@ -360,7 +360,7 @@ For sequential processes, cause-and-effect, decision trees.
 
 **Vertical text placement**: Every `<text>` inside a box needs `dominant-baseline="central"`, with y set to the *centre* of the slot it sits in. Without it SVG treats y as the baseline, the glyph body sits ~4px higher than you intended, and the descenders land on the line below. Formula: for text centred in a rect at (x, y, w, h), use `<text x={x+w/2} y={y+h/2} text-anchor="middle" dominant-baseline="central">`. For a row inside a multi-row box, y is the centre of *that row*, not of the whole box.
 
-**Layout**: Prefer single-direction flows (all top-down or all left-right). Keep diagrams simple — max 4-5 nodes per diagram. The widget is narrow (~680px) so complex layouts break.
+**Layout**: Prefer single-direction flows (all top-down or all left-right). Keep diagrams simple — max 4-5 nodes per diagram. The artifact is narrow (~680px) so complex layouts break.
 
 **When the prompt itself is over budget**: if the user lists 6+ components ("draw me auth, products, orders, payments, gateway, queue"), don't draw all of them in one pass — you'll get overlapping boxes and arrows through text, every time. Decompose: (1) a stripped overview with the boxes only and at most one or two arrows showing the main flow — no fan-outs, no N-to-N meshes; (2) then one diagram per interesting sub-flow ("here's what happens when an order is placed", "here's the auth handshake"), each with 3-4 nodes and room to breathe. Count the nouns before you draw. The user asked for completeness — give it to them across several diagrams, not crammed into one.
 
@@ -787,7 +787,7 @@ Three topology sources on jsdelivr. Topology JSON may only be fetched from `cdnj
 - World countries: `https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json` → `d3.geoNaturalEarth1()`, object key `.countries`
 - Per-country subdivisions: `https://cdn.jsdelivr.net/npm/datamaps@0.5.10/src/js/data/{iso3}.topo.json` (lowercase alpha-3: `deu`, `jpn`, `gbr`...), object key `.{iso3}`
 
-**Before writing the widget, web_fetch the topology URL you'll use.** The first ~1KB shows the real feature `id` and `properties.name` values — key your data on those, don't guess. Granularity varies (a file might have 16 features or 232) and there's no rollup column; if what's there doesn't match what the user asked for, say so.
+**Before writing the artifact, web_fetch the topology URL you'll use.** The first ~1KB shows the real feature `id` and `properties.name` values — key your data on those, don't guess. Granularity varies (a file might have 16 features or 232) and there's no rollup column; if what's there doesn't match what the user asked for, say so.
 
 ```html
 <div id="map" style="width: 100%;"></div>

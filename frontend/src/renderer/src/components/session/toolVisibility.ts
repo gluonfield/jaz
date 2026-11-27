@@ -1,13 +1,7 @@
-export function isArtifactToolName(name?: string): boolean {
-  return (
-    name === 'visualise_show_widget' ||
-    name === 'mcp_jaztools_visualise_show_widget'
-  )
-}
+// Each list ends with the name the tool had in transcripts saved before the rename.
+const named = (name: string | undefined, tools: string[]) =>
+  !!name && tools.some((tool) => name === tool || name === `mcp_jaztools_${tool}`)
 
-export function isHiddenToolName(name?: string): boolean {
-  return (
-    name === 'visualise_read_me' ||
-    name === 'mcp_jaztools_visualise_read_me'
-  )
-}
+export const isArtifactToolName = (name?: string) => named(name, ['show_artifact', 'visualise_show_widget'])
+
+export const isHiddenToolName = (name?: string) => named(name, ['artifact_guide', 'visualise_read_me'])

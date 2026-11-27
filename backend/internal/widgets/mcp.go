@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	PublishMCPToolName = "visualise_publish_widget"
+	PublishMCPToolName = "publish_widget"
+	PublishDescription = "Publishes this loop run's board widget: the HTML tile this loop keeps up to date on the user's Jaz board. Write the HTML fragment to widget/index.html first, then call this; alternatively pass the fragment inline via html. Invalid fragments fail; host-rendering warnings are advisory."
 )
 
 type MCPPublisher interface {
@@ -35,7 +36,7 @@ func AddMCPTools(server *mcp.Server, publisher MCPPublisher) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        PublishMCPToolName,
 		Title:       "Publish board widget",
-		Description: "Publishes this loop run's Jaz board widget. Write the HTML fragment to widget/index.html first, then call this; alternatively pass the fragment inline via html. Invalid fragments fail; host-rendering warnings are advisory.",
+		Description: PublishDescription,
 		InputSchema: PublishInputSchema(),
 	}, publishMCP(publisher))
 }

@@ -17,17 +17,17 @@ import (
 )
 
 type AppToolArgs struct {
-	Title        string              `json:"title"`
-	Description  string              `json:"description,omitempty"`
-	Kind         string              `json:"kind,omitempty"`
-	Entry        string              `json:"entry,omitempty"`
-	HTML         string              `json:"html,omitempty"`
-	Markdown     string              `json:"markdown,omitempty"`
-	Files        map[string]string   `json:"files,omitempty"`
-	Paths        []string            `json:"paths,omitempty"`
-	Capabilities []string            `json:"capabilities,omitempty"`
-	AllowedTools []string            `json:"allowed_tools,omitempty"`
-	TargetAppID  string              `json:"target_app_id,omitempty"`
+	Title        string              `json:"title" jsonschema:"app name shown in the Apps library"`
+	Description  string              `json:"description,omitempty" jsonschema:"one sentence on what the app does"`
+	Kind         string              `json:"kind,omitempty" jsonschema:"artifact for HTML or SVG (default), document for Markdown"`
+	Entry        string              `json:"entry,omitempty" jsonschema:"entry file of a multi-file app; defaults to index.html, or index.md for a document"`
+	HTML         string              `json:"html,omitempty" jsonschema:"the artifact: raw SVG, HTML fragment, or full self-contained HTML document, exactly as show_artifact takes it"`
+	Markdown     string              `json:"markdown,omitempty" jsonschema:"the document body, instead of html"`
+	Files        map[string]string   `json:"files,omitempty" jsonschema:"a multi-file app as relative path to text content, instead of html"`
+	Paths        []string            `json:"paths,omitempty" jsonschema:"files in this thread's working directory to bundle, by relative path, instead of inline content"`
+	Capabilities []string            `json:"capabilities,omitempty" jsonschema:"only what the app uses. Saved at once: storage:personal, storage:shared. Held for the user's approval: ai:complete, tools:call, desktop:window, desktop:notifications, desktop:shortcuts, desktop:tray, desktop:always_on_top, desktop:fs, desktop:full_access"`
+	AllowedTools []string            `json:"allowed_tools,omitempty" jsonschema:"MCP tools the app may call; requires the tools:call capability"`
+	TargetAppID  string              `json:"target_app_id,omitempty" jsonschema:"app_id of an app published earlier, to publish this as its next version"`
 	Icon         *appbundle.IconSpec `json:"icon,omitempty"`
 }
 
@@ -61,51 +61,44 @@ func AddMCPTools(server *mcpsdk.Server, svc *Service, sessions sessionLoader) {
 	}
 	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "publish_app",
-		Description: "Save a self-contained HTML/SVG artifact or a Markdown document to the user's private Jaz Apps library at once, from inline html/markdown or workspace file paths. Jaz shows a card with Show App and Install App. Pass target_app_id to save a new version of an existing app. Use prepare_app_draft for elevated MCP, viewer AI, or desktop capabilities.",
+		Title:       "Publish app",
+		Description: "Publishes an artifact or a Markdown document as an app in the user's private Jaz Apps library, where they reopen, install and share it. Use it when the user asks for an app, or asks to save, keep, publish, share or install an artifact or document. Pass html (the same code show_artifact takes), markdown, or workspace file paths. The app is saved at once and Jaz shows its card with Show App and Install App. An app that declares AI, MCP tool or desktop capabilities is held on that card until the user approves them. Pass target_app_id to publish a new version.",
 	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, args AppToolArgs) (*mcpsdk.CallToolResult, any, error) {
 		sessionID := mcpsession.SessionID(req)
 		bundle, err := packToolBundle(args, sessionID, sessions)
 		if err != nil {
 			return nil, nil, err
 		}
-		app, _, _, err := svc.PublishBundle(ctx, bundle, args.TargetAppID, sessionID)
-		if errors.Is(err, storage.ErrAppApprovalRequired) {
-			return nil, nil, fmt.Errorf("%w: call prepare_app_draft", err)
+		if appbundle.RequiresPublishApproval(bundle.Manifest.Capabilities) {
+			draft, err := svc.StageDraft(ctx, bundle, args.TargetAppID, sessionID)
+			if err != nil {
+				return nil, nil, err
+			}
+			return toolResult(map[string]any{
+				"status":        "awaiting_user_approval",
+				"note":          "Not saved yet. Jaz shows a card where the user approves these capabilities; tell them it is waiting there.",
+				"draft_id":      draft.ID,
+				"bundle_sha256": draft.BundleSHA256,
+				"target_app_id": draft.TargetAppID,
+				"title":         draft.Title,
+				"kind":          draft.Kind,
+				"capabilities":  draft.Capabilities,
+				"allowed_tools": draft.AllowedTools,
+				"expires_at":    draft.ExpiresAt,
+			})
 		}
+		app, _, _, err := svc.PublishBundle(ctx, bundle, args.TargetAppID, sessionID)
 		if err != nil {
 			return nil, nil, err
 		}
 		return toolResult(map[string]any{
+			"status":     "saved",
+			"note":       "Saved to the user's Apps. Jaz shows its card with Show App and Install App; do not repeat the app inline or ask the user to confirm.",
 			"app_id":     app.ID,
 			"title":      app.Title,
 			"kind":       app.Kind,
 			"version":    app.CurrentVersion,
 			"visibility": app.Visibility,
-		})
-	})
-	mcpsdk.AddTool(server, &mcpsdk.Tool{
-		Name:        "prepare_app_draft",
-		Description: "Stage a Jaz artifact or app when it requests elevated MCP, viewer AI, or desktop capabilities. Jaz shows a card where the user approves those permissions before it is saved. For ordinary private publishing, call publish_app.",
-	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, args AppToolArgs) (*mcpsdk.CallToolResult, any, error) {
-		sessionID := mcpsession.SessionID(req)
-		bundle, err := packToolBundle(args, sessionID, sessions)
-		if err != nil {
-			return nil, nil, err
-		}
-		draft, err := svc.StageDraft(ctx, bundle, args.TargetAppID, sessionID)
-		if err != nil {
-			return nil, nil, err
-		}
-		return toolResult(map[string]any{
-			"draft_id":                   draft.ID,
-			"bundle_sha256":              draft.BundleSHA256,
-			"target_app_id":              draft.TargetAppID,
-			"title":                      draft.Title,
-			"kind":                       draft.Kind,
-			"capabilities":               draft.Capabilities,
-			"allowed_tools":              draft.AllowedTools,
-			"expires_at":                 draft.ExpiresAt,
-			"requires_user_confirmation": appbundle.RequiresPublishApproval(draft.Capabilities),
 		})
 	})
 }

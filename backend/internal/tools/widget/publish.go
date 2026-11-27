@@ -17,7 +17,7 @@ type PublishTool struct {
 func (t PublishTool) Definition() tools.Definition {
 	return tools.Function(
 		widgets.PublishMCPToolName,
-		"Publishes this loop run's Jaz board widget. Write the HTML fragment to widget/index.html first, then call this; alternatively pass the fragment inline via html.",
+		widgets.PublishDescription,
 		false,
 		widgets.PublishInputSchema(),
 	)

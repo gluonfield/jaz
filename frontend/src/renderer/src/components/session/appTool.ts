@@ -2,12 +2,13 @@ import type { AppKind, PendingAppDraft } from '@/lib/api/apps'
 import type { ACPToolCall } from '@/lib/api/types'
 import type { PublishedAppRef } from '@/lib/sidePanelTabs'
 
-// What an app tool returned: publish_app's saved app, or prepare_app_draft's
-// staged draft waiting for the user.
+// What publish_app returned: the saved app, or a draft held until the user
+// approves its capabilities.
 export type AppToolResult = { app: PublishedAppRef & { kind: AppKind } } | { draft: PendingAppDraft }
 
 const MAX_EXTRACT_DEPTH = 6
 
+// prepare_app_draft staged drafts in transcripts saved before publish_app held them itself.
 const APP_TOOLS = ['publish_app', 'prepare_app_draft']
 
 export function isAppToolName(name?: string): boolean {

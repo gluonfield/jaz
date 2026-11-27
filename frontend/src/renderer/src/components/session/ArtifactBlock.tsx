@@ -51,7 +51,7 @@ export const ArtifactBlock = memo(function ArtifactBlock({ artifact, args, resul
     [artifact, args],
   )
   if (!input) {
-    return <div className="rounded-card border border-border bg-surface px-3 py-2 text-sm text-ink-2">Could not render artifact: invalid visualise_show_widget input.</div>
+    return <div className="rounded-card border border-border bg-surface px-3 py-2 text-sm text-ink-2">Could not render artifact: invalid show_artifact input.</div>
   }
   const execError = artifactErrorForDisplay(toolError(result))
   const canPublish = !pending && !pluginView && !execError
