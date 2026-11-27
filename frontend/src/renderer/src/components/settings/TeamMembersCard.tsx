@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { LoaderCircle, Trash2, UserPlus, X } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { Button } from '@/components/ui/Button'
-import { IconButton } from '@/components/ui/IconButton'
 import { Input } from '@/components/ui/Input'
+import { MenuRow, Popover } from '@/components/ui/Popover'
+import { SearchField } from '@/components/ui/SearchField'
 import { useToast } from '@/components/ui/toast'
 import {
   createOrgMember,
@@ -19,10 +20,43 @@ import type { CloudWorkspaceSummary } from '@/lib/cloudAccount'
 import { useCloudSession } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
-const ROLE_LABELS: Record<OrgMemberRole, string> = {
-  admin: 'Admin',
-  member: 'Member',
-  viewer: 'Viewer',
+const ROLES: { value: OrgMemberRole; label: string }[] = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'member', label: 'Member' },
+  { value: 'viewer', label: 'Viewer' },
+]
+
+// A member's role as a quiet menu: the three roles, then removal.
+function RoleMenu({ name, role, disabled, onRole, onRemove }: {
+  name: string
+  role: string
+  disabled: boolean
+  onRole: (role: OrgMemberRole) => void
+  onRemove: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const pick = (action: () => void) => () => {
+    setOpen(false)
+    action()
+  }
+  return (
+    <Popover open={open} onClose={() => setOpen(false)} placement="below" align="end" trigger={
+      <Button size="sm" aria-label={`Role for ${name}`} aria-haspopup="menu" aria-expanded={open} disabled={disabled} onClick={() => setOpen((value) => !value)}>
+        {role}
+        <ChevronDown size={12} className="text-ink-3" />
+      </Button>
+    }>
+      <div role="menu" aria-label={`Role for ${name}`}>
+        {ROLES.map((option) => (
+          <MenuRow key={option.value} role="menuitemradio" selected={option.label === role} onClick={pick(() => onRole(option.value))}>
+            {option.label}
+          </MenuRow>
+        ))}
+        <div className="mx-2.5 my-1.5 h-px bg-border" />
+        <MenuRow role="menuitem" onClick={pick(onRemove)}>Remove</MenuRow>
+      </div>
+    </Popover>
+  )
 }
 
 export function TeamMembersCard({ workspace }: { workspace: CloudWorkspaceSummary }) {
@@ -34,49 +68,30 @@ export function TeamMembersCard({ workspace }: { workspace: CloudWorkspaceSummar
   const currentEmail = (workspace.email || cloud.user?.email || '').toLowerCase()
 
   const membersQuery = useQuery(orgMembersQuery('', 200))
-  const [adding, setAdding] = useState(false)
   const [email, setEmail] = useState('')
-  const [displayName, setDisplayName] = useState('')
-  const [role, setRole] = useState<OrgMemberRole>('member')
   const [search, setSearch] = useState('')
 
   const invalidateMembers = () =>
     void queryClient.invalidateQueries({ queryKey: keys.cloudMembersRoot })
+  const onError = (err: Error) => toast(err.message, 'danger')
 
   const addMutation = useMutation({
-    mutationFn: () =>
-      createOrgMember({
-        email,
-        display_name: displayName || undefined,
-        role,
-      }),
-    onSuccess: (created) => {
-      invalidateMembers()
-      setEmail('')
-      setDisplayName('')
-      setRole('member')
-      setAdding(false)
-      toast(`Added ${created.display_name || created.email} to the team`)
-    },
-  })
-
-  const roleMutation = useMutation({
-    mutationFn: ({ id, nextRole }: { id: string; nextRole: OrgMemberRole }) =>
-      updateOrgMember(id, { role: nextRole }),
-    onSuccess: (updated) => {
-      invalidateMembers()
-      toast(`Updated ${updated.display_name || updated.email} to ${updated.role}`)
-    },
-    onError: (err: Error) => toast(err.message, 'danger'),
-  })
-
-  const removeMutation = useMutation({
-    mutationFn: (id: string) => deleteOrgMember(id),
+    mutationFn: () => createOrgMember({ email, role: 'member' }),
     onSuccess: () => {
       invalidateMembers()
-      toast('Team member removed')
+      setEmail('')
     },
-    onError: (err: Error) => toast(err.message, 'danger'),
+    onError,
+  })
+  const roleMutation = useMutation({
+    mutationFn: ({ id, role }: { id: string; role: OrgMemberRole }) => updateOrgMember(id, { role }),
+    onSuccess: invalidateMembers,
+    onError,
+  })
+  const removeMutation = useMutation({
+    mutationFn: deleteOrgMember,
+    onSuccess: invalidateMembers,
+    onError,
   })
 
   const allMembers = useMemo(() => membersQuery.data ?? [], [membersQuery.data])
@@ -89,205 +104,74 @@ export function TeamMembersCard({ workspace }: { workspace: CloudWorkspaceSummar
     )
 
   return (
-    <div className="space-y-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-[14px] font-semibold text-ink">Team members</h2>
-          <p className="text-[12px] text-ink-3">
-            {isAdmin
-              ? 'Add people to share boards and spaces. Pre-added members join automatically when they sign in.'
-              : 'Members of this workspace. Admins can add or manage team members.'}
-          </p>
-        </div>
-        {isAdmin ? (
-          <Button
-            size="sm"
-            variant={adding ? 'ghost' : 'secondary'}
-            onClick={() => {
-              setAdding((prev) => !prev)
-              addMutation.reset()
-            }}
-          >
-            {adding ? <X size={13} /> : <UserPlus size={13} />}
-            {adding ? 'Cancel' : 'Add member'}
-          </Button>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-[14px] font-semibold text-ink">Members</h2>
+        {allMembers.length > 5 ? (
+          <SearchField value={search} onChange={setSearch} placeholder="Search…" className="h-8 w-52" />
         ) : null}
       </div>
 
-      {adding && isAdmin ? (
-        <SettingsCard className="p-3">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              if (email.trim() && !addMutation.isPending) addMutation.mutate()
-            }}
-            className="space-y-3"
-          >
-            <div className="grid gap-2.5 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-[11.5px] font-medium text-ink-2">Email</span>
-                <Input
-                  type="email"
-                  autoFocus
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="teammate@company.com"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11.5px] font-medium text-ink-2">
-                  Name <span className="font-normal text-ink-3">(optional)</span>
-                </span>
-                <Input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Alex Rivera"
-                />
-              </label>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-[12px] text-ink-2">
-                <span>Role</span>
-                <select
-                  aria-label="New member role"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as OrgMemberRole)}
-                  className="h-7 cursor-pointer rounded-control bg-bg px-2 text-[12px] text-ink outline-none ring-1 ring-border/80"
-                >
-                  <option value="member">Member</option>
-                  <option value="admin">Admin</option>
-                  <option value="viewer">Viewer</option>
-                </select>
-              </label>
-              <div className="flex items-center gap-2">
-                {addMutation.isError ? (
-                  <p role="alert" className="text-[12px] text-danger">
-                    {(addMutation.error as Error).message}
-                  </p>
-                ) : null}
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="primary"
-                  disabled={!email.trim() || addMutation.isPending}
-                >
-                  {addMutation.isPending ? <LoaderCircle size={13} className="animate-spin" /> : null}
-                  Add to team
-                </Button>
-              </div>
-            </div>
-          </form>
-        </SettingsCard>
-      ) : null}
-
-      <SettingsCard className="overflow-hidden">
-        {allMembers.length > 5 ? (
-          <div className="border-b border-border px-3 py-2">
-            <Input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filter team members by name or email…"
-              aria-label="Filter team members"
-              className="h-8 text-[12.5px]"
-            />
-          </div>
-        ) : null}
-
-        {membersQuery.isPending ? (
-          <div className="flex items-center gap-2 px-3 py-3 text-[12.5px] text-ink-3">
-            <LoaderCircle size={13} className="animate-spin" />
-            Loading team members…
-          </div>
-        ) : membersQuery.isError ? (
-          <div className="px-3 py-3 text-[12.5px] text-danger" role="alert">
-            {(membersQuery.error as Error).message || 'Could not load team members.'}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="px-3 py-3 text-[12.5px] text-ink-3">
-            {search.trim() ? 'No matching team members.' : 'No team members yet.'}
-          </div>
-        ) : (
-          filtered.map((member) => {
+      {membersQuery.isPending ? null : membersQuery.isError ? (
+        <p role="alert" className="text-[13px] text-danger">{membersQuery.error.message || 'Could not load members.'}</p>
+      ) : (
+        <SettingsCard className="overflow-hidden">
+          {filtered.map((member) => {
             const self = isSelf(member)
-            const primary = member.display_name || member.email
-            const showEmail = member.display_name && member.display_name !== member.email
-            const roleValue = (
-              member.role === 'admin' || member.role === 'viewer' ? member.role : 'member'
-            ) as OrgMemberRole
+            const name = member.display_name || member.email
+            const role = ROLES.find((option) => option.value === member.role)?.label ?? 'Member'
+            const detail = [member.display_name && member.display_name !== member.email ? member.email : '', member.status === 'invited' ? 'Invited' : '']
+              .filter(Boolean)
+              .join(' · ')
             return (
-              <div
-                key={member.id}
-                className="flex items-center justify-between gap-3 border-t border-border px-3 py-2.5 first:border-t-0"
-              >
+              <div key={member.id} className="flex items-center gap-3 border-t border-border px-3.5 py-2.5 first:border-t-0">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <p className="truncate text-[13px] font-medium text-ink">{primary}</p>
-                    {self ? (
-                      <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-ink-3">
-                        You
-                      </span>
-                    ) : null}
-                    {member.status === 'invited' ? (
-                      <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-ink-3">
-                        Pending sign-in
-                      </span>
-                    ) : null}
-                  </div>
-                  {showEmail ? (
-                    <p className="truncate text-[12px] text-ink-3">{member.email}</p>
-                  ) : null}
+                  <p className="truncate text-[13.5px] font-medium text-ink">
+                    {name}
+                    {self ? <span className="font-normal text-ink-3"> (you)</span> : null}
+                  </p>
+                  {detail ? <p className="truncate text-[12px] text-ink-3">{detail}</p> : null}
                 </div>
-
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {isAdmin && !self ? (
-                    <>
-                      <select
-                        aria-label={`Role for ${primary}`}
-                        value={roleValue}
-                        disabled={roleMutation.isPending && roleMutation.variables?.id === member.id}
-                        onChange={(e) =>
-                          roleMutation.mutate({
-                            id: member.id,
-                            nextRole: e.target.value as OrgMemberRole,
-                          })
-                        }
-                        className="h-7 cursor-pointer rounded-control bg-bg px-2 text-[12px] text-ink-2 outline-none ring-1 ring-border/70"
-                      >
-                        <option value="member">Member</option>
-                        <option value="admin">Admin</option>
-                        <option value="viewer">Viewer</option>
-                      </select>
-                      <IconButton
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Remove ${primary}`}
-                        title="Remove from team"
-                        disabled={removeMutation.isPending && removeMutation.variables === member.id}
-                        onClick={() => {
-                          if (
-                            confirm(`Remove ${primary} (${member.email}) from this workspace?`)
-                          ) {
-                            removeMutation.mutate(member.id)
-                          }
-                        }}
-                      >
-                        <Trash2 size={13} />
-                      </IconButton>
-                    </>
-                  ) : (
-                    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11.5px] font-medium text-ink-2">
-                      {ROLE_LABELS[roleValue] ?? member.role}
-                    </span>
-                  )}
-                </div>
+                {isAdmin && !self ? (
+                  <RoleMenu
+                    name={name}
+                    role={role}
+                    disabled={roleMutation.isPending || removeMutation.isPending}
+                    onRole={(next) => roleMutation.mutate({ id: member.id, role: next })}
+                    onRemove={() => {
+                      if (confirm(`Remove ${name} (${member.email}) from this workspace?`)) removeMutation.mutate(member.id)
+                    }}
+                  />
+                ) : (
+                  <span className="px-2.5 text-[12px] font-medium text-ink-3">{role}</span>
+                )}
               </div>
             )
-          })
-        )}
-      </SettingsCard>
+          })}
+          {isAdmin ? (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                addMutation.mutate()
+              }}
+              className="flex items-center gap-2 border-t border-border px-3.5 py-2.5 first:border-t-0"
+            >
+              <Input
+                type="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="Add by email"
+                aria-label="Add a member by email"
+                className="bg-transparent px-0 py-1 ring-0 focus:ring-0"
+              />
+              {email.trim() ? (
+                <Button type="submit" size="sm" variant="primary" disabled={addMutation.isPending}>Add</Button>
+              ) : null}
+            </form>
+          ) : null}
+        </SettingsCard>
+      )}
     </div>
   )
 }

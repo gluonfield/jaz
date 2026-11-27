@@ -1,41 +1,41 @@
-import { LoaderCircle, Plus, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { AddCloudWorkspaceModal } from '@/components/connection/AddCloudWorkspaceModal'
-import { SettingsCard, SettingsRow } from '@/components/settings/SettingsCard'
 import { TeamMembersCard } from '@/components/settings/TeamMembersCard'
+import { WorkspaceMark } from '@/components/sidebar/SidebarWorkspaceSwitcher'
+import { ActionMenu } from '@/components/ui/ActionMenu'
 import { Button } from '@/components/ui/Button'
-import { IconButton } from '@/components/ui/IconButton'
 import { useToast } from '@/components/ui/toast'
 import { attachCloudSignIn, signOutCloudAccount, syncCloudAccount } from '@/lib/cloudAccount'
 import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
 import { activeCloudWorkspace, workspaceDisplayName } from '@/lib/cloudWorkspaceDisplay'
 import { disconnectBackend } from '@/lib/connection'
 
-type Action = 'sync' | 'sign-in' | 'sign-out'
+function host(url: string): string {
+  return URL.parse(url)?.host ?? url
+}
 
-// The workspace the user is in. Switching lives in the sidebar's workspace
-// switcher, so this page never lists the others.
+// The workspace the user is in. Switching lives in the workspace switcher, so
+// this page never lists the others.
 export function CloudSettings() {
   const cloud = useCloudSession()
   const isPrimaryOnly = useIsCloudOnly()
   const toast = useToast()
   const [adding, setAdding] = useState(false)
-  const [running, setRunning] = useState<Action | null>(null)
+  const [running, setRunning] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const workspace = activeCloudWorkspace(cloud)
-  const syncedAt = workspace?.last_sync_at || cloud.lastSyncAt
   const error = actionError || workspace?.last_error || (workspace ? cloud.error : null)
 
-  const run = async (action: Action, task: () => Promise<string | null | void>) => {
-    setRunning(action)
+  const run = async (task: () => Promise<string | null | void>) => {
+    setRunning(true)
     setActionError(null)
     try {
       setActionError((await task()) || null)
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : 'Something went wrong')
     } finally {
-      setRunning(null)
+      setRunning(false)
     }
   }
 
@@ -45,95 +45,48 @@ export function CloudSettings() {
       disconnectBackend()
       return
     }
-    void run('sign-out', async () => {
+    void run(async () => {
       await signOutCloudAccount(workspace.id)
       toast(`Signed out of ${workspaceDisplayName(workspace)}`)
     })
   }
 
   return (
-    <section className="flex flex-col gap-5 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-ink">Workspace</h1>
+    <section className="flex flex-col gap-7 py-4">
+      <header className="flex items-center gap-3">
+        <WorkspaceMark workspace={workspace} className="size-10 rounded-[11px] text-[17px]" />
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-lg font-semibold text-ink">{workspace ? workspaceDisplayName(workspace) : 'Local'}</h1>
+          <p className="truncate text-[13px] text-ink-3">
+            {workspace ? [workspace.email, host(workspace.url)].filter(Boolean).join(' · ') : 'Stored on this computer'}
+          </p>
+        </div>
+        {workspace ? (
+          <ActionMenu
+            label="Workspace actions"
+            actions={[
+              ...(isPrimaryOnly ? [] : [
+                { label: 'Sync now', onSelect: () => void run(syncCloudAccount) },
+                { label: 'Add Cloud Workspace', onSelect: () => setAdding(true) },
+              ]),
+              { label: 'Sign out', onSelect: signOut },
+            ]}
+          />
+        ) : isPrimaryOnly ? null : (
+          <Button variant="primary" onClick={() => setAdding(true)}>Add Cloud Workspace</Button>
+        )}
+      </header>
+
+      {workspace && error ? (
+        <div className="flex items-center justify-between gap-3">
+          <p role="alert" className="min-w-0 text-[13px] text-danger">{error}</p>
           {isPrimaryOnly ? null : (
-            <p className="mt-0.5 text-[13px] text-ink-2">
-              {cloud.workspaces.length > 0
-                ? 'Switch workspaces from the top of the sidebar.'
-                : 'Add a Jaz Cloud workspace to run threads in the cloud.'}
-            </p>
+            <Button size="sm" disabled={running} onClick={() => void run(() => attachCloudSignIn(workspace.url, workspace.oidc_login_url))}>
+              Sign in
+            </Button>
           )}
         </div>
-        {isPrimaryOnly ? null : (
-          <Button size="sm" onClick={() => setAdding(true)}>
-            <Plus size={13} />
-            Add Cloud Workspace
-          </Button>
-        )}
-      </div>
-
-      {workspace ? (
-        <SettingsCard className="overflow-hidden">
-          <SettingsRow
-            title={workspaceDisplayName(workspace)}
-            description={[...new Set([workspace.display_name, workspace.email].filter(Boolean))].join(' · ') || undefined}
-          >
-            <Button size="sm" disabled={running !== null} onClick={signOut}>
-              {running === 'sign-out' ? <LoaderCircle size={13} className="animate-spin" /> : null}
-              Sign out
-            </Button>
-          </SettingsRow>
-          <SettingsRow
-            title="Server"
-            description={
-              syncedAt
-                ? `Synced ${new Date(syncedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`
-                : undefined
-            }
-          >
-            <div className="flex min-w-0 items-center gap-1">
-              <span className="min-w-0 truncate font-mono text-[12px] text-ink-2 select-all">{workspace.url}</span>
-              {isPrimaryOnly ? null : (
-                <IconButton
-                  variant="ghost"
-                  size="sm"
-                  aria-label="Sync now"
-                  title="Sync now"
-                  disabled={running !== null}
-                  onClick={() => void run('sync', syncCloudAccount)}
-                >
-                  <RefreshCw size={13} className={running === 'sync' ? 'animate-spin' : ''} />
-                </IconButton>
-              )}
-            </div>
-          </SettingsRow>
-          {error ? (
-            <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-2.5">
-              <p role="alert" className="min-w-0 text-[12px] text-danger">
-                {error}
-              </p>
-              {isPrimaryOnly ? null : (
-                <Button
-                  size="sm"
-                  disabled={running !== null}
-                  onClick={() =>
-                    void run('sign-in', () => attachCloudSignIn(workspace.url, workspace.oidc_login_url))
-                  }
-                >
-                  {running === 'sign-in' ? <LoaderCircle size={13} className="animate-spin" /> : null}
-                  Sign in
-                </Button>
-              )}
-            </div>
-          ) : null}
-        </SettingsCard>
-      ) : isPrimaryOnly ? null : (
-        <SettingsCard>
-          <SettingsRow title="Local" description="Threads and settings are stored on this computer.">
-            {null}
-          </SettingsRow>
-        </SettingsCard>
-      )}
+      ) : null}
 
       {workspace ? <TeamMembersCard workspace={workspace} /> : null}
 

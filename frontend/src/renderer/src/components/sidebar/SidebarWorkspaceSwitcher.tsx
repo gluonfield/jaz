@@ -24,7 +24,7 @@ const RAIL = {
 }
 
 // A Cloud workspace shows its org icon, or its initial; Local shows the device.
-function WorkspaceMark({
+export function WorkspaceMark({
   workspace,
   className = 'size-6 rounded-[7px] text-[12px]',
 }: {
