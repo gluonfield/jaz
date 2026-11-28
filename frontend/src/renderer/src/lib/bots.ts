@@ -41,11 +41,10 @@ export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'thinking' | 'work
 
 // The groups a bot's tasks are listed under, in the order they show.
 export const TASK_GROUPS = ['Waiting for you', 'In progress', 'Queued', 'Done', 'Stopped'] as const
-export type TaskGroup = (typeof TASK_GROUPS)[number]
 
 // A task's state in a few words and the group it is listed under; `detail`
 // marks a state that says more than its group's name does.
-export type TaskState = [label: string, group: TaskGroup, detail?: true]
+export type TaskState = [label: string, group: (typeof TASK_GROUPS)[number], detail?: true]
 
 export function taskState(task: Pick<BotOwed, 'status' | 'moving' | 'blocked' | 'stalled' | 'threads'>): TaskState {
   if (task.status === 'completed') return ['Done', 'Done']

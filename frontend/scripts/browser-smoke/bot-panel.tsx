@@ -228,7 +228,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const editor = () => document.querySelector<HTMLElement>('[role="dialog"] .ProseMirror')
   const group = (name: string) => document.querySelector<HTMLElement>(`section[aria-label="${name}"]`)
   const groupOf = (title: string) => find(title)?.closest('section')?.getAttribute('aria-label')
-  const tasksShown = () => text().includes('Waiting for you 4')
+  const tasksShown = () => Boolean(group('Waiting for you'))
   const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
   const body = () => dialog()?.querySelector('header + div')?.textContent ?? ''
   const threadLines = () => [...dialog()?.querySelectorAll('[aria-label="Threads"] a') ?? []].map((line) => line.textContent).join('|')

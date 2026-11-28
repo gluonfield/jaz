@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotOwed, BotOwedThread, BotThreadActivity } from '@/lib/api/types'
 import { type ConnectedTaskThread, TASK_GROUPS, connectedTaskThreads, taskName, taskState } from '@/lib/bots'
-import { clockTime, formatDuration, shortDate } from '@/lib/format/time'
+import { clockTime, formatDuration, isToday, shortDate } from '@/lib/format/time'
 
 const EMPTY_OWED: BotOwed[] = []
 const EMPTY_ITEMS: BotActivity[] = []
@@ -29,8 +29,8 @@ export function BotActivity({ bot }: { bot: Bot }) {
   if (activity.isError && !activity.data) {
     return <p role="alert" className="text-[13px] text-danger">Couldn’t load activity.</p>
   }
-  const tasks: TaskRow[] = [...owed.map((task) => ({ task })), ...items.flatMap((item) => item.kind === 'task' ? [item] : [])]
-  const days = groupByDay(items.flatMap((item) => item.kind === 'task' ? [] : [item]), now)
+  const tasks: TaskRow[] = [...owed.map((task) => ({ task })), ...items.filter((item) => item.kind === 'task')]
+  const days = groupByDay(items.filter((item) => item.kind !== 'task'), now)
   const task = tasks.find((row) => row.task.id === shown)?.task
   if (!tasks.length && !days.length) {
     return <p className="text-[13px] text-ink-3">No tasks yet.</p>
@@ -77,7 +77,6 @@ export function BotActivity({ bot }: { bot: Bot }) {
 
 const HEADING = 'mb-1 text-[12px] font-medium'
 const ROW = '-mx-2 flex min-w-0 rounded-lg px-2 text-left text-[13px] transition-colors duration-150 hover:bg-list-hover'
-const LINE = `${ROW} h-8 items-center gap-1.5`
 
 // A task and, once it has closed, when.
 type TaskRow = { task: BotOwed; at?: string }
@@ -199,29 +198,17 @@ function ThreadLink({ line, depth = 0, onClick }: { line: ThreadLine; depth?: nu
       title={line.hint || line.title}
       onClick={onClick}
       style={indent ? { paddingLeft: `${8 + indent}px` } : undefined}
-      className={LINE}
+      className={`${ROW} h-8 items-center gap-1.5`}
     >
       {depth > 0 ? <CornerDownRight size={12} aria-hidden className="shrink-0 text-ink-3" /> : null}
-      <Line title={line.title} state={line.state} tone={line.tone} />
+      <span className="min-w-0 flex-1 truncate text-ink">{line.title}</span>
+      {line.state ? <span className={`shrink-0 text-[12px] tabular-nums ${line.tone ? TONES[line.tone] : 'text-ink-3'}`}>{line.state}</span> : null}
     </Link>
   )
 }
 
 const TONES = { running: 'text-running', danger: 'text-danger' }
 type Tone = keyof typeof TONES
-
-function Line({ title, state, tone }: { title: string; state?: string; tone?: Tone }) {
-  return (
-    <>
-      <span className="min-w-0 flex-1 truncate text-ink">{title}</span>
-      {state ? <span className={`shrink-0 text-[12px] tabular-nums ${tone ? TONES[tone] : 'text-ink-3'}`}>{state}</span> : null}
-    </>
-  )
-}
-
-function isToday(iso: string, now: number): boolean {
-  return new Date(iso).toDateString() === new Date(now).toDateString()
-}
 
 function groupByDay(items: BotThreadActivity[], now: number): [string, BotThreadActivity[]][] {
   const days = new Map<string, BotThreadActivity[]>()
