@@ -423,7 +423,7 @@ export function WidgetTile({
                 }
               >
                 {layer.app ? (
-                  <AppRenderer app={layer.app} version={layer.version} onReady={() => onLayerReady(layer)} />
+                  <AppRenderer app={layer.app} version={layer.version} fill onReady={() => onLayerReady(layer)} />
                 ) : (
                   <LegacyWidgetFrame
                     widgetId={item.widget_id}

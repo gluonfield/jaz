@@ -46,7 +46,7 @@ const result = {
   svg: render(fence('```', '<svg viewBox="0 0 100 40"><text x="4" y="20">Diagram</text></svg>')),
   plain: ['html', 'svg', 'text'].map((language) => render('```' + language + '\n' + code + '\n```')),
   outside: render(fence('```'), MessageMarkdown),
-  contextless: render(fence('```'), RenderedMarkdown, {}, ''),
+  published: render(fence('```'), RenderedMarkdown, {}, ''),
   preview: render(fence('~~~'), RenderedMarkdown, { artifactPreview: true }),
   card: render('/work/report.md', MessageMarkdown),
   hidden: renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(FileReaderPanel, {

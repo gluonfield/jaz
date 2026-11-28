@@ -437,7 +437,8 @@ createRoot(document.getElementById('root')).render(React.createElement(module.ex
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}"><style>${artifactCSS(theme)} html,body,#root{height:100%}${canvasCSS}</style><script>${bridgeScript}${canvasBridgeScript}${dataScript(data)}</script><script type="importmap">${JSON.stringify({ imports })}</script></head><body><div id="root"></div><script type="module">${main}</script></body></html>`
 }
 
-function isFullHTMLDocument(code: string): boolean {
+// A full document lays out its own page; a fragment is laid out by its host.
+export function isFullHTMLDocument(code: string): boolean {
   const head = code.trimStart().slice(0, 64).toLowerCase()
   return head.startsWith('<!doctype') || head.startsWith('<html')
 }

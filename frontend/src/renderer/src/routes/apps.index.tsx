@@ -35,7 +35,7 @@ export const Route = createFileRoute('/apps/')({
   component: AppsLibraryPage,
 })
 
-type AppsTab = 'mine' | 'routines' | 'team' | 'desktop' | 'connected'
+type AppsTab = 'mine' | 'team' | 'desktop' | 'connected'
 type KindFilter = 'all' | AppKind
 
 const KINDS: { value: KindFilter; label: string }[] = [
@@ -46,7 +46,6 @@ const KINDS: { value: KindFilter; label: string }[] = [
 
 const EMPTY: Record<AppsTab, { title: string; text: string }> = {
   mine: { title: 'No apps yet', text: 'Publish an artifact or document from a chat and it lives here.' },
-  routines: { title: 'No routine apps', text: 'A routine on a board publishes its app here on every run.' },
   team: { title: 'Nothing shared yet', text: 'Apps shared with your team or a space appear here.' },
   desktop: { title: 'No desktop apps', text: 'Install any app to give it its own window.' },
   connected: { title: 'No connected apps', text: 'Apps from your connected MCP servers appear here.' },
@@ -135,8 +134,7 @@ function AppsLibraryPage() {
   const needle = search.trim().toLowerCase()
   const apps = useMemo(() => {
     const published = allApps.data ?? []
-    const list = tab === 'mine' ? published.filter((app) => app.is_owner !== false && !app.loop_id)
-      : tab === 'routines' ? published.filter((app) => app.loop_id)
+    const list = tab === 'mine' ? published.filter((app) => app.is_owner !== false)
       : tab === 'team' ? published.filter((app) => app.visibility !== 'private')
         : tab === 'desktop' ? (desktopInstalled.data ?? []).map((installed) => published.find((app) => app.id === installed.appId) ?? installedAsApp(installed))
           : []
@@ -147,7 +145,6 @@ function AppsLibraryPage() {
 
   const tabs = [
     { value: 'mine' as const, label: 'Yours' },
-    ...(allApps.data?.some((app) => app.loop_id) ? [{ value: 'routines' as const, label: 'Routines' }] : []),
     ...(cloud.active ? [{ value: 'team' as const, label: 'Shared' }] : []),
     ...(isDesktop ? [{ value: 'desktop' as const, label: 'Installed' }] : []),
     { value: 'connected' as const, label: 'Connected' },
@@ -160,7 +157,7 @@ function AppsLibraryPage() {
     ] : isDesktop ? [
       { label: 'Install as desktop app', onSelect: () => setPermTarget({ app, installed: null }) },
     ] : []),
-    { label: 'Share', onSelect: () => setShareApp(app) },
+    { label: cloud.active ? 'Share' : 'Manage', onSelect: () => setShareApp(app) },
     ...(isViewer ? [] : [{ label: 'Remix in a new chat', onSelect: () => remixMutation.mutate(app.id) }]),
     ...(installed ? [{ label: 'Uninstall', onSelect: () => uninstallDesktopMutation.mutate(app.id) }] : []),
     ...(!isViewer && app.can_edit !== false ? [{

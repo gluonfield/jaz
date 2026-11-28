@@ -18,7 +18,7 @@ import {
   remixApp,
 } from '@/lib/api/apps'
 import { clientRuntime } from '@/lib/clientRuntime'
-import { useIsCloudViewer } from '@/lib/cloudSession'
+import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import type { InstalledDesktopApp } from '@shared/desktopApps'
 
@@ -31,6 +31,7 @@ function AppDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useToast()
+  const cloud = useCloudSession()
   const isViewer = useIsCloudViewer()
   const isStandaloneWindow = clientRuntime.windowKind === 'app'
   const isDesktop = clientRuntime.kind === 'electron' && Boolean(clientRuntime.desktopApps)
@@ -156,14 +157,13 @@ function AppDetailPage() {
             <Pin size={14} />
           </IconButton>
         ) : null}
-        <Button size="sm" onClick={() => setShareOpen(true)}>Share</Button>
+        <Button size="sm" onClick={() => setShareOpen(true)}>{cloud.active ? 'Share' : 'Manage'}</Button>
         {actions.length ? <ActionMenu label="More actions" actions={actions} /> : null}
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">
         <AppRenderer
           app={app}
-          fillHeight
           desktopPermissions={installed?.permissions}
           desktopPermissionsPaused={installed?.permissionsPaused ?? false}
         />

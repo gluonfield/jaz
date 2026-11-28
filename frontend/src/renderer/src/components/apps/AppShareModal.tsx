@@ -18,6 +18,13 @@ import { spacesQuery } from '@/lib/api/cloudSpaces'
 import { useCloudSession } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
+const VISIBILITY_OPTIONS: { id: AppVisibility; label: string; Icon: typeof Lock }[] = [
+  { id: 'private', label: 'Private', Icon: Lock },
+  { id: 'selected', label: 'Selected', Icon: UserCheck },
+  { id: 'space', label: 'Space', Icon: Folder },
+  { id: 'team', label: 'Team (Org)', Icon: Users },
+]
+
 export function AppShareModal({
   open,
   onClose,
@@ -88,22 +95,15 @@ export function AppShareModal({
     },
   })
 
-  const visibilityOptions: { id: AppVisibility; label: string; Icon: typeof Lock }[] = isCloud
-    ? [
-        { id: 'private', label: 'Private', Icon: Lock },
-        { id: 'selected', label: 'Selected', Icon: UserCheck },
-        { id: 'space', label: 'Space', Icon: Folder },
-        { id: 'team', label: 'Team (Org)', Icon: Users },
-      ]
-    : [{ id: 'private', label: 'Private (Local)', Icon: Lock }]
-
   return (
     <Modal
       open={open}
       onClose={onClose}
       size="md"
-      title={`Share & Manage · ${app.title}`}
-      description="Control authenticated Org/Space/Selected/Private access, pin to Boards, or roll back immutable versions."
+      title={`${isCloud ? 'Share & Manage' : 'Manage'} · ${app.title}`}
+      description={isCloud
+        ? 'Control authenticated Org/Space/Selected/Private access, pin to Boards, or roll back immutable versions.'
+        : 'Rename, pin to Boards, or roll back immutable versions.'}
       footer={
         <>
           <div className="min-w-0 truncate text-[12px] text-danger">
@@ -139,62 +139,64 @@ export function AppShareModal({
           </div>
         </div>
 
-        <div>
-          <label className="mb-1.5 block text-[12px] font-medium text-ink-2">Access</label>
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-            {visibilityOptions.map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                type="button"
-                disabled={app.can_edit === false}
-                onClick={() => setVisibility(id)}
-                className={`flex cursor-pointer items-center gap-1.5 rounded-control border px-2.5 py-2 text-[12px] font-medium ${
-                  visibility === id
-                    ? 'border-primary bg-primary-soft text-ink'
-                    : 'border-border bg-bg text-ink-2 hover:bg-surface'
-                }`}
-              >
-                <Icon size={13} />
-                <span className="truncate">{label}</span>
-              </button>
-            ))}
-          </div>
-
-          {isCloud && visibility === 'space' ? (
-            <select
-              value={spaceId}
-              disabled={app.can_edit === false}
-              onChange={(e) => setSpaceId(e.target.value)}
-              className="mt-2 w-full rounded-control border border-border bg-bg px-2.5 py-1.5 text-[12.5px] text-ink"
-            >
-              <option value="">Select a Space…</option>
-              {(spaces.data ?? []).map((sp) => (
-                <option key={sp.id} value={sp.id}>{sp.name}</option>
-              ))}
-            </select>
-          ) : null}
-
-          {isCloud && visibility === 'selected' ? (
-            <div className="mt-2 max-h-28 space-y-1 overflow-y-auto rounded-control border border-border bg-surface p-2">
-              {(members.data ?? []).map((m) => (
-                <label key={m.id} className="flex cursor-pointer items-center gap-2 text-[12px]">
-                  <input
-                    type="checkbox"
-                    disabled={app.can_edit === false}
-                    checked={memberIds.includes(m.id)}
-                    onChange={() =>
-                      setMemberIds((cur) =>
-                        cur.includes(m.id) ? cur.filter((id) => id !== m.id) : [...cur, m.id],
-                      )
-                    }
-                    className="accent-primary"
-                  />
-                  <span className="truncate font-medium text-ink">{m.display_name || m.email}</span>
-                </label>
+        {isCloud ? (
+          <div>
+            <label className="mb-1.5 block text-[12px] font-medium text-ink-2">Access</label>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              {VISIBILITY_OPTIONS.map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={app.can_edit === false}
+                  onClick={() => setVisibility(id)}
+                  className={`flex cursor-pointer items-center gap-1.5 rounded-control border px-2.5 py-2 text-[12px] font-medium ${
+                    visibility === id
+                      ? 'border-primary bg-primary-soft text-ink'
+                      : 'border-border bg-bg text-ink-2 hover:bg-surface'
+                  }`}
+                >
+                  <Icon size={13} />
+                  <span className="truncate">{label}</span>
+                </button>
               ))}
             </div>
-          ) : null}
-        </div>
+
+            {visibility === 'space' ? (
+              <select
+                value={spaceId}
+                disabled={app.can_edit === false}
+                onChange={(e) => setSpaceId(e.target.value)}
+                className="mt-2 w-full rounded-control border border-border bg-bg px-2.5 py-1.5 text-[12.5px] text-ink"
+              >
+                <option value="">Select a Space…</option>
+                {(spaces.data ?? []).map((sp) => (
+                  <option key={sp.id} value={sp.id}>{sp.name}</option>
+                ))}
+              </select>
+            ) : null}
+
+            {visibility === 'selected' ? (
+              <div className="mt-2 max-h-28 space-y-1 overflow-y-auto rounded-control border border-border bg-surface p-2">
+                {(members.data ?? []).map((m) => (
+                  <label key={m.id} className="flex cursor-pointer items-center gap-2 text-[12px]">
+                    <input
+                      type="checkbox"
+                      disabled={app.can_edit === false}
+                      checked={memberIds.includes(m.id)}
+                      onChange={() =>
+                        setMemberIds((cur) =>
+                          cur.includes(m.id) ? cur.filter((id) => id !== m.id) : [...cur, m.id],
+                        )
+                      }
+                      className="accent-primary"
+                    />
+                    <span className="truncate font-medium text-ink">{m.display_name || m.email}</span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="rounded-control border border-border bg-surface p-3">
           <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-ink">

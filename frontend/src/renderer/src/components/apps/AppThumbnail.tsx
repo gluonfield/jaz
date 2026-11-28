@@ -64,7 +64,7 @@ export function AppThumbnail({ app }: { app: JazApp }) {
           >
             {markdown ? (
               <div className="px-10 pt-8">
-                <RenderedMarkdown text={preview.data.content.slice(0, 4000)} className="file-prose" />
+                <RenderedMarkdown text={preview.data.content.slice(0, 4000)} className="file-prose" artifactPreview />
               </div>
             ) : (
               <iframe

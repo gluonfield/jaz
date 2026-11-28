@@ -24,7 +24,7 @@ import { remarkMathDelimiters } from '@/lib/markdownMath'
 import { remarkHeadingAnchors, remarkMarkdownDocuments } from '@/lib/markdownDocuments'
 import { MarkdownDocumentCard } from '@/components/session/MarkdownDocumentCard'
 import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
-import { findFileReferences, isMarkdownPath, parseFileReference, resolveFileLink } from '@shared/fileReader'
+import { findFileReferences, parseFileReference, resolveFileLink } from '@shared/fileReader'
 import { FileReaderLinkProvider, useFileLinks } from '@/lib/fileLinks'
 export { FileReaderLinkProvider } from '@/lib/fileLinks'
 import { CodeBlock } from './CodeBlock'
@@ -354,6 +354,8 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
   }
 }
 
+// A Markdown document, wherever it is read: a file, a document card or a
+// published app. Its jaz-artifact fences run, or stand as titles in a preview.
 export const RenderedMarkdown = memo(function RenderedMarkdown({
   text,
   className = 'chat-prose',
@@ -363,12 +365,11 @@ export const RenderedMarkdown = memo(function RenderedMarkdown({
   className?: string
   artifactPreview?: boolean
 }) {
-  const files = useFileLinks()
   const artifacts = useContext(MarkdownArtifactContext)
   const scope = useMemo(() => ({
-    mode: files?.documentPath && isMarkdownPath(files.documentPath) ? artifactPreview ? 'preview' as const : 'live' as const : 'source' as const,
+    mode: artifactPreview ? 'preview' as const : 'live' as const,
     onSendPrompt: artifacts.onSendPrompt,
-  }), [artifactPreview, artifacts.onSendPrompt, files?.documentPath])
+  }), [artifactPreview, artifacts.onSendPrompt])
   return <MarkdownArtifactContext value={scope}><BaseMarkdown text={text} className={className} Link={PlainMarkdownLink} /></MarkdownArtifactContext>
 })
 

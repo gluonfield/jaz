@@ -1,5 +1,6 @@
 import { AlertTriangle, LoaderCircle } from 'lucide-react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
 import { RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -40,12 +41,16 @@ function isSafeExternalLink(href: string): boolean {
     return false
   }
 }
-import { artifactErrorForDisplay } from '@/lib/artifacts'
+import { artifactErrorForDisplay, isFullHTMLDocument } from '@/lib/artifacts'
 import { clientRuntime, openExternal } from '@/lib/clientRuntime'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
 import type { DesktopAppPermission } from '@shared/desktopApps'
 
 const SHARED_WRITE_ACK_PREFIX = 'jaz.app.sharedWriteAck.'
+
+// A published app may be another author's: its document's artifacts must not
+// prompt the thread it is opened beside.
+const NO_THREAD = { mode: 'source' as const }
 
 function hasSharedWriteAck(appId: string): boolean {
   try {
@@ -66,7 +71,7 @@ function recordSharedWriteAck(appId: string): void {
 export function AppRenderer({
   app,
   version,
-  fillHeight = true,
+  fill = false,
   desktopPermissions,
   desktopPermissionsPaused = false,
   className = '',
@@ -74,7 +79,10 @@ export function AppRenderer({
 }: {
   app: JazApp
   version?: number
-  fillHeight?: boolean
+  // A board tile stretches the app over its cell. Opened, an app is a page: a
+  // full HTML document takes all of it and frames itself, and a fragment or a
+  // document sits in a centred column at its own height, as inline in a chat.
+  fill?: boolean
   desktopPermissions?: DesktopAppPermission[]
   desktopPermissionsPaused?: boolean
   className?: string
@@ -141,6 +149,8 @@ export function AppRenderer({
   const isMarkdownEntry =
     app.kind === 'document' && /\.(md|markdown)$/i.test(ticket?.entry_path ?? app.entry_path ?? '')
 
+  const fills = !isMarkdownEntry && (fill || (content !== null && isFullHTMLDocument(content)))
+
   const sandboxDoc = useMemo(() => {
     if (isMarkdownEntry || content === null) return ''
     return buildAppSandboxDocument(
@@ -149,9 +159,9 @@ export function AppRenderer({
       themeCSS,
       app.capabilities ?? [],
       app.allowed_tools ?? [],
-      { measureLayout: fillHeight },
+      { measureLayout: fill },
     )
-  }, [app.allowed_tools, app.capabilities, app.title, content, fillHeight, isMarkdownEntry, themeCSS])
+  }, [app.allowed_tools, app.capabilities, app.title, content, fill, isMarkdownEntry, themeCSS])
 
   useEffect(() => {
     if (!ticket || isMarkdownEntry) return
@@ -161,7 +171,7 @@ export function AppRenderer({
       const data = event.data as Record<string, unknown> | null
       if (!data || typeof data !== 'object') return
 
-      if (data.type === 'jaz:artifact-height' && typeof data.height === 'number' && !fillHeight) {
+      if (data.type === 'jaz:artifact-height' && typeof data.height === 'number' && !fills) {
         if (Number.isFinite(data.height)) setHeight(Math.max(200, Math.ceil(data.height)))
         return
       }
@@ -212,7 +222,7 @@ export function AppRenderer({
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [app, confirmSharedWrite, desktopPermissions, desktopPermissionsPaused, fillHeight, isMarkdownEntry, ticket])
+  }, [app, confirmSharedWrite, desktopPermissions, desktopPermissionsPaused, fills, isMarkdownEntry, ticket])
 
   const shownWithoutFrame = !loading && (isMarkdownEntry || Boolean(error))
   const ready = useEffectEvent(() => onReady?.())
@@ -237,8 +247,21 @@ export function AppRenderer({
     )
   }
 
+  const frame = (
+    <iframe
+      ref={iframeRef}
+      title={app.title}
+      sandbox="allow-scripts allow-forms"
+      referrerPolicy="no-referrer"
+      srcDoc={sandboxDoc}
+      onLoad={onReady}
+      style={fills ? undefined : { height }}
+      className={`block w-full border-0 bg-transparent ${fills ? 'h-full min-h-0 flex-1' : ''}`}
+    />
+  )
+
   return (
-    <div className={`relative flex flex-col ${fillHeight ? 'h-full min-h-0 flex-1' : 'w-full'} ${className}`}>
+    <div className={`relative flex h-full min-h-0 flex-1 flex-col ${className}`}>
       {runtimeError ? (
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-danger-soft px-3 py-1.5 text-[12px] text-danger">
           <span className="truncate font-mono">{runtimeError}</span>
@@ -252,23 +275,16 @@ export function AppRenderer({
         </div>
       ) : null}
 
-      {isMarkdownEntry ? (
-        <div className="scrollbar-quiet min-h-0 flex-1 overflow-auto bg-bg px-6 py-5">
-          <div className="mx-auto max-w-[780px]">
-            <RenderedMarkdown text={content ?? ''} className="file-prose" />
+      {fills ? frame : (
+        <div className="scrollbar-quiet @container min-h-0 flex-1 overflow-auto bg-bg">
+          <div className={`mx-auto box-content px-5 py-6 @3xl:px-10 @3xl:py-9 ${isMarkdownEntry ? 'max-w-[780px]' : 'max-w-[880px]'}`}>
+            {isMarkdownEntry ? (
+              <MarkdownArtifactContext value={NO_THREAD}>
+                <RenderedMarkdown text={content ?? ''} className="file-prose" />
+              </MarkdownArtifactContext>
+            ) : frame}
           </div>
         </div>
-      ) : (
-        <iframe
-          ref={iframeRef}
-          title={app.title}
-          sandbox="allow-scripts allow-forms"
-          referrerPolicy="no-referrer"
-          srcDoc={sandboxDoc}
-          onLoad={onReady}
-          style={fillHeight ? undefined : { height }}
-          className={`block w-full border-0 bg-transparent ${fillHeight ? 'h-full min-h-0 flex-1' : ''}`}
-        />
       )}
 
       <Modal
