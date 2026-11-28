@@ -1,10 +1,10 @@
 import { createSession, type CreateSessionInput } from '@/lib/api/sessions'
 import { userInputMessageBlocks } from '@/lib/messageBlocks'
-import type { OptimisticUserMessage } from '@/lib/optimisticUserMessage'
+import type { PendingUserMessage } from '@/lib/outbox'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { appendSessionPrompt } from '@/lib/sessionPrompt'
 
-export interface InitialSessionPrompt extends OptimisticUserMessage {
+export interface InitialSessionPrompt extends PendingUserMessage {
   sessionId: string
 }
 

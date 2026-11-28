@@ -596,6 +596,13 @@ img.chat-prose-link-icon {
   }
 }
 
+/* A send still waiting on the server says so only after a beat. */
+@keyframes delivery-wait {
+  from {
+    opacity: 0;
+  }
+}
+
 @keyframes tooltip-in {
   from {
     opacity: 0;

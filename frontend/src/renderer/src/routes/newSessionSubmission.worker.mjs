@@ -77,17 +77,11 @@ globalThis.onmessage = async (event) => {
     durable.resolve()
     await pending
     const { created_at, ...displayMessage } = initialPrompt.message
-    const { optimisticTranscriptMessages, pendingOptimisticUserMessage } = await import('../lib/optimisticUserMessage')
-    const beforeHistory = []
-    const projectedBeforeHistory = optimisticTranscriptMessages(
-      beforeHistory,
-      pendingOptimisticUserMessage(beforeHistory, initialPrompt),
-    ).map((message) => message.content)
-    const afterHistory = [{ ...initialPrompt.message, seq: 1, from_user: true, content: 'server copy' }]
-    const projectedAfterHistory = optimisticTranscriptMessages(
-      afterHistory,
-      pendingOptimisticUserMessage(afterHistory, initialPrompt),
-    ).map((message) => message.content)
+    const { outboxTranscript } = await import('../lib/outbox')
+    const projected = (history) => outboxTranscript(history, [{ ...initialPrompt, id: 'initial', state: 'delivered' }])
+      .messages.map((message) => [message.seq, message.content])
+    const projectedBeforeHistory = projected([])
+    const projectedAfterHistory = projected([{ ...initialPrompt.message, seq: 1, from_user: true }])
     globalThis.postMessage({
       beforeAcknowledgement,
       route,

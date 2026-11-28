@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { botChat, connectedTaskThreads, dragSections, lastBotId, placePin, rememberBot, taskBrief, taskName, taskState } from './bots'
-import { optimisticTranscriptMessages } from './optimisticUserMessage'
+import { outboxTranscript } from './outbox'
 import { mergeEarlierHistory } from './sessionHistory'
 
 describe('bot chat log', () => {
@@ -125,14 +125,14 @@ describe('bot chat log', () => {
 test('a sent message keeps its place in the chat from send to save', () => {
   const self = { id: 'gimli', name: 'Gimli' }
   const earlier = { seq: 7, role: 'user', from_user: true, content: 'check the inbox', blocks: [], created_at: '2026-10-18T19:00:00Z' }
-  const typed = { baselineMessageSeq: 7, message: { role: 'user', from_user: true, content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.100Z' } }
+  const typed = { id: 'a', baselineMessageSeq: 7, message: { role: 'user', content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.100Z' } }
   const saved = { seq: 8, role: 'user', from_user: true, content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.450Z' }
-  const keys = (messages) => botChat(messages, [], self, []).entries.map((entry) => entry.key)
-  const sending = keys(optimisticTranscriptMessages([earlier], typed))
-  const accepted = keys(optimisticTranscriptMessages([earlier, saved], typed))
-  const reloaded = keys([earlier, saved])
-  expect(accepted).toEqual(sending)
-  expect(reloaded).toEqual(sending)
+  const keys = (messages, state) => botChat(state ? outboxTranscript(messages, [{ ...typed, state }]).messages : messages, [], self, []).entries.map((entry) => entry.key)
+  const sending = keys([earlier], 'sending')
+  expect(keys([earlier], 'sent')).toEqual(sending)
+  expect(keys([earlier, saved], 'sent')).toEqual(sending)
+  expect(keys([earlier, saved], 'delivered')).toEqual(sending)
+  expect(keys([earlier, saved])).toEqual(sending)
 })
 
 test('a question the bot asks shows in its chat, carries its answer and stands in for a written reply', () => {

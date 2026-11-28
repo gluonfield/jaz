@@ -1,23 +1,20 @@
 import { Bubble } from '@/components/session/Bubble'
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
-import {
-  materializeOptimisticUserMessage,
-  type OptimisticUserMessage,
-} from '@/lib/optimisticUserMessage'
+import { pendingChatMessage, type PendingUserMessage } from '@/lib/outbox'
 
 export function PendingSessionHistory({
   sessionId,
   initialPrompt,
 }: {
   sessionId: string
-  initialPrompt?: OptimisticUserMessage
+  initialPrompt?: PendingUserMessage
 }) {
   return (
     <div className={`${THREAD_COLUMN_CLASS} pt-2`}>
       {initialPrompt ? (
         <Bubble
-          message={materializeOptimisticUserMessage(initialPrompt)}
+          message={pendingChatMessage(initialPrompt.message)}
           attachmentSessionId={sessionId}
         />
       ) : (

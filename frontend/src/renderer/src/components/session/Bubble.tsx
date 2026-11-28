@@ -1,10 +1,11 @@
 import { memo } from 'react'
-import type { ChatMessage, MessageBlock } from '@/lib/api/types'
+import type { ChatMessage, MessageBlock, MessageDelivery } from '@/lib/api/types'
 import { browserAnnotationFromJSON } from '@/lib/messageContext'
 import type { ComposerContext } from '@/lib/messageContext'
 import { messageText } from '@/lib/messageText'
 import { MessageActions } from '@/components/session/MessageActions'
 import { AssistantMarkdown } from './AssistantMarkdown'
+import { DeliveryStatus } from './DeliveryStatus'
 import { UserMessageMarkdown } from './MessageMarkdown'
 import { MessageAttachments, type MessageAttachment } from '@/components/session/MessageAttachments'
 import { MessageContexts } from './MessageContexts'
@@ -58,6 +59,7 @@ export function UserBubble({
   contexts = [],
   attachments = [],
   attachmentSessionId,
+  delivery,
 }: {
   text: string
   createdAt?: string
@@ -65,6 +67,7 @@ export function UserBubble({
   contexts?: ComposerContext[]
   attachments?: MessageAttachment[]
   attachmentSessionId?: string
+  delivery?: MessageDelivery
 }) {
   return (
     <div className="group/message flex flex-col items-end gap-1">
@@ -78,7 +81,7 @@ export function UserBubble({
           <UserMessageMarkdown text={text} />
         </div>
       ) : null}
-      <MessageActions text={text} createdAt={createdAt} />
+      {delivery ? <DeliveryStatus delivery={delivery} /> : <MessageActions text={text} createdAt={createdAt} />}
     </div>
   )
 }
@@ -137,6 +140,7 @@ export const Bubble = memo(function Bubble({
           contexts={messageContexts(message)}
           attachments={message.blocks?.filter((block) => block.type === 'attachment') ?? []}
           attachmentSessionId={attachmentSessionId}
+          delivery={message.delivery}
         />
       )
     case 'assistant': {

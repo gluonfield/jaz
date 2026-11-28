@@ -413,7 +413,15 @@ export interface Attachment {
   uri?: string
 }
 
+// Set by the client on a message the server has not accepted.
+export interface MessageDelivery {
+  id: string
+  state: 'sending' | 'failed'
+  error?: string
+}
+
 export interface ChatMessage {
+  delivery?: MessageDelivery
   from_user?: boolean
   actor_user_id?: string
   actor_display_name?: string

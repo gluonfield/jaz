@@ -439,13 +439,13 @@ export async function steerCloudThread(
 export function createCloudTurn(
   threadId: string,
   input: CreateCloudTurnInput,
-): Promise<{ turn: CloudTurn; replayed: boolean }> {
+): Promise<{ turn: CloudTurn; replayed: boolean; queued?: boolean }> {
   const clientRequestId =
     input.client_request_id?.trim() ||
     (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
-  return cloudPost<{ turn: CloudTurn; replayed: boolean }>(
+  return cloudPost<{ turn: CloudTurn; replayed: boolean; queued?: boolean }>(
     `/v1/threads/${encodeURIComponent(threadId)}/turns`,
     {
       client_request_id: clientRequestId,

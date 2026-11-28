@@ -1,30 +1,53 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isCloudApiSession } from '@/lib/api/client'
-import { createCloudTurn } from '@/lib/api/cloudThreads'
-import { uploadCloudFile } from '@/lib/api/cloudUploads'
-import { uploadSessionAttachment } from '@/lib/api/sessions'
-import { streamSessionMessage, type AgentStreamEvent } from '@/lib/api/stream'
-import type { SessionMessages } from '@/lib/api/types'
+import type { AgentStreamEvent } from '@/lib/api/stream'
+import type { ChatMessage, SessionMessages } from '@/lib/api/types'
+import { deliverMessage, newOutboxSend } from '@/lib/messageDelivery'
+import {
+  outbox,
+  outboxTranscript,
+  removeOutboxMessages,
+  useOutbox,
+  type OutboxSend,
+  type PendingUserMessage,
+} from '@/lib/outbox'
 import { keys } from '@/lib/query/keys'
-import { preparedSendMessage, type ComposerContext, type SendMessageOptions } from '@/lib/sendMessage'
-import { hasCompletedLiveReply, type LiveAttachment, type LiveExchange } from './liveTranscript'
+import type { SendMessageOptions } from '@/lib/sendMessage'
+import { hasCompletedLiveReply, type LiveExchange } from './liveTranscript'
 import { isHiddenToolName } from './toolVisibility'
 
+const NO_MESSAGES: ChatMessage[] = []
+
+// Sends a thread's messages and reads them back: `messages` is the loaded
+// history with every message still on its way to it, or refused, in place.
 export function useLiveSessionSend({
   sessionId,
   onCriticalError,
   history,
+  initialPrompt,
 }: {
   sessionId: string
   onCriticalError: (message: string) => void
   history?: SessionMessages
+  // The message a new thread was started with, already accepted.
+  initialPrompt?: PendingUserMessage
 }) {
   const queryClient = useQueryClient()
   const [live, setLive] = useState<LiveExchange | null>(null)
   const [streaming, setStreaming] = useState(false)
   const sendRef = useRef<{ controller: AbortController; accepted: Promise<void> } | null>(null)
   const recovered = Boolean(live?.error && history && hasCompletedLiveReply(live, history))
+  const sends = useOutbox(sessionId)
+  const transcript = useMemo(
+    () => outboxTranscript(
+      history?.messages ?? NO_MESSAGES,
+      initialPrompt ? [{ ...initialPrompt, id: 'initial', state: 'delivered' }, ...sends] : sends,
+    ),
+    [history?.messages, initialPrompt, sends],
+  )
+
+  useEffect(() => removeOutboxMessages(sessionId, transcript.settled), [sessionId, transcript])
 
   useEffect(() => {
     if (recovered) setLive((current) => (current === live ? null : current))
@@ -33,94 +56,50 @@ export function useLiveSessionSend({
   useEffect(() => () => {
     const pending = sendRef.current
     if (pending) {
-      void pending.accepted.finally(() => pending.controller.abort()).catch(() => {})
+      void pending.accepted.then(() => pending.controller.abort(), () => {})
     }
   }, [sessionId])
 
-  const send = useCallback((text: string, options: SendMessageOptions = {}): Promise<void> => {
+  const deliver = useCallback((entry: OutboxSend) => {
     const controller = new AbortController()
-    const previous = queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))
-    const files = options.files ?? []
-    const draftAttachments = options.attachments ?? []
-    const draftContexts = options.contexts ?? []
-    const contextAttachments = liveContextAttachments(draftContexts)
+    const current = () => sendRef.current?.controller === controller
+    const isCloud = history?.session.backend === 'cloud' || isCloudApiSession()
     setLive({
-      user: text,
-      at: new Date().toISOString(),
-      baselineMessageSeq: previous?.messages.at(-1)?.seq ?? 0,
-      baselineEventSeq: previous?.latest_event_seq ?? 0,
-      planRequested: Boolean(options.planRequested),
-      goalRequested: Boolean(options.goalRequested),
-      contexts: draftContexts,
-      attachments: [
-        ...draftAttachments,
-        ...contextAttachments,
-        ...files.map((file) => ({ name: file.name, size: file.size, uploading: true })),
-      ],
+      user: entry.text,
+      at: entry.message.created_at,
+      baselineMessageSeq: entry.baselineMessageSeq,
+      baselineEventSeq: queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))?.latest_event_seq ?? 0,
+      planRequested: Boolean(entry.options.planRequested),
+      goalRequested: Boolean(entry.options.goalRequested),
       reasoning: '',
       assistant: '',
       tools: [],
     })
     setStreaming(true)
+    const delivery = deliverMessage({
+      queryClient,
+      sessionId,
+      entry,
+      cloudRunId: isCloud ? history?.session.run_id || sessionId : undefined,
+      signal: controller.signal,
+      onEvent: (event) => {
+        if (current()) setLive((prev) => (prev ? mergeLiveStreamEvent(prev, event) : prev))
+      },
+    })
+    sendRef.current = { controller, accepted: delivery.accepted }
 
-    const runId = history?.session.run_id || sessionId
-    const isCloud = history?.session.backend === 'cloud' || isCloudApiSession()
-    const started = (async () => {
-      const attachments = files.length
-        ? await Promise.all(
-            files.map((file) =>
-              isCloud
-                ? uploadCloudFile(runId, file, { signal: controller.signal })
-                : uploadSessionAttachment(sessionId, file, controller.signal),
-            ),
-          )
-        : []
-      if (attachments.length && sendRef.current?.controller === controller) {
-        setLive((prev) =>
-          prev ? { ...prev, attachments: [...draftAttachments, ...contextAttachments, ...attachments] } : prev,
-        )
-      }
-      if (isCloud) {
-        await createCloudTurn(sessionId, {
-          text,
-          uploads: [...draftAttachments, ...attachments],
-          signal: controller.signal,
-        })
-        return { accepted: Promise.resolve(), finished: Promise.resolve() }
-      }
-      const prepared = preparedSendMessage(options, attachments)
-      return streamSessionMessage({
-        sessionId,
-        message: text,
-        contexts: prepared.contexts,
-        attachmentIds: prepared.attachmentIds,
-        planRequested: options.planRequested,
-        goalRequested: options.goalRequested,
-        signal: controller.signal,
-        onEvent: (event) => {
-          if (sendRef.current?.controller !== controller) {
-            return
-          }
-          setLive((prev) => (prev ? mergeLiveStreamEvent(prev, event) : prev))
-        },
-      })
-    })()
-    const accepted = started.then((stream) => stream.accepted)
-    sendRef.current = { controller, accepted }
-
-    void started
-      .then((stream) => stream.finished)
-      .catch((err: Error) => {
-        if (controller.signal.aborted || sendRef.current?.controller !== controller) {
-          return
-        }
+    void delivery.finished
+      .catch(async (err: Error) => {
+        if (controller.signal.aborted) return
+        // A refused message says so on its own bubble; an accepted one whose
+        // turn then failed is the thread's error.
+        const accepted = await delivery.accepted.then(() => true, () => false)
+        if (accepted && !current()) return
         onCriticalError(err.message || 'Something went wrong.')
-        setLive((prev) =>
-          prev ? { ...prev, attachments: finishLiveAttachments(prev.attachments), error: err.message } : prev,
-        )
+        if (current()) setLive((prev) => (prev && accepted ? { ...prev, error: err.message } : null))
       })
       .finally(async () => {
-        await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
+        await delivery.settled
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         if (isCloud) {
           queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
@@ -129,14 +108,25 @@ export function useLiveSessionSend({
           queryClient.invalidateQueries({ queryKey: keys.usage })
           queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
         }
-        if (sendRef.current?.controller === controller) {
+        if (current()) {
           setStreaming(false)
           sendRef.current = null
           setLive((prev) => (prev?.error ? prev : null))
         }
       })
-    return accepted
   }, [history?.session.backend, history?.session.run_id, onCriticalError, queryClient, sessionId])
+
+  const send = useCallback((text: string, options: SendMessageOptions = {}) => {
+    const loaded = queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))
+    deliver(newOutboxSend(text, options, loaded?.messages.at(-1)?.seq ?? 0))
+  }, [deliver, queryClient, sessionId])
+
+  const retry = useCallback((id: string) => {
+    const failed = outbox(sessionId).find((item) => item.id === id && item.state === 'failed')
+    if (failed) deliver(failed)
+  }, [deliver, sessionId])
+
+  const discard = useCallback((id: string) => removeOutboxMessages(sessionId, [id]), [sessionId])
 
   const abort = useCallback(() => {
     const pending = sendRef.current
@@ -149,21 +139,7 @@ export function useLiveSessionSend({
     setLive(null)
   }, [])
 
-  return { live: recovered ? null : live, streaming, send, abort }
-}
-
-function liveContextAttachments(contexts: ComposerContext[]): LiveAttachment[] {
-  return contexts.flatMap((context) =>
-    context.type === 'browser_annotation' && context.screenshotAttachment?.id
-      ? [{
-          id: context.screenshotAttachment.id,
-          name: context.screenshotAttachment.name ?? 'annotation screenshot',
-          uri: context.screenshotAttachment.uri,
-          mime_type: context.screenshotAttachment.mime_type,
-          size: context.screenshotAttachment.size,
-        }]
-      : [],
-  )
+  return { live: recovered ? null : live, streaming, messages: transcript.messages, send, retry, discard, abort }
 }
 
 function mergeLiveStreamEvent(prev: LiveExchange, event: AgentStreamEvent): LiveExchange {
@@ -177,11 +153,7 @@ function mergeLiveStreamEvent(prev: LiveExchange, event: AgentStreamEvent): Live
     case 'tool_result':
       return addLiveToolResult(prev, event)
     case 'error':
-      return {
-        ...prev,
-        attachments: finishLiveAttachments(prev.attachments),
-        error: event.error || 'Something went wrong.',
-      }
+      return { ...prev, error: event.error || 'Something went wrong.' }
     default:
       return prev
   }
@@ -218,8 +190,4 @@ function addLiveToolResult(prev: LiveExchange, event: AgentStreamEvent): LiveExc
         ]
       : prev.tools.map((tool, index) => (index === idx ? { ...tool, result: event.result } : tool))
   return { ...prev, tools }
-}
-
-function finishLiveAttachments(attachments: LiveAttachment[]): LiveAttachment[] {
-  return attachments.map((attachment) => ({ ...attachment, uploading: false }))
 }

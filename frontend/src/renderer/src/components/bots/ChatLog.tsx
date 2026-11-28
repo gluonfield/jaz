@@ -1,5 +1,6 @@
 import { memo, useMemo, useState, type RefObject } from 'react'
 import { MCPAppResult } from '@/components/apps/MCPAppResult'
+import { DeliveryStatus } from '@/components/session/DeliveryStatus'
 import { PresentedContent } from '@/components/session/PresentedContent'
 import { MessageActions } from '@/components/session/MessageActions'
 import { MessageAttachments } from '@/components/session/MessageAttachments'
@@ -93,6 +94,7 @@ export function ChatLog({
                   />
                 </div>
                 {entry.text ? <ChatBubble text={entry.text} at={entry.at} mentions={mentions} mine /> : null}
+                {entry.delivery ? <div className="flex justify-end"><DeliveryStatus delivery={entry.delivery} /></div> : null}
               </>
             ) : entry.kind === 'activity' ? (
               <SystemEventRow event={entry.event} onOpen={entry.event.loop_created ? onOpenRoutines : undefined} />

@@ -6,7 +6,6 @@ import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
-import { UserBubble } from '@/components/session/Bubble'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { NativeModelOptions } from '@/components/session/NativeModelOptions'
 import { useSessionConfig } from '@/components/session/useSessionConfig'
@@ -16,8 +15,9 @@ import { ThreadCanvas } from '@/components/canvas/ThreadCanvas'
 import { CanvasChatToggle, useCanvasChat } from '@/components/canvas/CanvasChat'
 import { useAppContexts } from '@/components/apps/useAppContexts'
 import { useCanvasContexts } from '@/components/canvas/useCanvasContexts'
-import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
+import { FileReaderLinkProvider, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
+import { MessageDeliveryActions } from '@/components/session/DeliveryStatus'
 import { ArtifactPanelContext } from '@/lib/artifactPanel'
 import { SessionErrorNotice, type SessionErrorAction } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
@@ -30,16 +30,13 @@ import { SidePanelLauncher } from '@/components/session/SidePanelTabs'
 import { SessionTitlebar } from '@/components/session/SessionTitlebar'
 import { SidePanelDrawer } from '@/components/session/SidePanelDrawer'
 import { useSidePanelState } from '@/components/session/SidePanelState'
-import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ThreadFindBar } from '@/components/session/ThreadFindBar'
 import { ThreadOutline } from '@/components/session/ThreadOutline'
-import { ToolCalls } from '@/components/session/ToolCalls'
 import { Transcript } from '@/components/session/Transcript'
 import { deriveSessionView, isCodexACPSession, sessionEventErrorMessage } from '@/components/session/sessionView'
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
 import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
-import { liveOptimisticUserMessage } from '@/components/session/liveTranscript'
 import { useLiveSessionSend } from '@/components/session/useLiveSessionSend'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Button } from '@/components/ui/Button'
@@ -81,11 +78,7 @@ import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SpawnedThreadView } from '@/lib/spawnedThreads'
-import {
-  type OptimisticUserMessage,
-  optimisticTranscriptMessages,
-  pendingOptimisticUserMessage,
-} from '@/lib/optimisticUserMessage'
+import type { PendingUserMessage } from '@/lib/outbox'
 
 function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick: () => void }) {
   return (
@@ -161,7 +154,7 @@ export function ThreadView({
   page?: string
   item?: string
   navigationKey?: string
-  initialPrompt?: OptimisticUserMessage
+  initialPrompt?: PendingUserMessage
   header?: ReactNode
   details?: (view: ThreadDetailsView) => ReactNode
   openDetails?: boolean
@@ -241,11 +234,13 @@ export function ThreadView({
   const { containerRef: panelContainerRef } = sidePanel
   useEffect(() => (floatPanel && panelSlot.row ? panelContainerRef(panelSlot.row) : undefined), [floatPanel, panelSlot.row, panelContainerRef])
 
-  const { live, streaming, send: sendLiveMessage, abort: abortLiveMessage } = useLiveSessionSend({
+  const { live, streaming, messages: transcriptMessages, send: sendLiveMessage, retry, discard, abort: abortLiveMessage } = useLiveSessionSend({
     sessionId,
     onCriticalError: notifyCriticalError,
     history: detail.data,
+    initialPrompt,
   })
+  const deliveryActions = useMemo(() => ({ retry, discard }), [retry, discard])
   const [bottomDockHeight, setBottomDockHeight] = useState(0)
   const transcriptBottomPadding = Math.max(bottomDockHeight + TRANSCRIPT_DOCK_GAP_PX, 160)
   const {
@@ -317,7 +312,7 @@ export function ThreadView({
 
   const stopSession = useCallback(() => {
     if (isReadOnly) return
-    // The turn runs detached server-side; clear local optimistic state now.
+    // The turn runs detached server-side; clear the local stream state now.
     abortLiveMessage()
     void cancelSession(sessionId, isCloudThreadView)
       .catch(() => {})
@@ -517,13 +512,8 @@ export function ThreadView({
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
   const pendingSteer = session.pending_steer_message
-  const initialUser = pendingOptimisticUserMessage(messages, initialPrompt ?? null)
-  const optimisticUser = isACP && live ? liveOptimisticUserMessage(live) : initialUser
-  const empty = messages.length === 0 && transcriptEvents.length === 0 && !optimisticUser && !visibleSessionError && !sessionRunning
-  // ACP turns stream through events. While the request is active, the local
-  // send time is the turn boundary; replayed user rows can be timestamped after
-  // early live events and would otherwise fold those events into the prior turn.
-  const transcriptMessages = optimisticTranscriptMessages(messages, optimisticUser)
+  const empty = transcriptMessages.length === 0 && transcriptEvents.length === 0 && !visibleSessionError && !sessionRunning
+  const sendError = transcriptMessages.findLast((message) => message.delivery?.error)?.delivery?.error
   const goalStatusVisible = goalActive
   const canContinueFromInlineError =
     !isReadOnly && isACP && !sessionRunning && !streaming && (!live || Boolean(live.error)) && !hasBlockingPendingPermission
@@ -579,6 +569,7 @@ export function ThreadView({
 
   return (
     <MCPAppThreadContext value={appThread}>
+    <MessageDeliveryActions value={deliveryActions}>
     <MarkdownArtifactContext value={markdownArtifacts}>
     <ArtifactPanelContext value={artifactPanel}>
     <FileReaderLinkProvider sessionId={session.id} cloudRunId={cloudRunId} documentPath={session.runtime_ref?.cwd ? `${session.runtime_ref.cwd}/` : undefined} onOpen={sidePanel.openFile}>
@@ -669,37 +660,6 @@ export function ThreadView({
                               lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
                             />
                           </>
-                        ) : live ? (
-                          <div className="flex flex-col gap-2">
-                            <motion.div
-                              className="w-full"
-                              initial={{ opacity: 0, y: 8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                            >
-                              <UserBubble
-                                text={live.user}
-                                createdAt={live.at}
-                                contexts={live.contexts}
-                                attachments={live.attachments}
-                                attachmentSessionId={sessionId}
-                              />
-                            </motion.div>
-                            <ThinkingBlock text={live.reasoning} pending={streaming} />
-                            <ToolCalls
-                              live
-                              calls={live.tools.map((tool) => ({
-                                ...tool,
-                                pending: streaming && tool.result === undefined,
-                              }))}
-                              onArtifactPrompt={handleSend}
-                            />
-                            {live.assistant ? (
-                              <MessageMarkdown text={live.assistant} />
-                            ) : streaming ? (
-                              <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
-                            ) : null}
-                          </div>
                         ) : null
                       }
                     />
@@ -760,7 +720,7 @@ export function ThreadView({
                   {goalStatusVisible ? <GoalStatusBar goal={goal} /> : null}
                   {isCloudThreadView ? (
                     <CloudSpendBanner
-                      capError={live?.error && isSpendCapError(new Error(live.error)) ? live.error : null}
+                      capError={[live?.error, sendError].find((error) => error && isSpendCapError(new Error(error))) ?? null}
                     />
                   ) : null}
                   <Composer
@@ -815,6 +775,7 @@ export function ThreadView({
     </FileReaderLinkProvider>
     </ArtifactPanelContext>
     </MarkdownArtifactContext>
+    </MessageDeliveryActions>
     </MCPAppThreadContext>
   )
 }
