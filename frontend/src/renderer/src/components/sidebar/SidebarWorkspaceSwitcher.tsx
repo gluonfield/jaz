@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/toast'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { type CloudWorkspaceSummary, LOCAL_WORKSPACE_ID, switchWorkspace } from '@/lib/cloudAccount'
 import { useCloudSession } from '@/lib/cloudSession'
-import { activeCloudWorkspace, workspaceDisplayName } from '@/lib/cloudWorkspaceDisplay'
+import { selectedCloudWorkspace, workspaceDisplayName } from '@/lib/cloudWorkspaceDisplay'
 
 // The switcher is a row heading a sidebar, or in the nav rail its mark alone,
 // filling a section tab's whole slot.
@@ -60,7 +60,7 @@ export function SidebarWorkspaceSwitcher({
 
   const localAllowed = clientRuntime.capabilities.localBackend && cloud.source !== 'primary'
   const workspaces = cloud.workspaces
-  const activeCloud = activeCloudWorkspace(cloud)
+  const activeCloud = selectedCloudWorkspace(cloud)
   const activeName = activeCloud ? workspaceDisplayName(activeCloud) : 'Local'
   const look = rail ? RAIL : ROW
   const wrapperClass = className ?? look.wrapper

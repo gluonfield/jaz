@@ -161,7 +161,7 @@ async function fixture({
         return Response.json({ ok: true, auth_required: false })
       }
       if (target.pathname === '/v1/cloud/status') {
-        return Response.json(cloudStatusResponse)
+        return Response.json(typeof cloudStatusResponse === 'function' ? cloudStatusResponse() : cloudStatusResponse)
       }
       if (target.pathname === '/v1/cloud/connect' && onLocalCloudConnect) {
         return onLocalCloudConnect(init)
@@ -358,6 +358,31 @@ test('Signing in again to the same Desktop workspace cancels an old plugin reque
   })
   expect(f.mod.useCloudSession().workspaces.map((entry) => entry.org_name)).toEqual(['Current server', 'Other server'])
   expect((await queryClient.fetchQuery(pluginCatalogQuery)).plugins).toEqual([{ id: 'fresh' }])
+})
+
+test('Sync reloads a rejected session while retaining its selected workspace for sign-in', async () => {
+  const workspace = { id: 'ws_example', url: 'https://workspace.example' }
+  let connected = true
+  const f = await fixture({
+    cloudStatusResponse: () => ({
+      active_workspace_id: workspace.id,
+      connected,
+      workspaces: [workspace],
+      ...(connected ? {} : { last_error: 'Session expired. Sign in again.' }),
+    }),
+    onLocalCloudSync: () => {
+      connected = false
+      return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    },
+  })
+  expect(f.mod.currentCloudAccount().status).toBe('connected')
+  await f.mod.syncCloudAccount()
+  expect(f.mod.currentCloudAccount()).toMatchObject({
+    status: 'disconnected',
+    activeWorkspaceId: workspace.id,
+    workspaces: [workspace],
+    error: 'Session expired. Sign in again.',
+  })
 })
 
 test('Multi-workspace status, switchWorkspace, and per-workspace signOutCloudAccount(id) keep other Cloud workspaces intact', async () => {

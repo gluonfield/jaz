@@ -116,7 +116,7 @@ func TestNativeMCPSearchAndCallStayWithSessionWorkspace(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := store.SaveActiveWorkspaceID(ctx, "other-workspace"); err != nil {
+	if err := store.ApplyCloudWorkspaceChange(ctx, storage.CloudWorkspaceChange{ActiveID: "other-workspace"}); err != nil {
 		t.Fatal(err)
 	}
 	native, err := store.CreateSession(storage.CreateSession{Title: "Private native session", WorkspaceID: "session-workspace"})

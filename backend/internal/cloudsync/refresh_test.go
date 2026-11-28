@@ -3,6 +3,7 @@ package cloudsync_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -237,7 +238,7 @@ func TestCloudSyncRefresh503PreservesTokensAnd401ClearsSession(t *testing.T) {
 		case "/.well-known/jaz-server":
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "mode": "cloud", "auth": "oidc"})
 		case "/v1/auth/me":
-			if r.Header.Get("Authorization") == "Bearer jwt-init" && refreshStatus.Load() != http.StatusUnauthorized {
+			if r.Header.Get("Authorization") == "Bearer jwt-init" {
 				_ = json.NewEncoder(w).Encode(map[string]any{"user_id": "usr_1", "org_id": "org_1", "email": "u@example.com", "display_name": "Dev", "role": "member"})
 				return
 			}
@@ -258,6 +259,12 @@ func TestCloudSyncRefresh503PreservesTokensAnd401ClearsSession(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"spaces": []any{}})
 		case "/v1/threads":
 			_ = json.NewEncoder(w).Encode(map[string]any{"threads": []any{}})
+		case "/v1/usage/events":
+			if refreshStatus.Load() == http.StatusUnauthorized {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte("{}"))
 		default:
 			_ = json.NewEncoder(w).Encode(map[string]any{})
 		}
@@ -281,6 +288,10 @@ func TestCloudSyncRefresh503PreservesTokensAnd401ClearsSession(t *testing.T) {
 	}
 	if !svc.Status(ctx).Connected {
 		t.Fatalf("expected session preserved on transient 503 refresh failure")
+	}
+	var upstreamErr *cloudsync.UpstreamError
+	if _, err := svc.ListMembers(ctx, "", 0); !errors.As(err, &upstreamErr) || upstreamErr.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("JSON client should report the temporary refresh error, got %v", err)
 	}
 
 	refreshStatus.Store(http.StatusUnauthorized)

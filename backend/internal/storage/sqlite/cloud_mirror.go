@@ -167,7 +167,7 @@ func (s *Store) UpdateCloudSyncState(ctx context.Context, accountID string, last
 	})
 }
 
-func (s *Store) SaveCloudWorkspaces(ctx context.Context, activeID string, signedIn *storage.CloudAccount, removedIDs []string) error {
+func (s *Store) ApplyCloudWorkspaceChange(ctx context.Context, change storage.CloudWorkspaceChange) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -176,8 +176,8 @@ func (s *Store) SaveCloudWorkspaces(ctx context.Context, activeID string, signed
 	}
 	defer tx.Rollback()
 	q := cloudmirror.New(s.db).WithTx(tx)
-	if signedIn != nil {
-		params, err := s.cloudAccountParams(*signedIn)
+	if change.SignIn != nil {
+		params, err := s.cloudAccountParams(*change.SignIn)
 		if err != nil {
 			return err
 		}
@@ -185,14 +185,14 @@ func (s *Store) SaveCloudWorkspaces(ctx context.Context, activeID string, signed
 			return err
 		}
 	}
-	for _, id := range removedIDs {
+	for _, id := range change.RemoveIDs {
 		if err := deleteCloudAccount(ctx, q, id); err != nil {
 			return err
 		}
 	}
-	if activeID != "" {
+	if change.ActiveID != "" {
 		now := timeToMs(time.Now())
-		encoded, _ := json.Marshal(activeID)
+		encoded, _ := json.Marshal(change.ActiveID)
 		err := settingsdb.New(tx).UpsertSetting(ctx, settingsdb.UpsertSettingParams{
 			Namespace:   cloudSettingsNamespace,
 			Key:         activeWorkspaceIDSettingKey,
@@ -240,14 +240,6 @@ func (s *Store) LoadActiveWorkspaceID(_ context.Context) (string, error) {
 		return storage.LocalWorkspaceID, nil
 	}
 	return id, nil
-}
-
-func (s *Store) SaveActiveWorkspaceID(ctx context.Context, workspaceID string) error {
-	id := strings.TrimSpace(workspaceID)
-	if id == "" {
-		id = storage.LocalWorkspaceID
-	}
-	return s.SaveCloudWorkspaces(ctx, id, nil, nil)
 }
 
 func (s *Store) ReplaceCloudSpaces(ctx context.Context, accountID string, spaces []storage.CloudSpace) error {

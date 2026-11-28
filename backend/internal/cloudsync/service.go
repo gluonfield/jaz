@@ -77,7 +77,7 @@ func sanitizeOIDCLoginURL(baseURL, raw string) string {
 		return ""
 	}
 	resolved, err := base.Parse(trimmed)
-	if err != nil || !strings.EqualFold(resolved.Scheme, base.Scheme) || !strings.EqualFold(resolved.Host, base.Host) {
+	if err != nil || resolved.Scheme != base.Scheme || canonicalHostPort(resolved) != canonicalHostPort(base) {
 		return ""
 	}
 	return trimmed
@@ -356,7 +356,7 @@ func (s *Service) SwitchWorkspace(ctx context.Context, workspaceID string) (Stat
 		s.syncMu.Unlock()
 		return Status{}, ErrNotFound
 	}
-	if err := s.store.SaveActiveWorkspaceID(ctx, target); err != nil {
+	if err := s.store.ApplyCloudWorkspaceChange(ctx, storage.CloudWorkspaceChange{ActiveID: target}); err != nil {
 		s.syncMu.Unlock()
 		return Status{}, err
 	}
@@ -393,7 +393,7 @@ func (s *Service) Disconnect(ctx context.Context, workspaceID string) error {
 	s.mu.Unlock()
 
 	// Wait for any cancelled sync to unwind before deleting SQLite rows so it
-	// can never resurrect rows after DeleteCloudAccount completes, and persist
+	// can never resurrect deleted rows, and persist
 	// before mutating in-memory state so DB errors never leave memory diverged.
 	s.syncMu.Lock()
 	s.persistMu.Lock()
@@ -410,7 +410,7 @@ func (s *Service) Disconnect(ctx context.Context, workspaceID string) error {
 	if wasActive {
 		activeID = LocalWorkspaceID
 	}
-	if err := s.store.SaveCloudWorkspaces(ctx, activeID, nil, []string{target}); err != nil {
+	if err := s.store.ApplyCloudWorkspaceChange(ctx, storage.CloudWorkspaceChange{ActiveID: activeID, RemoveIDs: []string{target}}); err != nil {
 		s.persistMu.Unlock()
 		s.syncMu.Unlock()
 		return err

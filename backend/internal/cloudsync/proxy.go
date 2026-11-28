@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	maxProxyRequestBytes     int64 = 4 << 20
-	maxAppDraftProxyBytes    int64 = 32 << 20
-	maxProxyResponseBytes    int64 = 16 << 20
-	maxAppContentProxyBytes  int64 = 25 << 20
+	maxProxyRequestBytes    int64 = 4 << 20
+	maxAppDraftProxyBytes   int64 = 32 << 20
+	maxProxyResponseBytes   int64 = 16 << 20
+	maxAppContentProxyBytes int64 = 25 << 20
 )
 
 func cleanProxyPath(raw string) (string, error) {
@@ -163,7 +163,7 @@ func (s *Service) ProxyActiveWorkspace(w http.ResponseWriter, r *http.Request) b
 	if prepared == nil {
 		return true
 	}
-	resp, err := s.doAccountHTTP(r.Context(), prepared.acc, func(token string) (*http.Response, error) {
+	resp, err := s.clientFor(prepared.acc.ID).withSession(r.Context(), s.latestToken(prepared.acc), func(token string) (*http.Response, error) {
 		req, err := prepared.buildRequest(r, token)
 		if err != nil {
 			return nil, err
@@ -272,7 +272,7 @@ func (s *Service) ProxyActiveWorkspaceSSE(w http.ResponseWriter, r *http.Request
 	if prepared == nil {
 		return true
 	}
-	resp, err := s.doAccountHTTP(r.Context(), prepared.acc, func(token string) (*http.Response, error) {
+	resp, err := s.clientFor(prepared.acc.ID).withSession(r.Context(), s.latestToken(prepared.acc), func(token string) (*http.Response, error) {
 		req, err := prepared.buildRequest(r, token)
 		if err != nil {
 			return nil, err

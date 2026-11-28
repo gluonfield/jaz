@@ -1,4 +1,4 @@
-import type { CloudWorkspaceSummary } from '@/lib/cloudAccount'
+import type { CloudAccountState, CloudWorkspaceSummary } from '@/lib/cloudAccount'
 
 export const LOCAL_WORKSPACE_ID = 'local'
 
@@ -15,9 +15,12 @@ export function workspaceDisplayName(workspace: Pick<CloudWorkspaceSummary, 'org
   return org || urlHost(workspace.url)
 }
 
-export function activeCloudWorkspace(
-  cloud: { active: boolean; activeWorkspaceId: string; workspaces: CloudWorkspaceSummary[] },
-): CloudWorkspaceSummary | null {
-  if (!cloud.active || cloud.activeWorkspaceId === LOCAL_WORKSPACE_ID) return null
-  return cloud.workspaces.find((ws) => ws.id === cloud.activeWorkspaceId) ?? cloud.workspaces[0] ?? null
+type WorkspaceSelection = Pick<CloudAccountState, 'activeWorkspaceId' | 'workspaces'>
+
+export function selectedCloudWorkspace(cloud: WorkspaceSelection): CloudWorkspaceSummary | null {
+  return cloud.workspaces.find((ws) => ws.id === cloud.activeWorkspaceId) ?? null
+}
+
+export function activeCloudWorkspace(cloud: WorkspaceSelection & { active: boolean }): CloudWorkspaceSummary | null {
+  return cloud.active ? selectedCloudWorkspace(cloud) : null
 }

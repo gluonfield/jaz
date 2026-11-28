@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func TestCloudWorkspacesCollapseDuplicatesOnLoad(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := store.SaveActiveWorkspaceID(ctx, "stale"); err != nil {
+	if err := store.ApplyCloudWorkspaceChange(ctx, storage.CloudWorkspaceChange{ActiveID: "stale"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -52,6 +53,7 @@ func TestCloudWorkspacesCollapseDuplicatesOnLoad(t *testing.T) {
 
 func TestCloudWorkspacesReuseServerAndOrgOnSignIn(t *testing.T) {
 	ctx := t.Context()
+	var wrongIdentity atomic.Bool
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/auth/exchange":
@@ -66,6 +68,9 @@ func TestCloudWorkspacesReuseServerAndOrgOnSignIn(t *testing.T) {
 		case "/v1/auth/me":
 			token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			user, _, _ := strings.Cut(token, "-")
+			if wrongIdentity.Load() {
+				user = "other"
+			}
 			_ = json.NewEncoder(w).Encode(map[string]string{"user_id": user, "org_id": "org-a"})
 		case "/v1/auth/logout":
 			t.Error("replacing a workspace must not sign out of Cloud")
@@ -87,6 +92,11 @@ func TestCloudWorkspacesReuseServerAndOrgOnSignIn(t *testing.T) {
 	if err != nil || !first.Connected || len(first.Workspaces) != 1 || first.URL != base {
 		t.Fatalf("first sign-in = %+v, %v", first, err)
 	}
+	wrongIdentity.Store(true)
+	if status, err := svc.SyncNow(ctx); err == nil || status.User.ID != "alice" {
+		t.Fatalf("background sync changed the signed-in principal: %+v, %v", status, err)
+	}
+	wrongIdentity.Store(false)
 	if _, err := svc.SwitchWorkspace(ctx, cloudsync.LocalWorkspaceID); err != nil {
 		t.Fatal(err)
 	}

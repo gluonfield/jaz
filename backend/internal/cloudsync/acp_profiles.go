@@ -53,12 +53,11 @@ func (s *Service) selectedJSON(ctx context.Context, expected, method, path strin
 		return active == selection
 	}
 	client := s.clientFor(acc.ID)
-	refresh := client.refresh
-	client.refresh = func(ctx context.Context, id, token string) (string, error) {
+	client.refresh = func(ctx context.Context, token string) (string, error) {
 		if !current() {
 			return "", ErrWorkspaceChanged
 		}
-		next, err := refresh(ctx, id, token)
+		next, err := s.refreshAccountToken(ctx, acc.ID, token)
 		if !current() {
 			return "", ErrWorkspaceChanged
 		}

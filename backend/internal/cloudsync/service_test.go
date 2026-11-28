@@ -441,7 +441,7 @@ func TestCloudSyncDisconnectCancelsInFlightSyncWithoutResurrection(t *testing.T)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveActiveWorkspaceID(ctx, accID); err != nil {
+	if err := store.ApplyCloudWorkspaceChange(ctx, storage.CloudWorkspaceChange{ActiveID: accID}); err != nil {
 		t.Fatal(err)
 	}
 	svc := cloudsync.New(store, nil)

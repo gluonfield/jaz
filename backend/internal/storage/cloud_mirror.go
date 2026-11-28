@@ -229,15 +229,18 @@ type CloudThreadUserStatePatch struct {
 	Unread                 *bool
 }
 
+type CloudWorkspaceChange struct {
+	ActiveID  string
+	SignIn    *CloudAccount
+	RemoveIDs []string
+}
+
 type CloudMirrorStore interface {
 	ListCloudAccounts(context.Context) ([]CloudAccount, error)
-	LoadCloudAccount(ctx context.Context, id string) (CloudAccount, bool, error)
 	SaveCloudAccount(context.Context, CloudAccount) error
 	UpdateCloudSyncState(ctx context.Context, accountID string, lastSyncAt time.Time, lastError string) error
-	SaveCloudWorkspaces(ctx context.Context, activeID string, signedIn *CloudAccount, removedIDs []string) error
-
 	LoadActiveWorkspaceID(context.Context) (string, error)
-	SaveActiveWorkspaceID(context.Context, string) error
+	ApplyCloudWorkspaceChange(context.Context, CloudWorkspaceChange) error
 
 	ReplaceCloudSpaces(ctx context.Context, accountID string, spaces []CloudSpace) error
 	UpsertCloudSpace(ctx context.Context, accountID string, space CloudSpace) error

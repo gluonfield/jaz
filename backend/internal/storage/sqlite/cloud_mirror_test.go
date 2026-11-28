@@ -81,8 +81,8 @@ func TestCloudMirrorMultiWorkspaceIsolationAndUsage(t *testing.T) {
 	if ws, err := store.LoadActiveWorkspaceID(ctx); err != nil || ws != storage.LocalWorkspaceID {
 		t.Fatalf("default active workspace = %q err=%v", ws, err)
 	}
-	if err := store.SaveActiveWorkspaceID(ctx, accA.ID); err != nil {
-		t.Fatalf("SaveActiveWorkspaceID: %v", err)
+	if err := store.ApplyCloudWorkspaceChange(ctx, storage.CloudWorkspaceChange{ActiveID: accA.ID}); err != nil {
+		t.Fatalf("activate account A: %v", err)
 	}
 	if ws, err := store.LoadActiveWorkspaceID(ctx); err != nil || ws != accA.ID {
 		t.Fatalf("loaded active workspace = %q err=%v", ws, err)
@@ -247,7 +247,7 @@ func TestCloudMirrorMultiWorkspaceIsolationAndUsage(t *testing.T) {
 	defer store.Close()
 
 	// Removing accA wipes its mirrored tables, preserving accB and local.
-	if err := store.SaveCloudWorkspaces(ctx, storage.LocalWorkspaceID, nil, []string{accA.ID}); err != nil {
+	if err := store.ApplyCloudWorkspaceChange(ctx, storage.CloudWorkspaceChange{ActiveID: storage.LocalWorkspaceID, RemoveIDs: []string{accA.ID}}); err != nil {
 		t.Fatalf("DeleteCloudAccount A: %v", err)
 	}
 	if _, ok, err := store.LoadCloudAccount(ctx, accA.ID); err != nil || ok {

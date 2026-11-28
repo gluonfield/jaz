@@ -2,9 +2,17 @@ package cloudsync
 
 import (
 	"context"
+	"errors"
 
 	"github.com/wins/jaz/backend/internal/storage"
 )
+
+var errCloudIdentityChanged = errors.New("Cloud credentials identify a different workspace or user")
+
+func matchesAccount(acc storage.CloudAccount, user CloudUser) bool {
+	return (acc.OrgID == "" || user.OrgID == "" || acc.OrgID == user.OrgID) &&
+		(acc.UserID == "" || user.ID == "" || acc.UserID == user.ID)
+}
 
 type workspaceKey struct {
 	server string
@@ -57,7 +65,7 @@ func (s *Service) loadWorkspaces(ctx context.Context) {
 		}
 	}
 	if len(removed) > 0 {
-		if err := s.store.SaveCloudWorkspaces(ctx, s.activeWorkspaceID, nil, removed); err != nil {
+		if err := s.store.ApplyCloudWorkspaceChange(ctx, storage.CloudWorkspaceChange{ActiveID: s.activeWorkspaceID, RemoveIDs: removed}); err != nil {
 			s.log.Warn("persist cloud workspace cleanup failed", "error", err)
 		}
 	}
@@ -98,7 +106,7 @@ func (s *Service) activateAccount(ctx context.Context, acc storage.CloudAccount)
 		}
 	}
 	s.mu.RUnlock()
-	if err := s.store.SaveCloudWorkspaces(ctx, acc.ID, &acc, replaced); err != nil {
+	if err := s.store.ApplyCloudWorkspaceChange(ctx, storage.CloudWorkspaceChange{ActiveID: acc.ID, SignIn: &acc, RemoveIDs: replaced}); err != nil {
 		return err
 	}
 	s.mu.Lock()

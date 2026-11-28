@@ -1,6 +1,7 @@
 package cloudsync
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"slices"
@@ -64,10 +65,11 @@ func (s *Service) SyncNow(ctx context.Context) (Status, error) {
 
 	client := s.clientFor(acc.ID)
 	me, err := client.getMe(syncCtx, acc.BaseURL, s.latestToken(acc))
+	if err == nil && (me.ID == "" || me.OrgID == "" || !matchesAccount(acc, me)) {
+		err = errCloudIdentityChanged
+	}
 	if err != nil {
-		if s.isGeneration(gen) {
-			s.recordSyncError(syncCtx, gen, acc.ID, acc.LastSyncAt, err.Error())
-		}
+		s.recordSyncError(syncCtx, gen, acc.ID, err.Error())
 		return s.Status(ctx), err
 	}
 	acc.OrgID = me.OrgID
@@ -94,17 +96,9 @@ func (s *Service) SyncNow(ctx context.Context) (Status, error) {
 		threads, thErr = client.listThreads(syncCtx, acc.BaseURL, s.latestToken(acc))
 	}()
 	wg.Wait()
-	if spErr != nil {
-		if s.isGeneration(gen) {
-			s.recordSyncError(syncCtx, gen, acc.ID, acc.LastSyncAt, spErr.Error())
-		}
-		return s.Status(ctx), spErr
-	}
-	if thErr != nil {
-		if s.isGeneration(gen) {
-			s.recordSyncError(syncCtx, gen, acc.ID, acc.LastSyncAt, thErr.Error())
-		}
-		return s.Status(ctx), thErr
+	if err := cmp.Or(spErr, thErr); err != nil {
+		s.recordSyncError(syncCtx, gen, acc.ID, err.Error())
+		return s.Status(ctx), err
 	}
 	if !s.isGeneration(gen) {
 		return s.Status(ctx), context.Canceled
@@ -145,6 +139,10 @@ func (s *Service) SyncNow(ctx context.Context) (Status, error) {
 		s.persistMu.Unlock()
 		return s.Status(ctx), context.Canceled
 	}
+	if cur.Token == "" {
+		s.persistMu.Unlock()
+		return s.Status(ctx), ErrNotConnected
+	}
 	cur.OrgID = acc.OrgID
 	cur.OrgName = acc.OrgName
 	cur.UserID = acc.UserID
@@ -166,14 +164,14 @@ func (s *Service) SyncNow(ctx context.Context) (Status, error) {
 	return s.Status(ctx), nil
 }
 
-func (s *Service) recordSyncError(ctx context.Context, gen uint64, accountID string, lastSync time.Time, message string) {
+func (s *Service) recordSyncError(ctx context.Context, gen uint64, accountID, message string) {
 	s.persistMu.Lock()
 	defer s.persistMu.Unlock()
 	cur, ok := s.currentAccountToken(accountID)
 	if !ok || cur.Token == "" || !s.isGeneration(gen) {
 		return
 	}
-	_ = s.store.UpdateCloudSyncState(ctx, accountID, lastSync, message)
+	_ = s.store.UpdateCloudSyncState(ctx, accountID, cur.LastSyncAt, message)
 	s.mu.Lock()
 	if s.accountGen == gen {
 		cur.LastError = message

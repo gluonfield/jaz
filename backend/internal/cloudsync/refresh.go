@@ -1,6 +1,7 @@
 package cloudsync
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net/http"
@@ -18,9 +19,9 @@ type refreshKey struct {
 }
 
 type refreshFlight struct {
-	done chan struct{}
-	acc  storage.CloudAccount
-	err  error
+	done  chan struct{}
+	token string
+	err   error
 }
 
 func isUpstreamUnauthorized(err error) bool {
@@ -30,8 +31,9 @@ func isUpstreamUnauthorized(err error) bool {
 
 func (s *Service) clientFor(accountID string) *cloudClient {
 	c := *s.client
-	c.accountID = accountID
-	c.refresh = s.refreshAccountToken
+	c.refresh = func(ctx context.Context, token string) (string, error) {
+		return s.refreshAccountToken(ctx, accountID, token)
+	}
 	return &c
 }
 
@@ -50,164 +52,95 @@ func (s *Service) latestToken(acc storage.CloudAccount) string {
 }
 
 func (s *Service) refreshAccountToken(ctx context.Context, accountID, failedToken string) (string, error) {
-	refreshed, err := s.refreshAccount(ctx, accountID, failedToken)
-	if err != nil {
-		return "", err
-	}
-	return refreshed.Token, nil
-}
-
-func (s *Service) refreshAccount(ctx context.Context, accountID, failedToken string) (storage.CloudAccount, error) {
 	s.refreshMu.Lock()
 	acc, ok := s.currentAccountToken(accountID)
 	if !ok || acc.Token == "" {
 		s.refreshMu.Unlock()
-		return storage.CloudAccount{}, ErrNotConnected
+		return "", ErrNotConnected
 	}
 	if acc.Token != failedToken {
 		s.refreshMu.Unlock()
-		return acc, nil
+		return acc.Token, nil
 	}
 	if acc.RefreshToken == "" {
 		s.refreshMu.Unlock()
-		return storage.CloudAccount{}, &UpstreamError{StatusCode: http.StatusUnauthorized, Message: ErrNotConnected.Error()}
+		return "", ErrNotConnected
 	}
 	key := refreshKey{accountID: accountID, refreshToken: acc.RefreshToken}
 	if flight := s.refreshFlights[key]; flight != nil {
 		s.refreshMu.Unlock()
 		select {
 		case <-flight.done:
-			return flight.acc, flight.err
+			return flight.token, flight.err
 		case <-ctx.Done():
-			return storage.CloudAccount{}, ctx.Err()
+			return "", ctx.Err()
 		}
 	}
 	flight := &refreshFlight{done: make(chan struct{})}
 	s.refreshFlights[key] = flight
 	s.refreshMu.Unlock()
 
-	defer func() {
-		s.refreshMu.Lock()
-		delete(s.refreshFlights, key)
-		s.refreshMu.Unlock()
-		close(flight.done)
-	}()
+	flight.token, flight.err = s.rotateAccountToken(acc)
+	s.refreshMu.Lock()
+	delete(s.refreshFlights, key)
+	close(flight.done)
+	s.refreshMu.Unlock()
+	return flight.token, flight.err
+}
 
-	refreshCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+func (s *Service) rotateAccountToken(previous storage.CloudAccount) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	exch, err := s.client.refreshToken(refreshCtx, acc.BaseURL, acc.RefreshToken)
-	if err != nil {
-		if isUpstreamUnauthorized(err) {
-			s.clearExpiredAccountTokens(accountID, acc.RefreshToken)
-		}
-		if cur, ok := s.currentAccountToken(accountID); ok && cur.Token != "" && cur.RefreshToken != acc.RefreshToken {
-			flight.acc = cur
-			return cur, nil
-		}
-		flight.err = err
-		return storage.CloudAccount{}, err
-	}
+	exch, err := s.client.refreshToken(ctx, previous.BaseURL, previous.RefreshToken)
 	nextToken := strings.TrimSpace(exch.Token)
-	if nextToken == "" {
-		flight.err = errors.New("cloud server did not return a session token")
-		return storage.CloudAccount{}, flight.err
-	}
-	nextRefresh := strings.TrimSpace(exch.RefreshToken)
-	if nextRefresh == "" {
-		nextRefresh = acc.RefreshToken
-	}
-
 	user := exch.User.toUser()
-	var (
-		committed storage.CloudAccount
-		changed   bool
-	)
+	if err == nil {
+		switch {
+		case nextToken == "":
+			err = errors.New("cloud server did not return a session token")
+		case !matchesAccount(previous, user):
+			err = errCloudIdentityChanged
+		}
+	}
+
 	s.persistMu.Lock()
-	cur, exists := s.currentAccountToken(accountID)
-	if exists && cur.Token == failedToken && cur.RefreshToken == acc.RefreshToken {
-		updated := cur
-		updated.Token = nextToken
-		updated.RefreshToken = nextRefresh
-		updated.LastError = ""
-		if user.OrgName != "" {
-			updated.OrgName = user.OrgName
-		}
-		if user.Email != "" {
-			updated.Email = user.Email
-		}
-		if user.DisplayName != "" {
-			updated.DisplayName = user.DisplayName
-		}
-		if user.Role != "" {
-			updated.Role = user.Role
-		}
-		if err := s.store.SaveCloudAccount(refreshCtx, updated); err != nil {
-			s.log.Warn("save refreshed cloud account failed", "account", accountID, "error", err)
-		}
-		s.mu.Lock()
-		s.accounts[accountID] = updated
-		s.mu.Unlock()
-		committed = updated
-		changed = true
-	} else if exists && cur.Token != "" {
-		committed = cur
+	cur, exists := s.currentAccountToken(previous.ID)
+	if !exists || cur.Token == "" {
+		s.persistMu.Unlock()
+		return "", ErrNotConnected
 	}
+	if cur.Token != previous.Token || cur.RefreshToken != previous.RefreshToken {
+		s.persistMu.Unlock()
+		return cur.Token, nil
+	}
+	switch {
+	case isUpstreamUnauthorized(err):
+		cur.Token = ""
+		cur.RefreshToken = ""
+		cur.LastError = sessionExpiredErrorMessage
+	case err != nil:
+		s.persistMu.Unlock()
+		return "", err
+	default:
+		cur.Token = nextToken
+		cur.RefreshToken = cmp.Or(strings.TrimSpace(exch.RefreshToken), cur.RefreshToken)
+		cur.LastError = ""
+		cur.OrgName = cmp.Or(user.OrgName, cur.OrgName)
+		cur.Email = cmp.Or(user.Email, cur.Email)
+		cur.DisplayName = cmp.Or(user.DisplayName, cur.DisplayName)
+		cur.Role = cmp.Or(user.Role, cur.Role)
+	}
+	// The upstream may have rotated or revoked credentials even if SQLite is unavailable.
+	saveCtx, cancelSave := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelSave()
+	if saveErr := s.store.SaveCloudAccount(saveCtx, cur); saveErr != nil {
+		s.log.Warn("save refreshed cloud account failed", "account", cur.ID, "error", saveErr)
+	}
+	s.mu.Lock()
+	s.accounts[cur.ID] = cur
+	s.mu.Unlock()
 	s.persistMu.Unlock()
-
-	if changed {
-		s.notifyAccountChanged(context.Background())
-		flight.acc = committed
-		return committed, nil
-	}
-	if committed.Token != "" {
-		flight.acc = committed
-		return committed, nil
-	}
-	flight.err = ErrNotConnected
-	return storage.CloudAccount{}, ErrNotConnected
-}
-
-func (s *Service) clearExpiredAccountTokens(accountID, expiredRefresh string) {
-	saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var cleared bool
-	s.persistMu.Lock()
-	cur, ok := s.currentAccountToken(accountID)
-	if ok && cur.RefreshToken == expiredRefresh {
-		updated := cur
-		updated.Token = ""
-		updated.RefreshToken = ""
-		updated.LastError = sessionExpiredErrorMessage
-		if err := s.store.SaveCloudAccount(saveCtx, updated); err != nil {
-			s.log.Warn("clear expired cloud account tokens failed", "account", accountID, "error", err)
-		}
-		s.mu.Lock()
-		s.accounts[accountID] = updated
-		s.mu.Unlock()
-		cleared = true
-	}
-	s.persistMu.Unlock()
-
-	if cleared {
-		s.notifyAccountChanged(context.Background())
-	}
-}
-
-func (s *Service) doAccountHTTP(ctx context.Context, acc storage.CloudAccount, open func(token string) (*http.Response, error)) (*http.Response, error) {
-	tok := s.latestToken(acc)
-	resp, err := open(tok)
-	if err != nil || resp.StatusCode != http.StatusUnauthorized {
-		return resp, err
-	}
-	refreshed, rerr := s.refreshAccount(ctx, acc.ID, tok)
-	if isUpstreamUnauthorized(rerr) || errors.Is(rerr, ErrNotConnected) {
-		return resp, nil
-	}
-	_ = resp.Body.Close()
-	if rerr != nil {
-		return nil, rerr
-	}
-	return open(refreshed.Token)
+	s.notifyAccountChanged(ctx)
+	return cur.Token, err
 }

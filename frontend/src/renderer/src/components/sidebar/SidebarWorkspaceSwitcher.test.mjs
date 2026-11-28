@@ -310,18 +310,18 @@ test('SidebarWorkspaceSwitcher NEVER shows Local in cloud-only mode (localBacken
   expect(multiCloudHtml).not.toContain('Add Cloud Workspace')
 })
 
-test('SidebarWorkspaceSwitcher delegates workspace switching without duplicate navigation', async () => {
+test('SidebarWorkspaceSwitcher keeps an expired workspace selected and can return to Local', async () => {
   const switched = []
   const navigated = []
   const Switcher = loadSwitcher(
     {
-      active: true,
+      active: false,
       source: 'attached',
-      status: 'connected',
+      status: 'disconnected',
       activeWorkspaceId: 'ws_example',
       workspaces: [exampleWorkspace, personalWorkspace],
       url: exampleWorkspace.url,
-      user: { id: 'u1', org_id: 'org_example', org_name: 'Example Systems', email: 'alex@example.com', display_name: 'Alex', role: 'admin' },
+      user: null,
       error: null,
       oidcLoginUrl: '/v1/auth/login',
       capabilities: { spaces: true },
@@ -343,6 +343,7 @@ test('SidebarWorkspaceSwitcher delegates workspace switching without duplicate n
 
   // buttons[0] = ws_example (active), buttons[1] = ws_personal, buttons[2] = local
   expect(buttons).toHaveLength(3)
+  expect(buttons[0].props.selected).toBe(true)
   buttons[1].props.onClick()
   await settled()
   expect(switched).toEqual(['ws_personal'])

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
 import { attachCloudSignIn, signOutCloudAccount, syncCloudAccount } from '@/lib/cloudAccount'
 import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
-import { activeCloudWorkspace, workspaceDisplayName } from '@/lib/cloudWorkspaceDisplay'
+import { selectedCloudWorkspace, workspaceDisplayName } from '@/lib/cloudWorkspaceDisplay'
 import { disconnectBackend } from '@/lib/connection'
 
 function host(url: string): string {
@@ -24,7 +24,7 @@ export function CloudSettings() {
   const [running, setRunning] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const workspace = activeCloudWorkspace(cloud) ?? cloud.workspaces.find((entry) => entry.id === cloud.activeWorkspaceId) ?? null
+  const workspace = selectedCloudWorkspace(cloud)
   const needsSignIn = !isPrimaryOnly && cloud.status === 'disconnected'
   const error = actionError || workspace?.last_error || (workspace ? cloud.error : null)
 

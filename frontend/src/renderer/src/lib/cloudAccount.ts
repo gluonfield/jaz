@@ -7,6 +7,7 @@ import {
   validateOidcCallback,
 } from '@/lib/api/cloudAuth'
 import {
+  ApiError,
   apiBaseUrl,
   get,
   isCloudApiSession,
@@ -121,39 +122,25 @@ export function currentCloudAccount(): CloudAccountState {
 
 function applyBackendStatus(res: BackendCloudStatus): void {
   const workspaces = Array.isArray(res.workspaces) ? res.workspaces : []
-  if (!res.connected) {
-    setState({
-      status: 'disconnected',
-      activeWorkspaceId: res.active_workspace_id || LOCAL_WORKSPACE_ID,
-      workspaces,
-      url: res.url ?? '',
-      user: null,
-      error: res.last_error || null,
-      oidcLoginUrl: res.oidc_login_url ?? '',
-      capabilities: res.capabilities ?? {},
-      lastSyncAt: res.last_sync_at ?? '',
-    })
-    return
-  }
   setState({
-    status: 'connected',
-    activeWorkspaceId: res.active_workspace_id || workspaces[0]?.id || '',
+    status: res.connected ? 'connected' : 'disconnected',
+    activeWorkspaceId: res.active_workspace_id || (res.connected ? workspaces[0]?.id || '' : LOCAL_WORKSPACE_ID),
     workspaces,
     url: res.url ?? '',
-    user: res.user ?? null,
+    user: res.connected ? res.user ?? null : null,
     error: res.last_error || null,
-    oidcLoginUrl: res.oidc_login_url || '/v1/auth/login',
+    oidcLoginUrl: res.oidc_login_url || (res.connected ? '/v1/auth/login' : ''),
     capabilities: res.capabilities ?? {},
     lastSyncAt: res.last_sync_at ?? '',
   })
 }
 
-function refreshWorkspaceQueries({ reset = false, clearCloud = false, refetchCloud = true } = {}): void {
-  if (clearCloud || reset) {
+function refreshWorkspaceQueries({ reset, connected }: { reset: boolean; connected: boolean }): void {
+  if (reset || !connected) {
     void queryClient.cancelQueries({ queryKey: keys.cloud })
     queryClient.removeQueries({ queryKey: keys.cloud })
   }
-  if (refetchCloud) void queryClient.invalidateQueries({ queryKey: keys.cloud })
+  if (connected) void queryClient.invalidateQueries({ queryKey: keys.cloud })
   for (const queryKey of WORKSPACE_QUERY_ROOTS) {
     if (reset) {
       void queryClient.cancelQueries({ queryKey })
@@ -177,29 +164,18 @@ function isCurrent(seq: number, controller: AbortController): boolean {
 
 function commitBackendStatus(
   res: BackendCloudStatus,
-  prevWorkspaceId: string,
-  options: {
-    forceRefresh?: boolean
-    credentialsChanged?: boolean
-    prevConnected?: boolean
-    clearCloudOnDisconnect?: boolean
-    notifyIfHydrated?: boolean
-  } = {},
+  source: 'load' | 'sign-in' | 'refresh' | 'sign-out',
 ): void {
+  const previous = state
   const wasHydrated = statusHydrated
   statusHydrated = true
   applyBackendStatus(res)
-  const workspaceChanged = prevWorkspaceId !== state.activeWorkspaceId
-  const connectionChanged = options.prevConnected !== undefined && res.connected !== options.prevConnected
-  const reset = workspaceChanged || Boolean(options.credentialsChanged)
-  if (options.forceRefresh || reset || connectionChanged || (options.clearCloudOnDisconnect && !res.connected)) {
-    refreshWorkspaceQueries({
-      reset,
-      clearCloud: Boolean(options.clearCloudOnDisconnect && !res.connected),
-      refetchCloud: res.connected,
-    })
+  const workspaceChanged = previous.activeWorkspaceId !== state.activeWorkspaceId
+  const reset = workspaceChanged || source === 'sign-in'
+  if (reset || !res.connected || source === 'refresh' || previous.status !== state.status) {
+    refreshWorkspaceQueries({ reset, connected: res.connected })
   }
-  if (workspaceChanged && (!options.notifyIfHydrated || wasHydrated)) {
+  if (workspaceChanged && (source !== 'load' || wasHydrated)) {
     notifyWorkspaceChange(state.activeWorkspaceId)
   }
 }
@@ -214,17 +190,11 @@ export function resetCloudAccountState(): void {
 
 export async function refreshCloudAccountStatus(): Promise<void> {
   if (!clientRuntime.capabilities.localBackend || isCloudApiSession() || !apiBaseUrl()) return
-  const prevConnected = state.status === 'connected'
-  const prevWorkspaceId = state.activeWorkspaceId
   const { seq, controller } = beginAttempt()
   try {
     const res = await get<BackendCloudStatus>('/v1/cloud/status', { signal: controller.signal })
     if (!isCurrent(seq, controller)) return
-    commitBackendStatus(res, prevWorkspaceId, {
-      prevConnected,
-      clearCloudOnDisconnect: true,
-      notifyIfHydrated: true,
-    })
+    commitBackendStatus(res, 'load')
   } catch {
     if (!isCurrent(seq, controller)) return
     setState({ ...EMPTY_STATE })
@@ -279,7 +249,6 @@ export async function completeAttachedOidcCallback(
   }
 
   const wasConnected = state.status === 'connected'
-  const prevWorkspaceId = state.activeWorkspaceId
   const { seq, controller } = beginAttempt()
   setState(wasConnected ? { error: null } : { status: 'checking', url: validated.server, error: null })
   try {
@@ -293,7 +262,7 @@ export async function completeAttachedOidcCallback(
       controller.signal,
     )
     if (!isCurrent(seq, controller)) return null
-    commitBackendStatus(res, prevWorkspaceId, { credentialsChanged: true })
+    commitBackendStatus(res, 'sign-in')
     return null
   } catch (error) {
     if (!isCurrent(seq, controller)) return null
@@ -310,7 +279,6 @@ export async function switchWorkspace(workspaceId: string): Promise<string | nul
   if (!clientRuntime.capabilities.localBackend || isCloudApiSession() || !apiBaseUrl()) {
     return 'Workspace switching is unavailable in this session'
   }
-  const prevWorkspaceId = state.activeWorkspaceId
   const { seq, controller } = beginAttempt()
   try {
     const res = await post<BackendCloudStatus>(
@@ -319,7 +287,7 @@ export async function switchWorkspace(workspaceId: string): Promise<string | nul
       controller.signal,
     )
     if (!isCurrent(seq, controller)) return null
-    commitBackendStatus(res, prevWorkspaceId, { forceRefresh: true, clearCloudOnDisconnect: true })
+    commitBackendStatus(res, 'refresh')
     return null
   } catch (error) {
     if (!isCurrent(seq, controller)) return null
@@ -330,17 +298,20 @@ export async function switchWorkspace(workspaceId: string): Promise<string | nul
 }
 
 export async function syncCloudAccount(): Promise<string | null> {
-  const prevWorkspaceId = state.activeWorkspaceId
   const { seq, controller } = beginAttempt()
   try {
     const res = await post<BackendCloudStatus>('/v1/cloud/sync', undefined, controller.signal)
     if (!isCurrent(seq, controller)) return null
-    commitBackendStatus(res, prevWorkspaceId, { forceRefresh: true, clearCloudOnDisconnect: true })
+    commitBackendStatus(res, 'refresh')
     return null
   } catch (error) {
     if (!isCurrent(seq, controller)) return null
     const message = error instanceof Error ? error.message : 'Cloud sync failed'
-    setState({ error: message })
+    if (error instanceof ApiError && error.status === 401) {
+      await refreshCloudAccountStatus()
+    } else {
+      setState({ error: message })
+    }
     return message
   }
 }
@@ -350,7 +321,7 @@ export async function signOutCloudAccount(workspaceId?: string): Promise<void> {
   const { seq, controller } = beginAttempt()
   if (!clientRuntime.capabilities.localBackend || isCloudApiSession() || !apiBaseUrl()) {
     setState({ ...EMPTY_STATE })
-    refreshWorkspaceQueries({ reset: true, clearCloud: true, refetchCloud: false })
+    refreshWorkspaceQueries({ reset: true, connected: false })
     if (prevWorkspaceId !== state.activeWorkspaceId) notifyWorkspaceChange(state.activeWorkspaceId)
     return
   }
@@ -361,13 +332,13 @@ export async function signOutCloudAccount(workspaceId?: string): Promise<void> {
       controller.signal,
     )
     if (!isCurrent(seq, controller)) return
-    commitBackendStatus(res, prevWorkspaceId, { clearCloudOnDisconnect: true })
+    commitBackendStatus(res, 'sign-out')
   } catch {
     if (!isCurrent(seq, controller)) return
     const remaining = workspaceId ? state.workspaces.filter((ws) => ws.id !== workspaceId) : []
     if (!workspaceId || workspaceId === state.activeWorkspaceId) {
       setState({ ...EMPTY_STATE, workspaces: remaining })
-      refreshWorkspaceQueries({ reset: true, clearCloud: true, refetchCloud: false })
+      refreshWorkspaceQueries({ reset: true, connected: false })
       if (prevWorkspaceId !== state.activeWorkspaceId) notifyWorkspaceChange(state.activeWorkspaceId)
     } else {
       setState({ workspaces: remaining })
