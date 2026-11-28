@@ -18,11 +18,12 @@ import { PREVIEW_PARTITION } from '@shared/preview'
 import { assertUntrustedProfileCaller, prepareProfileFixture } from './profiles'
 import { accessibilityFixture, accessibilityFrame } from './accessibility'
 import { exerciseBrowserPopups } from './popups'
-import { configureAppPermissions } from '@main/permissions'
+import { configureAppPermissions, setTrustedRendererPath } from '@main/permissions'
 import { clipboardFixture, exerciseClipboard } from './clipboard'
 import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
 
 app.setName('Jaz')
+setTrustedRendererPath(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'renderer', 'index.html'))
 registerLocalBackendTransport()
 let probingNavigation = false
 let navigationRequests: { url: string; webContentsId: number }[] = []

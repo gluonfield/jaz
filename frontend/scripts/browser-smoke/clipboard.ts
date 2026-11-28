@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { BrowserWindow, ClipboardItem, clipboard, webContents, type WebContents, type WebFrameMain } from 'electron'
+import { getTrustedRendererPath } from '@main/permissions'
 import { PREVIEW_PARTITION } from '@shared/preview'
 
 export function clipboardFixture(url: URL): string {
@@ -134,7 +135,7 @@ export async function exerciseClipboard(origin: string): Promise<void> {
       assert.equal((await click(window.webContents, window.webContents.mainFrame.frames[0], action, 220)).ok, true, 'Sandboxed embedded app copy must succeed')
     }
     assert.equal((await click(window.webContents, window.webContents.mainFrame, 'copy-id')).ok, true, 'Trusted renderer copy must succeed')
-    const file = join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'renderer', 'index.html')
+    const file = getTrustedRendererPath()
     const rendererURL = process.env.ELECTRON_RENDERER_URL
     delete process.env.ELECTRON_RENDERER_URL
     try {

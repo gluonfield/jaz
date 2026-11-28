@@ -4,8 +4,6 @@ import { createRoot } from 'react-dom/client'
 import { ChatLog } from '@/components/bots/ChatLog'
 import { Composer } from '@/components/session/Composer'
 import { useLiveSessionSend } from '@/components/session/useLiveSessionSend'
-import { liveOptimisticUserMessage } from '@/components/session/liveTranscript'
-import { optimisticTranscriptMessages } from '@/lib/optimisticUserMessage'
 import { botChat, type ChatEntry } from '@/lib/bots'
 import { useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { keys } from '@/lib/query/keys'
@@ -123,11 +121,10 @@ async function exercisePagedHistory() {
     const history = useSessionHistory(bot.id, (message) => {
       throw new Error(message)
     })
-    const live = useLiveSessionSend({ sessionId: bot.id, onCriticalError: (message) => {
+    const live = useLiveSessionSend({ sessionId: bot.id, history: history.data, onCriticalError: (message) => {
       throw new Error(message)
     } })
-    const messages = optimisticTranscriptMessages(history.data?.messages ?? [], live.live ? liveOptimisticUserMessage(live.live) : null)
-    const entries = botChat(messages, history.data?.events ?? [], bot, []).entries
+    const entries = botChat(live.messages, history.data?.events ?? [], bot, []).entries
     const opened = useRef(false)
     useLayoutEffect(() => {
       if (opened.current || !entries.length) {
@@ -192,13 +189,22 @@ async function exercisePagedHistory() {
     await until(() => Boolean(element.querySelector('button[aria-label="Send message"]:not(:disabled)')))
     element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click()
     await until(() => Boolean(paragraph('Keep going')) && Boolean(sendBody))
-    const optimistic = paragraph('Keep going')!
-    saved = true
-    sendBody!.enqueue(new TextEncoder().encode('data: {"type":"accepted"}\n\ndata: {"type":"done"}\n\n'))
-    sendBody!.close()
-    await until(() => !element.querySelector('button[aria-label="Stop response"]'))
-    if (paragraph('Keep going') !== optimistic || textarea.value) {
-      throw new Error('Saving a sent message replaced its bubble or restored its composer text')
+    const sentCopies = () => [...element.querySelectorAll('p')].filter((node) => node.textContent === 'Keep going').length
+    let interrupted = false
+    const observer = new MutationObserver(() => {
+      if (sentCopies() !== 1) interrupted = true
+    })
+    observer.observe(element, { childList: true, subtree: true, characterData: true })
+    try {
+      saved = true
+      sendBody!.enqueue(new TextEncoder().encode('data: {"type":"accepted"}\n\ndata: {"type":"done"}\n\n'))
+      sendBody!.close()
+      await until(() => !element.querySelector('button[aria-label="Stop response"]'))
+      if (interrupted || sentCopies() !== 1 || textarea.value) {
+        throw new Error('Saving a sent message interrupted the transcript or restored its composer text')
+      }
+    } finally {
+      observer.disconnect()
     }
   } finally {
     release?.()
