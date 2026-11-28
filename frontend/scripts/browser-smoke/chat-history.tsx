@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { ChatLog } from '@/components/bots/ChatLog'
 import { Composer } from '@/components/session/Composer'
 import { useLiveSessionSend } from '@/components/session/useLiveSessionSend'
+import type { SessionMessages } from '@/lib/api/types'
 import { botChat, type ChatEntry } from '@/lib/bots'
 import { useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { keys } from '@/lib/query/keys'
@@ -81,6 +82,9 @@ async function exercisePagedHistory() {
   const originalFetch = window.fetch
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   const bot = { id: 'paged-bot', name: 'Bot' }
+  const queryKey = keys.sessionMessages(bot.id)
+  const sendText = 'Keep going'
+  const savedHistory = Promise.withResolvers<void>()
   const event = (seq: number, at = '2026-10-01T12:00:00.000Z') => ({
     session_id: bot.id, seq, type: 'room_message', at,
     room_message: { speaker: 'bot' as const, name: 'Bot', text: `Message ${seq}` },
@@ -114,7 +118,8 @@ async function exercisePagedHistory() {
       })
       return Response.json({ ...page, events: Array.from({ length: 24 }, (_, index) => event(index + 1)), has_earlier: false, before_event_seq: 0 })
     }
-    return Response.json({ ...page, messages: saved ? [{ seq: 1, role: 'user', from_user: true, content: 'Keep going', blocks: [], created_at: new Date().toISOString() }] : [], events: arrived ? [...page.events, event(39, new Date().toISOString())] : page.events, latest_event_seq: arrived ? 39 : 38 })
+    if (saved) await savedHistory.promise
+    return Response.json({ ...page, messages: saved ? [{ seq: 1, role: 'user', from_user: true, content: sendText, blocks: [], created_at: new Date().toISOString() }] : [], events: arrived ? [...page.events, event(39, new Date().toISOString())] : page.events, latest_event_seq: arrived ? 39 : 38 })
   }
   function Chat() {
     const scrollRef = useRef<HTMLDivElement>(null)
@@ -151,7 +156,9 @@ async function exercisePagedHistory() {
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
   }
-  const paragraph = (text: string) => [...element.querySelectorAll('p')].find((node) => node.textContent === text)
+  const paragraphs = (text: string) => [...element.querySelectorAll('p')].filter((node) => node.textContent === text)
+  const paragraph = (text: string) => paragraphs(text)[0]
+  const sentOnce = () => paragraphs(sendText).length === 1
   try {
     root.render(<StrictMode><QueryClientProvider client={client}><Chat /></QueryClientProvider></StrictMode>)
     await until(() => Boolean(paragraph('Message 38')))
@@ -169,7 +176,7 @@ async function exercisePagedHistory() {
     const anchor = paragraph('Message 25')!
     const top = anchor.getBoundingClientRect().top
     arrived = true
-    await client.refetchQueries({ queryKey: keys.sessionMessages(bot.id) })
+    await client.refetchQueries({ queryKey })
     await until(() => Boolean(paragraph('Message 39')))
     if (!anchor.isConnected || Math.abs(anchor.getBoundingClientRect().top - top) > 1) {
       throw new Error('A new message moved the reader while an earlier page was loading')
@@ -184,29 +191,32 @@ async function exercisePagedHistory() {
     }
     await window.smoke.capture('bot-chat-earlier-history')
     const textarea = element.querySelector<HTMLTextAreaElement>('textarea')!
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea, 'Keep going')
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea, sendText)
     textarea.dispatchEvent(new Event('input', { bubbles: true }))
     await until(() => Boolean(element.querySelector('button[aria-label="Send message"]:not(:disabled)')))
     element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click()
-    await until(() => Boolean(paragraph('Keep going')) && Boolean(sendBody))
-    const sentCopies = () => [...element.querySelectorAll('p')].filter((node) => node.textContent === 'Keep going').length
+    await until(() => sentOnce() && Boolean(sendBody))
     let interrupted = false
     const observer = new MutationObserver(() => {
-      if (sentCopies() !== 1) interrupted = true
+      if (!sentOnce()) interrupted = true
     })
     observer.observe(element, { childList: true, subtree: true, characterData: true })
     try {
       saved = true
       sendBody!.enqueue(new TextEncoder().encode('data: {"type":"accepted"}\n\ndata: {"type":"done"}\n\n'))
       sendBody!.close()
-      await until(() => !element.querySelector('button[aria-label="Stop response"]'))
-      if (interrupted || sentCopies() !== 1 || textarea.value) {
+      await until(() => client.getQueryState(queryKey)?.fetchStatus === 'fetching')
+      if (!sentOnce()) throw new Error('The sent message disappeared while history was loading')
+      savedHistory.resolve()
+      await until(() => client.getQueryData<SessionMessages>(queryKey)?.messages[0]?.content === sendText && !element.querySelector('button[aria-label="Stop response"]'))
+      if (interrupted || !sentOnce() || textarea.value) {
         throw new Error('Saving a sent message interrupted the transcript or restored its composer text')
       }
     } finally {
       observer.disconnect()
     }
   } finally {
+    savedHistory.resolve()
     release?.()
     root.unmount()
     client.clear()

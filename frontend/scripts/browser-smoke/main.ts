@@ -22,8 +22,9 @@ import { configureAppPermissions, setTrustedRendererPath } from '@main/permissio
 import { clipboardFixture, exerciseClipboard } from './clipboard'
 import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
 
+const packagedRendererPath = join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'renderer', 'index.html')
 app.setName('Jaz')
-setTrustedRendererPath(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'renderer', 'index.html'))
+setTrustedRendererPath(packagedRendererPath)
 registerLocalBackendTransport()
 let probingNavigation = false
 let navigationRequests: { url: string; webContentsId: number }[] = []
@@ -400,7 +401,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     }
     return { contrast: max - min, inkPixels: Math.min(high, pixels.length / 4 - high), frames, paintedAt: at }
   })
-  if (!googlePasskeys && !wordDocuments) await exerciseClipboard(process.env.ELECTRON_RENDERER_URL)
+  if (!googlePasskeys && !wordDocuments) await exerciseClipboard(process.env.ELECTRON_RENDERER_URL, packagedRendererPath)
   attachPreviewWebviews(window.webContents, join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js'))
   ipcMain.handle('smoke:password-store', async () => {
     const file = join(app.getPath('userData'), 'browser-passwords.enc')
