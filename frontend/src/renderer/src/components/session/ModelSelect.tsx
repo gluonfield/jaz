@@ -7,6 +7,7 @@ import { AgentTabs, agentTabsWidth, useAgentSwipe, type AgentChoice } from '@/co
 import { Pop, Roll, SWAP, Tick, useDirection, useWidthTransition } from '@/components/session/pickerMotion'
 import { Button } from '@/components/ui/Button'
 import { Popover } from '@/components/ui/Popover'
+import { SwitchTrack } from '@/components/ui/Switch'
 import { agentLabel } from '@/lib/agentLabel'
 import type { ReasoningEffortOption } from '@/lib/api/types'
 import type { FastModeControl } from '@/lib/agentConfig'
@@ -216,12 +217,11 @@ export function ModelSelect({
                     aria-checked={fast}
                     disabled={fastMode.disabled}
                     onClick={() => fastMode.onChange(!fast)}
-                    className={`relative ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 transition-[background-color,color,scale] active:scale-[0.94] disabled:opacity-50 ${fast
-                      ? 'bg-primary text-on-primary'
-                      : 'text-ink-3 enabled:hover:bg-surface-2 enabled:hover:text-ink'}`}
+                    className={`ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-full pr-1 pl-2 transition-colors enabled:hover:bg-surface-2 enabled:hover:text-ink focus-visible:bg-surface-2 disabled:opacity-50 ${fast ? 'text-ink' : 'text-ink-3'}`}
                   >
-                    <Pop id={String(fast)}><Zap size={12} fill={fast ? 'currentColor' : 'none'} /></Pop>
+                    <Zap size={12} />
                     Fast
+                    <SwitchTrack checked={fast} compact />
                   </button>
                 ) : null}
               </div>
