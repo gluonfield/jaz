@@ -8,7 +8,8 @@ import { PermissionCard } from '@/components/session/TranscriptPermissions'
 import { getAppearance, setAppearance } from '@/lib/appearance'
 import { botActivityQuery, botsQuery } from '@/lib/api/bots'
 import { installKeyboardFocus } from '@/lib/dom/keyboardFocus'
-import { clockTime } from '@/lib/format/time'
+import { TASK_GROUPS } from '@/lib/bots'
+import { clockTime, shortDate } from '@/lib/format/time'
 import { Route as botsIndexRoute } from '@/routes/bots.index'
 import type { Bot, BotActivity, BotFile, BotOwed, Loop, LoopRun } from '@/lib/api/types'
 
@@ -25,7 +26,7 @@ export async function exerciseBotPanel(): Promise<void> {
     { id: 5, request: 'Overnight stress run; done when all overnight checks pass and their results are reviewed', status: 'pending', blocked: true, opening_seq: 9 },
     { id: 2, request: 'Pause prompt suggestions on hidden turns', status: 'waiting_for_user', question_seq: 15, opening_seq: 4 },
     { id: 8, request: 'Choose public artifact sharing defaults', status: 'waiting_for_user', question_seq: 16, threads: [{ id: 'sharing-audit', title: 'Sharing audit', state: 'finished' }] },
-    { id: 9, request: 'Choose the bot chat sync direction', status: 'waiting_for_user', question_seq: 17 },
+    { id: 9, request: 'Choose the bot chat sync direction between Jaz and its connected agents', status: 'waiting_for_user', question_seq: 17 },
     { id: 10, request: 'Resolve deferred bot identity changes', status: 'waiting_for_user', question_seq: 18 },
     { id: 1, request: 'Capacity test with 20 threads', status: 'in_progress', threads: [{ id: 'side-f', title: 'Capacity harness', state: 'finished' }, { id: 'side-g', title: 'Capacity run', state: 'failed' }] },
     { id: 7, request: 'Run the login suites', status: 'in_progress', moving: true, threads: [{ id: 'side-i', title: 'Login suites', state: 'background' }, { id: 'side-j', title: 'Login fix', state: 'finished' }] },
@@ -34,12 +35,13 @@ export async function exerciseBotPanel(): Promise<void> {
   // Older servers also listed commitments and memory changes as rows of their
   // own; the panel drops them.
   const facesClosed = minutes(20)
+  const droppedAt = minutes(60 * 24 + 40)
   const activity: (BotActivity | { kind: 'commitment' | 'file_changed'; at: string; title: string; status?: string; text?: string; thread_id?: string })[] = [
     { kind: 'file_changed', at: minutes(62), title: 'MEMORY.md' },
     { kind: 'commitment', at: minutes(21), title: 'Legacy closed commitment', status: 'completed', thread_id: 'side-k' },
     { kind: 'commitment', at: minutes(60 * 24 + 41), title: 'Legacy dropped commitment', status: 'cancelled', text: 'He chose option A instead' },
     { kind: 'task', at: facesClosed, task: { id: 11, name: 'Calmer bot faces', request: 'Make the bot faces calmer so a busy sidebar does not flicker', status: 'completed', threads: [{ id: 'side-d', title: 'Faces redesign', state: 'finished' }] } },
-    { kind: 'task', at: minutes(60 * 24 + 40), task: { id: 12, request: 'Muse-style identity cards', status: 'cancelled' } },
+    { kind: 'task', at: droppedAt, task: { id: 12, request: 'Muse-style identity cards', status: 'cancelled' } },
     { kind: 'side_chat', at: minutes(14), running: true, title: 'Notes cleanup', status: 'running', thread_id: 'side-c2' },
     { kind: 'side_chat', at: minutes(30), title: 'Merged both reviews into one plan', status: 'idle', thread_id: 'side-b' },
     { kind: 'routine', at: minutes(80), title: 'Grok Bot and Dots watch', status: 'ok', thread_id: 'run-watch' },
@@ -224,8 +226,9 @@ export async function exerciseBotPanel(): Promise<void> {
   const wasDark = document.documentElement.classList.contains('dark')
   const dark = (on: boolean) => document.documentElement.classList.toggle('dark', on)
   const editor = () => document.querySelector<HTMLElement>('[role="dialog"] .ProseMirror')
-  const stateNodes = () => [...document.querySelectorAll<HTMLElement>('section[aria-label="Tasks"] li > button > span + span')]
-  const taskStates = () => stateNodes().map((node) => node.textContent)
+  const group = (name: string) => document.querySelector<HTMLElement>(`section[aria-label="${name}"]`)
+  const groupOf = (title: string) => find(title)?.closest('section')?.getAttribute('aria-label')
+  const tasksShown = () => text().includes('Waiting for you 4')
   const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
   const body = () => dialog()?.querySelector('header + div')?.textContent ?? ''
   const threadLines = () => [...dialog()?.querySelectorAll('[aria-label="Threads"] a') ?? []].map((line) => line.textContent).join('|')
@@ -275,7 +278,7 @@ export async function exerciseBotPanel(): Promise<void> {
     client.setQueryData(botsQuery.queryKey, listed)
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     dark(false)
-    await until('Activity did not open with tasks and history', () => selected() === find('Activity') && text().includes(`Tasks ${owed.length}`) && text().includes('Notes cleanup'))
+    await until('Activity did not open with tasks and history', () => selected() === find('Activity') && tasksShown() && text().includes('Notes cleanup'))
     if (mounts !== 2) throw new Error(`Bot panel: development StrictMode mounted ${mounts} times`)
     if ([...tabpanel().querySelectorAll('h3')].some((heading) => heading.textContent === 'Now') || tabpanel().textContent?.includes('Reviewer')) {
       throw new Error('Bot panel: the separate Now helper block is still visible')
@@ -284,23 +287,31 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: tasks have a separate tab instead of appearing in Activity')
     }
     const tabLayout = iconTabs('on the desktop panel')
-    const tasks = document.querySelector<HTMLElement>('section[aria-label="Tasks"]')!
-    const titles = owed.map((task) => task.id === 5 ? 'Overnight stress run' : task.name || task.request)
-    const states = ['Working', 'Not delivered yet', 'Stopped', 'Waiting on another task', 'Waiting for you', 'Waiting for you', 'Waiting for you', 'Waiting for you', 'Not delivered yet', 'Working']
-    const lines = [...tasks.querySelectorAll('li > button')].map((row) => row.textContent)
-    if (lines.join('|') !== titles.map((title, i) => title + states[i]).join('|') || tasks.querySelector('h4')) {
-      throw new Error(`Bot panel: tasks are not one list of names with their states and nothing else, got ${lines.join('|')}`)
+    const grouped = TASK_GROUPS.map((name) => `${group(name)?.querySelector('h3')?.textContent}: ${[...group(name)?.querySelectorAll('li > button') ?? []].map((row) => row.textContent).join('|')}`)
+    const expected = [
+      'Waiting for you 4: Pause prompt suggestions on hidden turns|Choose public artifact sharing defaults|Choose the bot chat sync direction between Jaz and its connected agents|Resolve deferred bot identity changes',
+      'In progress 4: Keep delegated work visible|Which fixes matter this weekNot delivered yet|Capacity test with 20 threadsNot delivered yet|Run the login suites',
+      'Queued 1: Overnight stress runWaiting on another task',
+      `Done 1: Calmer bot faces${clockTime(facesClosed)}`,
+      `Stopped 2: Compare the supplier quotes|Muse-style identity cardsDropped${shortDate(droppedAt)}`,
+    ]
+    if (grouped.join('\n') !== expected.join('\n')) {
+      throw new Error(`Bot panel: tasks are not grouped by state with whole names, got ${grouped.join('\n')}`)
     }
-    const colorOf = (state: string) => getComputedStyle(stateNodes()[states.indexOf(state)]).color
-    if (new Set(['Working', 'Waiting for you', 'Stopped'].map(colorOf)).size !== 3) {
-      throw new Error('Bot panel: working, waiting for you and other states share a colour')
+    const headingColor = (name: string) => getComputedStyle(group(name)!.querySelector('h3')!).color
+    if (headingColor('Waiting for you') === headingColor('In progress') || new Set(TASK_GROUPS.slice(1).map(headingColor)).size !== 1) {
+      throw new Error('Bot panel: the tasks waiting for you do not stand apart from the other groups')
     }
-    if (tabpanel().querySelector('details, [role="dialog"], [aria-expanded="true"]') || tasks.textContent?.includes(owed[0].request) || text().includes('Updated memory') || text().includes('Side chat')) {
-      throw new Error('Bot panel: a closed task or history row shows more than one line')
+    const long = find('Choose the bot chat sync direction')!.firstElementChild!.firstElementChild!
+    if (long.getBoundingClientRect().height < 36 || long.scrollWidth > long.clientWidth) {
+      throw new Error('Bot panel: a long task name is cut off instead of wrapping')
+    }
+    if (tabpanel().querySelector('details, [role="dialog"], [aria-expanded="true"]') || tabpanel().textContent?.includes(owed[0].request) || text().includes('Updated memory') || text().includes('Side chat')) {
+      throw new Error('Bot panel: a closed task or history row shows more than its name')
     }
     const rows = [...tabpanel().querySelectorAll('li > :first-child')].map((row) => row.getBoundingClientRect())
-    if (rows.some((row) => row.height > 32 || row.left !== rows[0].left || row.right !== rows[0].right)) {
-      throw new Error('Bot panel: rows are taller than one line or not aligned')
+    if (rows.some((row) => row.height < 32 || row.left !== rows[0].left || row.right !== rows[0].right)) {
+      throw new Error('Bot panel: rows are shorter than one line or not aligned')
     }
     await capture('bot-panel-tasks')
     dark(true)
@@ -308,7 +319,7 @@ export async function exerciseBotPanel(): Promise<void> {
     dark(false)
     await window.smoke.resize(390, 844)
     await capture('bot-panel-tasks-phone')
-    if ([tasks, ...tasks.querySelectorAll('li > *')].some((node) => node.getBoundingClientRect().right > innerWidth || node.getBoundingClientRect().left < 0)) {
+    if ([...tabpanel().querySelectorAll('section, li > *')].some((node) => node.getBoundingClientRect().right > innerWidth || node.getBoundingClientRect().left < 0)) {
       throw new Error('Bot panel: tasks overflow on a phone')
     }
     if (iconTabs('on a phone') !== tabLayout) {
@@ -341,14 +352,14 @@ export async function exerciseBotPanel(): Promise<void> {
     activityFails = true
     await client.invalidateQueries({ queryKey: activityKey })
     await settle()
-    if (!text().includes(`Tasks ${owed.length}`) || !link('side-a') || !link('review-a2')) {
+    if (!tasksShown() || !link('side-a') || !link('review-a2')) {
       throw new Error('Bot panel: a failed background refresh hid the last loaded tasks or the open one')
     }
     activityFails = false
     await click('Commitments and lost results')
     await until('a task thread did not open', () => router.state.location.pathname === '/sessions/side-a' && !dialog())
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
-    await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes(`Tasks ${owed.length}`))
+    await until('the panel did not return to Activity', () => selected() === find('Activity') && tasksShown())
     await click('Capacity test with 20 threads')
     await until('a task with several threads did not list every connected one, once', () => Boolean(link('side-f')) && Boolean(link('review-f1')) && Boolean(link('side-g')) && !body().startsWith('Capacity test'))
     await window.smoke.key('Escape')
@@ -370,13 +381,9 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Sharing audit')
     await until('a waiting task\'s thread did not open', () => router.state.location.pathname === '/sessions/sharing-audit' && !dialog())
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
-    await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes(`Tasks ${owed.length}`))
+    await until('the panel did not return to Activity', () => selected() === find('Activity') && tasksShown())
     if (text().includes('He chose option A instead') || text().includes('Legacy') || link('side-d')) {
       throw new Error('Bot panel: legacy commitment rows or a closed task\'s thread leaked into the history')
-    }
-    const closed = [...tabpanel().querySelectorAll('section:not([aria-label="Tasks"]) li > button')].map((row) => row.textContent).join('|')
-    if (closed !== `Calmer bot faces${clockTime(facesClosed)}|Muse-style identity cardsDropped`) {
-      throw new Error(`Bot panel: closed tasks are not one-line rows in their days, got ${closed}`)
     }
     await click('Calmer bot faces')
     await until('a closed task did not open its modal with what was asked and its threads', () => dialog()?.querySelector('h2')?.textContent === 'Calmer bot faces' && dialog()!.textContent!.includes('Done') && body() === 'Make the bot faces calmer so a busy sidebar does not flickerThreads1Faces redesignFinished')
@@ -389,13 +396,13 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: a routine run lost its thread, failure or reason')
     }
     await capture('bot-panel-history')
-    if (!link('side-c2')?.textContent?.endsWith('Running for 14m') || link('side-c2')?.closest('section') !== tabpanel().querySelector('section:not([aria-label="Tasks"])')) {
+    if (!link('side-c2')?.textContent?.endsWith('Running for 14m') || link('side-c2')?.closest('section')?.getAttribute('aria-label') !== 'Today') {
       throw new Error('Bot panel: the newest day lost the running side chat or its state')
     }
     await click('Heartbeat')
     await until('a routine run did not open its thread', () => router.state.location.pathname === '/sessions/run-heartbeat')
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
-    await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes(`Tasks ${owed.length}`))
+    await until('the panel did not return to Activity', () => selected() === find('Activity') && tasksShown())
     // In the sidebar a bot waiting on the person always has a dot; a working
     // one has its face, and a dot only once effects are off and the face
     // holds still.
@@ -414,7 +421,7 @@ export async function exerciseBotPanel(): Promise<void> {
     dark(false)
     const current = client.getQueryData(activityKey)!
     client.setQueryData(activityKey, { ...current, owed: [] })
-    await until('a bot without tasks hid its work history', () => !tabpanel().querySelector('section[aria-label="Tasks"]') && text().includes('Notes cleanup'))
+    await until('a bot without open tasks hid its closed tasks or threads', () => !group('In progress') && Boolean(group('Done')) && text().includes('Notes cleanup'))
     await capture('bot-panel-no-tasks')
     client.setQueryData(activityKey, { owed: [], items: [], started: {} })
     await until('a bot with no tasks or work did not say it has no tasks', () => tabpanel().textContent === 'No tasks yet.')
@@ -423,7 +430,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await capture('bot-panel-empty-dark')
     dark(false)
     client.setQueryData(activityKey, current)
-    await until('the tasks did not return', () => text().includes(`Tasks ${owed.length}`))
+    await until('the tasks did not return', () => tasksShown())
 
     await click('Routines')
     await until('routines are not grouped by cadence', () => text().includes('Through the day') && text().includes('Every 30 minutes') && text().includes('Daily'))
@@ -447,7 +454,7 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: the tabs move or resize when the selection changes')
     }
     await window.smoke.key('Right')
-    await until('ArrowRight did not wrap to Activity', () => selected() === find('Activity') && document.activeElement === selected() && tabpanel().textContent!.includes(`Tasks ${owed.length}`))
+    await until('ArrowRight did not wrap to Activity', () => selected() === find('Activity') && document.activeElement === selected() && tasksShown())
     await window.smoke.key('Left')
     await until('ArrowLeft did not wrap to Identity', () => selected() === find('Identity') && document.activeElement === selected())
     await window.smoke.key('Home')
@@ -541,7 +548,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Activity')
     const completed = owed.splice(0)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-    await until('completed tasks did not leave the open list', () => !document.querySelector('section[aria-label="Tasks"]') && !text().includes(completed[0].name!) && text().includes('Notes cleanup') && text().includes('Calmer bot faces'))
+    await until('completed tasks did not leave the open list', () => !group('In progress') && !text().includes(completed[0].name!) && text().includes('Notes cleanup') && text().includes('Calmer bot faces'))
     owed.push(...completed)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
     await until('new tasks did not appear', () => text().includes(completed[0].name!))
@@ -552,13 +559,9 @@ export async function exerciseBotPanel(): Promise<void> {
     for (const motion of [{ threads: [{ id: 'background-worker', title: 'Report worker', state: 'background' as const }] }, { moving: true }]) {
       owed.splice(0, owed.length, { id: 8, request: 'Deliver the report', status: 'in_progress', ...motion })
       await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-      await until('the moving task did not appear', () => document.querySelector('section[aria-label="Tasks"] li > button > span')?.textContent === 'Deliver the report' && taskStates().join() === ('moving' in motion ? 'Working' : 'In progress'))
-      const before = getComputedStyle(stateNodes()[0]).color
+      await until('the moving task did not appear', () => groupOf('Deliver the report') === 'In progress')
       owed[0].status = 'waiting_for_user'
-      await until('a moving task waited longer than the active polling interval to refresh', () => taskStates().join() === 'Waiting for you')
-      if (getComputedStyle(stateNodes()[0]).color === before) {
-        throw new Error('Bot panel: a task now waiting for you kept its earlier colour')
-      }
+      await until('a moving task waited longer than the active polling interval to refresh', () => groupOf('Deliver the report') === 'Waiting for you')
     }
   } finally {
     if (originalLastBot === null) localStorage.removeItem('jaz.lastBot')

@@ -5,17 +5,17 @@ import { useEffect, useState, type MouseEvent } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotOwed, BotOwedThread, BotThreadActivity } from '@/lib/api/types'
-import { type ConnectedTaskThread, type TaskState, connectedTaskThreads, taskName, taskState } from '@/lib/bots'
+import { type ConnectedTaskThread, TASK_GROUPS, connectedTaskThreads, taskName, taskState } from '@/lib/bots'
 import { clockTime, formatDuration, shortDate } from '@/lib/format/time'
 
 const EMPTY_OWED: BotOwed[] = []
 const EMPTY_ITEMS: BotActivity[] = []
 const EMPTY_STARTED: Record<string, BotThreadActivity[]> = {}
 
-// What a bot is working on and what it did: its open tasks with their states,
-// then by day the tasks it closed and the threads it started, one line each.
-// A task opens a modal with what it is, its next step, and all connected
-// threads; a thread line opens its thread.
+// What a bot is working on and what it did: its tasks grouped by state, open
+// and closed alike, then by day the threads it started. A task opens a modal
+// with what it is, its next step, and all connected threads; a thread line
+// opens its thread.
 export function BotActivity({ bot }: { bot: Bot }) {
   const activity = useQuery(botActivityQuery(bot.id))
   const [shown, setShown] = useState<number>()
@@ -29,40 +29,36 @@ export function BotActivity({ bot }: { bot: Bot }) {
   if (activity.isError && !activity.data) {
     return <p role="alert" className="text-[13px] text-danger">Couldn’t load activity.</p>
   }
-  const days = groupByDay(items, now)
-  const task = [...owed, ...items.flatMap((item) => item.kind === 'task' ? [item.task] : [])].find((item) => item.id === shown)
-  if (!owed.length && !days.length) {
+  const tasks: TaskRow[] = [...owed.map((task) => ({ task })), ...items.flatMap((item) => item.kind === 'task' ? [item] : [])]
+  const days = groupByDay(items.flatMap((item) => item.kind === 'task' ? [] : [item]), now)
+  const task = tasks.find((row) => row.task.id === shown)?.task
+  if (!tasks.length && !days.length) {
     return <p className="text-[13px] text-ink-3">No tasks yet.</p>
   }
   return (
     <div className="flex flex-col gap-5">
-      {owed.length ? (
-        <section aria-label="Tasks" className="flex flex-col">
-          <h3 className="mb-1 text-[13px] font-semibold text-ink">Tasks <span className="ml-1 text-ink-3 tabular-nums">{owed.length}</span></h3>
-          <ul className="flex flex-col">
-            {owed.map((item) => (
-              <li key={item.id} className="flex flex-col">
-                <TaskButton task={item} state={taskState(item)} onOpen={setShown} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      {TASK_GROUPS.map((group) => {
+        const list = tasks.filter((row) => taskState(row.task)[1] === group)
+        return list.length ? (
+          <section key={group} aria-label={group} className="flex flex-col">
+            <h3 className={`${HEADING} ${group === 'Waiting for you' ? 'text-accent-strong' : 'text-ink-3'}`}>
+              {group} <span className="ml-0.5 font-normal tabular-nums opacity-70">{list.length}</span>
+            </h3>
+            <ul className="flex flex-col">
+              {list.map((row) => (
+                <li key={row.task.id} className="flex flex-col">
+                  <TaskButton task={row.task} at={row.at} now={now} onOpen={setShown} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null
+      })}
       {days.map(([day, list]) => (
         <section key={day} aria-label={day} className="flex flex-col">
-          <h3 className="mb-1 text-[13px] font-semibold text-ink">{day}</h3>
+          <h3 className={`${HEADING} text-ink-3`}>{day}</h3>
           <ul className="flex flex-col">
-            {list.map((item) => item.kind === 'task'
-              ? (
-                  <li key={`task-${item.task.id}`} className="flex flex-col">
-                    <TaskButton
-                      task={item.task}
-                      state={item.task.status === 'completed' ? [clockTime(item.at)] : taskState(item.task)}
-                      onOpen={setShown}
-                    />
-                  </li>
-                )
-              : <li key={item.thread_id}><ThreadLink line={activityLine(item, now)} /></li>)}
+            {list.map((item) => <li key={item.thread_id}><ThreadLink line={activityLine(item, now)} /></li>)}
           </ul>
         </section>
       ))}
@@ -79,13 +75,24 @@ export function BotActivity({ bot }: { bot: Bot }) {
   )
 }
 
-const LINE = '-mx-2 flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-left text-[13px] transition-colors duration-150 hover:bg-list-hover'
+const HEADING = 'mb-1 text-[12px] font-medium'
+const ROW = '-mx-2 flex min-w-0 rounded-lg px-2 text-left text-[13px] transition-colors duration-150 hover:bg-list-hover'
+const LINE = `${ROW} h-8 items-center gap-1.5`
 
-function TaskButton({ task, state: [label, tone], onOpen }: { task: BotOwed; state: TaskState; onOpen: (id: number) => void }) {
-  const title = taskName(task)
+// A task and, once it has closed, when.
+type TaskRow = { task: BotOwed; at?: string }
+
+// A task's whole name, wrapping as it needs; under it only a state that says
+// more than its group does, and beside it when a closed task closed.
+function TaskButton({ task, at, now, onOpen }: TaskRow & { now: number; onOpen: (id: number) => void }) {
+  const [label, group, detail] = taskState(task)
   return (
-    <button type="button" title={title} onClick={() => onOpen(task.id)} className={`${LINE} cursor-pointer`}>
-      <Line title={title} state={label} tone={tone} />
+    <button type="button" onClick={() => onOpen(task.id)} className={`${ROW} cursor-pointer items-baseline gap-3 py-[7px] leading-[18px] active:bg-list-active`}>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className={`text-pretty wrap-break-word ${group === 'Done' || group === 'Stopped' ? 'text-ink-2' : 'text-ink'}`}>{taskName(task)}</span>
+        {detail ? <span className="text-[12px] text-ink-3">{label}</span> : null}
+      </span>
+      {at ? <span className="shrink-0 text-[12px] text-ink-3 tabular-nums">{isToday(at, now) ? clockTime(at) : shortDate(at)}</span> : null}
     </button>
   )
 }
@@ -200,7 +207,7 @@ function ThreadLink({ line, depth = 0, onClick }: { line: ThreadLine; depth?: nu
   )
 }
 
-const TONES = { running: 'text-running', waiting: 'font-medium text-accent-strong', danger: 'text-danger' }
+const TONES = { running: 'text-running', danger: 'text-danger' }
 type Tone = keyof typeof TONES
 
 function Line({ title, state, tone }: { title: string; state?: string; tone?: Tone }) {
@@ -212,11 +219,14 @@ function Line({ title, state, tone }: { title: string; state?: string; tone?: To
   )
 }
 
-function groupByDay(items: BotActivity[], now: number): [string, BotActivity[]][] {
-  const today = new Date(now).toDateString()
-  const days = new Map<string, BotActivity[]>()
+function isToday(iso: string, now: number): boolean {
+  return new Date(iso).toDateString() === new Date(now).toDateString()
+}
+
+function groupByDay(items: BotThreadActivity[], now: number): [string, BotThreadActivity[]][] {
+  const days = new Map<string, BotThreadActivity[]>()
   for (const item of items) {
-    const day = new Date(item.at).toDateString() === today ? 'Today' : shortDate(item.at)
+    const day = isToday(item.at, now) ? 'Today' : shortDate(item.at)
     days.set(day, [...(days.get(day) ?? []), item])
   }
   return [...days]

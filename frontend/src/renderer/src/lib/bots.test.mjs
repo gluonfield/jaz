@@ -172,19 +172,21 @@ test('a drag previews where the bot lands and keeps it, hidden, where the drag b
 })
 
 test('a finished worker does not make an open task look complete', () => {
-  expect(taskState({ status: 'in_progress', threads: [{ state: 'finished' }] })).toEqual(['Not delivered yet'])
+  expect(taskState({ status: 'in_progress', threads: [{ state: 'finished' }] })).toEqual(['Not delivered yet', 'In progress', true])
 })
 
 test('task state distinguishes active work and blockers from worker completion', () => {
-  expect(taskState({ status: 'in_progress', moving: true, threads: [{ state: 'working' }] })).toEqual(['Working', 'running'])
-  expect(taskState({ status: 'pending', blocked: true, moving: true })).toEqual(['Waiting on another task'])
-  expect(taskState({ status: 'waiting_for_user', moving: true })).toEqual(['Waiting for you', 'waiting'])
-  expect(taskState({ status: 'stopped' })).toEqual(['Stopped'])
+  expect(taskState({ status: 'in_progress', moving: true, threads: [{ state: 'working' }] })).toEqual(['Working', 'In progress'])
+  expect(taskState({ status: 'pending', blocked: true, moving: true })).toEqual(['Waiting on another task', 'Queued', true])
+  expect(taskState({ status: 'waiting_for_user', moving: true })).toEqual(['Waiting for you', 'Waiting for you'])
+  expect(taskState({ status: 'stopped' })).toEqual(['Stopped', 'Stopped'])
+  expect(taskState({ status: 'pending' })).toEqual(['Not started', 'Queued'])
+  expect(taskState({ status: 'in_progress', stalled: true })).toEqual(['Needs follow-up', 'In progress', true])
 })
 
 test('a closed task says how it closed, whatever its threads did', () => {
-  expect(taskState({ status: 'completed', threads: [{ state: 'finished' }] })).toEqual(['Done'])
-  expect(taskState({ status: 'cancelled', threads: [{ state: 'failed' }] })).toEqual(['Dropped'])
+  expect(taskState({ status: 'completed', threads: [{ state: 'finished' }] })).toEqual(['Done', 'Done'])
+  expect(taskState({ status: 'cancelled', threads: [{ state: 'failed' }] })).toEqual(['Dropped', 'Stopped', true])
 })
 
 test('taskName uses the concise name and falls back to a clean single line for older unnamed tasks', () => {

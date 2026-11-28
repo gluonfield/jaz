@@ -39,20 +39,24 @@ export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'thinking' | 'work
   return bot.away ? 'away' : 'idle'
 }
 
-// A task's state in a few words, marked when it is work under way or a
-// question waiting on the person.
-export type TaskState = [label: string, tone?: 'running' | 'waiting']
+// The groups a bot's tasks are listed under, in the order they show.
+export const TASK_GROUPS = ['Waiting for you', 'In progress', 'Queued', 'Done', 'Stopped'] as const
+export type TaskGroup = (typeof TASK_GROUPS)[number]
+
+// A task's state in a few words and the group it is listed under; `detail`
+// marks a state that says more than its group's name does.
+export type TaskState = [label: string, group: TaskGroup, detail?: true]
 
 export function taskState(task: Pick<BotOwed, 'status' | 'moving' | 'blocked' | 'stalled' | 'threads'>): TaskState {
-  if (task.status === 'completed') return ['Done']
-  if (task.status === 'cancelled') return ['Dropped']
-  if (task.status === 'stopped') return ['Stopped']
-  if (task.status === 'waiting_for_user') return ['Waiting for you', 'waiting']
-  if (task.blocked) return ['Waiting on another task']
-  if (task.moving) return ['Working', 'running']
-  if (task.threads?.some((thread) => thread.state === 'finished' || thread.state === 'failed')) return ['Not delivered yet']
-  if (task.stalled) return ['Needs follow-up']
-  return [task.status === 'pending' ? 'Not started' : 'In progress']
+  if (task.status === 'completed') return ['Done', 'Done']
+  if (task.status === 'cancelled') return ['Dropped', 'Stopped', true]
+  if (task.status === 'stopped') return ['Stopped', 'Stopped']
+  if (task.status === 'waiting_for_user') return ['Waiting for you', 'Waiting for you']
+  if (task.blocked) return ['Waiting on another task', 'Queued', true]
+  if (task.moving) return ['Working', 'In progress']
+  if (task.threads?.some((thread) => thread.state === 'finished' || thread.state === 'failed')) return ['Not delivered yet', 'In progress', true]
+  if (task.stalled) return ['Needs follow-up', 'In progress', true]
+  return task.status === 'pending' ? ['Not started', 'Queued'] : ['In progress', 'In progress']
 }
 
 export function taskName(task: Pick<BotOwed, 'name' | 'request'>): string {
