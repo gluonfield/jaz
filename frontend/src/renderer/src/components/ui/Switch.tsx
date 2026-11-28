@@ -1,16 +1,14 @@
 import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 
-// The system switch of macOS and iOS: Apple's green when on, its gray fill when
-// off, a white knob in both. The colours hold whatever the theme, so on never
-// reads as off.
+// The system switch of macOS and iOS: a white knob on a green or gray track.
 export function SwitchTrack({ checked, compact = false }: { checked: boolean; compact?: boolean }) {
   return (
     <span
       aria-hidden
       className={`relative inline-flex shrink-0 items-center rounded-full transition-colors duration-150 ${
         compact ? 'h-4 w-7' : 'h-5 w-9'
-      } ${checked ? 'bg-[#34c759] dark:bg-[#30d158]' : 'bg-[rgb(120_120_128/0.16)] dark:bg-[rgb(120_120_128/0.32)]'}`}
+      } ${checked ? 'bg-switch-on' : 'bg-switch-off'}`}
     >
       <motion.span
         layout
@@ -44,7 +42,7 @@ export function Switch({
       aria-label={ariaLabel}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex shrink-0 cursor-pointer rounded-full focus-visible:outline-offset-2! disabled:cursor-default disabled:opacity-50 ${className}`}
+      className={`relative inline-flex shrink-0 cursor-pointer rounded-full disabled:cursor-default disabled:opacity-50 ${className}`}
     >
       <SwitchTrack checked={checked} />
     </button>

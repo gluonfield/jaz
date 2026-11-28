@@ -56,6 +56,10 @@
   --color-danger-soft: oklch(0.95 0.025 25);
   /* A solid destructive fill, like ending a call: one vivid red in both themes. */
   --color-danger-solid: oklch(0.64 0.24 24);
+  /* A switch's tracks are Apple's system green and gray fill, never the theme's
+   * primary: near-white in dark graphite, that left a white knob on a white track. */
+  --color-switch-on: #34c759;
+  --color-switch-off: rgb(120 120 128 / 0.16);
 
   --color-border: oklch(0.905 0.006 var(--hue));
 
@@ -207,6 +211,8 @@
   --color-ok: oklch(0.74 0.15 150);
   --color-danger: oklch(0.7 0.18 25);
   --color-danger-soft: oklch(0.31 0.07 25);
+  --color-switch-on: #30d158;
+  --color-switch-off: rgb(120 120 128 / 0.32);
 
   --color-border: oklch(0.31 0.008 var(--hue));
 
