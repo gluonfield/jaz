@@ -6,8 +6,6 @@ export interface LiveExchange {
   baselineMessageSeq: number
   baselineEventSeq: number
   planRequested: boolean
-  goalRequested: boolean
-  reasoning: string
   assistant: string
   tools: LiveTool[]
   error?: string

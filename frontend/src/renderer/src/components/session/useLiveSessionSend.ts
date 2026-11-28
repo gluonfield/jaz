@@ -36,7 +36,7 @@ export function useLiveSessionSend({
   const queryClient = useQueryClient()
   const [live, setLive] = useState<LiveExchange | null>(null)
   const [streaming, setStreaming] = useState(false)
-  const sendRef = useRef<{ controller: AbortController; accepted: Promise<void> } | null>(null)
+  const sendRef = useRef<{ controller: AbortController; accepted: Promise<boolean> } | null>(null)
   const recovered = Boolean(live?.error && history && hasCompletedLiveReply(live, history))
   const sends = useOutbox(sessionId)
   const transcript = useMemo(
@@ -56,7 +56,7 @@ export function useLiveSessionSend({
   useEffect(() => () => {
     const pending = sendRef.current
     if (pending) {
-      void pending.accepted.then(() => pending.controller.abort(), () => {})
+      void pending.accepted.then(() => pending.controller.abort())
     }
   }, [sessionId])
 
@@ -70,8 +70,6 @@ export function useLiveSessionSend({
       baselineMessageSeq: entry.baselineMessageSeq,
       baselineEventSeq: queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))?.latest_event_seq ?? 0,
       planRequested: Boolean(entry.options.planRequested),
-      goalRequested: Boolean(entry.options.goalRequested),
-      reasoning: '',
       assistant: '',
       tools: [],
     })
@@ -93,7 +91,7 @@ export function useLiveSessionSend({
         if (controller.signal.aborted) return
         // A refused message says so on its own bubble; an accepted one whose
         // turn then failed is the thread's error.
-        const accepted = await delivery.accepted.then(() => true, () => false)
+        const accepted = await delivery.accepted
         if (accepted && !current()) return
         onCriticalError(err.message || 'Something went wrong.')
         if (current()) setLive((prev) => (prev && accepted ? { ...prev, error: err.message } : null))
@@ -146,8 +144,6 @@ function mergeLiveStreamEvent(prev: LiveExchange, event: AgentStreamEvent): Live
   switch (event.type) {
     case 'delta':
       return { ...prev, assistant: prev.assistant + (event.delta ?? '') }
-    case 'reasoning':
-      return { ...prev, reasoning: prev.reasoning + (event.reasoning ?? '') }
     case 'tool_call':
       return addLiveToolCall(prev, event)
     case 'tool_result':

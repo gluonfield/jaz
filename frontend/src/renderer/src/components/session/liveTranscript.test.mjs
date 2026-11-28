@@ -16,8 +16,6 @@ const live = (user, baselineMessageSeq) => ({
   at: new Date((baselineMessageSeq + 0.5) * 1000).toISOString(),
   baselineEventSeq: baselineMessageSeq,
   planRequested: false,
-  goalRequested: false,
-  reasoning: '',
   assistant: '',
   tools: [],
 })

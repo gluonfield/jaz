@@ -6,7 +6,6 @@ import { streamSessionMessage, type AgentStreamEvent } from '@/lib/api/stream'
 import type { Attachment, SessionMessages } from '@/lib/api/types'
 import { userInputMessageBlocks } from '@/lib/messageBlocks'
 import {
-  outbox,
   outboxTranscript,
   patchOutboxMessage,
   putOutboxMessage,
@@ -52,9 +51,10 @@ function contextAttachments(contexts: ComposerContext[]): Attachment[] {
 }
 
 // Sends an outbox message and keeps its entry true to what the server said:
-// sent once accepted, failed if it never was. `accepted` and `finished` settle
-// as the request does; `settled` follows the history reload, after which an
-// accepted message is delivered: it leaves the outbox when its row is loaded.
+// sent once accepted, failed if it never was. `accepted` tells which; `finished`
+// settles as the request does; `settled` follows the history reload, after
+// which an accepted message is delivered: it leaves the outbox when its row is
+// loaded.
 // A Cloud thread names the run its uploads belong to.
 export function deliverMessage({
   queryClient,
@@ -70,7 +70,7 @@ export function deliverMessage({
   cloudRunId?: string
   signal: AbortSignal
   onEvent: (event: AgentStreamEvent) => void
-}): { accepted: Promise<void>; finished: Promise<void>; settled: Promise<void> } {
+}): { accepted: Promise<boolean>; finished: Promise<void>; settled: Promise<void> } {
   const { id, text, options } = entry
   putOutboxMessage(sessionId, { ...entry, state: 'sending', error: undefined })
   const started = (async () => {
@@ -114,9 +114,8 @@ export function deliverMessage({
       saved: true,
     }
   })()
-  const accepted = started.then((stream) => stream.accepted)
   const finished = started.then((stream) => stream.finished)
-  const taken = accepted.then(
+  const accepted = started.then((stream) => stream.accepted).then(
     () => {
       patchOutboxMessage(sessionId, id, { state: 'sent' })
       return true
@@ -128,22 +127,19 @@ export function deliverMessage({
   )
   const settled = finished.catch(() => undefined).then(async () => {
     const queryKey = keys.sessionMessages(sessionId)
-    const reloaded = await queryClient.refetchQueries({ queryKey }, { throwOnError: true }).then(() => true, () => false)
-    const sent = (await taken) && outbox(sessionId).find((item) => item.id === id)
-    if (!sent) return
-    const delivered = { ...sent, state: 'delivered' as const }
+    const reloaded = await queryClient.refetchQueries({ queryKey }, { throwOnError: true }).then(
+      () => queryClient.getQueryState(queryKey)?.fetchStatus !== 'paused',
+      () => false,
+    )
+    if (!(await accepted)) return
+    const delivered: OutboxSend = { ...entry, state: 'delivered' }
     const messages = queryClient.getQueryData<SessionMessages>(queryKey)?.messages ?? []
     // The server saved it before accepting, yet history loaded since holds no
     // row for it: it keeps none, as for a command, so nothing is left to wait for.
-    if (
-      (await started).saved &&
-      reloaded &&
-      queryClient.getQueryState(queryKey)?.fetchStatus !== 'paused' &&
-      !outboxTranscript(messages, [delivered]).settled.length
-    ) {
+    if ((await started).saved && reloaded && !outboxTranscript(messages, [delivered]).settled.length) {
       removeOutboxMessages(sessionId, [id])
     } else {
-      putOutboxMessage(sessionId, delivered)
+      patchOutboxMessage(sessionId, id, { state: 'delivered' })
     }
   })
   return { accepted, finished, settled }
