@@ -116,7 +116,7 @@ test('handoff accepts actual app windows and exact documents, with owner-only pu
   const guest = f.window(false, 'webview')
   expect(() => guest.read()).toThrow('trusted')
   const outsider = { ...owner.event(), sender: { id: 999, getType: () => 'window', mainFrame: owner.webContents.mainFrame } }
-  expect(() => owner.call({ operation: 'read' }, outsider)).toThrow('document')
+  expect(owner.call({ operation: 'read' }, outsider)).toBeNull()
 })
 
 test('owner reload during local startup resumes one flight and rejects the old document', async () => {

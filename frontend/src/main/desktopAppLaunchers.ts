@@ -37,7 +37,7 @@ export interface LauncherSpec {
 }
 
 export interface Launcher {
-  launcherPath?: string
+  launcherPath: string
   codeHash?: string
 }
 
@@ -76,42 +76,9 @@ export function createLauncher(
   mkdirSync(host.iconDir, { recursive: true })
   writeFileSync(join(host.iconDir, `${spec.appId}.png`), spec.png(1024))
   if (platform === 'darwin') return createShimBundle(spec, host, join(home, 'Applications', host.folder))
-  if (platform === 'win32') {
-    const dir = join(env['APPDATA'] ?? join(home, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', host.folder)
-    mkdirSync(dir, { recursive: true })
-    const icon = appIconPath(host, spec.appId, platform)
-    writeFileSync(icon, ico(spec.png(256)))
-    const launcherPath = freePath(dir, spec, '.lnk')
-    const written = host.writeShortcut(launcherPath, {
-      target: host.executable,
-      args: windowsArgs(host, spec.appId),
-      description: spec.title,
-      icon,
-      iconIndex: 0,
-      appUserModelId: appIdentity(host, spec.appId),
-    })
-    if (!written) throw new Error('Could not add the app to the Start menu')
-    return { launcherPath }
-  }
-  if (platform === 'linux') {
-    const dir = join(env['XDG_DATA_HOME'] || join(home, '.local', 'share'), 'applications')
-    mkdirSync(dir, { recursive: true })
-    const launcherPath = join(dir, `${appIdentity(host, spec.appId)}.desktop`)
-    const exec = [host.executable, ...host.args, APP_ARG + spec.appId].map((arg) => `"${arg.replace(/["`$\\]/g, '\\$&')}"`).join(' ')
-    writeFileSync(launcherPath, [
-      '[Desktop Entry]',
-      'Type=Application',
-      `Name=${launcherName(spec.title, spec.appId)}`,
-      `Exec=${exec}`,
-      `Icon=${appIconPath(host, spec.appId, platform)}`,
-      `StartupWMClass=${appIdentity(host, spec.appId)}`,
-      'Terminal=false',
-      'Categories=Utility;',
-      '',
-    ].join('\n'))
-    return { launcherPath }
-  }
-  return {}
+  if (platform === 'win32') return createShortcut(spec, host, join(env['APPDATA'] ?? join(home, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', host.folder))
+  if (platform === 'linux') return createDesktopEntry(spec, host, join(env['XDG_DATA_HOME'] || join(home, '.local', 'share'), 'applications'))
+  throw new Error(`Installing apps is not supported on ${platform}`)
 }
 
 export function removeLauncher(host: LaunchHost, appId: string, launcherPath?: string): void {
@@ -127,6 +94,41 @@ export function shimAppId(bundlePath: string): string | undefined {
   } catch {
     return undefined
   }
+}
+
+function createShortcut(spec: LauncherSpec, host: LaunchHost, dir: string): Launcher {
+  mkdirSync(dir, { recursive: true })
+  const icon = appIconPath(host, spec.appId, 'win32')
+  writeFileSync(icon, ico(spec.png(256)))
+  const launcherPath = freePath(dir, spec, '.lnk')
+  const written = host.writeShortcut(launcherPath, {
+    target: host.executable,
+    args: windowsArgs(host, spec.appId),
+    description: spec.title,
+    icon,
+    iconIndex: 0,
+    appUserModelId: appIdentity(host, spec.appId),
+  })
+  if (!written) throw new Error('Could not add the app to the Start menu')
+  return { launcherPath }
+}
+
+function createDesktopEntry(spec: LauncherSpec, host: LaunchHost, dir: string): Launcher {
+  mkdirSync(dir, { recursive: true })
+  const launcherPath = join(dir, `${appIdentity(host, spec.appId)}.desktop`)
+  const exec = [host.executable, ...host.args, APP_ARG + spec.appId].map((arg) => `"${arg.replace(/["`$\\]/g, '\\$&')}"`).join(' ')
+  writeFileSync(launcherPath, [
+    '[Desktop Entry]',
+    'Type=Application',
+    `Name=${launcherName(spec.title, spec.appId)}`,
+    `Exec=${exec}`,
+    `Icon=${appIconPath(host, spec.appId, 'linux')}`,
+    `StartupWMClass=${appIdentity(host, spec.appId)}`,
+    'Terminal=false',
+    'Categories=Utility;',
+    '',
+  ].join('\n'))
+  return { launcherPath }
 }
 
 function createShimBundle(spec: LauncherSpec, host: LaunchHost, dir: string): Launcher {

@@ -124,9 +124,7 @@ function AppsLibraryPage() {
   ]
 
   const appActions = (app: JazApp): MenuAction[] => [
-    ...(!desktop.available ? []
-      : desktop.records.has(app.id) ? [{ label: 'Open App', onSelect: () => desktop.open(app.id) }]
-        : [{ label: 'Install App', onSelect: () => void desktop.install(app) }]),
+    ...[desktop.primary(app)].filter((action) => action !== null),
     { label: cloud.active ? 'Share' : 'Manage', onSelect: () => setShareApp(app) },
     ...(isViewer ? [] : [{ label: 'Remix in a new chat', onSelect: () => remixMutation.mutate(app.id) }]),
     ...desktop.actions(app),

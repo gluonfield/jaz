@@ -55,7 +55,7 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, authMe, authExchange, authRefresh, authLogout, cloudConfig, discovery, storedValues = [], sessionStoredValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, windowKind = owner ? 'main' : 'board', initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
+async function fixture({ auth, authMe, authExchange, authRefresh, authLogout, cloudConfig, discovery, storedValues = [], sessionStoredValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, attached = true, windowKind = owner ? 'main' : 'board', initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
   const stored = new Map(storedValues)
   const sessionStored = new Map(sessionStoredValues)
   const configured = []
@@ -68,7 +68,7 @@ async function fixture({ auth, authMe, authExchange, authRefresh, authLogout, cl
   const loc = new URL(locationHref)
   let snapshot = initialSnapshot || { revision: 0, phase: 'initial', url: '', session: null, error: null, localPending: false }
   const session = {
-    read: () => ({ document: 1, owner, snapshot }),
+    read: () => attached ? { document: 1, owner, snapshot } : null,
     subscribe: () => () => {},
     update(request) {
       snapshot = request.operation === 'begin'
@@ -596,17 +596,21 @@ test.each([true, false])('recoverable hydration retains the snapshot and retries
   expect(keychain).toBe(0)
 })
 
-test.each(['board', 'app'])('a %s window joins the session the main window connected', async (windowKind) => {
+test.each([
+  ['an app window the main process attached', true, 'connected', 'verified-token'],
+  ['an overlay window it did not attach', false, 'checking', ''],
+])('%s shares the main window connection only when attached', async (_name, attached, status, token) => {
   const url = 'https://jaz.example'
   const snapshot = { revision: 2, phase: 'connected', url, session: { url, token: 'verified-token', remembered: false }, error: null, localPending: false }
   const { connection } = await fixture({
     owner: false,
-    windowKind,
+    attached,
+    windowKind: attached ? 'app' : 'voice',
     initialSnapshot: snapshot,
     auth: () => Response.json({ ok: true, auth_kind: 'bearer' }),
   })
-  expect(connection.useConnection().status).toBe('connected')
-  expect(connection.cachedApiAuthToken(url)).toBe('verified-token')
+  expect(connection.useConnection().status).toBe(status)
+  expect(connection.cachedApiAuthToken(url) ?? '').toBe(token)
 })
 
 test('reusing a remembered current token keeps restart provenance without unlocking or saving again', async () => {

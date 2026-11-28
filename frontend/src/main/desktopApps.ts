@@ -108,16 +108,16 @@ export function installDesktopApps(deps: {
     return createLauncher({ appId, title, png: (size) => image.resize({ width: size, height: size, quality: 'best' }).toPNG() }, host)
   }
 
-  // Rebuilds a macOS launcher that was deleted or predates app shims.
+  // Rebuilds a launcher that went missing, or, where launchers are app shims, one made before they were.
   function ensureLauncher(record: InstalledDesktopApp): string {
-    if (record.codeHash && record.launcherPath && existsSync(record.launcherPath)) return record.launcherPath
+    if (record.launcherPath && existsSync(record.launcherPath) && (record.codeHash || !shimServer)) return record.launcherPath
     const icon = nativeImage.createFromPath(join(host.iconDir, `${record.appId}.png`))
     removeLauncher(host, record.appId, record.launcherPath)
     const registry = loadRegistry()
     const next = { ...record, ...writeLauncher(record.appId, record.title, icon) }
     registry[record.appId] = next
     saveRegistry(registry)
-    return next.launcherPath!
+    return next.launcherPath
   }
 
   function clearAppRuntimeGrants(appId: string): void {
@@ -141,15 +141,25 @@ export function installDesktopApps(deps: {
     }
   }
 
-  // Linux matches a window to its desktop entry by the desktop name it was created under.
-  function createAppWindow(appId: string, options: BrowserWindowConstructorOptions): BrowserWindow {
-    const desktopName = process.env['CHROME_DESKTOP']
-    if (process.platform !== 'linux' || desktopName === undefined) return new BrowserWindow(options)
-    app.setDesktopName(`${appIdentity(host, appId)}.desktop`)
+  // A window takes its launcher's identity: the macOS app shim it runs in, its own
+  // Windows taskbar entry, or the Linux desktop entry it was created under.
+  function createAppWindow(record: InstalledDesktopApp, options: BrowserWindowConstructorOptions, shim?: AppShimHost): BrowserWindow {
+    const identity = appIdentity(host, record.appId)
+    const desktopName = process.platform === 'linux' ? process.env['CHROME_DESKTOP'] : undefined
+    if (desktopName !== undefined) app.setDesktopName(`${identity}.desktop`)
     try {
-      return new BrowserWindow(options)
+      const win = new BrowserWindow(shim ? { ...options, appShim: shim } : options)
+      if (process.platform === 'win32') {
+        win.setAppDetails({
+          appId: identity,
+          appIconPath: appIconPath(host, record.appId),
+          relaunchCommand: `"${host.executable}" ${windowsArgs(host, record.appId)}`,
+          relaunchDisplayName: record.title,
+        })
+      }
+      return win
     } finally {
-      app.setDesktopName(desktopName)
+      if (desktopName !== undefined) app.setDesktopName(desktopName)
     }
   }
 
@@ -168,7 +178,7 @@ export function installDesktopApps(deps: {
     }
     const saved = loadBounds()[appId]
     const icon = appIconPath(host, appId)
-    const win = createAppWindow(appId, {
+    const win = createAppWindow(record, {
       title: record.title,
       width: saved?.width ?? 1024,
       height: saved?.height ?? 720,
@@ -177,7 +187,6 @@ export function installDesktopApps(deps: {
       minHeight: 360,
       show: false,
       icon: existsSync(icon) ? icon : deps.appIcon,
-      ...(shim ? { appShim: shim } : {}),
       backgroundColor: nativeTheme.shouldUseDarkColors ? DARK_BG : '#ffffff',
       webPreferences: {
         preload: deps.preloadPath,
@@ -186,15 +195,7 @@ export function installDesktopApps(deps: {
         sandbox: false,
         additionalArguments: ['--jaz-app-window'],
       },
-    })
-    if (process.platform === 'win32') {
-      win.setAppDetails({
-        appId: appIdentity(host, appId),
-        appIconPath: icon,
-        relaunchCommand: `"${host.executable}" ${windowsArgs(host, appId)}`,
-        relaunchDisplayName: record.title,
-      })
-    }
+    }, shim)
     appWindows.set(appId, win)
     deps.attachWindow(win, `app ${appId}`)
     win.on('close', () => saveBounds(appId, win.getBounds()))
@@ -331,8 +332,8 @@ export function installDesktopApps(deps: {
   ipcMain.handle(`${DESKTOP_APPS_CHANNEL}reveal`, (event, appId: string) => {
     trustedWindow(event)
     const record = loadRegistry()[appId]
-    if (!record?.launcherPath) throw new Error('This app is not installed')
-    shell.showItemInFolder(shimServer ? ensureLauncher(record) : record.launcherPath)
+    if (!record) throw new Error('This app is not installed')
+    shell.showItemInFolder(ensureLauncher(record))
   })
 
   ipcMain.handle(

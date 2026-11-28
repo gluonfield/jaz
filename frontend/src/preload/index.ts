@@ -61,8 +61,8 @@ function sessionRequest<T>(request: unknown): T {
 
 const connectionSession: ConnectionSessionAPI = {
   read: () => {
-    const result = sessionRequest<SessionDocument>({ operation: 'read' })
-    sessionDocument = result.document
+    const result = sessionRequest<SessionDocument | null>({ operation: 'read' })
+    sessionDocument = result?.document
     return result
   },
   update: (request) => sessionRequest<SessionSnapshot>(request),

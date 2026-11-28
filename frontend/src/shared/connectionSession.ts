@@ -20,7 +20,7 @@ export type SessionMutation =
   | { operation: 'clear'; document: number; error: string | null }
   | { operation: 'reject'; document: number; revision: number }
 export type ConnectionSessionAPI = {
-  read: () => SessionDocument
+  read: () => SessionDocument | null
   update: (request: SessionMutation) => SessionSnapshot
   local: (document: number, revision: number) => Promise<LocalSession>
   subscribe: (handler: (snapshot: SessionSnapshot) => void) => () => void

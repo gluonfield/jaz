@@ -45,6 +45,15 @@ export function useDesktopApps() {
     }
   }
 
+  // Open App once installed, Install App until then.
+  const primary = (app: AppRef): MenuAction | null => {
+    if (!desktopApps) return null
+    const id = refId(app)
+    return records.has(id)
+      ? { label: 'Open App', onSelect: () => void desktopApps!.open(id).catch(fail) }
+      : { label: installing === id ? 'Installing…' : 'Install App', onSelect: () => void install(app) }
+  }
+
   const actions = (app: AppRef): MenuAction[] => {
     const id = refId(app)
     const record = records.get(id)
@@ -66,8 +75,7 @@ export function useDesktopApps() {
     available: Boolean(desktopApps),
     records,
     installing,
-    install,
-    open: (appId: string) => void desktopApps!.open(appId).catch(fail),
+    primary,
     review: (app: AppRef) => void resolve(app).then(setDialog, fail),
     actions,
     dialog: dialog ? (
@@ -78,16 +86,8 @@ export function useDesktopApps() {
 
 export type DesktopApps = ReturnType<typeof useDesktopApps>
 
-// Install App until the app is installed, then Open App.
-export function DesktopAppButton({ desktop, app, variant }: { desktop: DesktopApps; app: AppRef; variant?: 'primary' | 'secondary' }) {
-  if (!desktop.available) return null
-  const id = refId(app)
-  if (desktop.records.has(id)) {
-    return <Button size="sm" variant={variant} onClick={() => desktop.open(id)}>Open App</Button>
-  }
-  return (
-    <Button size="sm" variant={variant} disabled={desktop.installing === id} onClick={() => void desktop.install(app)}>
-      {desktop.installing === id ? 'Installing…' : 'Install App'}
-    </Button>
-  )
+export function DesktopAppButton({ desktop, app }: { desktop: DesktopApps; app: AppRef }) {
+  const action = desktop.primary(app)
+  if (!action) return null
+  return <Button size="sm" disabled={desktop.installing === refId(app)} onClick={action.onSelect}>{action.label}</Button>
 }

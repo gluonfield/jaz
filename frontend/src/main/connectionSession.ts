@@ -118,7 +118,10 @@ export function createConnectionSession(deps: Dependencies) {
     })
   }
 
-  function read(event: IpcMainEvent): SessionDocument {
+  // Only windows this process attached share the session; others, such as overlays, have none.
+  function read(event: IpcMainEvent): SessionDocument | null {
+    trustedWindow(event)
+    if (!windows.has(event.sender.id)) return null
     const record = authorize(event)
     record.frame = event.senderFrame ?? undefined
     return { document: record.document, owner: record.window === owner, snapshot }
