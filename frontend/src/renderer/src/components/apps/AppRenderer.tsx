@@ -247,7 +247,11 @@ export function AppRenderer({
     )
   }
 
-  const frame = (
+  const body = isMarkdownEntry ? (
+    <MarkdownArtifactContext value={NO_THREAD}>
+      <RenderedMarkdown text={content ?? ''} className="file-prose" />
+    </MarkdownArtifactContext>
+  ) : (
     <iframe
       ref={iframeRef}
       title={app.title}
@@ -275,14 +279,10 @@ export function AppRenderer({
         </div>
       ) : null}
 
-      {fills ? frame : (
+      {fills ? body : (
         <div className="scrollbar-quiet @container min-h-0 flex-1 overflow-auto bg-bg">
           <div className={`mx-auto box-content px-5 py-6 @3xl:px-10 @3xl:py-9 ${isMarkdownEntry ? 'max-w-[780px]' : 'max-w-[880px]'}`}>
-            {isMarkdownEntry ? (
-              <MarkdownArtifactContext value={NO_THREAD}>
-                <RenderedMarkdown text={content ?? ''} className="file-prose" />
-              </MarkdownArtifactContext>
-            ) : frame}
+            {body}
           </div>
         </div>
       )}
