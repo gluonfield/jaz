@@ -71,7 +71,7 @@ export function parseMapFence(code: string): PlaceMap | undefined {
 // A maps app resolves "name, address" to the business listing; without an
 // address the coordinates are the only unambiguous destination.
 function listing(place: MapPlace): string | undefined {
-  return place.address && `${place.name}, ${place.address}`
+  return place.address ? `${place.name}, ${place.address}` : undefined
 }
 
 function point(place: MapPlace): string {
