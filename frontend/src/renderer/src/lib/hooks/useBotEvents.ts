@@ -1,9 +1,10 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
+import { apiSessionRevision } from '@/lib/api/client'
 import { openEventStream } from '@/lib/api/eventStream'
 import type { Bot } from '@/lib/api/types'
 import type { BotListEntry } from '@/lib/api/bots'
-import { useCloudSession } from '@/lib/cloudSession'
+import { useCloudAccount } from '@/lib/cloudAccount'
 import { useConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
 
@@ -45,12 +46,13 @@ function openBotEvents(client: QueryClient): () => void {
 
 export function useBotEvents() {
   const client = useQueryClient()
-  const { url, status, mode } = useConnection()
-  const { activeWorkspaceId } = useCloudSession()
-  const connected = (status === 'connected' || status === 'reconnecting') && mode !== 'cloud'
+  const { status, user } = useConnection()
+  const { activeWorkspaceId } = useCloudAccount()
+  const revision = apiSessionRevision()
+  const connected = status === 'connected' || status === 'reconnecting'
   useEffect(() => {
     if (connected) {
       return openBotEvents(client)
     }
-  }, [client, url, connected, activeWorkspaceId])
+  }, [client, revision, connected, activeWorkspaceId, user?.id, user?.org_id])
 }

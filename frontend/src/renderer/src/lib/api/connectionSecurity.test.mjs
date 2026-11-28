@@ -1,10 +1,13 @@
 import { afterEach, expect, test } from 'bun:test'
 import { build } from 'bun'
+import * as ReactQuery from '@tanstack/react-query'
+import * as React from 'react'
 
 const bundle = await build({
   entrypoints: ['connection-security-fixture'],
   target: 'browser',
   format: 'cjs',
+  external: ['react', '@tanstack/react-query', '@/lib/connection', '@/lib/cloudAccount'],
   define: { 'import.meta.env': '{}' },
   plugins: [{
     name: 'security-entry',
@@ -12,7 +15,11 @@ const bundle = await build({
       builder.onResolve({ filter: /^connection-security-fixture$/ }, () => ({ path: 'fixture', namespace: 'security' }))
       builder.onResolve({ filter: /^\//, namespace: 'security' }, (args) => ({ path: args.path, namespace: 'file' }))
       builder.onLoad({ filter: /.*/, namespace: 'security' }, () => ({
-        contents: `export * from ${JSON.stringify(new URL('./client.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./eventStream.ts', import.meta.url).pathname)}`,
+        contents: `export * from ${JSON.stringify(new URL('./client.ts', import.meta.url).pathname)}
+export * from ${JSON.stringify(new URL('./eventStream.ts', import.meta.url).pathname)}
+export { useBotEvents } from '@/lib/hooks/useBotEvents'
+export { botMood } from '@/lib/bots'
+export { keys } from '@/lib/query/keys'`,
         loader: 'ts',
       }))
     },
@@ -21,7 +28,7 @@ const bundle = await build({
 if (!bundle.success) {
   throw new AggregateError(bundle.logs)
 }
-const evaluate = new Function('module', 'exports', await bundle.outputs[0].text())
+const evaluate = new Function('require', 'module', 'exports', await bundle.outputs[0].text())
 const originals = new Map()
 let closeStream
 
@@ -62,11 +69,42 @@ function fixture(base = 'https://jaz.example', jaz) {
     }
   })
   const module = { exports: {} }
-  evaluate(module, module.exports)
+  const queryClient = new ReactQuery.QueryClient()
+  const modules = {
+    react: { ...React, useEffect: (effect) => { closeStream = effect() } },
+    '@tanstack/react-query': { ...ReactQuery, useQueryClient: () => queryClient },
+    '@/lib/connection': { useConnection: () => ({ status: 'connected', mode: module.exports.apiServerMode() }) },
+    '@/lib/cloudAccount': { useCloudAccount: () => ({ activeWorkspaceId: 'local' }) },
+  }
+  evaluate((name) => modules[name], module, module.exports)
   const api = module.exports
   api.setApiBaseUrl(base)
   api.setApiAuthToken(base, 'bearer-credential')
-  return { api, sockets }
+  return { api, sockets, queryClient }
+}
+
+function captureEventSources() {
+  const sources = []
+  replace('EventSource', class {
+    handlers = new Map()
+    constructor(url) {
+      this.url = new URL(url)
+      sources.push(this)
+    }
+    addEventListener(name, handler) {
+      this.handlers.set(name, handler)
+    }
+    close() {
+      this.closed = true
+    }
+  })
+  return sources
+}
+
+async function settle() {
+  for (let i = 0; i < 20; i += 1) {
+    await Promise.resolve()
+  }
 }
 
 test('browser transports keep credentials in headers and bound URLs to read tickets', async () => {
@@ -104,7 +142,7 @@ test('HTTP remote addresses fail before any credential-bearing network call', ()
 
 test('event reconnection renews the read ticket and resumes from the last delivered sequence', async () => {
   const { api } = fixture()
-  const sources = []
+  const sources = captureEventSources()
   const received = []
   let retry
   let requests = 0
@@ -118,24 +156,6 @@ test('event reconnection renews the read ticket and resumes from the last delive
     requests += 1
     return Response.json({ resource_ticket: { token: `ticket-${requests}`, expires_at: new Date(Date.now() + 60_000).toISOString() } })
   })
-  replace('EventSource', class {
-    constructor(url) {
-      this.url = new URL(url)
-      this.handlers = new Map()
-      sources.push(this)
-    }
-    addEventListener(name, handler) {
-      this.handlers.set(name, handler)
-    }
-    close() {
-      this.closed = true
-    }
-  })
-  const settle = async () => {
-    for (let i = 0; i < 20; i += 1) {
-      await Promise.resolve()
-    }
-  }
   closeStream = api.openEventStream('/v1/sessions/thread/events?after_seq=4', { message: (event) => received.push(event.data) })
   await settle()
   expect(sources[0].url.searchParams.get('ticket')).toBe('ticket-1')
@@ -149,6 +169,66 @@ test('event reconnection renews the read ticket and resumes from the last delive
   expect(received).toEqual(['delivered'])
   closeStream()
   expect(sources[1].closed).toBe(true)
+})
+
+test.each(['Desktop', 'Web'])('%s Cloud bot events use session auth and update mood and preview live', async (platform) => {
+  const origin = 'https://cloud.example.com'
+  const web = platform === 'Web'
+  const { api, queryClient } = fixture(origin, web ? undefined : { apiBaseUrl: origin })
+  api.setApiServerMode('cloud')
+  if (web) api.setApiAuthToken(origin, null)
+  const sources = captureEventSources()
+  let retry
+  replace('setTimeout', (callback) => {
+    retry = callback
+    return 1
+  })
+  replace('clearTimeout', () => {})
+  const requests = []
+  replace('fetch', async (url, init) => {
+    requests.push([String(url), init.headers.get('Authorization'), init.credentials])
+    const ticket = requests.length === 1
+      ? { token: 'read-ticket-1', expires_at: '2099-01-01T00:00:00Z' }
+      : 'read-ticket-2'
+    return Response.json({
+      user_id: 'user-1',
+      org_id: 'org-1',
+      resource_ticket: ticket,
+    })
+  })
+
+  api.useBotEvents()
+  await settle()
+  const authorization = web ? null : 'Bearer bearer-credential'
+  const credentials = web ? 'include' : undefined
+  expect(requests).toEqual([[`${origin}/v1/auth/me`, authorization, credentials]])
+  expect(sources[0]?.url.href).toBe(`${origin}/v1/bots/events?ticket=read-ticket-1`)
+
+  const emit = (source, name, data) => source.handlers.get(name)({ data: JSON.stringify(data) })
+  const current = () => {
+    const [bot] = queryClient.getQueryData(api.keys.bots)
+    return [api.botMood(bot), bot.preview]
+  }
+  const bot = { id: 'bot-1', status: 'idle', preview: 'Ready' }
+  emit(sources[0], 'snapshot', { bots: [bot] })
+  expect(current()).toEqual(['idle', 'Ready'])
+  emit(sources[0], 'changed', { ...bot, status: 'running', thinking: true, preview: 'Starting' })
+  expect(current()).toEqual(['thinking', 'Starting'])
+  emit(sources[0], 'changed', { ...bot, status: 'running', preview: 'Using a tool' })
+  expect(current()).toEqual(['working', 'Using a tool'])
+
+  sources[0].onerror()
+  expect(sources[0].closed).toBe(true)
+  retry()
+  await settle()
+  expect(sources[1]?.url.href).toBe(`${origin}/v1/bots/events?ticket=read-ticket-2`)
+  emit(sources[1], 'snapshot', { bots: [{ ...bot, preview: 'Finished' }] })
+  expect(current()).toEqual(['idle', 'Finished'])
+
+  api.clearApiSession()
+  expect(sources[1].closed).toBe(true)
+  emit(sources[1], 'changed', { ...bot, status: 'running' })
+  expect(current()).toEqual(['idle', 'Finished'])
 })
 
 test('late same-origin ticket refresh cannot replace a new credential or reopen a cleared stream', async () => {

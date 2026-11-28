@@ -1,29 +1,25 @@
-import { apiEventSourceUrl, apiFetch, apiBaseUrl, apiSessionRevision, onApiSessionChange, setResourceTicket } from '@/lib/api/client'
+import type { ResourceTicket } from '@shared/connectionSession'
+import { apiBaseUrl, apiEventSourceUrl, get, isCloudApiSession, onApiSessionChange, setResourceTicket } from '@/lib/api/client'
+import { fetchAuthMe } from '@/lib/api/cloudAuth'
 
 export function openEventStream(
   path: string,
   handlers: Record<string, (event: MessageEvent) => void>,
   onConnection?: (connected: boolean) => void,
 ): () => void {
-  let closed = false
   let source: EventSource | undefined
   let lastEventID = ''
   let retry: ReturnType<typeof setTimeout> | undefined
   const controller = new AbortController()
-  const base = apiBaseUrl()
-  const revision = apiSessionRevision()
+  const { signal } = controller
 
   async function connect(): Promise<void> {
     try {
-      const response = await apiFetch('/v1/auth/check', { signal: controller.signal })
-      if (!response.ok) {
-        throw new Error('Connection authentication failed')
-      }
-      const auth = await response.json() as { resource_ticket?: { token: string; expires_at: string } }
-      if (closed || apiBaseUrl() !== base || apiSessionRevision() !== revision) {
-        return
-      }
-      setResourceTicket(base, auth.resource_ticket)
+      const ticket = isCloudApiSession()
+        ? (await fetchAuthMe(undefined, { signal })).ticket
+        : (await get<{ resource_ticket?: ResourceTicket }>('/v1/auth/check', { signal })).resource_ticket
+      if (signal.aborted) return
+      setResourceTicket(apiBaseUrl(), ticket)
       const url = new URL(apiEventSourceUrl(path))
       if (lastEventID) {
         url.searchParams.set('after_seq', lastEventID)
@@ -31,7 +27,7 @@ export function openEventStream(
       source = new EventSource(url.toString())
       for (const [name, handler] of Object.entries(handlers)) {
         source.addEventListener(name, ((event: MessageEvent) => {
-          if (closed || apiSessionRevision() !== revision) return
+          if (signal.aborted) return
           if (event.lastEventId) {
             lastEventID = event.lastEventId
           }
@@ -39,7 +35,7 @@ export function openEventStream(
         }) as EventListener)
       }
       source.onopen = () => {
-        if (!closed) onConnection?.(true)
+        if (!signal.aborted) onConnection?.(true)
       }
       source.onerror = reconnect
     } catch {
@@ -48,18 +44,14 @@ export function openEventStream(
   }
 
   function reconnect(): void {
+    if (signal.aborted) return
     source?.close()
+    retry = setTimeout(() => void connect(), 2_000)
     onConnection?.(false)
-    if (!closed) {
-      retry = setTimeout(() => {
-        void connect()
-      }, 2_000)
-    }
   }
 
   const unsubscribe = onApiSessionChange(close)
   function close(): void {
-    closed = true
     controller.abort()
     clearTimeout(retry)
     source?.close()

@@ -555,7 +555,13 @@ func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
 }
 
 func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
-	var lastSSEQuery string
+	const botStream = `event: snapshot
+data: {"bots":[{"id":"bot_cloud_1"}]}
+
+event: changed
+data: {"id":"bot_cloud_1","status":"running","thinking":true,"preview":"Starting"}
+
+`
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/.well-known/jaz-server":
@@ -573,9 +579,12 @@ func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
 		case r.URL.Path == "/v1/bots" && r.Method == http.MethodGet:
 			_ = json.NewEncoder(w).Encode(map[string]any{"bots": []map[string]any{{"id": "bot_cloud_1", "name": "Cloud Research"}}})
 		case r.URL.Path == "/v1/bots/events":
-			lastSSEQuery = r.URL.RawQuery
+			if r.URL.RawQuery != "after_seq=7" || r.Header.Get("Authorization") != "Bearer tok" || r.Header.Get("Accept") != "text/event-stream" {
+				http.Error(w, "expected a Cloud-authenticated event stream without the local ticket", http.StatusBadRequest)
+				return
+			}
 			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprint(w, "event: snapshot\ndata: {\"bots\":[{\"id\":\"bot_cloud_1\"}]}\n\n")
+			fmt.Fprint(w, botStream)
 		case r.URL.Path == "/v1/loops" && r.Method == http.MethodGet:
 			_ = json.NewEncoder(w).Encode(map[string]any{"loops": []map[string]any{{"id": "loop_c1", "name": "Cloud KPI"}}})
 		case r.URL.Path == "/v1/apps/b_1/board/tiles" && r.Method == http.MethodPost:
@@ -643,7 +652,7 @@ func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
 		want   string
 	}{
 		{http.MethodGet, "/v1/bots", "", "bot_cloud_1"},
-		{http.MethodGet, "/v1/bots/events?once=1&ticket=local-secret", "", "bot_cloud_1"},
+		{http.MethodGet, "/v1/bots/events?after_seq=7&ticket=local-secret", "", botStream},
 		{http.MethodGet, "/v1/loops", "", "loop_c1"},
 		{http.MethodPost, "/v1/apps/b_1/board/tiles", `{"loop_ids":["loop_c1"]}`, `"ok":true`},
 		{http.MethodGet, "/v1/plugins", "", "Sales Kit"},
@@ -663,10 +672,6 @@ func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
 		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), tc.want) {
 			t.Fatalf("%s %s expected 200 containing %q, got %d %s", tc.method, tc.path, tc.want, rec.Code, rec.Body.String())
 		}
-	}
-
-	if strings.Contains(lastSSEQuery, "ticket") || lastSSEQuery != "once=1" {
-		t.Fatalf("expected proxy to strip local ticket query param, upstream got %q", lastSSEQuery)
 	}
 
 	// Proxy path traversal rejection (400).
