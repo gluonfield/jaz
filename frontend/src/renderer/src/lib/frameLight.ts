@@ -1,5 +1,8 @@
 // How long a frame takes to burst open to the window's rim.
 export const OPEN_MS = 620
+// How far down the window the launch stage's line of light lies, and its night.
+export const HORIZON = 0.46
+export const GROUND = [0.043, 0.039, 0.063]
 
 const VERTEX = `
 attribute vec2 corner;
@@ -8,13 +11,16 @@ void main() {
 }`
 
 // A frame of light drawn over the window: a rounded `rect` (centre and half
-// extents, in CSS pixels from the window's centre) with up to three echoes
-// trailing it, over a `veil` of `ground` that hides the page. With `open` set
-// the frame's inside is clear, and `bloom` raises a nebula and sparks around it
-// that `spread` carries outwards. `field` fills the veil with that nebula at
-// rest, as a dawn the frame casts above `horizon` when its second part is set.
-// Only the first `arc` of the frame, clockwise from top centre, is fully lit;
-// the remainder glows at `rest`.
+// extents, in CSS pixels from the window's centre) over a `veil` of `ground`
+// that hides the page. With `open` set the frame's inside is clear, and `bloom`
+// raises a nebula and sparks around it that `spread` carries outwards. `field`
+// fills the veil with that nebula at rest, as a dawn the frame casts above
+// `horizon` when its second part is set. Only the first `arc` of the frame,
+// clockwise from top centre, is fully lit; the remainder glows at `rest`.
+// Up to four `lamps` (x from the centre, brightness, stretch along the line)
+// burn on the frame's line in their `tones` and colour the dawn near them;
+// `pan` slides the sky sideways, and a ripple of `pulse` (distance from the
+// centre, strength) runs along the line.
 const FRAGMENT = `
 precision highp float;
 uniform vec2 size;
@@ -22,11 +28,6 @@ uniform float density;
 uniform float time;
 uniform vec4 rect;
 uniform float radius;
-uniform vec4 echoA;
-uniform vec4 echoB;
-uniform vec4 echoC;
-uniform vec3 echoRadius;
-uniform vec3 echoLum;
 uniform float veil;
 uniform vec3 ground;
 uniform float open;
@@ -43,6 +44,10 @@ uniform vec3 cool;
 uniform vec3 ink;
 uniform vec3 tint;
 uniform float weight;
+uniform float pan;
+uniform vec3 lamps[4];
+uniform vec3 tones[4];
+uniform vec2 pulse;
 
 const vec3 WARM = vec3(1.0, 0.7, 0.48);
 const vec3 WHITE = vec3(1.0, 0.96, 0.9);
@@ -77,11 +82,6 @@ float box(vec2 p, vec4 r, float corner) {
   return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - c;
 }
 
-float echo(vec2 p, vec4 r, float corner) {
-  float trail = box(p, r, corner);
-  return exp(-trail * trail / 1.6);
-}
-
 float sparks(vec2 p, float pitch, float seed) {
   vec2 grid = p / pitch;
   vec2 cell = floor(grid);
@@ -104,42 +104,56 @@ void main() {
   float alpha = veil * (1.0 - open * smoothstep(0.75, -0.75, edge));
   vec3 color = ground * alpha;
 
-  vec2 q = p / 240.0;
+  vec3 local = vec3(0.0);
+  float reach = 0.0;
+  vec3 lamplight = vec3(0.0);
+  for (int i = 0; i < 4; i++) {
+    vec3 lamp = lamps[i];
+    float away = (p.x - lamp.x) / (0.3 * size.x);
+    float share = lamp.y * exp(-away * away);
+    local += tones[i] * share;
+    reach += share;
+    vec2 c = vec2((p.x - lamp.x) / max(lamp.z, 1.0), p.y - rect.y);
+    float d = length(c);
+    float dome = step(c.y, 0.0) * exp(-length(c * vec2(0.55, 1.4)) / 44.0);
+    float wake = step(0.0, c.y) * exp(-abs(c.x) / 5.0) * exp(-c.y / 52.0);
+    lamplight += (WHITE * 1.4 * exp(-d * d / 12.0) + tones[i] * (0.8 * exp(-d / 8.0) + (0.42 * dome + 0.2 * wake) * alpha)) * lamp.y;
+  }
+  local = mix(cool, local / max(reach, 0.001), clamp(reach * 3.0, 0.0, 1.0));
+
+  vec2 q = (p + vec2(0.45 * pan, 0.0)) / 240.0;
   q += 0.7 * vec2(fbm(q * 1.3 + vec2(0.0, time * 0.2)), fbm(q * 1.3 + vec2(5.2, -time * 0.17))) - 0.35;
   float cloud = fbm(q * 2.1);
   float wisps = 1.0 - abs(2.0 * fbm(q * 4.3 + 3.0) - 1.0);
   float body = smoothstep(0.3, 0.8, cloud) * (0.3 + 0.7 * wisps * wisps);
   float smoke = body * exp(-outside / mix(14.0, 130.0, spread));
-  color += mix(cool, WARM, smoothstep(0.15, 0.6, smoke)) * smoke * 1.3 * bloom * step(0.0, edge);
+  color += mix(local, WARM, smoothstep(0.15, 0.6, smoke)) * smoke * 1.3 * bloom * step(0.0, edge);
 
   float rise = horizon.x - p.y;
   float above = step(0.0, rise) * exp(-max(abs(rel.x) - rect.z, 0.0) / 60.0);
   float calm = 0.12 + 0.88 * smoothstep(50.0, 250.0, abs(p.y));
-  vec3 sky = mix(mix(cool, WARM, smoothstep(0.55, 1.0, body)), mix(WARM, cool, smoothstep(10.0, 190.0, rise)), horizon.y);
-  color += sky * body * mix(calm, above * exp(-rise / 170.0), horizon.y) * field * alpha * 1.25;
+  vec3 sky = mix(mix(local, WARM, smoothstep(0.55, 1.0, body)), mix(WARM, local, smoothstep(10.0, 190.0, rise)), horizon.y);
+  color += sky * body * mix(calm, above * exp(-rise / 170.0), horizon.y) * field * alpha * (1.25 + 0.25 * min(reach, 1.0));
 
-  float specks = sparks(point, 15.0, 71.0) + sparks(point, 23.0, 0.0) + sparks(point, 37.0, 19.0) + 0.6 * sparks(point, 61.0, 43.0);
+  float specks = sparks(point + vec2(0.3 * pan, 0.0), 15.0, 71.0) + sparks(point + vec2(0.5 * pan, 0.0), 23.0, 0.0) + sparks(point + vec2(0.75 * pan, 0.0), 37.0, 19.0) + 0.6 * sparks(point + vec2(pan, 0.0), 61.0, 43.0);
   color += WHITE * specks * exp(-outside / mix(80.0, 300.0, spread)) * dust * step(0.0, edge);
   color += WHITE * specks * 0.3 * field * mix(calm, above * exp(-rise / 320.0), horizon.y) * alpha;
 
+  float reached = (abs(p.x) - pulse.x) / 26.0;
+  float ripple = pulse.y * exp(-reached * reached);
   float sweep = pow(0.5 + 0.5 * cos(atan(rel.y, rel.x) - time * sweepRate), 8.0) * smoothstep(0.0, 12.0, rect.w);
   float turn = fract(atan(rel.x / max(rect.z, 1.0), -rel.y / max(rect.w, 1.0)) / 6.2831853 + 1.0);
   float lit = max(mix(rest, 1.0, smoothstep(arc + 0.012, arc - 0.012, turn) * smoothstep(0.0, 0.012, turn)), step(0.999, arc));
   float line = exp(-edge * edge / weight);
   float halo = (0.5 * exp(-abs(edge) / 6.0) + 0.14 * exp(-abs(edge) / 34.0)) * (edge > 0.0 ? 1.0 : mix(0.45, 0.06, open));
-  color += (ink * line * (0.75 + 0.5 * sweep) + tint * halo * (0.55 + 0.9 * sweep + 0.8 * bloom)) * glow * lit;
-  color += WARM * (echoLum.x * echo(p, echoA, echoRadius.x) + echoLum.y * echo(p, echoB, echoRadius.y) + echoLum.z * echo(p, echoC, echoRadius.z)) * glow * (1.0 - open);
+  color += (ink * line * (0.75 + 0.5 * sweep + 1.6 * ripple) + tint * halo * (0.55 + 0.9 * sweep + 0.8 * bloom + 1.4 * ripple)) * glow * lit;
+  color += lamplight * glow;
   gl_FragColor = vec4(color, alpha);
 }`
 
 const REST = {
   rect: [0, 0, 0, 0],
   radius: 0,
-  echoA: [0, 0, 0, 0],
-  echoB: [0, 0, 0, 0],
-  echoC: [0, 0, 0, 0],
-  echoRadius: [0, 0, 0],
-  echoLum: [0, 0, 0],
   veil: 0,
   ground: [0, 0, 0],
   open: 0,
@@ -156,6 +170,10 @@ const REST = {
   ink: [1, 0.96, 0.9],
   tint: [1, 0.7, 0.48],
   weight: 1.1,
+  pan: 0,
+  lamps: Array<number>(12).fill(0),
+  tones: Array<number>(12).fill(0),
+  pulse: [0, 0],
 }
 
 export type FrameLight = typeof REST
@@ -165,6 +183,15 @@ export const between = (now: number, from: number, span: number) => clamp((now -
 export const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 export const mix = (a: number[], b: number[], k: number) => a.map((value, index) => lerp(value, b[index], k))
 export const ease = (k: number) => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2)
+export const easeOut = (k: number) => 1 - (1 - k) ** 3
+
+// A CSS colour as the light's red, green and blue.
+export function rgb(color: string) {
+  const pen = new OffscreenCanvas(1, 1).getContext('2d')!
+  pen.fillStyle = color
+  pen.fillRect(0, 0, 1, 1)
+  return [...pen.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((channel) => channel / 255)
+}
 
 // The window's rim as a frame, and its corner radius.
 export const rim = () => [0, 0, window.innerWidth / 2 - 1.5, window.innerHeight / 2 - 1.5]
@@ -227,8 +254,8 @@ export function createFrameLight(canvas: HTMLCanvasElement) {
         const value = values[name] ?? REST[name]
         if (typeof value === 'number') gl.uniform1f(location, value)
         else if (value.length === 2) gl.uniform2fv(location, value)
-        else if (value.length === 3) gl.uniform3fv(location, value)
-        else gl.uniform4fv(location, value)
+        else if (value.length === 4) gl.uniform4fv(location, value)
+        else gl.uniform3fv(location, value)
       }
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
     },

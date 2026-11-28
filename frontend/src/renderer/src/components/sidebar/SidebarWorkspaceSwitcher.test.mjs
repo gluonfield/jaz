@@ -15,6 +15,7 @@ const bundle = await build({
     '@tanstack/react-router',
     'lucide-react',
     '@/components/connection/AddCloudWorkspaceModal',
+    '@/components/sidebar/workspaceSwitchPassage',
     '@/components/ui/Popover',
     '@/components/ui/toast',
     '@/lib/api/client',
@@ -38,6 +39,7 @@ function loadSwitcher(
     pathname = '/new',
     search = {},
     onSwitchWorkspace = async () => null,
+    onTurn = () => ({ shut: Promise.resolve(), arrive: async () => {}, cancel: () => {} }),
     onNavigate = () => {},
     adding = false,
     onSetAdding = () => {},
@@ -70,6 +72,9 @@ function loadSwitcher(
           AddCloudWorkspaceModal: ({ open }) =>
             open ? React.createElement('div', { 'data-add-cloud-modal': 'open' }) : null,
         }
+      }
+      if (name === '@/components/sidebar/workspaceSwitchPassage') {
+        return { turnToWorkspace: onTurn }
       }
       if (name === '@/components/ui/Popover') {
         return {
@@ -151,6 +156,22 @@ const noWorkspaces = {
   capabilities: {},
   lastSyncAt: '',
 }
+
+// The menu's workspace rows, in order.
+function workspaceRows(Switcher) {
+  const rows = []
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) return node.forEach(walk)
+    if (node.props?.role === 'menuitemradio') rows.push(node)
+    walk(node.props?.trigger)
+    walk(node.props?.children)
+  }
+  walk(Switcher({}))
+  return rows
+}
+
+const settled = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 // The text of the menu row marked as the current workspace.
 function checkedRow(html) {
@@ -318,30 +339,60 @@ test('SidebarWorkspaceSwitcher delegates workspace switching without duplicate n
     },
   )
 
-  const tree = Switcher({})
-  const buttons = []
-  const walk = (node) => {
-    if (!node || typeof node !== 'object') return
-    if (Array.isArray(node)) {
-      for (const child of node) walk(child)
-      return
-    }
-    if (node.props?.role === 'menuitemradio') {
-      buttons.push(node)
-    }
-    if (node.props?.trigger) walk(node.props.trigger)
-    if (node.props?.children) walk(node.props.children)
-  }
-  walk(tree)
+  const buttons = workspaceRows(Switcher)
 
   // buttons[0] = ws_example (active), buttons[1] = ws_personal, buttons[2] = local
   expect(buttons).toHaveLength(3)
-  await buttons[1].props.onClick()
+  buttons[1].props.onClick()
+  await settled()
   expect(switched).toEqual(['ws_personal'])
-  await buttons[2].props.onClick()
+  buttons[2].props.onClick()
+  await settled()
   expect(switched).toEqual(['ws_personal', 'local'])
   // Navigation on workspace switch is owned solely by __root.tsx via onWorkspaceChange.
   expect(navigated).toEqual([])
+})
+
+test('the app changes workspace only once the passage has closed over the old one, then the passage arrives or is cancelled', async () => {
+  const events = []
+  let shut
+  const rows = workspaceRows(
+    loadSwitcher(
+      { ...noWorkspaces, active: true, source: 'attached', status: 'connected', activeWorkspaceId: 'ws_example', workspaces: [exampleWorkspace, personalWorkspace] },
+      {
+        forcePopoverOpen: true,
+        onTurn: (places, from, to) => {
+          events.push(['turn', places, from, to])
+          const closed = new Promise((resolve) => {
+            shut = resolve
+          })
+          return { shut: closed, arrive: async () => events.push(['arrive']), cancel: () => events.push(['cancel']) }
+        },
+        onSwitchWorkspace: async (id) => {
+          events.push(['switch', id])
+          return id === 'local' ? 'Local is not running' : null
+        },
+      },
+    ),
+  )
+  const places = [
+    { id: 'ws_example', name: 'Example Systems' },
+    { id: 'ws_personal', name: 'Personal Cloud' },
+    { id: 'local', name: 'Local' },
+  ]
+
+  rows[1].props.onClick()
+  await settled()
+  expect(events).toEqual([['turn', places, 0, 1]])
+  shut()
+  await settled()
+  expect(events.slice(1)).toEqual([['switch', 'ws_personal'], ['arrive']])
+
+  events.length = 0
+  rows[2].props.onClick()
+  shut()
+  await settled()
+  expect(events).toEqual([['turn', places, 0, 2], ['switch', 'local'], ['cancel']])
 })
 
 test('workspaceSwitchNavigation leaves workspace-specific routes cleanly and preserves Settings', async () => {

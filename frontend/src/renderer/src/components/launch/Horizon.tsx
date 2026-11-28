@@ -3,7 +3,7 @@ import { useColorTheme } from '@/lib/appearanceScheme'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { devPreview } from '@/lib/devPreview'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
-import { OPEN_MS, RIM_RADIUS, between, bursting, clamp, createFrameLight, ease, lerp, mix, rim } from '@/lib/frameLight'
+import { GROUND, HORIZON, OPEN_MS, RIM_RADIUS, between, bursting, clamp, createFrameLight, ease, easeOut, lerp, mix, rgb, rim } from '@/lib/frameLight'
 import { useTheme } from '@/lib/theme'
 
 // The launch stage: night, with one line of light across the window and the
@@ -12,10 +12,7 @@ import { useTheme } from '@/lib/theme'
 // round as setup has got; once nothing holds the stage, the frame bursts open
 // to the window's rim onto the app.
 
-// How far down the window the line lies.
-const HORIZON = 0.46
 const NIGHT = '#0b0a10'
-const GROUND = [0.043, 0.039, 0.063]
 const WHITE = [1, 0.96, 0.9]
 const WARM = [1, 0.7, 0.48]
 // The line is not left before it has been drawn and the name read.
@@ -76,14 +73,6 @@ export function HorizonStatus({ children }: { children: ReactNode }) {
 }
 
 const smooth = (k: number) => k * k * (3 - 2 * k)
-const easeOut = (k: number) => 1 - (1 - k) ** 3
-
-function rgb(color: string) {
-  const pen = new OffscreenCanvas(1, 1).getContext('2d')!
-  pen.fillStyle = color
-  pen.fillRect(0, 0, 1, 1)
-  return [...pen.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((channel) => channel / 255)
-}
 
 // The theme as light: the nebula's cool tone, and the accent a frame is drawn
 // in round a white card, where warm white would not show.

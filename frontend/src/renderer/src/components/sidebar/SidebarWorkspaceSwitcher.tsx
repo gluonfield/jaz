@@ -2,7 +2,7 @@ import { ChevronsUpDown, LoaderCircle, Plus } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { AddCloudWorkspaceModal } from '@/components/connection/AddCloudWorkspaceModal'
 import { WorkspaceMark } from '@/components/sidebar/WorkspaceMark'
-import { WorkspaceSwitchTransition } from '@/components/sidebar/WorkspaceSwitchTransition'
+import { turnToWorkspace } from '@/components/sidebar/workspaceSwitchPassage'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
 import { clientRuntime } from '@/lib/clientRuntime'
@@ -82,8 +82,6 @@ export function SidebarWorkspaceSwitcher({
   }
   if (workspaces.length === 0 && !showWithoutCloud) return null
 
-  const switching = workspaces.find((ws) => ws.id === switchingTo)
-  const switchingName = switchingTo === null ? null : switching ? workspaceDisplayName(switching) : 'Local'
   const isLocalActive = localAllowed && !activeCloud
   const closeMenu = () => {
     setOpen(false)
@@ -95,10 +93,20 @@ export function SidebarWorkspaceSwitcher({
     const currentId = activeCloud ? activeCloud.id : LOCAL_WORKSPACE_ID
     if (workspaceId === currentId || switchingTo !== null) return
     setSwitchingTo(workspaceId)
+    // The menu's order.
+    const places = workspaces.map((ws) => ({ id: ws.id, name: workspaceDisplayName(ws) }))
+    if (localAllowed) places.push({ id: LOCAL_WORKSPACE_ID, name: 'Local' })
+    const placeOf = (id: string) => places.findIndex((place) => place.id === id)
+    const passage = turnToWorkspace(places, placeOf(currentId), placeOf(workspaceId))
     try {
+      // The app turns into the new workspace only once the passage has closed over the old one.
+      await passage.shut
       const err = await switchWorkspace(workspaceId)
       if (err) {
+        passage.cancel()
         toast(err, 'danger')
+      } else {
+        await passage.arrive()
       }
     } finally {
       setSwitchingTo(null)
@@ -197,7 +205,6 @@ export function SidebarWorkspaceSwitcher({
           ) : null}
         </div>
       </Popover>
-      <WorkspaceSwitchTransition name={switchingName} />
       <AddCloudWorkspaceModal open={adding} onClose={() => setAdding(false)} />
     </div>
   )
