@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { coalesceSessionEvents, mergeSessionEvent } from './sessionEvents'
+import { coalesceSessionEvents, isSessionRefreshEventType, mergeSessionEvent, sessionEventPlacement } from './sessionEvents'
 
 function text(seq, content, projectionOp) {
   return {
@@ -76,5 +76,17 @@ describe('session event text projection', () => {
 
     expect(events).toHaveLength(1)
     expect(events[0].content).toBe('Hello world')
+  })
+
+  test('classifies user and turn lifecycle events as internal refresh signals rather than transcript rows', () => {
+    for (const type of ['session', 'user_message', 'turn_user', 'turn.user', 'turn_started', 'turn.started']) {
+      expect(isSessionRefreshEventType(type)).toBe(true)
+      expect(sessionEventPlacement({ session_id: 'thread', type, content: 'hello', at: '2026-11-28T00:00:00Z' })).toBe('internal')
+    }
+    for (const type of ['turn_queued', 'turn.queued']) {
+      expect(isSessionRefreshEventType(type)).toBe(false)
+      expect(sessionEventPlacement({ session_id: 'thread', type, content: 'queued', at: '2026-11-28T00:00:00Z' })).toBe('internal')
+    }
+    expect(sessionEventPlacement(text(1, 'Assistant reply'))).toBe('transcript')
   })
 })

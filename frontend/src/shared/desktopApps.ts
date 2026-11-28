@@ -12,6 +12,7 @@ export interface DesktopAppIconSpec {
 export interface InstalledDesktopApp {
   appId: string
   workspaceId: string
+  origin?: string
   title: string
   description?: string
   kind: 'artifact' | 'document'
@@ -35,6 +36,7 @@ export interface InstalledDesktopApp {
 export interface InstallDesktopAppInput {
   appId: string
   workspaceId: string
+  origin?: string
   title: string
   description?: string
   kind: 'artifact' | 'document'
@@ -96,4 +98,40 @@ export function isMachineAccess(permission: DesktopAppPermission): boolean {
 // The desktop permissions an app declares as desktop:<permission> capabilities.
 export function declaredDesktopPermissions(capabilities: readonly string[] = []): DesktopAppPermission[] {
   return DESKTOP_APP_PERMISSIONS.filter((permission) => capabilities.includes(`desktop:${permission}`))
+}
+
+export interface DesktopAppScope {
+  workspaceId: string
+  origin: string
+  isLocalOrigin?: boolean
+}
+
+function normalizeScopeOrigin(raw?: string): string {
+  const trimmed = (raw ?? '').trim().replace(/\/+$/, '')
+  if (!trimmed) return ''
+  try {
+    return new URL(trimmed).origin.toLowerCase()
+  } catch {
+    return trimmed.toLowerCase()
+  }
+}
+
+// Installed apps are stored in one desktop registry per machine; only records
+// belonging to the active workspace and backend origin surface in its library.
+export function matchesDesktopAppScope(
+  record: Pick<InstalledDesktopApp, 'workspaceId' | 'origin'>,
+  scope: DesktopAppScope,
+): boolean {
+  const recordWorkspace = (record.workspaceId || 'local').trim()
+  const scopeWorkspace = (scope.workspaceId || 'local').trim()
+  if (recordWorkspace !== scopeWorkspace) return false
+  const recordOrigin = normalizeScopeOrigin(record.origin)
+  const scopeOrigin = normalizeScopeOrigin(scope.origin)
+  if (recordOrigin) {
+    return Boolean(scopeOrigin) && recordOrigin === scopeOrigin
+  }
+  if (scopeWorkspace === 'local') {
+    return scope.isLocalOrigin !== false
+  }
+  return true
 }

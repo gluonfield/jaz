@@ -3,8 +3,9 @@ import { useEffect } from 'react'
 import { isCloudApiSession } from '@/lib/api/client'
 import { openSessionEvents } from '@/lib/api/sse'
 import type { SessionEvent, SessionMessages } from '@/lib/api/types'
+import { invalidateSessionTurnQueries } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
-import { mergeSessionEvent } from '@/lib/sessionEvents'
+import { isSessionRefreshEventType, mergeSessionEvent } from '@/lib/sessionEvents'
 
 // Subscribes to a session's SSE stream while mounted; events accumulate in
 // the query cache. Cache writes are batched and sidebar invalidations
@@ -32,18 +33,7 @@ export function useSessionEvents(
       const isCloud =
         isCloudApiSession() ||
         queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))?.session.backend === 'cloud'
-      if (isCloud) {
-        queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
-        queryClient.invalidateQueries({ queryKey: keys.usage })
-        queryClient.invalidateQueries({ queryKey: keys.cloudThreadRepo(sessionId) })
-        return
-      }
-      queryClient.invalidateQueries({ queryKey: keys.usage })
-      queryClient.invalidateQueries({ queryKey: keys.sessionOverview(sessionId) })
-      // Turn boundaries are when the working tree changes — refresh repo
-      // state and the changes summary here instead of polling for them.
-      queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
-      queryClient.invalidateQueries({ queryKey: keys.loops })
+      invalidateSessionTurnQueries(queryClient, sessionId, isCloud, { includeOverview: true, includeLoops: true })
     }
     let pending: SessionEvent[] = []
     let flushTimer: ReturnType<typeof setTimeout> | null = null
@@ -68,11 +58,13 @@ export function useSessionEvents(
     const stop = openSessionEvents(sessionId, afterSeq, (event: SessionEvent) => {
       onEvent?.(event)
       overviewChanged ||= ['agent_session', 'agent_task', 'provider_subagent'].includes(event.type) || event.artifact?.kind === 'plugin-view'
-      // 'assistant' events are refresh signals, not transcript items.
+      // 'assistant' and user/session lifecycle events are refresh signals, not transcript rows.
       if (event.type === 'assistant') {
         refetchMessages()
-      } else if (event.type === 'session') {
+      } else if (isSessionRefreshEventType(event.type)) {
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+      } else if (event.type === 'turn_queued' || event.type === 'turn.queued') {
+        // Queued turn ack carries no transcript row until the turn starts.
       } else {
         pending.push(event)
         flushTimer ??= setTimeout(flush, 50)

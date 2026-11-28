@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { orgAppPolicyQuery, type BundledApp } from '@/lib/api/apps'
 import { desktopApps, installDesktopApp } from '@/lib/desktopApps'
-import { declaredDesktopPermissions, isMachineAccess, type DesktopAppPermission, type InstalledDesktopApp } from '@shared/desktopApps'
+import { declaredDesktopPermissions, isMachineAccess, type DesktopAppPermission, type DesktopAppScope, type InstalledDesktopApp } from '@shared/desktopApps'
 
 const ASKS: Record<DesktopAppPermission, { label: string; detail: string }> = {
   notifications: { label: 'Show notifications', detail: 'Even while you use other apps.' },
@@ -21,11 +21,13 @@ const ASKS: Record<DesktopAppPermission, { label: string; detail: string }> = {
 export function DesktopAppDialog({
   app,
   installed,
+  scope,
   onClose,
   onSaved,
 }: {
   app: BundledApp
   installed: InstalledDesktopApp | null
+  scope?: DesktopAppScope
   onClose: () => void
   onSaved: () => void
 }) {
@@ -37,7 +39,7 @@ export function DesktopAppDialog({
   const save = useMutation({
     mutationFn: () => installed
       ? desktopApps!.setPermissions(app.id, app.bundle_sha256 || installed.latestBundleSha256, allowed, folders, fullAccess)
-      : installDesktopApp(app, allowed, folders, fullAccess),
+      : installDesktopApp(app, allowed, folders, fullAccess, scope),
     onSuccess: () => {
       onSaved()
       onClose()

@@ -15,3 +15,20 @@ export function invalidateSessionLists(
     queryClient.invalidateQueries({ queryKey: keys.session(opts.session), exact: true })
   }
 }
+
+export function invalidateSessionTurnQueries(
+  queryClient: QueryClient,
+  sessionId: string,
+  isCloud: boolean,
+  opts: { includeOverview?: boolean; includeLoops?: boolean } = {},
+) {
+  queryClient.invalidateQueries({ queryKey: keys.usage })
+  if (isCloud) {
+    queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
+    queryClient.invalidateQueries({ queryKey: keys.cloudThreadRepo(sessionId) })
+    return
+  }
+  queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
+  if (opts.includeOverview) queryClient.invalidateQueries({ queryKey: keys.sessionOverview(sessionId) })
+  if (opts.includeLoops) queryClient.invalidateQueries({ queryKey: keys.loops })
+}

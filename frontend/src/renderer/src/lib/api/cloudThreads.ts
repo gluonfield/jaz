@@ -3,7 +3,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/response'
 import { cloudWorkspaceHeaders } from '@/lib/api/cloudScope'
 import type { ModelPickerOption, PickerAgentOption } from '@/lib/modelPicker'
-import { modelSuggestionFor } from '@/lib/modelSuggestion'
+import { formatModelLabel, modelSuggestionFor } from '@/lib/modelSuggestion'
 import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 import { keys } from '@/lib/query/keys'
 import {
@@ -117,13 +117,120 @@ const CLOUD_PROVIDER_META: Record<string, { label: string; logoAgent: string }> 
   azure_openai: { label: 'Codex Azure', logoAgent: 'codex' },
   codex_oauth: { label: 'Codex', logoAgent: 'codex' },
   anthropic: { label: 'Claude', logoAgent: 'claude' },
+  vertex_anthropic: { label: 'Claude', logoAgent: 'claude' },
   bedrock: { label: 'Claude Bedrock', logoAgent: 'claude' },
+  bedrock_anthropic: { label: 'Claude Bedrock', logoAgent: 'claude' },
   claude_oauth: { label: 'Claude', logoAgent: 'claude' },
   antigravity_oauth: { label: 'Antigravity', logoAgent: 'antigravity' },
   kimi_oauth: { label: 'Kimi', logoAgent: 'kimi' },
   xai: { label: 'Grok', logoAgent: 'grok' },
+  grok: { label: 'Grok', logoAgent: 'grok' },
   vertex: { label: 'Vertex AI', logoAgent: 'gemini' },
+  vertex_gemini: { label: 'Vertex AI', logoAgent: 'gemini' },
+  vertex_interactions: { label: 'Vertex AI', logoAgent: 'gemini' },
+  gemini: { label: 'Gemini', logoAgent: 'gemini' },
+  meta: { label: 'Meta Llama', logoAgent: 'muse' },
+  llama: { label: 'Meta Llama', logoAgent: 'muse' },
   openrouter: { label: 'OpenRouter', logoAgent: 'codex' },
+}
+
+function canonicalOrgProviderFamily(provider: string): string {
+  switch (provider) {
+    case 'vertex':
+    case 'vertex_gemini':
+    case 'vertex_interactions':
+    case 'gemini':
+      return 'gemini'
+    case 'xai':
+    case 'grok':
+      return 'xai'
+    default:
+      return provider
+  }
+}
+
+function providerPriority(provider: string): number {
+  switch (provider) {
+    case 'vertex':
+      return 3
+    case 'vertex_gemini':
+    case 'vertex_interactions':
+      return 2
+    case 'gemini':
+      return 1
+    default:
+      return 0
+  }
+}
+
+function modelIdentityKey(value: string): string {
+  const lowered = value.toLowerCase()
+  const idx = lowered.indexOf('/')
+  return idx >= 0 ? lowered.slice(idx + 1) : lowered
+}
+
+function mergeProfileModels(primary: ModelPickerOption[], secondary: ModelPickerOption[]): ModelPickerOption[] {
+  const seen = new Set(primary.map((model) => modelIdentityKey(model.value)))
+  const merged = [...primary]
+  for (const model of secondary) {
+    const key = modelIdentityKey(model.value)
+    if (!seen.has(key)) {
+      seen.add(key)
+      merged.push(model)
+    }
+  }
+  return merged
+}
+
+function sharesModelFamily(a: ModelPickerOption[], b: ModelPickerOption[]): boolean {
+  if (a.length === 0 || b.length === 0) return true
+  const keys = new Set(a.map((model) => modelIdentityKey(model.value)))
+  return b.some((model) => keys.has(modelIdentityKey(model.value)))
+}
+
+// Collapse duplicate org profiles in the same provider family (for example two
+// Vertex/Gemini org profiles both presenting the Gemini star tab) while keeping
+// distinct personal ACP OAuth profiles and disjoint providers intact.
+export function dedupeCloudModelProfiles(profiles: CloudModelProfile[]): CloudModelProfile[] {
+  const out: CloudModelProfile[] = []
+  const byId = new Set<string>()
+  const orgByFamily = new Map<string, number>()
+
+  for (const profile of profiles) {
+    if (byId.has(profile.profile_id)) continue
+    byId.add(profile.profile_id)
+    const isUserScope = profile.scope === 'user' || profile.profile_id.startsWith('acp:')
+    if (isUserScope) {
+      out.push(profile)
+      continue
+    }
+    const provider = profile.provider.trim().toLowerCase()
+    const family = canonicalOrgProviderFamily(provider)
+    const existingIndex = family ? orgByFamily.get(family) : undefined
+    if (existingIndex === undefined) {
+      if (family) orgByFamily.set(family, out.length)
+      out.push(profile)
+      continue
+    }
+    const existing = out[existingIndex]
+    const existingProvider = existing.provider.trim().toLowerCase()
+    const sameProvider = provider === existingProvider
+    if (!sameProvider && !sharesModelFamily(existing.models ?? [], profile.models ?? [])) {
+      out.push(profile)
+      continue
+    }
+    const incomingPriority = providerPriority(provider)
+    const existingPriority = providerPriority(existingProvider)
+    const preferIncoming =
+      incomingPriority > existingPriority ||
+      (incomingPriority === existingPriority && (profile.models?.length ?? 0) > (existing.models?.length ?? 0))
+    const winner = preferIncoming ? profile : existing
+    const loser = preferIncoming ? existing : profile
+    out[existingIndex] = sameProvider
+      ? { ...winner, models: mergeProfileModels(winner.models ?? [], loser.models ?? []) }
+      : winner
+  }
+  return out
 }
 
 function normalizeModelOption(option: RawCloudModelOption): ModelPickerOption | null {
@@ -132,19 +239,21 @@ function normalizeModelOption(option: RawCloudModelOption): ModelPickerOption | 
     if (!value) return null
     return {
       value,
-      label: value.includes('/') ? value.slice(value.indexOf('/') + 1) : value,
+      label: formatModelLabel(value),
     }
   }
   if (!option || typeof option !== 'object' || typeof option.value !== 'string' || !option.value.trim()) {
     return null
   }
+  const value = option.value.trim()
+  const label = formatModelLabel(value, option.label)
   if (!option.reasoning) {
-    return { ...option, value: option.value.trim(), label: option.label?.trim() || option.value.trim() }
+    return { ...option, value, label }
   }
   return {
     ...option,
-    value: option.value.trim(),
-    label: option.label?.trim() || option.value.trim(),
+    value,
+    label,
     reasoning: {
       ...option.reasoning,
       status: option.reasoning.status ?? 'ready',
@@ -280,7 +389,7 @@ export async function listCloudModelProfiles(signal?: AbortSignal, workspaceID?:
     const raw = Array.isArray(response)
       ? response
       : (response.models ?? response.profiles ?? response.model_profiles ?? [])
-    return raw.filter((item) => Boolean(item?.profile_id)).map(normalizeCloudModelProfile)
+    return dedupeCloudModelProfiles(raw.filter((item) => Boolean(item?.profile_id)).map(normalizeCloudModelProfile))
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return []
     throw error

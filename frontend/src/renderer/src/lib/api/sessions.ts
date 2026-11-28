@@ -22,6 +22,7 @@ import {
   secureBackendConnection,
 } from './client'
 import { updateThreadUserState } from './cloudSpaces'
+import { markThreadSeen } from './feed'
 import {
   cloudRunFileBytes,
   cloudRunFileDownloadUrl,
@@ -29,6 +30,7 @@ import {
   grantCloudRunAsset,
   normalizeAssetGrant,
   readCloudRunFile,
+  uploadCloudFile,
   type AssetGrantWire,
 } from './cloudUploads'
 import {
@@ -283,6 +285,29 @@ export async function uploadSessionAttachment(sessionId: string, file: File, sig
     signal,
   })
   return readAPIResponse<Attachment>(res)
+}
+
+export function uploadSessionFile(
+  sessionId: string,
+  file: File,
+  opts: { cloudRunId?: string; signal?: AbortSignal } = {},
+): Promise<Attachment> {
+  return opts.cloudRunId
+    ? uploadCloudFile(opts.cloudRunId, file, { signal: opts.signal })
+    : uploadSessionAttachment(sessionId, file, opts.signal)
+}
+
+export async function markSessionSeen(
+  sessionId: string,
+  opts: { isCloud: boolean; unread?: boolean; lastReadSeq?: number; readOnly?: boolean },
+): Promise<boolean> {
+  if (opts.isCloud) {
+    if (opts.readOnly || !opts.unread) return false
+    await updateThreadUserState(sessionId, { last_read_seq: opts.lastReadSeq || 1, unread: false }).catch(() => {})
+    return true
+  }
+  await markThreadSeen(sessionId)
+  return true
 }
 
 // Configured ACP agents the new-thread page can offer as a runtime. Resilient

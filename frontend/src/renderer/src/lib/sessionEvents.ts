@@ -13,9 +13,26 @@ export function isParentChildACPEvent(event: SessionEvent): boolean {
 
 export type SessionEventPlacement = 'transcript' | 'overview' | 'side_chat' | 'internal'
 
+export function isSessionRefreshEventType(type: string): boolean {
+  switch (type) {
+    case 'session':
+    case 'user_message':
+    case 'turn_user':
+    case 'turn.user':
+    case 'turn_started':
+    case 'turn.started':
+      return true
+    default:
+      return false
+  }
+}
+
 export function sessionEventPlacement(event: SessionEvent): SessionEventPlacement {
+  if (isSessionRefreshEventType(event.type)) return 'internal'
   switch (event.type) {
     case 'voice_diagnostic':
+    case 'turn_queued':
+    case 'turn.queued':
       return 'internal'
     case 'acp':
       return isParentChildACPEvent(event) && !taskSurfaceFromEvent(event) ? 'overview' : 'transcript'

@@ -276,3 +276,18 @@ test('a saved app stands outside the folded work once per call, and a failed sav
   expect(workItems.flatMap((item) => item.entries?.map((entry) => entry.call.id) ?? [])).toEqual(['read', 'failed'])
   expect(resultItems.map((item) => item.kind === 'app' ? 'app' : item.event.content)).toEqual(['Saving the clock now.', 'app', 'Saved.'])
 })
+
+test('user and turn lifecycle events carrying text never render as assistant responses', () => {
+  const at = (second) => new Date(second * 1000).toISOString()
+  const events = [
+    { session_id: 'thread', type: 'user_message', seq: 1, at: at(1), content: 'Hello from user' },
+    { session_id: 'thread', type: 'turn_started', seq: 2, at: at(2), content: 'Hello from user' },
+    { session_id: 'thread', type: 'turn_queued', seq: 3, at: at(3), content: 'Queued prompt' },
+    { session_id: 'thread', type: 'session', seq: 4, at: at(4), content: 'Refresh signal' },
+    { session_id: 'thread', type: 'acp_message', seq: 5, at: at(5), content: 'Real assistant reply' },
+  ]
+  for (const grouped of [false, true]) {
+    const timeline = buildTimeline([], events, 'thread', grouped)
+    expect(timeline.chronological.map((item) => item.event.content)).toEqual(['Real assistant reply'])
+  }
+})

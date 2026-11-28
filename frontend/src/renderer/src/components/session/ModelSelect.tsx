@@ -24,7 +24,7 @@ const row = {
   rest: { x: 0, opacity: 1, transition: SWAP },
 }
 
-// One agent's models in a fixed-height, scrolling area, so the picker keeps its size.
+// One agent's models in a bounded scrolling area that hugs shorter lists.
 // A new `id` slides the old list out and the new one in along `direction`.
 function ModelList({
   id,
@@ -44,7 +44,7 @@ function ModelList({
   onPick: (model: ModelPickerOption) => void
 }) {
   return (
-    <div className="relative h-42 overflow-hidden">
+    <div className="relative max-h-42 overflow-hidden">
       <AnimatePresence mode="popLayout" custom={direction}>
         <motion.div
           key={id}
@@ -55,7 +55,7 @@ function ModelList({
           initial="enter"
           animate="rest"
           exit="exit"
-          className="h-full w-full overflow-y-auto"
+          className="max-h-42 w-full overflow-y-auto"
           onKeyDown={(event) => {
             if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
               return
@@ -175,7 +175,7 @@ export function ModelSelect({
             onClick={() => setOpen(!open)}
           >
             {activeAgentLogo && hasAgentLogo(activeAgentLogo) ? <Pop id={activeAgentLogo}><AgentLogo agent={activeAgentLogo} size={14} /></Pop> : null}
-            <Roll value={label} direction={agentDirection} className="max-w-28" />
+            <Roll value={label} direction={agentDirection} className="max-w-44" />
             {effortLabel ? <Roll value={effortLabel} direction={effortDirection} className={effortClass || 'text-ink-3'} /> : null}
             {fast ? <Zap size={12} fill="currentColor" className="shrink-0 text-primary" /> : null}
             <ChevronDown size={13} className={`shrink-0 transition-transform duration-200 ${open && !disabled ? 'rotate-180' : ''}`} />

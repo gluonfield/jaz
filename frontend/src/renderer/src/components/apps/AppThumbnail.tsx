@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import { AppWindow, FileText } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { RenderedMarkdown } from '@/components/session/MessageMarkdown'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { appPreviewQuery, type JazApp } from '@/lib/api/apps'
 import { buildAppSandboxDocument } from '@/lib/appBridge'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
@@ -77,8 +79,45 @@ export function AppThumbnail({ app }: { app: JazApp }) {
               />
             )}
           </div>
+        ) : preview.isError ? (
+          <AppThumbnailFallback app={app} />
+        ) : seen ? (
+          <div className="flex size-full flex-col gap-2.5 px-5 pt-5">
+            <Skeleton className="h-3 w-2/5" />
+            <Skeleton className="h-2.5 w-4/5" />
+            <Skeleton className="h-2.5 w-3/5" />
+          </div>
         ) : null}
       </div>
     </ThumbnailSheet>
+  )
+}
+
+function AppThumbnailFallback({ app }: { app: JazApp }) {
+  const iconValue = app.icon?.value?.trim()
+  const FallbackIcon = app.kind === 'document' ? FileText : AppWindow
+  const hue = [...app.id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 360
+  const badgeStyle = iconValue
+    ? {
+        backgroundColor: app.icon?.background || `hsl(${hue} 44% 44% / 0.16)`,
+        color: app.icon?.color || undefined,
+      }
+    : undefined
+
+  return (
+    <div className="grid size-full place-items-center pb-[6%]">
+      <span
+        className="grid size-10 place-items-center rounded-[10px] bg-surface-2 text-ink-2 ring-1 ring-border/70"
+        style={badgeStyle}
+      >
+        {iconValue ? (
+          <span className={app.icon?.kind === 'emoji' ? 'text-[20px] leading-none' : 'text-[13px] font-semibold tracking-tight'}>
+            {iconValue}
+          </span>
+        ) : (
+          <FallbackIcon size={18} />
+        )}
+      </span>
+    </div>
   )
 }

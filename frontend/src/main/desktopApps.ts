@@ -286,6 +286,7 @@ export function installDesktopApps(deps: {
     const record: InstalledDesktopApp = {
       appId: input.appId,
       workspaceId: input.workspaceId || 'local',
+      ...(input.origin?.trim() ? { origin: input.origin.trim() } : {}),
       title: input.title,
       description: input.description,
       kind: input.kind,

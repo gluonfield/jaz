@@ -1,8 +1,30 @@
 import type { BundledApp, JazApp } from '@/lib/api/apps'
+import { apiBaseUrl, isLocalBackendUrl, normalizeBaseUrl } from '@/lib/api/client'
+import type { ActiveCloudSession } from '@/lib/cloudSession'
 import { clientRuntime } from '@/lib/clientRuntime'
-import type { DesktopAppPermission, InstalledDesktopApp } from '@shared/desktopApps'
+import type { DesktopAppPermission, DesktopAppScope, InstalledDesktopApp } from '@shared/desktopApps'
 
 export const desktopApps = clientRuntime.kind === 'electron' ? clientRuntime.desktopApps : undefined
+
+export function activeDesktopAppScope(
+  cloud: Pick<ActiveCloudSession, 'active' | 'activeWorkspaceId' | 'url' | 'user'>,
+  connectionUrl: string,
+): DesktopAppScope {
+  if (cloud.active) {
+    const origin = normalizeBaseUrl(cloud.url || connectionUrl || apiBaseUrl())
+    return {
+      workspaceId: cloud.user?.org_id || cloud.activeWorkspaceId || 'cloud',
+      origin,
+      isLocalOrigin: false,
+    }
+  }
+  const origin = normalizeBaseUrl(connectionUrl || apiBaseUrl())
+  return {
+    workspaceId: 'local',
+    origin,
+    isLocalOrigin: isLocalBackendUrl(origin),
+  }
+}
 
 // Installs an app as a program of its own and opens it.
 export async function installDesktopApp(
@@ -10,10 +32,13 @@ export async function installDesktopApp(
   permissions: DesktopAppPermission[] = [],
   scopedFolders: string[] = [],
   allowDesktopFullAccess = false,
+  scope?: DesktopAppScope,
 ): Promise<InstalledDesktopApp> {
+  const origin = scope?.origin || normalizeBaseUrl(apiBaseUrl())
   const installed = await desktopApps!.install({
     appId: app.id,
-    workspaceId: app.org_id || 'local',
+    workspaceId: app.org_id || scope?.workspaceId || 'local',
+    origin,
     title: app.title,
     description: app.description,
     kind: app.kind,

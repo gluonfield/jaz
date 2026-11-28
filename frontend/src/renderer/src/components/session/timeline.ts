@@ -465,7 +465,8 @@ export function buildTimeline(
       if (event.type === 'mcp_app') return Boolean(event.mcp_app && isPresentedApp(event.mcp_app, entrypoints))
       if (!acp) {
         if (taskSurface) return true
-        return Boolean(event.content || event.permission || event.voice)
+        if (event.permission || event.voice) return true
+        return Boolean(event.content && (event.type === 'acp_message' || event.type === 'acp'))
       }
       if (!hasVisibleACPSurface(event)) return false
       // This page's own running state has nothing to render — drop the event

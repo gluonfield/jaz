@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/Button'
 import type { MenuAction } from '@/components/ui/ActionMenu'
 import { useToast } from '@/components/ui/toast'
 import { appDetailQuery, detailApp, hasBundle, type BundledApp } from '@/lib/api/apps'
+import { useCloudSession } from '@/lib/cloudSession'
+import { useConnection } from '@/lib/connection'
 import { revealInFolderLabel } from '@/lib/deviceLabel'
-import { desktopApps, installDesktopApp, installFolder } from '@/lib/desktopApps'
+import { activeDesktopAppScope, desktopApps, installDesktopApp, installFolder } from '@/lib/desktopApps'
 import { keys } from '@/lib/query/keys'
-import { declaredDesktopPermissions } from '@shared/desktopApps'
+import { declaredDesktopPermissions, matchesDesktopAppScope } from '@shared/desktopApps'
 
 // Only an app with a bundle installs; a board opens in a window of its own.
 type AppRef = BundledApp | string
@@ -20,8 +22,23 @@ const refId = (app: AppRef): string => (typeof app === 'string' ? app : app.id)
 export function useDesktopApps() {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const cloud = useCloudSession()
+  const connection = useConnection()
+  const { active, activeWorkspaceId, url: cloudUrl, user: cloudUser } = cloud
+  const scope = useMemo(
+    () => activeDesktopAppScope({ active, activeWorkspaceId, url: cloudUrl, user: cloudUser }, connection.url),
+    [active, activeWorkspaceId, cloudUrl, cloudUser, connection.url],
+  )
   const list = useQuery({ queryKey: keys.desktopApps, queryFn: () => desktopApps!.list(), enabled: Boolean(desktopApps) })
-  const records = useMemo(() => new Map((list.data ?? []).map((record) => [record.appId, record])), [list.data])
+  const records = useMemo(
+    () =>
+      new Map(
+        (list.data ?? [])
+          .filter((record) => matchesDesktopAppScope(record, scope))
+          .map((record) => [record.appId, record]),
+      ),
+    [list.data, scope],
+  )
   const [dialog, setDialog] = useState<BundledApp | null>(null)
   const [installing, setInstalling] = useState<string | null>(null)
   const refresh = () => void queryClient.invalidateQueries({ queryKey: keys.desktopApps })
@@ -40,7 +57,7 @@ export function useDesktopApps() {
       if (declaredDesktopPermissions(target.capabilities).length) {
         setDialog(target)
       } else {
-        await installDesktopApp(target)
+        await installDesktopApp(target, [], [], false, scope)
         refresh()
       }
     } catch (error) {
@@ -84,7 +101,7 @@ export function useDesktopApps() {
     review: (app: AppRef) => void resolve(app).then(setDialog, fail),
     actions,
     dialog: dialog ? (
-      <DesktopAppDialog app={dialog} installed={records.get(dialog.id) ?? null} onClose={() => setDialog(null)} onSaved={refresh} />
+      <DesktopAppDialog app={dialog} installed={records.get(dialog.id) ?? null} scope={scope} onClose={() => setDialog(null)} onSaved={refresh} />
     ) : null,
   }
 }

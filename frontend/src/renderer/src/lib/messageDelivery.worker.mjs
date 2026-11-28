@@ -19,6 +19,7 @@ const turns = []
 let historyDown = false
 let refuse = ''
 let queueTurns = false
+let delayCloudPersist = false
 let accepting = Promise.resolve()
 const page = () => ({
   session: { id: 'thread', runtime: 'acp', status: 'running' },
@@ -47,7 +48,7 @@ globalThis.fetch = async (input, init) => {
     if (!replayed) {
       turns.push(body.client_request_id)
       // A turn sent while another runs waits its turn, with no row until then.
-      if (!queueTurns) accept(body.text)
+      if (!queueTurns && !delayCloudPersist) accept(body.text)
     }
     return globalThis.Response.json({ turn: { id: 'turn', thread_id: 'thread', status: 'queued' }, replayed, queued: queueTurns })
   }
@@ -132,6 +133,18 @@ accept('while you work')
 await queryClient.refetchQueries(history)
 steps.queuedTurnStarted = view().filter((content) => content === 'while you work').length
 steps.queuedTurnSettled = outboxTranscript(loaded(), outbox('thread')).settled.includes(seventh.id)
+
+// Cloud, immediate refetch returns before user_message is persisted/mirrored:
+// the sent message must stay visible until the server row lands, never vanish.
+queueTurns = false
+delayCloudPersist = true
+const delayed = send('cloud async persist', 'run')
+await delayed.settled
+steps.cloudPendingBeforePersist = view().at(-1)
+accept('cloud async persist')
+await queryClient.refetchQueries(history)
+steps.cloudPersistedSettled = outboxTranscript(loaded(), outbox('thread')).settled.includes(delayed.id)
+delayCloudPersist = false
 
 // A command the server keeps no row for leaves once history has reloaded.
 const eighth = send('/compact')

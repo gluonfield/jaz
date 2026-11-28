@@ -43,22 +43,20 @@ import { Button } from '@/components/ui/Button'
 import { HorizontalResizeHandle } from '@/components/ui/HorizontalResizeHandle'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { useToast } from '@/components/ui/toast'
-import { markThreadSeen } from '@/lib/api/feed'
 import { isCloudApiSession } from '@/lib/api/client'
-import { updateThreadUserState } from '@/lib/api/cloudSpaces'
-import { uploadCloudFile } from '@/lib/api/cloudUploads'
 import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
 import {
   answerSessionInteractiveResponse,
   cancelSession,
   clearSessionGoal,
+  markSessionSeen,
   sendSessionSideChat,
   sessionCloudRunId,
   sessionEventsQuery,
   sessionOverviewQuery,
   sessionRepoQuery,
-  uploadSessionAttachment,
+  uploadSessionFile,
 } from '@/lib/api/sessions'
 import type { AgentSessionState, ChatMessage, SessionEvent, SessionOverview } from '@/lib/api/types'
 import { useIsCloudViewer } from '@/lib/cloudSession'
@@ -71,7 +69,7 @@ import { type HistoryPaging, useSessionHistory } from '@/lib/hooks/useSessionHis
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { useVoiceMode } from '@/lib/hooks/useVoiceMode'
 import { VoiceMode } from '@/components/session/VoiceMode'
-import { invalidateSessionLists } from '@/lib/query/invalidate'
+import { invalidateSessionLists, invalidateSessionTurnQueries } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
 import { type PlanApprovalAction } from '@/lib/taskSurface'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
@@ -319,7 +317,7 @@ export function ThreadView({
       .finally(() => {
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        queryClient.invalidateQueries({ queryKey: isCloudThreadView ? keys.cloudUsageSummary : keys.usage })
+        invalidateSessionTurnQueries(queryClient, sessionId, isCloudThreadView)
       })
   }, [abortLiveMessage, isCloudThreadView, isReadOnly, queryClient, sessionId])
 
@@ -392,9 +390,9 @@ export function ThreadView({
   const uploadAttachment = useCallback(
     (file: File) => {
       if (isReadOnly) return Promise.reject(new Error('View-only access'))
-      return isCloudThreadView
-        ? uploadCloudFile(detailSession?.run_id || sessionId, file)
-        : uploadSessionAttachment(sessionId, file)
+      return uploadSessionFile(sessionId, file, {
+        cloudRunId: isCloudThreadView ? detailSession?.run_id || sessionId : undefined,
+      })
     },
     [detailSession?.run_id, isCloudThreadView, isReadOnly, sessionId],
   )
@@ -423,17 +421,14 @@ export function ThreadView({
   useEffect(() => {
     if (seenRequestedRef.current || !detail.isSuccess) return
     seenRequestedRef.current = true
-    if (isCloudThreadView) {
-      if (isReadOnly || !detail.data.session.unread) return
-      void updateThreadUserState(sessionId, {
-        last_read_seq: detail.data.latest_event_seq || 1,
-        unread: false,
-      })
-        .catch(() => {})
-        .finally(() => invalidateSessionLists(queryClient))
-      return
-    }
-    void markThreadSeen(sessionId).finally(() => invalidateSessionLists(queryClient))
+    void markSessionSeen(sessionId, {
+      isCloud: isCloudThreadView,
+      unread: detail.data.session.unread,
+      lastReadSeq: detail.data.latest_event_seq,
+      readOnly: isReadOnly,
+    }).then((marked) => {
+      if (marked) invalidateSessionLists(queryClient)
+    })
   }, [detail.data, detail.isSuccess, isCloudThreadView, isReadOnly, sessionId, queryClient])
 
   // A deep link jumps once. Without this the effect re-fires on every streamed

@@ -9,9 +9,11 @@ export type AppsTab = (typeof APPS_TABS)[number]
 function installedAsApp(installed: InstalledDesktopApp): BundledApp {
   return {
     id: installed.appId,
+    org_id: installed.workspaceId !== 'local' ? installed.workspaceId : undefined,
     owner_user_id: 'local',
     title: installed.title,
     description: installed.description,
+    icon: installed.icon,
     kind: installed.kind,
     visibility: 'private',
     current_version: installed.installedVersion,
@@ -30,6 +32,8 @@ export function libraryApps(tab: AppsTab, published: JazApp[], installed: Instal
   const apps = published.filter(hasBundle)
   if (tab === 'mine') return apps.filter((app) => app.is_owner !== false)
   if (tab === 'team') return apps.filter((app) => app.visibility !== 'private')
-  if (tab === 'desktop') return installed.map((record) => apps.find((app) => app.id === record.appId) ?? installedAsApp(record))
+  if (tab === 'desktop') {
+    return installed.map((record) => apps.find((app) => app.id === record.appId) ?? installedAsApp(record))
+  }
   return []
 }

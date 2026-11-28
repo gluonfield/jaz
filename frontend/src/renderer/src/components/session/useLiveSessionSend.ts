@@ -12,6 +12,7 @@ import {
   type OutboxSend,
   type PendingUserMessage,
 } from '@/lib/outbox'
+import { invalidateSessionTurnQueries } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { hasCompletedLiveReply, type LiveExchange } from './liveTranscript'
@@ -99,13 +100,7 @@ export function useLiveSessionSend({
       .finally(async () => {
         await delivery.settled
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        if (isCloud) {
-          queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
-          queryClient.invalidateQueries({ queryKey: keys.cloudThreadRepo(sessionId) })
-        } else {
-          queryClient.invalidateQueries({ queryKey: keys.usage })
-          queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
-        }
+        invalidateSessionTurnQueries(queryClient, sessionId, isCloud)
         if (current()) {
           setStreaming(false)
           sendRef.current = null

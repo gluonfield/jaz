@@ -1,14 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { boardsQuery } from '@/lib/api/boards'
-import { resolveCloudModelSelection } from '@/lib/api/cloudThreads'
-import { useCloudModelProfilesQuery } from '@/lib/hooks/useCloudCatalogQueries'
-import { agentSettingsQuery } from '@/lib/api/settings'
-import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
-import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
-import { useModelReasoningState } from '@/lib/modelReasoning'
+import { useAgentModelCatalog } from '@/lib/hooks/useAgentModelCatalog'
 import { pickerEffortOptions } from '@/lib/modelPicker'
 import { BoardAssignmentPicker } from './BoardAssignmentPicker'
 import { LoopExamplesPicker } from './LoopExamplesPicker'
@@ -188,85 +183,40 @@ function LoopPromptCard({
     onValueChange: (prompt) => set({ prompt }),
   })
 
-  // Resolve the Settings > Agents defaults (or Cloud model profiles in Cloud
-  // mode) so the picker always shows the model and effort a run will use.
-  const cloud = useCloudSession()
-  const cloudOnly = useIsCloudOnly()
-  const usingCloudProfiles = cloudOnly || cloud.active
-  const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles })
-  const cloudProfilesQuery = useQuery({ ...useCloudModelProfilesQuery(), enabled: usingCloudProfiles && cloud.active })
-  const agentSettings = usingCloudProfiles ? undefined : settingsQuery.data
-  const cloudProfiles = useMemo(
-    () => (usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : []),
-    [cloudProfilesQuery.data, usingCloudProfiles],
-  )
-  const cloudSelection = useMemo(
-    () =>
-      usingCloudProfiles
-        ? resolveCloudModelSelection(cloudProfiles, {
-            profileId: draft.provider || draft.runtime,
-            agent: draft.runtime,
-            model: draft.model,
-            effort: draft.reasoningEffort,
-          })
-        : null,
-    [cloudProfiles, draft.model, draft.provider, draft.reasoningEffort, draft.runtime, usingCloudProfiles],
-  )
-  const localAgents = useMemo(() => enabledACPAgents(agentSettings), [agentSettings])
-  const agents = usingCloudProfiles ? (cloudSelection?.agents ?? []) : localAgents
-  const agentItems = usingCloudProfiles ? cloudSelection?.agentItems : undefined
-  const runtimeReady = usingCloudProfiles ? (!cloud.active || cloudProfilesQuery.isSuccess) : settingsQuery.isSuccess
-  const runtimeAvailable = runtimeReady && agents.length > 0
+  const catalog = useAgentModelCatalog({
+    agent: draft.runtime,
+    provider: draft.provider,
+    model: draft.model,
+    effort: draft.reasoningEffort,
+  })
+  const runtimeAvailable = catalog.ready && catalog.agents.length > 0
 
   useEffect(() => {
-    if (!runtimeReady) return
-    if (usingCloudProfiles) {
-      const profileId = cloudSelection?.profileId ?? ''
-      if (!profileId || draft.runtime === profileId) return
-      set({
-        runtime: profileId,
-        provider: profileId,
-        model: cloudSelection?.model ?? '',
-        reasoningEffort: cloudSelection?.effort ?? '',
-      })
+    if (!catalog.ready || catalog.defaultAgent === draft.runtime) return
+    if (!catalog.defaultAgent) {
+      set({ runtime: '', provider: '', model: '', reasoningEffort: '' })
       return
     }
-    if (localAgents.includes(draft.runtime)) return
-    const runtime = localAgents[0] ?? ''
-    if (runtime === draft.runtime) return
-    set({ runtime, provider: '', model: '', reasoningEffort: '' })
-  }, [cloudSelection?.effort, cloudSelection?.model, cloudSelection?.profileId, draft.runtime, localAgents, runtimeReady, set, usingCloudProfiles])
+    const next = catalog.pickAgent(catalog.defaultAgent)
+    set({
+      runtime: next.agent,
+      provider: next.provider,
+      model: catalog.usingCloud ? catalog.model : next.model,
+      reasoningEffort: catalog.usingCloud ? catalog.effort : next.effort,
+    })
+  }, [catalog, draft.runtime, set])
 
-  const runtimeModel = runtimeModelState(agentSettings, draft.runtime, draft.provider)
-  const { provider } = runtimeModel
-  const defaultModel = runtimeModel.defaultModel
-  const localModel = draft.model || defaultModel
-  const localRequestedEffort = draft.reasoningEffort || runtimeModel.defaultEffort
-
-  const localReasoning = useModelReasoningState({
-    settings: usingCloudProfiles ? undefined : agentSettings,
-    agent: usingCloudProfiles ? '' : draft.runtime,
-    model: localModel,
-    reasoningEffort: localRequestedEffort,
-    provider,
-  })
-  const model = usingCloudProfiles ? (cloudSelection?.model ?? '') : localModel
-  const modelSuggestions = usingCloudProfiles ? (cloudSelection?.modelSuggestions ?? []) : localReasoning.modelSuggestions
-  const modelsLoading = usingCloudProfiles ? cloudProfilesQuery.isPending : localReasoning.modelsLoading
-  const effortOptions = usingCloudProfiles ? (cloudSelection?.effortOptions ?? []) : localReasoning.reasoningOptions
-  const reasoningEffort = usingCloudProfiles ? (cloudSelection?.effort ?? '') : localReasoning.effectiveReasoningEffort
-  const reasoningEffortOverride = usingCloudProfiles
-    ? reasoningEffort
-    : reasoningEffort === localRequestedEffort
+  const reasoningEffortOverride = catalog.usingCloud
+    ? catalog.effort
+    : catalog.effort === catalog.requestedEffort
       ? draft.reasoningEffort
-      : reasoningEffort
+      : catalog.effort
   useEffect(() => {
-    if (!runtimeReady) return
-    if (usingCloudProfiles && !cloudSelection?.profile) return
+    if (!catalog.ready || (catalog.usingCloud && !catalog.agent)) return
     if (draft.reasoningEffort !== reasoningEffortOverride) {
       set({ reasoningEffort: reasoningEffortOverride })
     }
-  }, [cloudSelection?.profile, draft.reasoningEffort, reasoningEffortOverride, runtimeReady, set, usingCloudProfiles])
+  }, [catalog.agent, catalog.ready, catalog.usingCloud, draft.reasoningEffort, reasoningEffortOverride, set])
 
   return (
     <div>
@@ -287,34 +237,30 @@ function LoopPromptCard({
             minHeightClass="min-h-[54px]"
           />
           <div className="flex flex-wrap items-center gap-1.5">
-            {runtimeReady && !runtimeAvailable ? (
+            {catalog.ready && !runtimeAvailable ? (
               <span className="px-1.5 text-[13px] text-ink-3">
-                {usingCloudProfiles ? 'No cloud models configured' : 'Connect an agent in Settings'}
+                {catalog.usingCloud ? 'No cloud models configured' : 'Connect an agent in Settings'}
               </span>
             ) : null}
             {runtimeAvailable ? (
               <ModelSelect
                 agent={{
-                  value: usingCloudProfiles ? (cloudSelection?.profileId ?? draft.runtime) : draft.runtime,
-                  options: agents,
-                  items: agentItems,
+                  value: catalog.agent || draft.runtime,
+                  options: catalog.agents,
+                  items: catalog.agentItems,
                   onChange: (runtime) => {
-                    if (usingCloudProfiles) {
-                      const next = resolveCloudModelSelection(cloudProfiles, { profileId: runtime })
-                      set({ runtime, provider: runtime, model: next.model, reasoningEffort: next.effort })
-                      return
-                    }
-                    set({ runtime, provider: '', model: '', reasoningEffort: '' })
+                    const next = catalog.pickAgent(runtime)
+                    set({ runtime: next.agent, provider: next.provider, model: next.model, reasoningEffort: next.effort })
                   },
                 }}
-                value={model}
-                suggestions={modelSuggestions}
-                loading={modelsLoading}
+                value={catalog.model}
+                suggestions={catalog.modelSuggestions}
+                loading={catalog.loading}
                 disabled={disabled}
                 placement="below"
                 onChange={(next) => set({ model: next.model, reasoningEffort: next.effort })}
-                effort={reasoningEffort}
-                effortOptions={pickerEffortOptions(effortOptions)}
+                effort={catalog.effort}
+                effortOptions={pickerEffortOptions(catalog.effortOptions)}
               />
             ) : null}
           </div>

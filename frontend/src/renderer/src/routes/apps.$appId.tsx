@@ -64,12 +64,12 @@ function PublishedAppPage({ app }: { app: BundledApp }) {
 
   // An installed app's permissions pause when the app changed since they were allowed.
   useEffect(() => {
-    if (!desktopApps) return
+    if (!desktopApps || !installed) return
     void desktopApps
       .syncVersion(app.id, app.current_version, app.bundle_sha256 ?? '', app.capabilities ?? [])
       .then((synced) => synced && queryClient.invalidateQueries({ queryKey: keys.desktopApps }))
       .catch(() => {})
-  }, [app, queryClient])
+  }, [app, installed, queryClient])
 
   useEffect(() => {
     if (isStandaloneWindow) document.title = app.title

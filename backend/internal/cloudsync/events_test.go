@@ -151,8 +151,24 @@ func TestProjectTranscriptAndStreamProjectorRichEvents(t *testing.T) {
 		t.Fatalf("expected compacted acp_thought and execute/read/edit acp_tool events in transcript.Events, got %+v", transcript.Events)
 	}
 
-	// Verify live StreamProjector emits incremental acp_thought + coalesced acp_tool updates.
+	// Verify live StreamProjector emits incremental acp_thought + coalesced acp_tool updates,
+	// and turns user/queued lifecycle events into content-less refresh signals so user text
+	// is never rendered as an assistant event.
 	sp := cloudsync.NewStreamProjector("ct_rich")
+	evUser := sp.Convert(rawEvents[0])
+	if evUser.Type != "session" || evUser.Content != "" || evUser.ACP != nil {
+		t.Fatalf("expected user_message stream event to project as content-less session refresh, got %+v", evUser)
+	}
+	evQueued := sp.Convert(storage.CloudThreadEvent{
+		ThreadID:    "ct_rich",
+		Seq:         99,
+		Type:        "turn_queued",
+		PayloadJSON: json.RawMessage(`{"text":"queued follow up"}`),
+		CreatedAt:   now,
+	})
+	if evQueued.Type != "session" || evQueued.Content != "" || evQueued.ACP != nil {
+		t.Fatalf("expected turn_queued stream event to project as content-less session refresh, got %+v", evQueued)
+	}
 	evThought1 := sp.Convert(rawEvents[1])
 	evThought2 := sp.Convert(rawEvents[2])
 	if evThought1.Type != sessionevents.TypeACPThought || evThought1.ACP == nil || evThought1.ACP.Thought != "Let me " {

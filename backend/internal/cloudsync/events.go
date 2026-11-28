@@ -20,6 +20,10 @@ func isCloudUserEvent(kind string) bool {
 	}
 }
 
+func isCloudTurnQueuedEvent(kind string) bool {
+	return kind == "turn_queued" || kind == "turn.queued"
+}
+
 func isCloudAssistantDelta(kind string) bool {
 	switch kind {
 	case "assistant_delta", "assistant.delta", "agent_message_chunk":
@@ -533,23 +537,29 @@ func ProjectTranscript(thread storage.CloudThread, rawEvents []storage.CloudThre
 		p := payloadMap(ev.PayloadJSON)
 		text := payloadText(p)
 
-		if isCloudUserEvent(ev.Type) && text != "" {
-			flushPending()
-			hasOpenTurn = true
-			lastTurnTerminal = ""
-			acpError = ""
-			messages = append(messages, storage.Message{
-				ThreadID:         thread.ID,
-				Seq:              ev.Seq,
-				Role:             "user",
-				FromUser:         true,
-				ActorUserID:      ev.ActorUserID,
-				ActorDisplayName: payloadString(p, "actor_display_name"),
-				ActorEmail:       payloadString(p, "actor_email"),
-				Content:          text,
-				Blocks:           []storage.Block{{Type: storage.BlockTypeText, Text: text}},
-				CreatedAt:        ev.CreatedAt,
-			})
+		if isCloudUserEvent(ev.Type) {
+			if text != "" {
+				flushPending()
+				hasOpenTurn = true
+				lastTurnTerminal = ""
+				acpError = ""
+				messages = append(messages, storage.Message{
+					ThreadID:         thread.ID,
+					Seq:              ev.Seq,
+					Role:             "user",
+					FromUser:         true,
+					ActorUserID:      ev.ActorUserID,
+					ActorDisplayName: payloadString(p, "actor_display_name"),
+					ActorEmail:       payloadString(p, "actor_email"),
+					Content:          text,
+					Blocks:           []storage.Block{{Type: storage.BlockTypeText, Text: text}},
+					CreatedAt:        ev.CreatedAt,
+				})
+			}
+			continue
+		}
+
+		if isCloudTurnQueuedEvent(ev.Type) {
 			continue
 		}
 
@@ -657,6 +667,15 @@ func NewStreamProjector(threadID string) *StreamProjector {
 	return &StreamProjector{turn: newCloudTurnState(threadID)}
 }
 
+func cloudSessionRefreshEvent(sessionID string, ev storage.CloudThreadEvent) sessionevents.Event {
+	return sessionevents.Event{
+		Seq:       ev.Seq,
+		SessionID: sessionID,
+		Type:      "session",
+		At:        ev.CreatedAt,
+	}
+}
+
 func (sp *StreamProjector) Convert(ev storage.CloudThreadEvent) sessionevents.Event {
 	sessionID := ev.ThreadID
 	if sessionID == "" {
@@ -666,6 +685,9 @@ func (sp *StreamProjector) Convert(ev storage.CloudThreadEvent) sessionevents.Ev
 	switch {
 	case isCloudUserEvent(ev.Type):
 		sp.turn.resetTurn()
+		return cloudSessionRefreshEvent(sessionID, ev)
+	case isCloudTurnQueuedEvent(ev.Type):
+		return cloudSessionRefreshEvent(sessionID, ev)
 	case isCloudThinkingDelta(ev.Type):
 		return sp.turn.onThought(sessionID, ev, p, payloadText(p))
 	case isCloudToolEvent(ev.Type):
@@ -736,6 +758,9 @@ func cloudEventToSessionEvent(threadID string, ev storage.CloudThreadEvent, assi
 			},
 			At: ev.CreatedAt,
 		}
+	}
+	if isCloudUserEvent(ev.Type) || isCloudTurnQueuedEvent(ev.Type) {
+		return cloudSessionRefreshEvent(sessionID, ev)
 	}
 	return sessionevents.Event{
 		Seq:       ev.Seq,

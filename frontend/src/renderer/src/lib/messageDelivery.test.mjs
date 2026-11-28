@@ -26,6 +26,8 @@ test('a sent message stays on screen from send until the saved copy of it is loa
       queuedBehindRunningTurn: 'while you work',
       queuedTurnStarted: 1,
       queuedTurnSettled: true,
+      cloudPendingBeforePersist: 'cloud async persist',
+      cloudPersistedSettled: true,
       commandLeft: true,
     })
   } finally {

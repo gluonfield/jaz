@@ -90,14 +90,15 @@ export function deliverMessage({
     }
     if (cloudRunId) {
       // The outbox id makes a retry of a turn the server did take a replay.
-      const { queued } = await createCloudTurn(sessionId, {
+      await createCloudTurn(sessionId, {
         text,
         client_request_id: id,
         uploads: [...(options.attachments ?? []), ...uploaded],
         signal,
       })
-      // A turn queued behind a running one has no row until it starts.
-      return { accepted: Promise.resolve(), finished: Promise.resolve(), saved: !queued }
+      // Keep the sent message in the outbox until its saved row is loaded:
+      // Cloud turns may still be queueing or syncing when the first refetch runs.
+      return { accepted: Promise.resolve(), finished: Promise.resolve(), saved: false }
     }
     const prepared = preparedSendMessage(options, uploaded)
     return {

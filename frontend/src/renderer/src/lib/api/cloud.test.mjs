@@ -568,8 +568,8 @@ test('cloud model profiles read /v1/models { models } including string[] models 
   // Missing server reasoning metadata stays unknown (never fabricated).
   expect(profiles[0].models?.[0].reasoning).toBeUndefined()
   expect(profiles[3].models?.map((m) => [m.value, m.label])).toEqual([
-    ['google/gemini-3-flash-preview', 'gemini-3-flash-preview'],
-    ['google/gemini-3.1-pro-preview', 'gemini-3.1-pro-preview'],
+    ['google/gemini-3-flash-preview', 'Gemini 3 Flash Preview'],
+    ['google/gemini-3.1-pro-preview', 'Gemini 3.1 Pro Preview'],
   ])
   const cloudItems = profiles.map(api.cloudProfileToAgentOption)
   expect(cloudItems).toEqual([
@@ -704,10 +704,99 @@ test('cloud model profiles preserve server-provided model list without fabricati
   expect(profiles[0].default_effort).toBe('high')
   expect(profiles[0].models?.map((m) => [m.value, m.label, m.reasoning?.default_effort])).toEqual([
     ['google/gemini-4-hydrogen', 'Gemini 4 Hydrogen', 'high'],
-    ['google/gemini-4-neon', 'gemini-4-neon', undefined],
+    ['google/gemini-4-neon', 'Gemini 4 Neon', undefined],
   ])
   expect(profiles[1].models).toEqual([])
   expect(profiles[1].default_model).toBe('')
+})
+
+test('cloud model profiles deduplicate duplicate Vertex/Gemini org tabs and format raw model IDs', async () => {
+  const { api } = fixture()
+  replace('fetch', async () =>
+    Response.json({
+      models: [
+        {
+          profile_id: 'vertex-default',
+          provider: 'vertex',
+          scope: 'org',
+          display_name: 'Vertex AI',
+          agent: 'gemini',
+          default_model: 'google/gemini-4-neon',
+          default_effort: 'high',
+          models: [
+            { value: 'google/gemini-4-neon', label: 'gemini-4-neon', reasoning: { efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: 'high' } },
+            { value: 'google/gemini-4-hydrogen', label: 'gemini-4-hydrogen', reasoning: { efforts: ['low', 'medium', 'high', 'xhigh'], default_effort: 'high' } },
+            { value: 'google/gemini-4-carbon', label: 'gemini-4-carbon' },
+            { value: 'google/gemini-3.1-pro-preview', label: 'gemini-3.1-pro-preview' },
+          ],
+        },
+        {
+          profile_id: 'vertex-secondary',
+          provider: 'vertex',
+          scope: 'org',
+          display_name: 'Vertex AI',
+          agent: 'gemini',
+          default_model: 'google/gemini-4-neon',
+          models: [
+            { value: 'google/gemini-4-neon', label: 'gemini-4-neon' },
+            { value: 'google/gemini-2.5-pro', label: 'gemini-2.5-pro' },
+          ],
+        },
+        {
+          profile_id: 'gemini-duplicate',
+          provider: 'gemini',
+          scope: 'org',
+          display_name: 'Gemini',
+          agent: 'gemini',
+          default_model: 'gemini-4-neon',
+          models: [
+            { value: 'gemini-4-neon', label: 'gemini-4-neon' },
+            { value: 'gemini-only-unserved', label: 'gemini-only-unserved' },
+          ],
+        },
+        {
+          profile_id: 'openai-org',
+          provider: 'openai',
+          scope: 'org',
+          display_name: 'OpenAI',
+          agent: 'codex',
+          default_model: 'gpt-6.2-sol',
+          models: [{ value: 'gpt-6.2-sol', label: 'gpt-6.2-sol' }],
+        },
+        {
+          profile_id: 'anthropic-org',
+          provider: 'anthropic',
+          scope: 'org',
+          display_name: 'Anthropic',
+          agent: 'claude',
+          default_model: 'claude-opus-5-5',
+          models: [{ value: 'claude-opus-5-5', label: 'claude-opus-5-5' }],
+        },
+        {
+          profile_id: 'acp:antigravity',
+          provider: 'gemini',
+          scope: 'user',
+          display_name: 'Antigravity',
+          agent: 'antigravity',
+          default_model: 'gemini-4-neon',
+          models: [{ value: 'gemini-4-neon', label: 'gemini-4-neon' }],
+        },
+      ],
+    }),
+  )
+  const profiles = await api.listCloudModelProfiles()
+  expect(profiles.map((p) => p.profile_id)).toEqual(['vertex-default', 'openai-org', 'anthropic-org', 'acp:antigravity'])
+  // Same-provider duplicate merges google/gemini-2.5-pro; cross-provider gemini duplicate collapses without grafting unserved slugs.
+  expect(profiles[0].models?.map((m) => [m.value, m.label])).toEqual([
+    ['google/gemini-4-neon', 'Gemini 4 Neon'],
+    ['google/gemini-4-hydrogen', 'Gemini 4 Hydrogen'],
+    ['google/gemini-4-carbon', 'Gemini 4 Carbon'],
+    ['google/gemini-3.1-pro-preview', 'Gemini 3.1 Pro Preview'],
+    ['google/gemini-2.5-pro', 'Gemini 2.5 Pro'],
+  ])
+  expect(profiles[1].models?.[0].label).toBe('GPT-6.2 Sol')
+  expect(profiles[2].models?.[0].label).toBe('Claude Opus 5.5')
+  expect(profiles[3].models?.[0].label).toBe('Gemini 4 Neon')
 })
 
 test('Desktop unified single-origin mode: all session, turn, pin, and sidebar calls go strictly to local Go backend', async () => {
