@@ -244,6 +244,7 @@ export function BoardGrid({
         </button>
       ) : null}
       {tiles.map((tile) => {
+        const { loop } = tile
         const isDragging = drag?.appId === tile.app.id
         const style: React.CSSProperties = {
           left: cellLeft(tile.x),
@@ -273,7 +274,7 @@ export function BoardGrid({
               onHeaderPointerDown={onLayoutChange ? (e) => startDrag(e, tile, 'move') : undefined}
               onResizePointerDown={onLayoutChange ? (e) => startDrag(e, tile, 'resize') : undefined}
               onRemove={onRemove ? () => onRemove(tile.app.id) : undefined}
-              onEdit={onEdit && tile.loop ? () => onEdit(tile.loop!.id) : undefined}
+              onEdit={onEdit && loop ? () => onEdit(loop.id) : undefined}
               onOpenedInMain={showOpenCue}
             />
           </div>

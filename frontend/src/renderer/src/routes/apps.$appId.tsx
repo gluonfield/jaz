@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AppPageHeader } from '@/components/apps/AppPageHeader'
 import { AppRenderer } from '@/components/apps/AppRenderer'
 import { AppShareModal } from '@/components/apps/AppShareModal'
+import { useDeleteApp } from '@/components/apps/useDeleteApp'
 import { DesktopAppButton, useDesktopApps } from '@/components/apps/useDesktopApps'
 import { BoardPage } from '@/components/boards/BoardPage'
 import { Button } from '@/components/ui/Button'
@@ -12,7 +13,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { IconButton } from '@/components/ui/IconButton'
 import { ActionMenu, type MenuAction } from '@/components/ui/ActionMenu'
 import { useToast } from '@/components/ui/toast'
-import { appDetailQuery, deleteApp, detailApp, hasBundle, remixApp, type BundledApp } from '@/lib/api/apps'
+import { appDetailQuery, detailApp, hasBundle, remixApp, type BundledApp } from '@/lib/api/apps'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 import { desktopApps } from '@/lib/desktopApps'
@@ -89,14 +90,7 @@ function PublishedAppPage({ app }: { app: BundledApp }) {
     onError: (err) => toast(err instanceof Error ? err.message : 'Could not remix app', 'danger'),
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteApp(app.id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.appsRoot })
-      toast('Deleted app')
-      void navigate({ to: '/apps' })
-    },
-  })
+  const deleteAction = useDeleteApp(() => void navigate({ to: '/apps' }))
 
   const canToggleTop = isStandaloneWindow && installed && !installed.permissionsPaused && installed.permissions.includes('always_on_top')
 
@@ -110,12 +104,7 @@ function PublishedAppPage({ app }: { app: BundledApp }) {
   const actions: MenuAction[] = [
     ...(isViewer ? [] : [{ label: 'Remix in a new chat', onSelect: () => remixMutation.mutate() }]),
     ...desktop.actions(app),
-    ...(!isStandaloneWindow && !isViewer && app.can_edit !== false ? [{
-      label: 'Delete',
-      onSelect: () => {
-        if (window.confirm(`Delete "${app.title}" permanently?`)) deleteMutation.mutate()
-      },
-    }] : []),
+    ...(isStandaloneWindow ? [] : deleteAction(app)),
   ]
 
   return (

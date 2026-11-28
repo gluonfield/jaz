@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ListFilter, Plus, Users } from 'lucide-react'
 import { useMemo, useState, type ComponentProps, type ReactNode } from 'react'
@@ -6,9 +6,9 @@ import { AppCard } from '@/components/apps/AppCard'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { AppShareModal } from '@/components/apps/AppShareModal'
 import { AppThumbnail, ThumbnailSheet } from '@/components/apps/AppThumbnail'
+import { useDeleteApp } from '@/components/apps/useDeleteApp'
 import { useDesktopApps } from '@/components/apps/useDesktopApps'
 import { BoardModal } from '@/components/boards/BoardModal'
-import { deleteBoardWarning } from '@/components/boards/BoardPage'
 import { BoardThumbnail } from '@/components/boards/BoardThumbnail'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -20,8 +20,8 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import type { MenuAction } from '@/components/ui/ActionMenu'
 import { useToast } from '@/components/ui/toast'
 import {
+  APP_KIND_LABEL,
   appsQuery,
-  deleteApp,
   hasBundle,
   remixApp,
   type AppKind,
@@ -33,7 +33,6 @@ import { popOutBoard } from '@/lib/clientRuntime'
 import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 import { installFolder } from '@/lib/desktopApps'
 import { shortDate } from '@/lib/format/time'
-import { keys } from '@/lib/query/keys'
 import type { InstalledDesktopApp } from '@shared/desktopApps'
 
 export const Route = createFileRoute('/apps/')({
@@ -49,8 +48,6 @@ const KINDS: { value: KindFilter; label: string }[] = [
   { value: 'document', label: 'Documents' },
   { value: 'board', label: 'Boards' },
 ]
-
-const KIND_LABEL: Record<AppKind, string> = { artifact: 'Interactive', document: 'Document', board: 'Board' }
 
 const EMPTY: Record<AppsTab, { title: string; text: string }> = {
   mine: { title: 'No apps yet', text: 'Publish an artifact or document from a chat, or gather apps on a board.' },
@@ -84,7 +81,6 @@ function Grid({ children }: { children: ReactNode }) {
 
 function AppsLibraryPage() {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const toast = useToast()
   const cloud = useCloudSession()
   const isViewer = useIsCloudViewer()
@@ -100,14 +96,7 @@ function AppsLibraryPage() {
   const allApps = useQuery(appsQuery({ scope: 'all' }))
   const mcpApps = useQuery(mcpEntrypointsQuery)
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteApp(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.appsRoot })
-      toast('Deleted')
-    },
-    onError: (err) => toast(err instanceof Error ? err.message : 'Could not delete', 'danger'),
-  })
+  const deleteAction = useDeleteApp()
 
   const remixMutation = useMutation({
     mutationFn: (id: string) => remixApp(id),
@@ -139,18 +128,11 @@ function AppsLibraryPage() {
     { value: 'connected' as const, label: 'Connected' },
   ]
 
-  const deleteAction = (app: JazApp, warning: string): MenuAction[] => !isViewer && app.can_edit !== false ? [{
-    label: 'Delete',
-    onSelect: () => {
-      if (window.confirm(warning)) deleteMutation.mutate(app.id)
-    },
-  }] : []
-
   // A board has a window of its own and nothing to install, remix or permit.
   const boardActions = (board: JazApp): MenuAction[] => [
     { label: 'Open in window', onSelect: () => popOutBoard(board.id) },
     { label: cloud.active ? 'Share' : 'Manage', onSelect: () => setShareApp(board) },
-    ...deleteAction(board, deleteBoardWarning(board.title)),
+    ...deleteAction(board),
   ]
 
   const appActions = (app: BundledApp): MenuAction[] => [
@@ -158,7 +140,7 @@ function AppsLibraryPage() {
     { label: cloud.active ? 'Share' : 'Manage', onSelect: () => setShareApp(app) },
     ...(isViewer ? [] : [{ label: 'Remix in a new chat', onSelect: () => remixMutation.mutate(app.id) }]),
     ...desktop.actions(app),
-    ...deleteAction(app, `Delete "${app.title}" and all its stored data?`),
+    ...deleteAction(app),
   ]
 
   const cards: (ComponentProps<typeof AppCard> & { key: string })[] = tab === 'connected'
@@ -182,7 +164,7 @@ function AppsLibraryPage() {
         title: app.title,
         detail: tab === 'desktop' && installed?.launcherPath
           ? `Installed in ${installFolder(installed.launcherPath)}`
-          : `${KIND_LABEL[app.kind]} · ${shortDate(app.updated_at)}`,
+          : `${APP_KIND_LABEL[app.kind]} · ${shortDate(app.updated_at)}`,
         mark: installed?.permissionsPaused ? (
           <span title="Changed since you allowed its permissions" className="size-2 shrink-0 rounded-full bg-running" />
         ) : app.visibility !== 'private' ? (

@@ -1,25 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import { Plus, ZoomIn, ZoomOut } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { AppPageHeader } from '@/components/apps/AppPageHeader'
 import { AppShareModal } from '@/components/apps/AppShareModal'
+import { useDeleteApp } from '@/components/apps/useDeleteApp'
 import { AddTileModal } from '@/components/boards/AddTileModal'
 import { BoardGrid } from '@/components/boards/BoardGrid'
+import { BoardTitle } from '@/components/boards/BoardTitle'
+import { BoardZoom } from '@/components/boards/BoardZoom'
 import { LoopModal } from '@/components/loops/LoopModal'
 import { ActionMenu, type MenuAction } from '@/components/ui/ActionMenu'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { IconButton } from '@/components/ui/IconButton'
 import { Modal } from '@/components/ui/Modal'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import { useToast } from '@/components/ui/toast'
-import { deleteApp, patchApp, type AppVersion, type JazApp } from '@/lib/api/apps'
+import type { JazApp } from '@/lib/api/apps'
 import {
   type BoardLayoutEntry,
   type BoardView,
   boardViewQuery,
-  boardsQuery,
   patchBoard,
   removeBoardTile,
 } from '@/lib/api/boards'
@@ -30,32 +30,25 @@ import { keys } from '@/lib/query/keys'
 
 const route = getRouteApi('/apps/$appId')
 
-const MIN_SCALE = 0.7
-const MAX_SCALE = 2
-
 // A board opened as the app it is: the app page's header over a grid of the
-// apps it holds. Its own window swaps the name for a strip of every board.
+// apps it holds.
 export function BoardPage({ board }: { board: JazApp }) {
   const { add } = route.useSearch()
   const navigate = route.useNavigate()
   const queryClient = useQueryClient()
-  const toast = useToast()
   const cloud = useCloudSession()
   const isViewer = useIsCloudViewer()
   const isBoardWindow = clientRuntime.windowKind === 'board'
   const view = useQuery(boardViewQuery(board.id))
-  const boards = useQuery({ ...boardsQuery, enabled: isBoardWindow })
   const canEdit = !isViewer && board.can_edit !== false
   // "Add tile" picks from loops and apps; "New loop" in the picker hands off
   // to the loop modal. Either way the board scrolls the new tile into view.
   const [modal, setModal] = useState<'add' | 'new-loop' | null>(null)
   const [sharing, setSharing] = useState(false)
-  // null while the name is shown; the draft while it is edited in place.
-  const [draftTitle, setDraftTitle] = useState<string | null>(null)
   const pendingLoopId = useRef<string | null>(null)
-  const scaleTimer = useRef<number | null>(null)
   const viewKey = keys.appBoard(board.id)
   const refreshView = () => queryClient.invalidateQueries({ queryKey: viewKey })
+  const deleteAction = useDeleteApp(() => void navigate({ to: '/apps' }))
 
   const editingLoop = useMutation({
     mutationFn: (loopId: string) => queryClient.fetchQuery({ ...loopDetailQuery(loopId), staleTime: 0 }),
@@ -82,10 +75,6 @@ export function BoardPage({ board }: { board: JazApp }) {
     if (isBoardWindow) document.title = `${board.title} — Jaz`
   }, [isBoardWindow, board.title])
 
-  useEffect(() => () => {
-    if (scaleTimer.current) window.clearTimeout(scaleTimer.current)
-  }, [])
-
   const layoutMutation = useMutation({
     mutationFn: (entry: BoardLayoutEntry) => patchBoard(board.id, { layout: [entry] }),
     onMutate: async (entry) => {
@@ -103,130 +92,15 @@ export function BoardPage({ board }: { board: JazApp }) {
     onSettled: refreshView,
   })
 
-  const scaleMutation = useMutation({
-    mutationFn: (fontScale: number) => patchBoard(board.id, { font_scale: fontScale }),
-    onSettled: refreshView,
-  })
-
-  const renameMutation = useMutation({
-    mutationFn: (title: string) => patchApp(board.id, { title }),
-    onMutate: async (title) => {
-      await queryClient.cancelQueries({ queryKey: keys.appDetail(board.id) })
-      queryClient.setQueryData<{ app: JazApp; current_version: AppVersion | null }>(
-        keys.appDetail(board.id),
-        (prev) => prev && { ...prev, app: { ...prev.app, title } },
-      )
-    },
-    onError: (err) => toast(err.message, 'danger'),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.appsRoot }),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteApp(board.id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.appsRoot })
-      toast('Deleted board')
-      void navigate({ to: '/apps' })
-    },
-    onError: (err) => toast(err.message, 'danger'),
-  })
-
-  // Enter blurs the input and blur commits; Escape unmounts it without a blur.
-  const commitRename = () => {
-    const title = draftTitle?.trim()
-    setDraftTitle(null)
-    if (title && title !== board.title) renameMutation.mutate(title)
-  }
-
-  const scale = view.data?.font_scale ?? 1
-  // A step shows at once; the save waits so quick steps settle on one value.
-  const applyScale = (next: number) => {
-    queryClient.setQueryData<BoardView>(viewKey, (prev) => prev && { ...prev, font_scale: next })
-    if (!canEdit) return
-    if (scaleTimer.current) window.clearTimeout(scaleTimer.current)
-    scaleTimer.current = window.setTimeout(() => scaleMutation.mutate(next), 400)
-  }
-  const stepScale = (delta: number) =>
-    applyScale(Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.round((scale + delta) * 10) / 10)))
-
   const actions: MenuAction[] = isBoardWindow ? [] : [
     { label: 'Open in window', onSelect: () => popOutBoard(board.id) },
-    ...(canEdit ? [{
-      label: 'Delete',
-      onSelect: () => {
-        if (window.confirm(deleteBoardWarning(board.title))) deleteMutation.mutate()
-      },
-    }] : []),
+    ...deleteAction(board),
   ]
-
-  const title = isBoardWindow ? (
-    <nav aria-label="Boards" className="-mx-1.5 flex items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {(boards.data ?? [board]).map((candidate) => {
-        const active = candidate.id === board.id
-        return (
-          <button
-            key={candidate.id}
-            type="button"
-            title={candidate.title}
-            aria-current={active ? 'page' : undefined}
-            onClick={() => void navigate({ to: '/apps/$appId', params: { appId: candidate.id }, search: {} })}
-            className={`h-7 max-w-44 shrink-0 truncate rounded-full px-2.5 text-[12.5px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
-              active ? 'bg-ink/[0.07] text-ink' : 'cursor-pointer text-ink-3 hover:bg-ink/[0.05] hover:text-ink'
-            }`}
-          >
-            {candidate.title}
-          </button>
-        )
-      })}
-    </nav>
-  ) : draftTitle !== null ? (
-    <input
-      autoFocus
-      value={draftTitle}
-      aria-label="Board name"
-      onFocus={(e) => e.currentTarget.select()}
-      onChange={(e) => setDraftTitle(e.target.value)}
-      onBlur={commitRename}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key === 'Escape') setDraftTitle(null)
-      }}
-      className="-mx-1.5 h-7 w-full max-w-80 rounded-md bg-ink/[0.06] px-1.5 outline-none"
-    />
-  ) : canEdit ? (
-    <button
-      type="button"
-      title="Rename board"
-      onClick={() => setDraftTitle(board.title)}
-      className="-mx-1.5 block h-7 max-w-full cursor-text truncate rounded-md px-1.5 text-left transition-colors duration-150 hover:bg-ink/[0.06]"
-    >
-      {board.title}
-    </button>
-  ) : (
-    <h1 className="truncate">{board.title}</h1>
-  )
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
-      <AppPageHeader title={title}>
-        <div className="flex items-center">
-          <IconButton size="sm" aria-label="Smaller tile text" title="Smaller tile text" disabled={scale <= MIN_SCALE} onClick={() => stepScale(-0.1)}>
-            <ZoomOut size={14} />
-          </IconButton>
-          {scale !== 1 ? (
-            <button
-              type="button"
-              title="Reset tile text size"
-              onClick={() => applyScale(1)}
-              className="cursor-pointer rounded-full px-1 text-[11.5px] tabular-nums text-ink-3 transition-colors duration-150 hover:text-ink"
-            >
-              {Math.round(scale * 100)}%
-            </button>
-          ) : null}
-          <IconButton size="sm" aria-label="Larger tile text" title="Larger tile text" disabled={scale >= MAX_SCALE} onClick={() => stepScale(0.1)}>
-            <ZoomIn size={14} />
-          </IconButton>
-        </div>
+      <AppPageHeader title={<BoardTitle board={board} canEdit={canEdit} />}>
+        <BoardZoom boardId={board.id} scale={view.data?.font_scale ?? 1} save={canEdit} />
         {canEdit ? (
           <Button size="sm" onClick={() => setModal('add')}>
             <Plus size={13} />
@@ -310,9 +184,4 @@ export function BoardPage({ board }: { board: JazApp }) {
       ) : null}
     </div>
   )
-}
-
-// Deleting a board keeps what was on it.
-export function deleteBoardWarning(title: string): string {
-  return `Delete board "${title}"? Its apps are kept. A loop on no other board stops publishing until you add it to one.`
 }

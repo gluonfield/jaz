@@ -73,6 +73,8 @@ export type BundledApp = JazApp & { kind: BundleKind }
 
 export const hasBundle = (app: JazApp): app is BundledApp => app.kind !== 'board'
 
+export const APP_KIND_LABEL: Record<AppKind, string> = { artifact: 'Interactive', document: 'Document', board: 'Board' }
+
 export interface AppVersion {
   app_id: string
   version: number
@@ -200,18 +202,22 @@ export function appsQuery(filter?: AppListFilter) {
   })
 }
 
+export interface AppDetail {
+  app: JazApp
+  current_version: AppVersion | null
+}
+
 // A caller that learns of new versions elsewhere passes the version it knows,
 // so a newer one fetches the detail again.
 export function appDetailQuery(id: string, version?: number) {
   return queryOptions({
     queryKey: version === undefined ? keys.appDetail(id) : [...keys.appDetail(id), version],
-    queryFn: async () =>
-      get<{ app: JazApp; current_version: AppVersion | null }>(`/v1/apps/${encodeURIComponent(id)}`),
+    queryFn: async () => get<AppDetail>(`/v1/apps/${encodeURIComponent(id)}`),
   })
 }
 
 // The app of a detail response, with the bundle hash its current version carries.
-export function detailApp(detail: { app: JazApp; current_version: AppVersion | null }): JazApp {
+export function detailApp(detail: AppDetail): JazApp {
   return { ...detail.app, bundle_sha256: detail.app.bundle_sha256 ?? detail.current_version?.bundle_sha256 }
 }
 

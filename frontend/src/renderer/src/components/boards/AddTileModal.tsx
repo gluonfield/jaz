@@ -8,7 +8,7 @@ import { DashedCta } from '@/components/ui/DashedCta'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { agentLabel } from '@/lib/agentLabel'
-import { appsQuery, type JazApp } from '@/lib/api/apps'
+import { APP_KIND_LABEL, appsQuery, hasBundle, type JazApp } from '@/lib/api/apps'
 import { addBoardTiles, type BoardTile } from '@/lib/api/boards'
 import { loopsQuery } from '@/lib/api/loops'
 import type { Loop } from '@/lib/api/types'
@@ -82,7 +82,7 @@ export function AddTileModal({
   const onBoard = new Set(tiles.flatMap((tile) => [tile.app.id, tile.loop?.id]))
   const available = all.filter((loop) => loop.status !== 'deleted' && !onBoard.has(loop.id))
   // A loop's own app gets onto a board with its loop, and a board holds no boards.
-  const availableApps = (apps.data ?? []).filter((app) => !app.loop_id && app.kind !== 'board' && !onBoard.has(app.id))
+  const availableApps = (apps.data ?? []).filter((app) => hasBundle(app) && !app.loop_id && !onBoard.has(app.id))
   const hasLoops = available.length > 0
   const hasApps = availableApps.length > 0
   const searchable = (sourceTab === 'loops' ? available.length : availableApps.length) >= SEARCH_THRESHOLD
@@ -275,7 +275,7 @@ function AppPickRow({
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-medium text-ink">{app.title}</span>
         <span className="block truncate text-[11px] text-ink-3">
-          {app.kind === 'document' ? 'Document' : 'Interactive'} · v{app.current_version}
+          {APP_KIND_LABEL[app.kind]} · v{app.current_version}
         </span>
       </span>
     </button>

@@ -1,18 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Folder, History, LayoutDashboard, Lock, RotateCcw, UserCheck, Users } from 'lucide-react'
+import { Folder, History, Lock, RotateCcw, UserCheck, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { PinToBoard } from '@/components/apps/PinToBoard'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/toast'
 import {
   appVersionsQuery,
+  hasBundle,
   patchApp,
   rollbackApp,
   type AppVisibility,
   type JazApp,
 } from '@/lib/api/apps'
-import { addBoardTiles, boardsQuery } from '@/lib/api/boards'
 import { orgMembersQuery } from '@/lib/api/cloudMembers'
 import { spacesQuery } from '@/lib/api/cloudSpaces'
 import { useCloudSession } from '@/lib/cloudSession'
@@ -44,7 +45,6 @@ export function AppShareModal({
   const [visibility, setVisibility] = useState<AppVisibility>(app.visibility)
   const [spaceId, setSpaceId] = useState(app.space_id ?? '')
   const [memberIds, setMemberIds] = useState<string[]>(app.members?.map((m) => m.user_id) ?? [])
-  const [pinBoardId, setPinBoardId] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -53,15 +53,13 @@ export function AppShareModal({
     setVisibility(app.visibility)
     setSpaceId(app.space_id ?? '')
     setMemberIds(app.members?.map((m) => m.user_id) ?? [])
-    setPinBoardId('')
   }, [open, app])
 
   const spaces = useQuery({ ...spacesQuery, enabled: open && isCloud })
   const members = useQuery({ ...orgMembersQuery(), enabled: open && isCloud && visibility === 'selected' })
-  // A board holds no boards and has no versions of its own.
-  const isBoard = app.kind === 'board'
-  const boards = useQuery({ ...boardsQuery, enabled: open && !isBoard })
-  const versions = useQuery({ ...appVersionsQuery(app.id), enabled: open && !isBoard })
+  // A board has no versions of its own and is not pinned to a board.
+  const published = hasBundle(app)
+  const versions = useQuery({ ...appVersionsQuery(app.id), enabled: open && published })
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -74,17 +72,8 @@ export function AppShareModal({
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.appsRoot })
-      toast(isBoard ? 'Updated board' : 'Updated app settings')
+      toast(published ? 'Updated app settings' : 'Updated board')
       onClose()
-    },
-  })
-
-  const pinMutation = useMutation({
-    mutationFn: () => addBoardTiles(pinBoardId, { app_ids: [app.id] }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.appBoard(pinBoardId) })
-      toast('Pinned app to board')
-      setPinBoardId('')
     },
   })
 
@@ -102,11 +91,10 @@ export function AppShareModal({
       onClose={onClose}
       size="md"
       title={`${isCloud ? 'Share & Manage' : 'Manage'} · ${app.title}`}
-      description={isBoard
-        ? isCloud ? 'Rename the board and choose who can open it.' : 'Rename the board.'
-        : isCloud
-          ? 'Control authenticated Org/Space/Selected/Private access, pin to a board, or roll back immutable versions.'
-          : 'Rename, pin to a board, or roll back immutable versions.'}
+      description={`${new Intl.ListFormat('en', { type: 'disjunction' }).format([
+        isCloud ? 'Rename it and choose who can open it' : 'Rename it',
+        ...(published ? ['pin it to a board', 'roll back to an earlier version'] : []),
+      ])}.`}
       footer={
         <>
           <div className="min-w-0 truncate text-[12px] text-danger">
@@ -201,34 +189,7 @@ export function AppShareModal({
           </div>
         ) : null}
 
-        {isBoard ? null : (
-          <div className="rounded-control border border-border bg-surface p-3">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-ink">
-              <LayoutDashboard size={13} />
-              Pin to board
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={pinBoardId}
-                onChange={(e) => setPinBoardId(e.target.value)}
-                className="min-w-0 flex-1 rounded-control border border-border bg-bg px-2.5 py-1.5 text-[12.5px] text-ink"
-              >
-                <option value="">Choose a board…</option>
-                {(boards.data ?? []).map((b) => (
-                  <option key={b.id} value={b.id}>{b.title}</option>
-                ))}
-              </select>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={!pinBoardId || pinMutation.isPending}
-                onClick={() => pinMutation.mutate()}
-              >
-                {pinMutation.isPending ? 'Pinning…' : 'Pin'}
-              </Button>
-            </div>
-          </div>
-        )}
+        {published ? <PinToBoard appId={app.id} /> : null}
 
         {(versions.data ?? []).length > 0 ? (
           <div>

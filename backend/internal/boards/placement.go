@@ -27,8 +27,7 @@ func (s *Service) resolveBoards(ctx context.Context, boardIDs []string, workspac
 		if boardID == "" || seen[boardID] {
 			continue
 		}
-		board, err := s.store.GetApp(ctx, boardID)
-		if err != nil || board.Kind != storage.AppKindBoard || board.WorkspaceID != workspaceID {
+		if err := s.requireBoard(ctx, boardID, workspaceID); err != nil {
 			return nil, fmt.Errorf("unknown board %s", boardID)
 		}
 		seen[boardID] = true
@@ -119,7 +118,7 @@ func (s *Service) addTile(ctx context.Context, boardID, appID string, w, h int, 
 func (s *Service) AddTiles(ctx context.Context, boardID string, appIDs []string, tileLoops []loops.Loop) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := s.board(ctx, boardID); err != nil {
+	if err := s.requireBoard(ctx, boardID, s.workspace()); err != nil {
 		return err
 	}
 	for _, appID := range appIDs {
@@ -145,15 +144,17 @@ func (s *Service) AddTiles(ctx context.Context, boardID string, appIDs []string,
 }
 
 func (s *Service) RemoveTile(ctx context.Context, boardID, appID string) error {
-	if _, err := s.board(ctx, boardID); err != nil {
+	if err := s.requireBoard(ctx, boardID, s.workspace()); err != nil {
 		return err
 	}
 	return s.store.RemoveBoardTile(ctx, boardID, appID)
 }
 
+// Update is a change to a board's layout. Layout names only the tiles that
+// move or resize.
 type Update struct {
-	FontScale *float64
-	Layout    []LayoutEntry
+	FontScale *float64      `json:"font_scale"`
+	Layout    []LayoutEntry `json:"layout"`
 }
 
 type LayoutEntry struct {
@@ -164,41 +165,22 @@ type LayoutEntry struct {
 	H     int    `json:"h"`
 }
 
-// Patch moves and resizes tiles already on the board. The whole layout is
-// checked before anything is written.
+// Patch zooms the board and moves and resizes tiles already on it. The whole
+// layout is checked before anything is written.
 func (s *Service) Patch(ctx context.Context, boardID string, input Update) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := s.board(ctx, boardID); err != nil {
+	if err := s.requireBoard(ctx, boardID, s.workspace()); err != nil {
 		return err
 	}
-	placements := make([]storage.TilePlacement, 0, len(input.Layout))
+	var placements []storage.TilePlacement
 	if len(input.Layout) > 0 {
 		tiles, err := s.store.ListBoardTiles(ctx, boardID)
 		if err != nil {
 			return err
 		}
-		moved := make(map[string]bool, len(input.Layout))
-		for _, entry := range input.Layout {
-			moved[entry.AppID] = true
-		}
-		var taken []rect
-		for _, tile := range tiles {
-			if !moved[tile.App.ID] {
-				taken = append(taken, rect{tile.X, tile.Y, tile.W, tile.H})
-			}
-			delete(moved, tile.App.ID)
-		}
-		if len(moved) > 0 {
-			return fmt.Errorf("the layout names an app that is not on this board")
-		}
-		for _, entry := range input.Layout {
-			next := rect{max(0, entry.X), max(0, entry.Y), min(max(entry.W, 1), GridCols), min(max(entry.H, 1), maxTileHeight)}
-			if next.overlapsAny(taken) {
-				return fmt.Errorf("tiles cannot overlap")
-			}
-			taken = append(taken, next)
-			placements = append(placements, storage.TilePlacement{AppID: entry.AppID, X: next.x, Y: next.y, W: next.w, H: next.h, PlacedBy: storage.TilePlacedByUser})
+		if placements, err = placeLayout(tiles, input.Layout); err != nil {
+			return err
 		}
 	}
 	if input.FontScale != nil {
@@ -206,7 +188,39 @@ func (s *Service) Patch(ctx context.Context, boardID string, input Update) error
 			return err
 		}
 	}
+	if len(placements) == 0 {
+		return nil
+	}
 	return s.store.PlaceBoardTiles(ctx, boardID, placements)
+}
+
+// placeLayout clamps the entries to the grid and checks them against the
+// tiles that stay where they are.
+func placeLayout(tiles []storage.BoardTile, layout []LayoutEntry) ([]storage.TilePlacement, error) {
+	moved := make(map[string]bool, len(layout))
+	for _, entry := range layout {
+		moved[entry.AppID] = true
+	}
+	var taken []rect
+	for _, tile := range tiles {
+		if !moved[tile.App.ID] {
+			taken = append(taken, rect{tile.X, tile.Y, tile.W, tile.H})
+		}
+		delete(moved, tile.App.ID)
+	}
+	if len(moved) > 0 {
+		return nil, fmt.Errorf("the layout names an app that is not on this board")
+	}
+	placements := make([]storage.TilePlacement, 0, len(layout))
+	for _, entry := range layout {
+		next := rect{max(0, entry.X), max(0, entry.Y), min(max(entry.W, 1), GridCols), min(max(entry.H, 1), maxTileHeight)}
+		if next.overlapsAny(taken) {
+			return nil, fmt.Errorf("tiles cannot overlap")
+		}
+		taken = append(taken, next)
+		placements = append(placements, storage.TilePlacement{AppID: entry.AppID, X: next.x, Y: next.y, W: next.w, H: next.h, PlacedBy: storage.TilePlacedByUser})
+	}
+	return placements, nil
 }
 
 // PurgeOrphans takes the apps of deleted loops off their boards, where they

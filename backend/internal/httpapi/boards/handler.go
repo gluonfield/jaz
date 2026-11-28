@@ -64,14 +64,11 @@ func (h *Handler) Patch(w http.ResponseWriter, r *http.Request) {
 	if h.cloud.ProxyActiveWorkspace(w, r) {
 		return
 	}
-	var body struct {
-		FontScale *float64                 `json:"font_scale"`
-		Layout    []boardscore.LayoutEntry `json:"layout"`
-	}
-	if !decode(w, r, &body) {
+	var update boardscore.Update
+	if !decode(w, r, &update) {
 		return
 	}
-	if err := h.service.Patch(r.Context(), r.PathValue("id"), boardscore.Update{FontScale: body.FontScale, Layout: body.Layout}); err != nil {
+	if err := h.service.Patch(r.Context(), r.PathValue("id"), update); err != nil {
 		writeError(w, err)
 		return
 	}

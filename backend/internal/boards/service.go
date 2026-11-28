@@ -67,19 +67,20 @@ func (s *Service) ListBoards(ctx context.Context) ([]storage.App, error) {
 	return s.store.ListApps(ctx, s.workspace(), storage.AppListFilter{Kind: storage.AppKindBoard})
 }
 
-func (s *Service) board(ctx context.Context, id string) (storage.App, error) {
+// requireBoard fails unless id is a board of the workspace.
+func (s *Service) requireBoard(ctx context.Context, id, workspaceID string) error {
 	app, err := s.store.GetApp(ctx, id)
 	if err != nil {
-		return storage.App{}, err
+		return err
 	}
-	if app.Kind != storage.AppKindBoard || app.WorkspaceID != s.workspace() {
-		return storage.App{}, storage.ErrAppNotFound
+	if app.Kind != storage.AppKindBoard || app.WorkspaceID != workspaceID {
+		return storage.ErrAppNotFound
 	}
-	return app, nil
+	return nil
 }
 
 func (s *Service) View(ctx context.Context, boardID string) (View, error) {
-	if _, err := s.board(ctx, boardID); err != nil {
+	if err := s.requireBoard(ctx, boardID, s.workspace()); err != nil {
 		return View{}, err
 	}
 	scale, err := s.store.BoardFontScale(ctx, boardID)
