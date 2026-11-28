@@ -246,8 +246,8 @@ func TestCloudMirrorMultiWorkspaceIsolationAndUsage(t *testing.T) {
 	}
 	defer store.Close()
 
-	// DeleteCloudAccount(accA) wipes ONLY accA's mirrored tables, preserving accB and local!
-	if err := store.DeleteCloudAccount(ctx, accA.ID); err != nil {
+	// Removing accA wipes its mirrored tables, preserving accB and local.
+	if err := store.SaveCloudWorkspaces(ctx, storage.LocalWorkspaceID, nil, []string{accA.ID}); err != nil {
 		t.Fatalf("DeleteCloudAccount A: %v", err)
 	}
 	if _, ok, err := store.LoadCloudAccount(ctx, accA.ID); err != nil || ok {

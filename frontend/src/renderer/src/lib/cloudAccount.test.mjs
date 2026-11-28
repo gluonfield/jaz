@@ -21,6 +21,7 @@ const bundle = await build({
           `export * from ${JSON.stringify(new URL('./cloudSession.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./api/client.ts', import.meta.url).pathname)}`,
           `export * from ${JSON.stringify(new URL('./api/cloudAuth.ts', import.meta.url).pathname)}`,
+          `export { pluginCatalogQuery } from ${JSON.stringify(new URL('./api/plugins.ts', import.meta.url).pathname)}`,
           `export { queryClient } from ${JSON.stringify(new URL('./query/queryClient.ts', import.meta.url).pathname)}`,
           `export { keys } from ${JSON.stringify(new URL('./query/keys.ts', import.meta.url).pathname)}`,
         ].join('\n'),
@@ -74,6 +75,7 @@ async function fixture({
   onLocalCloudSwitch,
   onLocalCloudDisconnect,
   onLocalCloudSync,
+  onLocalPlugins,
   onCloudAuthMe,
   orgIdentity,
 } = {}) {
@@ -174,6 +176,9 @@ async function fixture({
       }
       if (target.pathname === '/v1/cloud/sync' && onLocalCloudSync) {
         return onLocalCloudSync(init)
+      }
+      if (target.pathname === '/v1/plugins' && onLocalPlugins) {
+        return onLocalPlugins(init)
       }
       throw new Error(`Unexpected local request ${target.pathname}`)
     }
@@ -316,6 +321,43 @@ test('Desktop Cloud OIDC hands PKCE code to local Go backend /v1/cloud/connect w
     workspaces: [],
   })
   expect(f.mod.useConnection()).toMatchObject({ status: 'connected', mode: 'local' })
+})
+
+test('Signing in again to the same Desktop workspace cancels an old plugin request and refreshes its catalog', async () => {
+  const url = 'https://workspace.example'
+  const workspace = { id: 'ws_example', url, org_id: 'org_example' }
+  const other = { ...workspace, id: 'ws_other', url: 'https://other.example', org_name: 'Other server' }
+  const status = { active_workspace_id: workspace.id, connected: true, status: 'connected', url, workspaces: [workspace, other] }
+  let oldRequest
+  const f = await fixture({
+    cloudStatusResponse: status,
+    orgIdentity: { org_id: 'org_example', org_name: 'Current server' },
+    onLocalCloudConnect: () => Response.json(status),
+    onLocalPlugins: ({ signal }) => {
+      if (oldRequest) return Response.json({ plugins: [{ id: 'fresh' }] })
+      oldRequest = signal
+      return new Promise((resolve) => {
+        signal?.addEventListener('abort', () => resolve(new Response(null, { status: 401 })), { once: true })
+      })
+    },
+  })
+  const { pluginCatalogQuery, queryClient } = f.mod
+  const pending = queryClient.fetchQuery(pluginCatalogQuery).catch(() => undefined)
+  expect(oldRequest?.aborted).toBe(false)
+
+  expect(await f.mod.attachCloudSignIn(url)).toBeNull()
+  const state = new URL(f.openedExternal[0]).searchParams.get('state')
+  expect(await f.mod.completeOidcCallback(`jaz://auth/callback#code=new-code&state=${state}`)).toBeNull()
+
+  expect(oldRequest?.aborted).toBe(true)
+  await pending
+  expect(f.mod.currentCloudAccount()).toMatchObject({
+    activeWorkspaceId: workspace.id,
+    status: 'connected',
+    error: null,
+  })
+  expect(f.mod.useCloudSession().workspaces.map((entry) => entry.org_name)).toEqual(['Current server', 'Other server'])
+  expect((await queryClient.fetchQuery(pluginCatalogQuery)).plugins).toEqual([{ id: 'fresh' }])
 })
 
 test('Multi-workspace status, switchWorkspace, and per-workspace signOutCloudAccount(id) keep other Cloud workspaces intact', async () => {

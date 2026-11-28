@@ -10,6 +10,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/cloudmirror"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/settingsdb"
 )
 
 const (
@@ -115,22 +116,30 @@ func (s *Store) cloudAccountFromRow(row cloudmirror.CloudAccount) (storage.Cloud
 }
 
 func (s *Store) SaveCloudAccount(ctx context.Context, account storage.CloudAccount) error {
+	params, err := s.cloudAccountParams(account)
+	if err != nil {
+		return err
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return cloudmirror.New(s.db).UpsertCloudAccount(ctx, params)
+}
+
+func (s *Store) cloudAccountParams(account storage.CloudAccount) (cloudmirror.UpsertCloudAccountParams, error) {
 	var encrypted string
 	if account.Token != "" || account.RefreshToken != "" {
 		var err error
 		payload := encodeCloudAccountSecret(account.Token, account.RefreshToken)
 		encrypted, err = s.encryptSecret(cloudAccountSecretID, []byte(payload))
 		if err != nil {
-			return err
+			return cloudmirror.UpsertCloudAccountParams{}, err
 		}
 	}
 	caps := strings.TrimSpace(string(account.CapabilitiesJSON))
 	if caps == "" {
 		caps = "{}"
 	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	return cloudmirror.New(s.db).UpsertCloudAccount(ctx, cloudmirror.UpsertCloudAccountParams{
+	return cloudmirror.UpsertCloudAccountParams{
 		ID:               account.ID,
 		BaseUrl:          account.BaseURL,
 		TokenEncrypted:   encrypted,
@@ -145,7 +154,7 @@ func (s *Store) SaveCloudAccount(ctx context.Context, account storage.CloudAccou
 		ConnectedAtMs:    timeToMs(account.ConnectedAt),
 		LastSyncAtMs:     timeToMs(account.LastSyncAt),
 		LastError:        account.LastError,
-	})
+	}, nil
 }
 
 func (s *Store) UpdateCloudSyncState(ctx context.Context, accountID string, lastSyncAt time.Time, lastError string) error {
@@ -158,7 +167,7 @@ func (s *Store) UpdateCloudSyncState(ctx context.Context, accountID string, last
 	})
 }
 
-func (s *Store) DeleteCloudAccount(ctx context.Context, accountID string) error {
+func (s *Store) SaveCloudWorkspaces(ctx context.Context, activeID string, signedIn *storage.CloudAccount, removedIDs []string) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -167,6 +176,38 @@ func (s *Store) DeleteCloudAccount(ctx context.Context, accountID string) error 
 	}
 	defer tx.Rollback()
 	q := cloudmirror.New(s.db).WithTx(tx)
+	if signedIn != nil {
+		params, err := s.cloudAccountParams(*signedIn)
+		if err != nil {
+			return err
+		}
+		if err := q.UpsertCloudAccount(ctx, params); err != nil {
+			return err
+		}
+	}
+	for _, id := range removedIDs {
+		if err := deleteCloudAccount(ctx, q, id); err != nil {
+			return err
+		}
+	}
+	if activeID != "" {
+		now := timeToMs(time.Now())
+		encoded, _ := json.Marshal(activeID)
+		err := settingsdb.New(tx).UpsertSetting(ctx, settingsdb.UpsertSettingParams{
+			Namespace:   cloudSettingsNamespace,
+			Key:         activeWorkspaceIDSettingKey,
+			ValueJson:   string(encoded),
+			CreatedAtMs: now,
+			UpdatedAtMs: now,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func deleteCloudAccount(ctx context.Context, q *cloudmirror.Queries, accountID string) error {
 	for _, fn := range []func(context.Context, string) error{
 		q.DeleteCloudThreadEventsByAccount,
 		q.DeleteCloudThreadsByAccount,
@@ -179,7 +220,7 @@ func (s *Store) DeleteCloudAccount(ctx context.Context, accountID string) error 
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) LoadActiveWorkspaceID(_ context.Context) (string, error) {
@@ -201,17 +242,12 @@ func (s *Store) LoadActiveWorkspaceID(_ context.Context) (string, error) {
 	return id, nil
 }
 
-func (s *Store) SaveActiveWorkspaceID(_ context.Context, workspaceID string) error {
+func (s *Store) SaveActiveWorkspaceID(ctx context.Context, workspaceID string) error {
 	id := strings.TrimSpace(workspaceID)
 	if id == "" {
 		id = storage.LocalWorkspaceID
 	}
-	encoded, err := json.Marshal(id)
-	if err != nil {
-		return err
-	}
-	_, err = s.SaveSetting(cloudSettingsNamespace, activeWorkspaceIDSettingKey, encoded)
-	return err
+	return s.SaveCloudWorkspaces(ctx, id, nil, nil)
 }
 
 func (s *Store) ReplaceCloudSpaces(ctx context.Context, accountID string, spaces []storage.CloudSpace) error {

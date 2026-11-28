@@ -167,16 +167,17 @@ func (s *Service) SyncNow(ctx context.Context) (Status, error) {
 }
 
 func (s *Service) recordSyncError(ctx context.Context, gen uint64, accountID string, lastSync time.Time, message string) {
-	if !s.isGeneration(gen) {
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+	cur, ok := s.currentAccountToken(accountID)
+	if !ok || cur.Token == "" || !s.isGeneration(gen) {
 		return
 	}
 	_ = s.store.UpdateCloudSyncState(ctx, accountID, lastSync, message)
 	s.mu.Lock()
 	if s.accountGen == gen {
-		if cur, ok := s.accounts[accountID]; ok {
-			cur.LastError = message
-			s.accounts[accountID] = cur
-		}
+		cur.LastError = message
+		s.accounts[accountID] = cur
 	}
 	s.mu.Unlock()
 }

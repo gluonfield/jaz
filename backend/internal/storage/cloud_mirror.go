@@ -234,7 +234,7 @@ type CloudMirrorStore interface {
 	LoadCloudAccount(ctx context.Context, id string) (CloudAccount, bool, error)
 	SaveCloudAccount(context.Context, CloudAccount) error
 	UpdateCloudSyncState(ctx context.Context, accountID string, lastSyncAt time.Time, lastError string) error
-	DeleteCloudAccount(ctx context.Context, accountID string) error
+	SaveCloudWorkspaces(ctx context.Context, activeID string, signedIn *CloudAccount, removedIDs []string) error
 
 	LoadActiveWorkspaceID(context.Context) (string, error)
 	SaveActiveWorkspaceID(context.Context, string) error

@@ -24,7 +24,8 @@ export function CloudSettings() {
   const [running, setRunning] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const workspace = activeCloudWorkspace(cloud)
+  const workspace = activeCloudWorkspace(cloud) ?? cloud.workspaces.find((entry) => entry.id === cloud.activeWorkspaceId) ?? null
+  const needsSignIn = !isPrimaryOnly && cloud.status === 'disconnected'
   const error = actionError || workspace?.last_error || (workspace ? cloud.error : null)
 
   const run = async (task: () => Promise<string | null | void>) => {
@@ -77,18 +78,18 @@ export function CloudSettings() {
         )}
       </header>
 
-      {workspace && error ? (
+      {workspace && (error || needsSignIn) ? (
         <div className="flex items-center justify-between gap-3">
-          <p role="alert" className="min-w-0 text-[13px] text-danger">{error}</p>
-          {isPrimaryOnly ? null : (
+          <p role="alert" className="min-w-0 text-[13px] text-danger">{error || 'Sign in to Jaz Cloud.'}</p>
+          {needsSignIn ? (
             <Button size="sm" disabled={running} onClick={() => void run(() => attachCloudSignIn(workspace.url, workspace.oidc_login_url))}>
               Sign in
             </Button>
-          )}
+          ) : null}
         </div>
       ) : null}
 
-      {workspace ? <TeamMembersCard workspace={workspace} /> : null}
+      {workspace && cloud.active ? <TeamMembersCard workspace={workspace} /> : null}
 
       <AddCloudWorkspaceModal open={adding} onClose={() => setAdding(false)} />
     </section>

@@ -110,7 +110,7 @@ func TestNativeMCPSearchAndCallStayWithSessionWorkspace(t *testing.T) {
 
 	for _, account := range []storage.CloudAccount{
 		{ID: "session-workspace", BaseURL: upstream.URL, Token: "session-workspace-token", OrgID: "org", UserID: "owner"},
-		{ID: "other-workspace", BaseURL: upstream.URL, Token: "other-workspace-token", OrgID: "org", UserID: "other"},
+		{ID: "other-workspace", BaseURL: upstream.URL, Token: "other-workspace-token", OrgID: "other-org", UserID: "other"},
 	} {
 		if err := store.SaveCloudAccount(ctx, account); err != nil {
 			t.Fatal(err)

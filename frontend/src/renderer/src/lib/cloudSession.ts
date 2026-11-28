@@ -35,7 +35,7 @@ export function useCloudSession(): ActiveCloudSession {
   return {
     ...session,
     workspaces: session.workspaces.map((ws) =>
-      ws.org_id === identity.org_id
+      ws.id === session.activeWorkspaceId && ws.org_id === identity.org_id
         ? { ...ws, org_name: identity.org_name || ws.org_name, org_icon: identity.org_icon }
         : ws,
     ),

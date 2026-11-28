@@ -45,7 +45,7 @@ type Service struct {
 	// Lock ordering: syncMu -> persistMu -> mu. refreshMu is never held across persistMu or network I/O.
 	persistMu      sync.Mutex
 	refreshMu      sync.Mutex
-	refreshFlights map[string]*refreshFlight
+	refreshFlights map[refreshKey]*refreshFlight
 	mcpThreads     sync.Map
 }
 
@@ -61,41 +61,10 @@ func New(store storage.CloudMirrorStore, logger *log.Logger) *Service {
 		activeWorkspaceID: LocalWorkspaceID,
 		endpointCache:     map[string]cachedEndpoint{},
 		wake:              make(chan struct{}, 1),
-		refreshFlights:    map[string]*refreshFlight{},
+		refreshFlights:    map[refreshKey]*refreshFlight{},
 	}
-	ctx := context.Background()
-	if accounts, err := store.ListCloudAccounts(ctx); err == nil {
-		for _, acc := range accounts {
-			if acc.ID != "" {
-				s.accounts[acc.ID] = acc
-			}
-		}
-	} else {
-		s.log.Warn("load cloud accounts failed", "error", err)
-	}
-	if activeID, err := store.LoadActiveWorkspaceID(ctx); err == nil {
-		if activeID == LocalWorkspaceID {
-			s.activeWorkspaceID = LocalWorkspaceID
-		} else if _, ok := s.accounts[activeID]; ok {
-			s.activeWorkspaceID = activeID
-		}
-	} else {
-		s.log.Warn("load active workspace failed", "error", err)
-	}
+	s.loadWorkspaces(context.Background())
 	return s
-}
-
-func accountID(baseURL, orgID, userID string) string {
-	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	org := strings.TrimSpace(orgID)
-	user := strings.TrimSpace(userID)
-	if user != "" && org != "" {
-		return org + ":" + user + "@" + base
-	}
-	if org != "" {
-		return org + "@" + base
-	}
-	return base
 }
 
 func sanitizeOIDCLoginURL(baseURL, raw string) string {
@@ -335,24 +304,7 @@ func (s *Service) Connect(ctx context.Context, req ConnectRequest) (Status, erro
 		return Status{}, errors.New("cloud server returned an incomplete user profile")
 	}
 
-	id := accountID(baseURL, user.OrgID, user.ID)
-
-	// Cancel any in-flight sync and serialize account mutation under syncMu so
-	// stale sync writes can never overwrite the new active workspace.
-	s.mu.Lock()
-	s.cancelActiveSyncLocked()
-	s.mu.Unlock()
-
-	s.syncMu.Lock()
-	connectedAt := time.Now().UTC()
-	s.mu.RLock()
-	if existing, ok := s.accounts[id]; ok && !existing.ConnectedAt.IsZero() {
-		connectedAt = existing.ConnectedAt
-	}
-	s.mu.RUnlock()
-
 	acc := storage.CloudAccount{
-		ID:               id,
 		BaseURL:          baseURL,
 		Token:            token,
 		RefreshToken:     refreshToken,
@@ -364,26 +316,11 @@ func (s *Service) Connect(ctx context.Context, req ConnectRequest) (Status, erro
 		DisplayName:      user.DisplayName,
 		Role:             user.Role,
 		CapabilitiesJSON: caps,
-		ConnectedAt:      connectedAt,
+		ConnectedAt:      time.Now().UTC(),
 	}
-	s.persistMu.Lock()
-	if err := s.store.SaveCloudAccount(ctx, acc); err != nil {
-		s.persistMu.Unlock()
-		s.syncMu.Unlock()
+	if err := s.activateAccount(ctx, acc); err != nil {
 		return Status{}, err
 	}
-	if err := s.store.SaveActiveWorkspaceID(ctx, id); err != nil {
-		s.persistMu.Unlock()
-		s.syncMu.Unlock()
-		return Status{}, err
-	}
-	s.mu.Lock()
-	s.accounts[id] = acc
-	s.activeWorkspaceID = id
-	s.clearEndpointCachesLocked()
-	s.mu.Unlock()
-	s.persistMu.Unlock()
-	s.syncMu.Unlock()
 
 	syncCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -469,17 +406,14 @@ func (s *Service) Disconnect(ctx context.Context, workspaceID string) error {
 		s.syncMu.Unlock()
 		return nil
 	}
-	if err := s.store.DeleteCloudAccount(ctx, target); err != nil {
+	activeID := ""
+	if wasActive {
+		activeID = LocalWorkspaceID
+	}
+	if err := s.store.SaveCloudWorkspaces(ctx, activeID, nil, []string{target}); err != nil {
 		s.persistMu.Unlock()
 		s.syncMu.Unlock()
 		return err
-	}
-	if wasActive {
-		if err := s.store.SaveActiveWorkspaceID(ctx, LocalWorkspaceID); err != nil {
-			s.persistMu.Unlock()
-			s.syncMu.Unlock()
-			return err
-		}
 	}
 	s.mu.Lock()
 	delete(s.accounts, target)

@@ -237,7 +237,7 @@ func TestCloudSyncRefresh503PreservesTokensAnd401ClearsSession(t *testing.T) {
 		case "/.well-known/jaz-server":
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "mode": "cloud", "auth": "oidc"})
 		case "/v1/auth/me":
-			if r.Header.Get("Authorization") == "Bearer jwt-init" {
+			if r.Header.Get("Authorization") == "Bearer jwt-init" && refreshStatus.Load() != http.StatusUnauthorized {
 				_ = json.NewEncoder(w).Encode(map[string]any{"user_id": "usr_1", "org_id": "org_1", "email": "u@example.com", "display_name": "Dev", "role": "member"})
 				return
 			}
@@ -275,25 +275,99 @@ func TestCloudSyncRefresh503PreservesTokensAnd401ClearsSession(t *testing.T) {
 		t.Fatalf("Connect: %v", err)
 	}
 
-	// 503 on refresh must preserve tokens and keep account connected.
-	if _, err := svc.ListMembers(ctx, "", 10); err == nil {
-		t.Fatalf("expected error on 401 + 503 refresh")
+	rec := httptest.NewRecorder()
+	if !svc.ProxyActiveWorkspace(rec, httptest.NewRequest(http.MethodGet, "/v1/members", nil)) || rec.Code != http.StatusBadGateway {
+		t.Fatalf("transient refresh failure must not signal sign-in: %d %s", rec.Code, rec.Body.String())
 	}
 	if !svc.Status(ctx).Connected {
 		t.Fatalf("expected session preserved on transient 503 refresh failure")
 	}
 
-	// 401 on refresh must clear tokens and surface disconnected status for clean re-auth.
 	refreshStatus.Store(http.StatusUnauthorized)
-	if _, err := svc.ListMembers(ctx, "", 10); err == nil {
-		t.Fatalf("expected error on 401 + 401 refresh")
-	}
-	st := svc.Status(ctx)
-	if st.Connected || st.LastError == "" {
-		t.Fatalf("expected disconnected status with expiry message after 401 refresh failure, got %+v", st)
+	st, err := svc.SyncNow(ctx)
+	if err == nil || st.Connected || st.LastError != "Session expired. Sign in again." {
+		t.Fatalf("a rejected refresh must keep the expiry reason after sync: %+v, %v", st, err)
 	}
 	if _, tok, ok := svc.CloudAuth(ctx); ok || tok != "" {
 		t.Fatalf("expected tokens cleared after 401 refresh failure, got ok=%v tok=%q", ok, tok)
+	}
+}
+
+func TestCloudRelogIsIndependentOfAnOldRefresh(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	oldRefreshStarted := make(chan struct{})
+	releaseOldRefresh := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/auth/me":
+			_, _ = w.Write([]byte(`{"user_id":"user","org_id":"org"}`))
+		case "/v1/plugins":
+			if r.Header.Get("Authorization") != "Bearer renewed" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"plugins":[]}`))
+		case "/v1/auth/refresh":
+			var body struct {
+				Token string `json:"refresh_token"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if body.Token == "old-refresh" {
+				close(oldRefreshStarted)
+				<-releaseOldRefresh
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"token":"renewed","refresh_token":"rotated"}`))
+		default:
+			_, _ = w.Write([]byte("{}"))
+		}
+	}))
+	defer upstream.Close()
+	release := sync.OnceFunc(func() { close(releaseOldRefresh) })
+	defer release()
+
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	svc := cloudsync.New(store, nil)
+	signIn := func(token string) {
+		t.Helper()
+		_, err := svc.Connect(ctx, cloudsync.ConnectRequest{URL: upstream.URL, Token: token, RefreshToken: token + "-refresh"})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	requestPlugins := func() int {
+		rec := httptest.NewRecorder()
+		svc.ProxyActiveWorkspace(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/plugins", nil))
+		return rec.Code
+	}
+
+	signIn("old")
+	oldResult := make(chan int, 1)
+	go func() { oldResult <- requestPlugins() }()
+	select {
+	case <-oldRefreshStarted:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	signIn("new")
+	if status := requestPlugins(); status != http.StatusOK {
+		t.Fatalf("fresh credentials were blocked by old refresh: %d", status)
+	}
+	release()
+	if status := <-oldResult; status != http.StatusOK {
+		t.Fatalf("stale refresh failure was reported against the fresh session: %d", status)
+	}
+	if !svc.Status(ctx).Connected {
+		t.Fatal("old refresh failure cleared the new session")
 	}
 }
 

@@ -180,6 +180,7 @@ function commitBackendStatus(
   prevWorkspaceId: string,
   options: {
     forceRefresh?: boolean
+    credentialsChanged?: boolean
     prevConnected?: boolean
     clearCloudOnDisconnect?: boolean
     notifyIfHydrated?: boolean
@@ -190,10 +191,11 @@ function commitBackendStatus(
   applyBackendStatus(res)
   const workspaceChanged = prevWorkspaceId !== state.activeWorkspaceId
   const connectionChanged = options.prevConnected !== undefined && res.connected !== options.prevConnected
-  if (options.forceRefresh || workspaceChanged || connectionChanged || (options.clearCloudOnDisconnect && !res.connected)) {
+  const reset = workspaceChanged || Boolean(options.credentialsChanged)
+  if (options.forceRefresh || reset || connectionChanged || (options.clearCloudOnDisconnect && !res.connected)) {
     refreshWorkspaceQueries({
-      reset: workspaceChanged,
-      clearCloud: Boolean(options.clearCloudOnDisconnect && !res.connected) || workspaceChanged,
+      reset,
+      clearCloud: Boolean(options.clearCloudOnDisconnect && !res.connected),
       refetchCloud: res.connected,
     })
   }
@@ -291,7 +293,7 @@ export async function completeAttachedOidcCallback(
       controller.signal,
     )
     if (!isCurrent(seq, controller)) return null
-    commitBackendStatus(res, prevWorkspaceId, { forceRefresh: true })
+    commitBackendStatus(res, prevWorkspaceId, { credentialsChanged: true })
     return null
   } catch (error) {
     if (!isCurrent(seq, controller)) return null

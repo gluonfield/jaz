@@ -161,17 +161,14 @@ func normalizeBaseURL(raw string) (string, error) {
 	if err != nil || u.Host == "" {
 		return "", ErrInvalidURL
 	}
-	switch strings.ToLower(u.Scheme) {
-	case "https":
-		return u.Scheme + "://" + u.Host + strings.TrimRight(u.Path, "/"), nil
-	case "http":
-		if IsLoopbackURL(trimmed) {
-			return u.Scheme + "://" + u.Host + strings.TrimRight(u.Path, "/"), nil
-		}
-		return "", ErrInvalidURL
-	default:
+	if u.Scheme != "https" && !(u.Scheme == "http" && IsLoopbackURL(trimmed)) {
 		return "", ErrInvalidURL
 	}
+	host := strings.ToLower(u.Host)
+	if (u.Scheme == "https" && u.Port() == "443") || (u.Scheme == "http" && u.Port() == "80") {
+		host = strings.TrimSuffix(host, ":"+u.Port())
+	}
+	return u.Scheme + "://" + host + strings.TrimRight(u.EscapedPath(), "/"), nil
 }
 
 func validatePathSegment(value string) error {

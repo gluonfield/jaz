@@ -129,8 +129,8 @@ export interface PluginInstallResult {
 
 export const pluginCatalogQuery = queryOptions({
   queryKey: keys.plugins,
-  queryFn: async ({ client }) => {
-    const data = await get<{ plugins?: Plugin[] | null; sources?: PluginSource[] | null }>('/v1/plugins')
+  queryFn: async ({ client, signal }) => {
+    const data = await get<{ plugins?: Plugin[] | null; sources?: PluginSource[] | null }>('/v1/plugins', { signal })
     void client.invalidateQueries({ queryKey: keys.mcpApps, exact: true })
     return {
       plugins: data.plugins ?? [],

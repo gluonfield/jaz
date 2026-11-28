@@ -12,6 +12,11 @@ import (
 
 const sessionExpiredErrorMessage = "Session expired. Sign in again."
 
+type refreshKey struct {
+	accountID    string
+	refreshToken string
+}
+
 type refreshFlight struct {
 	done chan struct{}
 	acc  storage.CloudAccount
@@ -54,15 +59,6 @@ func (s *Service) refreshAccountToken(ctx context.Context, accountID, failedToke
 
 func (s *Service) refreshAccount(ctx context.Context, accountID, failedToken string) (storage.CloudAccount, error) {
 	s.refreshMu.Lock()
-	if flight := s.refreshFlights[accountID]; flight != nil {
-		s.refreshMu.Unlock()
-		select {
-		case <-flight.done:
-			return flight.acc, flight.err
-		case <-ctx.Done():
-			return storage.CloudAccount{}, ctx.Err()
-		}
-	}
 	acc, ok := s.currentAccountToken(accountID)
 	if !ok || acc.Token == "" {
 		s.refreshMu.Unlock()
@@ -76,13 +72,23 @@ func (s *Service) refreshAccount(ctx context.Context, accountID, failedToken str
 		s.refreshMu.Unlock()
 		return storage.CloudAccount{}, &UpstreamError{StatusCode: http.StatusUnauthorized, Message: ErrNotConnected.Error()}
 	}
+	key := refreshKey{accountID: accountID, refreshToken: acc.RefreshToken}
+	if flight := s.refreshFlights[key]; flight != nil {
+		s.refreshMu.Unlock()
+		select {
+		case <-flight.done:
+			return flight.acc, flight.err
+		case <-ctx.Done():
+			return storage.CloudAccount{}, ctx.Err()
+		}
+	}
 	flight := &refreshFlight{done: make(chan struct{})}
-	s.refreshFlights[accountID] = flight
+	s.refreshFlights[key] = flight
 	s.refreshMu.Unlock()
 
 	defer func() {
 		s.refreshMu.Lock()
-		delete(s.refreshFlights, accountID)
+		delete(s.refreshFlights, key)
 		s.refreshMu.Unlock()
 		close(flight.done)
 	}()
@@ -94,6 +100,10 @@ func (s *Service) refreshAccount(ctx context.Context, accountID, failedToken str
 	if err != nil {
 		if isUpstreamUnauthorized(err) {
 			s.clearExpiredAccountTokens(accountID, acc.RefreshToken)
+		}
+		if cur, ok := s.currentAccountToken(accountID); ok && cur.Token != "" && cur.RefreshToken != acc.RefreshToken {
+			flight.acc = cur
+			return cur, nil
 		}
 		flight.err = err
 		return storage.CloudAccount{}, err
@@ -192,9 +202,12 @@ func (s *Service) doAccountHTTP(ctx context.Context, acc storage.CloudAccount, o
 		return resp, err
 	}
 	refreshed, rerr := s.refreshAccount(ctx, acc.ID, tok)
-	if rerr != nil {
+	if isUpstreamUnauthorized(rerr) || errors.Is(rerr, ErrNotConnected) {
 		return resp, nil
 	}
 	_ = resp.Body.Close()
+	if rerr != nil {
+		return nil, rerr
+	}
 	return open(refreshed.Token)
 }
