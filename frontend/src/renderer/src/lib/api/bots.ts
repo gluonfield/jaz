@@ -28,7 +28,7 @@ export function createGroup(input: { name: string; members: string[] }): Promise
 }
 
 export type BotPatch = Partial<
-  Pick<Bot, 'name' | 'avatar' | 'members' | 'agent' | 'model' | 'reasoning_effort' | 'workspaces' | 'prompt' | 'plugins'>
+  Pick<Bot, 'name' | 'avatar' | 'members' | 'agent' | 'model' | 'reasoning_effort' | 'workspaces' | 'plugins'>
 > & { inherit_plugins?: boolean }
 
 export function updateBot(id: string, input: BotPatch): Promise<Bot> {

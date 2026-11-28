@@ -243,7 +243,7 @@ export async function exerciseBotPanel(): Promise<void> {
     const { width, height } = boxes[0]
     const hit = (tab: Element, box: DOMRect) => [[-19.5, 0], [19.5, 0], [0, -19.5], [0, 19.5]].every(([x, y]) => document.elementFromPoint(box.left + width / 2 + x, box.top + height / 2 + y)?.closest('[role="tab"]') === tab)
     if (
-      tabs.map((tab) => tab.getAttribute('aria-label')).join() !== 'Activity,Routines,Identity,Agent' ||
+      tabs.map((tab) => tab.getAttribute('aria-label')).join() !== 'Activity,Routines,Identity' ||
       tabs.some((tab) => tab.textContent || !tab.querySelector('svg')) ||
       boxes.some((box) => box.width !== width || box.height !== height) ||
       tabs.some((tab, i) => !hit(tab, boxes[i])) ||
@@ -440,18 +440,16 @@ export async function exerciseBotPanel(): Promise<void> {
 
     installKeyboardFocus()
     await click('Routines')
-    await window.smoke.key('Right')
-    await until('ArrowRight did not select and focus Identity', () => selected() === find('Identity') && document.activeElement === selected() && tabpanel().textContent!.includes('Who it is'))
     await window.smoke.key('End')
-    await until('End did not open the Agent settings', () => selected() === find('Agent') && document.activeElement === selected() && Boolean(tabpanel().querySelector('[aria-label="Agent"]')) && tabpanel().textContent!.includes('Model'))
-    await capture('bot-panel-agent')
-    if (iconTabs('with Agent selected') !== tabLayout) {
+    await until('End did not open Identity with the agent settings', () => selected() === find('Identity') && document.activeElement === selected() && tabpanel().textContent!.includes('Who it is') && Boolean(tabpanel().querySelector('[aria-label="Agent"]')) && tabpanel().textContent!.includes('Model'))
+    await settle()
+    if (iconTabs('with Identity selected') !== tabLayout) {
       throw new Error('Bot panel: the tabs move or resize when the selection changes')
     }
     await window.smoke.key('Right')
     await until('ArrowRight did not wrap to Activity', () => selected() === find('Activity') && document.activeElement === selected() && tabpanel().textContent!.includes(`Tasks ${owed.length}`))
     await window.smoke.key('Left')
-    await until('ArrowLeft did not wrap to Agent', () => selected() === find('Agent') && document.activeElement === selected())
+    await until('ArrowLeft did not wrap to Identity', () => selected() === find('Identity') && document.activeElement === selected())
     await window.smoke.key('Home')
     await until('Home did not return to Activity', () => selected() === find('Activity') && document.activeElement === selected())
     await window.smoke.key('Tab')

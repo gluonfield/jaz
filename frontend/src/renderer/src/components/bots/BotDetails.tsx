@@ -1,4 +1,4 @@
-import { Fingerprint, List, Pencil, Repeat, SlidersHorizontal } from 'lucide-react'
+import { Fingerprint, List, Pencil, Repeat } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useId, useState } from 'react'
 import { SidePanelShell } from '@/components/session/SidePanelShell'
@@ -18,7 +18,7 @@ import { BotRoutineModal } from './BotRoutineModal'
 import { BotRoutines } from './BotRoutines'
 import { useUpdateBot } from './useUpdateBot'
 
-const TABS = { Activity: List, Routines: Repeat, Identity: Fingerprint, Agent: SlidersHorizontal }
+const TABS = { Activity: List, Routines: Repeat, Identity: Fingerprint }
 const NAMES = Object.keys(TABS) as (keyof typeof TABS)[]
 
 export function BotDetails({ bot, focusName, agentSession, working }: { bot: Bot; focusName: boolean } & ThreadDetailsView) {
@@ -85,10 +85,11 @@ export function BotDetails({ bot, focusName, agentSession, working }: { bot: Bot
           <BotActivity bot={bot} />
         ) : tab === 'Routines' ? (
           <BotRoutines bot={bot} onOpen={setRoutine} />
-        ) : tab === 'Identity' ? (
-          <BotIdentity bot={bot} onOpen={setFile} />
         ) : (
-          <BotAgentSettings bot={bot} agentSession={agentSession} working={working} />
+          <div className="flex flex-col gap-4">
+            <BotIdentity bot={bot} onOpen={setFile} />
+            <BotAgentSettings bot={bot} agentSession={agentSession} working={working} />
+          </div>
         )}
       </div>
       {routine ? <BotRoutineModal bot={bot} loopId={routine} onClose={() => setRoutine(null)} /> : null}
