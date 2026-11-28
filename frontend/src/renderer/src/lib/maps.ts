@@ -68,16 +68,22 @@ export function parseMapFence(code: string): PlaceMap | undefined {
   }
 }
 
-// Google resolves "name, address" to the business listing; without an address
-// the coordinates are the only unambiguous destination.
-function destination(place: MapPlace): string {
-  return place.address ? `${place.name}, ${place.address}` : `${place.latitude},${place.longitude}`
+// A maps app resolves "name, address" to the business listing; without an
+// address the coordinates are the only unambiguous destination.
+function listing(place: MapPlace): string | undefined {
+  return place.address && `${place.name}, ${place.address}`
 }
 
-export function directionsURL(place: MapPlace): string {
-  return `https://www.google.com/maps/dir/?${new URLSearchParams({ api: '1', destination: destination(place) })}`
+function point(place: MapPlace): string {
+  return `${place.latitude},${place.longitude}`
 }
 
 export function googleMapsURL(place: MapPlace): string {
-  return `https://www.google.com/maps/search/?${new URLSearchParams({ api: '1', query: destination(place) })}`
+  return `https://www.google.com/maps/search/?${new URLSearchParams({ api: '1', query: listing(place) ?? point(place) })}`
+}
+
+// Apple searches for the listing near the pin, or drops a pin named for the place.
+export function appleMapsURL(place: MapPlace): string {
+  const query = listing(place)
+  return `https://maps.apple.com/?${new URLSearchParams(query ? { q: query, sll: point(place) } : { q: place.name, ll: point(place) })}`
 }

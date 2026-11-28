@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { directionsURL, googleMapsURL, parseMapFence, parsePlaceMap } from './maps'
+import { appleMapsURL, googleMapsURL, parseMapFence, parsePlaceMap } from './maps'
 
 test('a map keeps only places it can pin and links it can safely open', () => {
   const map = parsePlaceMap({
@@ -28,11 +28,11 @@ test('a jaz-map fence renders only when its JSON is complete', () => {
   expect(parseMapFence(fence.slice(0, -4))).toBeUndefined()
 })
 
-test('directions and Google Maps open the listing by name and address, or the exact point without one', () => {
+test('Google Maps and Apple Maps open the listing by name and address, or the exact point without one', () => {
   const listed = { name: 'Caravan', latitude: 51.5357, longitude: -0.1253, address: '1 Granary Square, London N1C 4AA' }
-  expect(directionsURL(listed)).toBe('https://www.google.com/maps/dir/?api=1&destination=Caravan%2C+1+Granary+Square%2C+London+N1C+4AA')
   expect(googleMapsURL(listed)).toBe('https://www.google.com/maps/search/?api=1&query=Caravan%2C+1+Granary+Square%2C+London+N1C+4AA')
+  expect(appleMapsURL(listed)).toBe('https://maps.apple.com/?q=Caravan%2C+1+Granary+Square%2C+London+N1C+4AA&sll=51.5357%2C-0.1253')
   const point = { name: 'Trailhead', latitude: 46.5586, longitude: 7.8358 }
-  expect(directionsURL(point)).toBe('https://www.google.com/maps/dir/?api=1&destination=46.5586%2C7.8358')
   expect(googleMapsURL(point)).toBe('https://www.google.com/maps/search/?api=1&query=46.5586%2C7.8358')
+  expect(appleMapsURL(point)).toBe('https://maps.apple.com/?q=Trailhead&ll=46.5586%2C7.8358')
 })

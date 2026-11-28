@@ -1,12 +1,16 @@
-import { ExternalLink, Globe, Navigation, Star } from 'lucide-react'
+import { ChevronDown, Globe, Star } from 'lucide-react'
 import { lazy, memo, Suspense, useCallback, useRef, useState, type MouseEvent } from 'react'
+import { MenuRow, Popover } from '@/components/ui/Popover'
 import { openExternal } from '@/lib/clientRuntime'
-import { directionsURL, googleMapsURL, type MapPlace, type PlaceMap } from '@/lib/maps'
+import { appleMapsURL, googleMapsURL, type MapPlace, type PlaceMap } from '@/lib/maps'
 
 const MapCanvas = lazy(() => import('./MapCanvas'))
 
 const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })
-const ACTION = 'inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium transition-[background-color,color,scale] duration-150 active:scale-[0.97]'
+const MAP_APPS = [
+  { label: 'Google Maps', url: googleMapsURL },
+  { label: 'Apple Maps', url: appleMapsURL },
+]
 
 function open(event: MouseEvent<HTMLAnchorElement>) {
   event.preventDefault()
@@ -104,16 +108,32 @@ function PlaceCard({ place, index, single, active, onSelect, onHover }: {
       </div>
       {place.address ? <div className="mt-1.5 line-clamp-2 pl-[30px] text-[12px] leading-[17px] text-ink-3">{place.address}</div> : null}
       {place.note ? <div className="mt-1 line-clamp-2 pl-[30px] text-[12.5px] leading-[18px] text-ink-2">{place.note}</div> : null}
-      <div className="mt-auto flex items-center gap-1 pt-2.5 pl-[26px]">
-        <a href={directionsURL(place)} onClick={open} className={`${ACTION} bg-surface-2 text-ink hover:bg-ink/10`}>
-          <Navigation size={13} aria-hidden />
-          Directions
-        </a>
-        <a href={googleMapsURL(place)} onClick={open} className={`${ACTION} text-ink-2 hover:bg-surface-2 hover:text-ink`}>
-          <ExternalLink size={13} aria-hidden />
-          Google Maps
-        </a>
+      <div className="mt-auto flex pt-2.5 pl-[26px]">
+        <OpenInMaps place={place} />
       </div>
     </article>
+  )
+}
+
+function OpenInMaps({ place }: { place: MapPlace }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onClose={() => setOpen(false)} trigger={
+      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full bg-surface-2 pl-3 pr-2 text-[12px] font-medium text-ink transition-[background-color,scale] duration-150 hover:bg-ink/10 active:scale-[0.97]">
+        Open in Maps
+        <ChevronDown size={13} className={`text-ink-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
+    }>
+      <div role="menu" aria-label={`Open ${place.name} in Maps`}>
+        {MAP_APPS.map((app) => (
+          <MenuRow key={app.label} role="menuitem" onClick={() => {
+            setOpen(false)
+            openExternal(app.url(place))
+          }}>
+            {app.label}
+          </MenuRow>
+        ))}
+      </div>
+    </Popover>
   )
 }

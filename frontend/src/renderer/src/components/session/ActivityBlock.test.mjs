@@ -59,6 +59,13 @@ mock.module('./EditDiffBlock', () => ({
   ),
 }))
 
+// A menu's panel is portaled into a document body this renderer does not have.
+const popover = await import('@/components/ui/Popover')
+mock.module('@/components/ui/Popover', () => ({
+  ...popover,
+  Popover: ({ trigger }) => trigger,
+}))
+
 const { ActivityBlock } = await import('./ActivityBlock')
 const { Transcript } = await import('./Transcript')
 
@@ -345,7 +352,7 @@ test('the completed production transcript keeps one work fold with searchable ac
   expect(ordered).toEqual([...ordered].sort((a, b) => a - b))
 })
 
-test('a map the agent shows stays with the answer, outside the work fold, with directions per place', () => {
+test('a map the agent shows stays with the answer, outside the work fold, with a way to open each place', () => {
   const at = (seconds) => new Date(seconds * 1000).toISOString()
   const acp = (state, extra) => ({ id: 'thread', agent: 'claude', session_id: 'thread', state, ...extra })
   const html = renderToStaticMarkup(createElement(Transcript, {
@@ -371,8 +378,7 @@ test('a map the agent shows stays with the answer, outside the work fold, with d
   expect(html.match(/Worked for/g)).toHaveLength(1)
   expect(html).not.toContain('Locating cafés')
   expect(html).toContain('Coffee near Kings Cross</span>')
-  expect(html).toContain('href="https://www.google.com/maps/dir/?api=1&amp;destination=Caravan%2C+1+Granary+Square%2C+London"')
-  expect(html).toContain('href="https://www.google.com/maps/search/?api=1&amp;query=Caravan%2C+1+Granary+Square%2C+London"')
+  expect(html.match(/Open in Maps/g)).toHaveLength(1)
   expect(html.indexOf('Worked for')).toBeLessThan(html.indexOf('Caravan'))
 })
 

@@ -48,7 +48,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ShowMCPToolName,
 		Title:       "Show places on a map",
-		Description: "Shows places on an interactive map in the user's chat, with a card per place and buttons for directions and Google Maps. Use it whenever an answer recommends, compares or locates real places: restaurants, venues, sights, offices, stops on a trip. Give each place its full street address; Jaz finds the coordinates. Do not draw maps with show_artifact.",
+		Description: "Shows places on an interactive map in the user's chat, with a card per place that opens it in Google Maps or Apple Maps. Use it whenever an answer recommends, compares or locates real places: restaurants, venues, sights, offices, stops on a trip. Give each place its full street address; Jaz finds the coordinates. To correct a map, call again with the same title: the new map replaces it. Do not draw maps with show_artifact.",
 	}, t.Show)
 }
 
@@ -89,7 +89,7 @@ func (t *MCPTools) Show(ctx context.Context, req *mcp.CallToolRequest, input Sho
 		return nil, nil, err
 	}
 	if len(located) > 0 {
-		result.Content = append(result.Content, &mcp.TextContent{Text: "Located from addresses: " + strings.Join(located, "; ") + ". If one is wrong, call show_map again with a fuller address."})
+		result.Content = append(result.Content, &mcp.TextContent{Text: "Located from addresses: " + strings.Join(located, "; ") + ". If one is wrong, call show_map again with the same title and a fuller address or coordinates from a source; the new map replaces this one."})
 	}
 	if len(missing) > 0 {
 		result.Content = append(result.Content, &mcp.TextContent{Text: "Not found, left off the map: " + strings.Join(missing, ", ") + ". Give a full street address or coordinates from a source to add them."})

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
@@ -115,6 +116,66 @@ func TestShowArtifactDoesNotClaimDeliveryWithoutASessionOrForPrivateTurns(t *tes
 		if err != nil || loaded.Turn.Output.Shown {
 			t.Fatalf("private artifact counted as delivery: %+v, %v", loaded.Turn, err)
 		}
+	}
+}
+
+func TestMapShownAgainUnderItsTitleReplacesTheEarlierOneInThatTurn(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bus := sessionevents.New()
+	live := bus.Subscribe(t.Context(), session.ID)
+	tools := visualize.NewService(store, store, bus, nil)
+	show := func(title string, latitude float64) sessionevents.Event {
+		t.Helper()
+		_, err := tools.Present(session.ID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationMap, Map: &sessionevents.PlaceMap{
+			Title:  title,
+			Places: []sessionevents.Place{{Name: "Hotel", Latitude: latitude, Longitude: 113.8}},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return <-live
+	}
+	shown := func() []float64 {
+		t.Helper()
+		page, err := store.LoadTranscriptPage(t.Context(), session.ID, storage.TranscriptPageRequest{Turns: 14, ChatOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var latitudes []float64
+		for _, event := range page.Events {
+			latitudes = append(latitudes, event.Artifact.Map.Places[0].Latitude)
+		}
+		return latitudes
+	}
+	if err := store.StartSessionTurn(session.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	wrong := show("Hotel", 22.70)
+	corrected := show("Hotel", 22.72)
+	if wrong.ProjectionKey == "" || corrected.ProjectionKey != wrong.ProjectionKey || corrected.ProjectionOp != sessionevents.ProjectionReplace {
+		t.Fatalf("clients cannot replace the earlier map: %+v, %+v", wrong, corrected)
+	}
+	show("Restaurants nearby", 22.73)
+	if got := shown(); !reflect.DeepEqual(got, []float64{22.72, 22.73}) {
+		t.Fatalf("maps after a correction and a second map = %v", got)
+	}
+	if err := store.FinishSessionTurn(session.ID, storage.StatusIdle, "", time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StartSessionTurn(session.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	show("Hotel", 22.74)
+	if got := shown(); !reflect.DeepEqual(got, []float64{22.72, 22.73, 22.74}) {
+		t.Fatalf("a later turn replaced an earlier answer's map: %v", got)
 	}
 }
 

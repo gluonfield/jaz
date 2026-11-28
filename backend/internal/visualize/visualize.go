@@ -149,6 +149,10 @@ func (t *Service) Present(sessionID string, artifact *sessionevents.Presentation
 	}
 	artifact.Presented = true
 	events := []sessionevents.Event{{SessionID: sessionID, Type: sessionevents.TypeArtifact, Artifact: artifact}}
+	if artifact.Kind == sessionevents.PresentationMap && session.Turn != nil {
+		events[0].ProjectionKey = fmt.Sprintf("map:%s:%d:%s", sessionID, session.Turn.StartedAt.UnixNano(), artifact.Map.Title)
+		events[0].ProjectionOp = sessionevents.ProjectionReplace
+	}
 	if err := t.Store.AppendSessionEvents(sessionID, events...); err != nil {
 		return nil, err
 	}

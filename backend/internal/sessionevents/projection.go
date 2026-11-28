@@ -329,6 +329,10 @@ func StorageCoalesceKey(event Event) string {
 	if event.Type == TypeAgentSession {
 		return TypeAgentSession
 	}
+	// A map shown again under its title in the same turn replaces the one it corrects.
+	if event.Type == TypeArtifact && event.Artifact != nil && event.Artifact.Kind == PresentationMap {
+		return event.ProjectionKey
+	}
 	if event.Type == "acp_tool" && event.ACP != nil && event.ACP.ID != "" && len(event.ACP.ToolCalls) > 0 && event.ACP.ToolCalls[0].ID != "" {
 		return "acp_tool:" + event.ACP.ID + ":" + event.ACP.ToolCalls[0].ID
 	}
