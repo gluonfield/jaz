@@ -12,7 +12,7 @@ const CARDS: { name: BotFileName; about: string; tilt: string }[] = [
 ]
 
 // Both cards wear the bot's own colour, with its shape faded into a corner.
-export function BotIdentity({ bot, onOpen }: { bot: Bot; onOpen: (name: BotFileName) => void }) {
+export function BotFiles({ bot, onOpen }: { bot: Bot; onOpen: (name: BotFileName) => void }) {
   const files = useQuery(botFilesQuery(bot.id)).data
   return (
     <div className="grid grid-cols-2 gap-2" style={{ '--bot': BOT_COLORS[bot.avatar.color] } as CSSProperties}>

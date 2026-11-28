@@ -12,7 +12,7 @@ import { BotAgentSettings } from './BotAgentSettings'
 import { BotWorkspaceSettings } from './BotWorkspaceSettings'
 import { BotAvatar } from './BotAvatar'
 import { BotFileEditor } from './BotFileEditor'
-import { BotIdentity } from './BotIdentity'
+import { BotFiles } from './BotFiles'
 import { BotNameInput } from './BotNameInput'
 import { BotRoutineModal } from './BotRoutineModal'
 import { BotRoutines } from './BotRoutines'
@@ -87,7 +87,7 @@ export function BotDetails({ bot, focusName, agentSession, working }: { bot: Bot
           <BotRoutines bot={bot} onOpen={setRoutine} />
         ) : (
           <div className="flex flex-col gap-4">
-            <BotIdentity bot={bot} onOpen={setFile} />
+            <BotFiles bot={bot} onOpen={setFile} />
             <BotAgentSettings bot={bot} agentSession={agentSession} working={working} />
           </div>
         )}
