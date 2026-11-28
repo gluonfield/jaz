@@ -93,7 +93,7 @@ type ProbeOptions = {
 const DEFAULT_META: ServerMeta = { mode: 'local', auth: 'none', oidcLoginUrl: '', capabilities: {} }
 const CLOUD_FALLBACK_META: ServerMeta = { mode: 'cloud', auth: 'oidc', oidcLoginUrl: '/v1/auth/login', capabilities: {} }
 const PREFERENCE_KEY = 'jaz.connection'
-const bridge = ['main', 'board', 'launcher'].includes(clientRuntime.windowKind) ? clientRuntime.connectionSession : undefined
+const bridge = ['main', 'board', 'app', 'launcher'].includes(clientRuntime.windowKind) ? clientRuntime.connectionSession : undefined
 const desktop = bridge?.read()
 export const ownsConnection = desktop?.owner ?? clientRuntime.windowKind === 'main'
 let authoritative = desktop?.snapshot

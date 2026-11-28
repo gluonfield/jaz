@@ -1,28 +1,35 @@
 import { describe, expect, test } from 'bun:test'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import {
   canUseDesktopPermission,
-  createOSLauncherShim,
-  extractDesktopAppDeepLinkArg,
   filterPermissionsForPolicy,
-  parseDesktopAppDeepLink,
-  removeOSLauncherShim,
   resolveScopedFolderTarget,
   syncDesktopAppVersionRecord,
 } from './desktopAppsLogic.ts'
+import { appLaunchArg, createLauncher, removeLauncher, shimAppId, windowsArgs } from './desktopAppLaunchers.ts'
 
 const APP_ID = 'abcdefghijklmnopqrstuvwxyz'
+const ICON = resolve(import.meta.dir, '../assets/jaz-icon-1024.png')
 
-describe('Electron Desktop Apps version-locked permissions & shims', () => {
-  test('parses valid jaz://app/{id} deep links and rejects malformed ones', () => {
-    expect(parseDesktopAppDeepLink(`jaz://app/${APP_ID}`)).toBe(APP_ID)
-    expect(parseDesktopAppDeepLink('jaz://app/short')).toBeNull()
-    expect(parseDesktopAppDeepLink('https://evil.example/app/' + APP_ID)).toBeNull()
-    expect(extractDesktopAppDeepLinkArg(['--flag', `jaz://app/${APP_ID}`])).toBe(APP_ID)
-  })
+function launchHost(home, overrides = {}) {
+  return {
+    executable: resolve(import.meta.dir, '../../node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),
+    args: ['/work/jaz app'],
+    folder: 'Jaz Apps',
+    identity: 'dev.wins.jaz.app',
+    iconDir: join(home, 'icons'),
+    serverName: 'jaz-apps-test',
+    writeShortcut: () => false,
+    ...overrides,
+  }
+}
 
+const spec = (title = 'Budget / Pro') => ({ appId: APP_ID, title, png: () => readFileSync(ICON) })
+
+describe('Electron Desktop Apps version-locked permissions & launchers', () => {
   test('auto-pauses elevated permissions whenever bundle_sha256 changes', () => {
     const base = {
       appId: APP_ID,
@@ -48,14 +55,12 @@ describe('Electron Desktop Apps version-locked permissions & shims', () => {
     expect(canUseDesktopPermission(updated, 'fs')).toBe(false)
   })
 
-  test('hard-blocks Tier 3 for external apps and respects org full_access policy', () => {
-    expect(filterPermissionsForPolicy(['notifications', 'fs', 'full_access'], true, true)).toEqual(['notifications'])
-    expect(filterPermissionsForPolicy(['notifications', 'fs', 'full_access'], false, false)).toEqual(['notifications', 'fs'])
-    expect(filterPermissionsForPolicy(['notifications', 'fs', 'full_access'], false, true)).toEqual([
-      'notifications',
-      'fs',
-      'full_access',
-    ])
+  test('grants only declared permissions, never machine access to outside apps, and full access only by org policy', () => {
+    const requested = ['notifications', 'tray', 'fs', 'full_access']
+    const declared = ['storage:personal', 'desktop:notifications', 'desktop:fs', 'desktop:full_access']
+    expect(filterPermissionsForPolicy(requested, declared, true, true)).toEqual(['notifications'])
+    expect(filterPermissionsForPolicy(requested, declared, false, false)).toEqual(['notifications', 'fs'])
+    expect(filterPermissionsForPolicy(requested, declared, false, true)).toEqual(['notifications', 'fs', 'full_access'])
   })
 
   test('confines scoped folder reads and rejects traversal and symlinks', () => {
@@ -97,25 +102,73 @@ describe('Electron Desktop Apps version-locked permissions & shims', () => {
     }
   })
 
-  test('creates and removes macOS and Windows OS launcher shims', () => {
-    const fakeHome = mkdtempSync(join(tmpdir(), 'jaz-shim-'))
+  test.if(process.platform === 'darwin')('installs a macOS app as an app shim of this Jaz with its own icon', () => {
+    const home = mkdtempSync(join(tmpdir(), 'jaz-launcher-'))
     try {
-      const macShim = createOSLauncherShim('Budget / Pro', APP_ID, 'darwin', fakeHome)
-      expect(macShim).toBeDefined()
-      expect(existsSync(join(macShim, 'Contents', 'Info.plist'))).toBe(true)
-      expect(readFileSync(join(macShim, 'Contents', 'MacOS', 'launch'), 'utf8')).toContain(`jaz://app/${APP_ID}`)
-      removeOSLauncherShim(macShim)
-      expect(existsSync(macShim)).toBe(false)
+      const host = launchHost(home)
+      const { launcherPath, codeHash } = createLauncher(spec(), host, 'darwin', home)
+      expect(launcherPath).toBe(join(home, 'Applications', 'Jaz Apps', 'Budget Pro.app'))
+      const info = join(launcherPath, 'Contents', 'Info.plist')
+      const read = (key, format = 'raw') => execFileSync('/usr/bin/plutil', ['-extract', key, format, '-o', '-', info], { encoding: 'utf8' }).trim()
+      expect(read('ElectronAppShimHostPath')).toBe(resolve(host.executable, '../../..'))
+      expect(read('ElectronAppShimHostBundleIdentifier')).toBe('com.github.Electron')
+      expect(read('ElectronAppShimServerName')).toBe('jaz-apps-test')
+      expect(JSON.parse(read('ElectronAppShimHostArguments', 'json'))).toEqual(['/work/jaz app', '--jaz-app-shim'])
+      expect(read('CFBundleIdentifier')).toBe(`dev.wins.jaz.app.${APP_ID}`)
+      expect(shimAppId(launcherPath)).toBe(APP_ID)
+      const loader = join(resolve(host.executable, '../..'), 'Frameworks', 'Electron Framework.framework', 'Helpers', 'app_shim_loader')
+      expect(codeHash).toBe(/^CDHash=(\w+)$/m.exec(spawnSync('/usr/bin/codesign', ['-dvvv', loader], { encoding: 'utf8' }).stderr)[1])
+      execFileSync('/usr/bin/iconutil', ['-c', 'iconset', join(launcherPath, 'Contents', 'Resources', 'app.icns'), '-o', join(home, 'app.iconset')])
+      expect(existsSync(join(home, 'app.iconset', 'icon_512x512@2x.png'))).toBe(true)
 
-      const winAppData = join(fakeHome, 'AppData')
-      mkdirSync(winAppData, { recursive: true })
-      const winShim = createOSLauncherShim('Budget Pro', APP_ID, 'win32', fakeHome, winAppData)
-      expect(winShim).toBeDefined()
-      expect(readFileSync(winShim, 'utf8')).toContain(`URL=jaz://app/${APP_ID}`)
-      removeOSLauncherShim(winShim)
-      expect(existsSync(winShim)).toBe(false)
+      const second = createLauncher({ ...spec(), appId: 'zyxwvutsrqponmlkjihgfedcba' }, host, 'darwin', home)
+      expect(second.launcherPath).toBe(join(home, 'Applications', 'Jaz Apps', 'Budget Pro zyxwvu.app'))
+      removeLauncher(host, APP_ID, launcherPath)
+      expect(existsSync(launcherPath)).toBe(false)
+      expect(existsSync(join(host.iconDir, `${APP_ID}.png`))).toBe(false)
     } finally {
-      rmSync(fakeHome, { recursive: true, force: true })
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  test('adds a Windows app to the Start menu with its own taskbar identity', () => {
+    const home = mkdtempSync(join(tmpdir(), 'jaz-launcher-'))
+    try {
+      const shortcuts = []
+      const host = launchHost(home, { executable: 'C:/Jaz/Jaz.exe', writeShortcut: (path, details) => shortcuts.push({ path, details }) > 0 })
+      const { launcherPath } = createLauncher(spec(), host, 'win32', home, { APPDATA: join(home, 'Roaming') })
+      expect(launcherPath).toBe(join(home, 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Jaz Apps', 'Budget Pro.lnk'))
+      expect(shortcuts).toEqual([{ path: launcherPath, details: {
+        target: 'C:/Jaz/Jaz.exe',
+        args: `"/work/jaz app" --jaz-app=${APP_ID}`,
+        description: 'Budget / Pro',
+        icon: join(host.iconDir, `${APP_ID}.ico`),
+        iconIndex: 0,
+        appUserModelId: `dev.wins.jaz.app.${APP_ID}`,
+      } }])
+      const ico = readFileSync(join(host.iconDir, `${APP_ID}.ico`))
+      expect([...ico.subarray(0, 6)]).toEqual([0, 0, 1, 0, 1, 0])
+      expect(ico.subarray(22, 26).toString('latin1')).toBe('\x89PNG')
+      expect(appLaunchArg(['C:/Jaz/Jaz.exe', '/work/jaz app', windowsArgs(host, APP_ID).split(' ').at(-1)])).toBe(APP_ID)
+      expect(appLaunchArg(['C:/Jaz/Jaz.exe', '--jaz-app=../../etc'])).toBeNull()
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  test('adds a Linux app to the applications menu under its own window class', () => {
+    const home = mkdtempSync(join(tmpdir(), 'jaz-launcher-'))
+    try {
+      const host = launchHost(home, { executable: '/opt/Jaz/jaz' })
+      const { launcherPath } = createLauncher(spec(), host, 'linux', home, { XDG_DATA_HOME: join(home, 'data') })
+      expect(launcherPath).toBe(join(home, 'data', 'applications', `dev.wins.jaz.app.${APP_ID}.desktop`))
+      const entry = readFileSync(launcherPath, 'utf8')
+      expect(entry).toContain(`Exec="/opt/Jaz/jaz" "/work/jaz app" "--jaz-app=${APP_ID}"`)
+      expect(entry).toContain(`StartupWMClass=dev.wins.jaz.app.${APP_ID}`)
+      expect(entry).toContain(`Icon=${join(host.iconDir, `${APP_ID}.png`)}`)
+      expect(existsSync(join(host.iconDir, `${APP_ID}.png`))).toBe(true)
+    } finally {
+      rmSync(home, { recursive: true, force: true })
     }
   })
 })

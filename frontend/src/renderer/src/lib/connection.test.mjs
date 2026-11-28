@@ -55,7 +55,7 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, authMe, authExchange, authRefresh, authLogout, cloudConfig, discovery, storedValues = [], sessionStoredValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
+async function fixture({ auth, authMe, authExchange, authRefresh, authLogout, cloudConfig, discovery, storedValues = [], sessionStoredValues = [], encryptCredential, decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false, owner = true, windowKind = owner ? 'main' : 'board', initialSnapshot, feature, web = false, locationHref = 'http://localhost/', browserCredentials = new Map(), saveBrowserCredential, loadBrowserCredential, cloudUrl, localEnabled } = {}) {
   const stored = new Map(storedValues)
   const sessionStored = new Map(sessionStoredValues)
   const configured = []
@@ -118,7 +118,7 @@ async function fixture({ auth, authMe, authExchange, authRefresh, authLogout, cl
       apiBaseUrl: 'http://127.0.0.1:5299',
       cloudUrl,
       localEnabled,
-      windowKind: owner ? 'main' : 'board',
+      windowKind,
       connectionSession: session,
       encryptCredential,
       decryptCredential,
@@ -594,6 +594,19 @@ test.each([true, false])('recoverable hydration retains the snapshot and retries
   expect(connection.cachedApiAuthToken(url)).toBe('verified-token')
   expect(checks).toBe(2)
   expect(keychain).toBe(0)
+})
+
+test.each(['board', 'app'])('a %s window joins the session the main window connected', async (windowKind) => {
+  const url = 'https://jaz.example'
+  const snapshot = { revision: 2, phase: 'connected', url, session: { url, token: 'verified-token', remembered: false }, error: null, localPending: false }
+  const { connection } = await fixture({
+    owner: false,
+    windowKind,
+    initialSnapshot: snapshot,
+    auth: () => Response.json({ ok: true, auth_kind: 'bearer' }),
+  })
+  expect(connection.useConnection().status).toBe('connected')
+  expect(connection.cachedApiAuthToken(url)).toBe('verified-token')
 })
 
 test('reusing a remembered current token keeps restart provenance without unlocking or saving again', async () => {

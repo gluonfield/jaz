@@ -98,7 +98,8 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
       get: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}get`, appId),
       install: (input) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}install`, input),
       uninstall: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}uninstall`, appId),
-      openWindow: (appId, opts) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}openWindow`, appId, opts),
+      open: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}open`, appId),
+      reveal: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}reveal`, appId),
       setPermissions: (appId, bundleSha256, permissions, scopedFolders, allowDesktopFullAccess) =>
         ipcRenderer.invoke(
           `${DESKTOP_APPS_CHANNEL}setPermissions`,

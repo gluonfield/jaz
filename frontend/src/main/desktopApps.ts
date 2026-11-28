@@ -1,9 +1,5 @@
-import {
-  readdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   BrowserWindow,
@@ -16,6 +12,10 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  shell,
+  type AppShimHost,
+  type BrowserWindowConstructorOptions,
+  type NativeImage,
   type Rectangle,
 } from 'electron'
 import {
@@ -25,35 +25,31 @@ import {
   type InstallDesktopAppInput,
   type InstalledDesktopApp,
 } from '@shared/desktopApps'
+import { logMain } from './diagnostics'
 import { trustedWindow } from './permissions'
 import {
   VALID_APP_ID_RE,
   canUseDesktopPermission,
-  createOSLauncherShim,
-  extractDesktopAppDeepLinkArg,
   filterPermissionsForPolicy,
-  parseDesktopAppDeepLink,
-  removeOSLauncherShim,
   resolveScopedFolderTarget,
   syncDesktopAppVersionRecord,
 } from './desktopAppsLogic'
-
-export {
-  canUseDesktopPermission,
-  createOSLauncherShim,
-  extractDesktopAppDeepLinkArg,
-  filterPermissionsForPolicy,
-  parseDesktopAppDeepLink,
-  removeOSLauncherShim,
-  resolveScopedFolderTarget,
-  syncDesktopAppVersionRecord,
-}
+import {
+  appIconPath,
+  appIdentity,
+  createLauncher,
+  removeLauncher,
+  shimAppId,
+  windowsArgs,
+  type Launcher,
+  type LaunchHost,
+} from './desktopAppLaunchers'
 
 const DARK_BG = '#141517'
 const MAX_FS_READ_BYTES = 5 * 1024 * 1024
 
 export interface DesktopAppsController {
-  openAppWindow: (appId: string, opts?: { title?: string }) => void
+  launch: (appId: string) => void
   teardown: () => void
 }
 
@@ -63,27 +59,37 @@ export function installDesktopApps(deps: {
   appIcon: string
   attachWindow: (win: BrowserWindow, label: string) => void
 }): DesktopAppsController {
-  const registryPath = (): string => join(app.getPath('userData'), 'desktop-apps.json')
-  const boundsPath = (): string => join(app.getPath('userData'), 'desktop-app-windows.json')
+  const userData = app.getPath('userData')
+  const registryPath = join(userData, 'desktop-apps.json')
+  const boundsPath = join(userData, 'desktop-app-windows.json')
+  const host: LaunchHost = {
+    executable: process.execPath,
+    args: app.isPackaged ? [] : [app.getAppPath()],
+    folder: `${app.getName()} Apps`,
+    identity: app.isPackaged ? 'dev.wins.jaz.app' : 'dev.wins.jaz.dev.app',
+    iconDir: join(userData, 'desktop-app-icons'),
+    serverName: `jaz-apps-${createHash('sha256').update(userData).digest('hex').slice(0, 12)}`,
+    writeShortcut: (path, details) => shell.writeShortcutLink(path, details),
+  }
   const appWindows = new Map<string, BrowserWindow>()
   const appTrays = new Map<string, Tray>()
   const appShortcuts = new Map<string, string>()
 
   function loadRegistry(): Record<string, InstalledDesktopApp> {
     try {
-      return JSON.parse(readFileSync(registryPath(), 'utf8')) as Record<string, InstalledDesktopApp>
+      return JSON.parse(readFileSync(registryPath, 'utf8')) as Record<string, InstalledDesktopApp>
     } catch {
       return {}
     }
   }
 
   function saveRegistry(data: Record<string, InstalledDesktopApp>): void {
-    writeFileSync(registryPath(), JSON.stringify(data, null, 2), 'utf8')
+    writeFileSync(registryPath, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 })
   }
 
   function loadBounds(): Record<string, Rectangle> {
     try {
-      return JSON.parse(readFileSync(boundsPath(), 'utf8')) as Record<string, Rectangle>
+      return JSON.parse(readFileSync(boundsPath, 'utf8')) as Record<string, Rectangle>
     } catch {
       return {}
     }
@@ -91,10 +97,27 @@ export function installDesktopApps(deps: {
 
   function saveBounds(appId: string, bounds: Rectangle): void {
     try {
-      writeFileSync(boundsPath(), JSON.stringify({ ...loadBounds(), [appId]: bounds }))
+      writeFileSync(boundsPath, JSON.stringify({ ...loadBounds(), [appId]: bounds }))
     } catch {
       // ignore bounds persistence errors
     }
+  }
+
+  function writeLauncher(appId: string, title: string, icon: NativeImage): Launcher {
+    const image = icon.isEmpty() ? nativeImage.createFromPath(deps.appIcon) : icon
+    return createLauncher({ appId, title, png: (size) => image.resize({ width: size, height: size, quality: 'best' }).toPNG() }, host)
+  }
+
+  // Rebuilds a macOS launcher that was deleted or predates app shims.
+  function ensureLauncher(record: InstalledDesktopApp): string {
+    if (record.codeHash && record.launcherPath && existsSync(record.launcherPath)) return record.launcherPath
+    const icon = nativeImage.createFromPath(join(host.iconDir, `${record.appId}.png`))
+    removeLauncher(host, record.appId, record.launcherPath)
+    const registry = loadRegistry()
+    const next = { ...record, ...writeLauncher(record.appId, record.title, icon) }
+    registry[record.appId] = next
+    saveRegistry(registry)
+    return next.launcherPath!
   }
 
   function clearAppRuntimeGrants(appId: string): void {
@@ -118,8 +141,24 @@ export function installDesktopApps(deps: {
     }
   }
 
-  function openAppWindow(appId: string, opts?: { title?: string }): void {
-    if (!VALID_APP_ID_RE.test(appId)) return
+  // Linux matches a window to its desktop entry by the desktop name it was created under.
+  function createAppWindow(appId: string, options: BrowserWindowConstructorOptions): BrowserWindow {
+    const desktopName = process.env['CHROME_DESKTOP']
+    if (process.platform !== 'linux' || desktopName === undefined) return new BrowserWindow(options)
+    app.setDesktopName(`${appIdentity(host, appId)}.desktop`)
+    try {
+      return new BrowserWindow(options)
+    } finally {
+      app.setDesktopName(desktopName)
+    }
+  }
+
+  function openAppWindow(appId: string, shim?: AppShimHost): void {
+    const record = loadRegistry()[appId]
+    if (!record) {
+      shim?.quit()
+      return
+    }
     const existing = appWindows.get(appId)
     if (existing && !existing.isDestroyed()) {
       if (existing.isMinimized()) existing.restore()
@@ -127,17 +166,18 @@ export function installDesktopApps(deps: {
       existing.focus()
       return
     }
-    const record = loadRegistry()[appId]
     const saved = loadBounds()[appId]
-    const win = new BrowserWindow({
-      title: opts?.title || record?.title || 'Jaz App',
+    const icon = appIconPath(host, appId)
+    const win = createAppWindow(appId, {
+      title: record.title,
       width: saved?.width ?? 1024,
       height: saved?.height ?? 720,
       ...(saved ? { x: saved.x, y: saved.y } : {}),
       minWidth: 420,
       minHeight: 360,
       show: false,
-      icon: deps.appIcon,
+      icon: existsSync(icon) ? icon : deps.appIcon,
+      ...(shim ? { appShim: shim } : {}),
       backgroundColor: nativeTheme.shouldUseDarkColors ? DARK_BG : '#ffffff',
       webPreferences: {
         preload: deps.preloadPath,
@@ -147,15 +187,78 @@ export function installDesktopApps(deps: {
         additionalArguments: ['--jaz-app-window'],
       },
     })
+    if (process.platform === 'win32') {
+      win.setAppDetails({
+        appId: appIdentity(host, appId),
+        appIconPath: icon,
+        relaunchCommand: `"${host.executable}" ${windowsArgs(host, appId)}`,
+        relaunchDisplayName: record.title,
+      })
+    }
     appWindows.set(appId, win)
     deps.attachWindow(win, `app ${appId}`)
     win.on('close', () => saveBounds(appId, win.getBounds()))
-    win.on('closed', () => appWindows.delete(appId))
+    win.on('closed', () => {
+      appWindows.delete(appId)
+      if (shim?.isConnected()) shim.quit()
+    })
     if (process.env['ELECTRON_RENDERER_URL']) {
       void win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/apps/${appId}`)
     } else {
       void win.loadFile(deps.rendererPath, { hash: `/apps/${appId}` })
     }
+  }
+
+  // A macOS launcher is an app shim: its windows belong to its own Dock icon and menu bar.
+  function startShimServer(): boolean {
+    try {
+      app.startAppShimServer({ name: host.serverName })
+    } catch (error) {
+      logMain('app shim server failed to start; apps open in Jaz windows', error)
+      return false
+    }
+    const menu = Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }])
+    app.on('app-shim-connected', (_event, shim) => {
+      const appId = shimAppId(shim.bundlePath)
+      const record = appId ? loadRegistry()[appId] : undefined
+      if (!record?.codeHash || !shim.satisfiesCodeRequirement(`cdhash H"${record.codeHash}"`)) {
+        logMain(`rejected app shim ${shim.bundlePath}`)
+        shim.quit()
+        return
+      }
+      shim.setApplicationMenu(menu)
+      shim.on('activate', () => openAppWindow(record.appId, shim))
+      shim.on('quit-requested', (event) => {
+        const win = appWindows.get(record.appId)
+        if (!win || win.isDestroyed()) return
+        event.preventDefault()
+        win.close()
+      })
+      openAppWindow(record.appId, shim)
+    })
+    // Jaz was updated while running, so its launchers can't connect until it restarts.
+    app.on('app-shim-version-mismatch', (_event, bundlePath) => {
+      const appId = shimAppId(bundlePath)
+      if (appId) openAppWindow(appId)
+    })
+    return true
+  }
+
+  const shimServer = process.platform === 'darwin' && startShimServer()
+
+  async function openApp(appId: string): Promise<void> {
+    const record = loadRegistry()[appId]
+    if (!record) throw new Error('This app is not installed')
+    if (!shimServer) {
+      openAppWindow(appId)
+      return
+    }
+    const error = await shell.openPath(ensureLauncher(record))
+    if (error) throw new Error(error)
+  }
+
+  const launch = (appId: string): void => {
+    openApp(appId).catch((error: unknown) => logMain(`could not open app ${appId}`, error))
   }
 
   ipcMain.handle(`${DESKTOP_APPS_CHANNEL}list`, (event) => {
@@ -176,17 +279,9 @@ export function installDesktopApps(deps: {
     const registry = loadRegistry()
     const now = new Date().toISOString()
     const isExternal = Boolean(input.isExternalOrg)
-    const perms = filterPermissionsForPolicy(
-      input.permissions ?? [],
-      isExternal,
-      Boolean(input.allowDesktopFullAccess),
-    )
-    const folders = isExternal ? [] : (input.scopedFolders ?? []).filter((f) => typeof f === 'string' && f.trim())
+    const declared = input.declaredCapabilities ?? []
     const existing = registry[input.appId]
-    if (existing?.launcherPath) {
-      removeOSLauncherShim(existing.launcherPath)
-    }
-    const launcherPath = createOSLauncherShim(input.title, input.appId)
+    removeLauncher(host, input.appId, existing?.launcherPath)
     const record: InstalledDesktopApp = {
       appId: input.appId,
       workspaceId: input.workspaceId || 'local',
@@ -197,12 +292,12 @@ export function installDesktopApps(deps: {
       installedVersion: input.version,
       approvedBundleSha256: input.bundleSha256,
       latestBundleSha256: input.bundleSha256,
-      declaredCapabilities: input.declaredCapabilities ?? [],
-      permissions: perms,
-      scopedFolders: folders,
+      declaredCapabilities: declared,
+      permissions: filterPermissionsForPolicy(input.permissions ?? [], declared, isExternal, Boolean(input.allowDesktopFullAccess)),
+      scopedFolders: isExternal ? [] : (input.scopedFolders ?? []).filter((f) => typeof f === 'string' && f.trim()),
       permissionsPaused: false,
       isExternalOrg: isExternal,
-      launcherPath,
+      ...writeLauncher(input.appId, input.title, nativeImage.createFromDataURL(input.iconPng)),
       installedAt: existing?.installedAt ?? now,
       updatedAt: now,
     }
@@ -221,16 +316,23 @@ export function installDesktopApps(deps: {
       win.close()
     }
     if (existing) {
-      removeOSLauncherShim(existing.launcherPath)
+      removeLauncher(host, appId, existing.launcherPath)
       delete registry[appId]
       saveRegistry(registry)
     }
     return { ok: true }
   })
 
-  ipcMain.handle(`${DESKTOP_APPS_CHANNEL}openWindow`, (event, appId: string, opts?: { title?: string }) => {
+  ipcMain.handle(`${DESKTOP_APPS_CHANNEL}open`, (event, appId: string) => {
     trustedWindow(event)
-    openAppWindow(appId, opts)
+    return openApp(appId)
+  })
+
+  ipcMain.handle(`${DESKTOP_APPS_CHANNEL}reveal`, (event, appId: string) => {
+    trustedWindow(event)
+    const record = loadRegistry()[appId]
+    if (!record?.launcherPath) throw new Error('This app is not installed')
+    shell.showItemInFolder(shimServer ? ensureLauncher(record) : record.launcherPath)
   })
 
   ipcMain.handle(
@@ -247,7 +349,7 @@ export function installDesktopApps(deps: {
       const registry = loadRegistry()
       const existing = registry[appId]
       if (!existing) throw new Error('App is not installed')
-      const filtered = filterPermissionsForPolicy(permissions, existing.isExternalOrg, allowDesktopFullAccess)
+      const filtered = filterPermissionsForPolicy(permissions, existing.declaredCapabilities, existing.isExternalOrg, allowDesktopFullAccess)
       const next: InstalledDesktopApp = {
         ...existing,
         approvedBundleSha256: bundleSha256 || existing.latestBundleSha256,
@@ -314,7 +416,7 @@ export function installDesktopApps(deps: {
     if (!canUseDesktopPermission(record, 'notifications')) return false
     if (!Notification.isSupported()) return false
     const notif = new Notification({ title: title || record.title, body: body || '' })
-    notif.on('click', () => openAppWindow(appId, { title: record.title }))
+    notif.on('click', () => launch(appId))
     notif.show()
     return true
   })
@@ -330,7 +432,7 @@ export function installDesktopApps(deps: {
       appShortcuts.delete(appId)
       return true
     }
-    const ok = globalShortcut.register(accelerator.trim(), () => openAppWindow(appId, { title: record.title }))
+    const ok = globalShortcut.register(accelerator.trim(), () => launch(appId))
     if (ok) {
       appShortcuts.set(appId, accelerator.trim())
       registry[appId] = { ...record, shortcutAccelerator: accelerator.trim(), updatedAt: new Date().toISOString() }
@@ -357,7 +459,7 @@ export function installDesktopApps(deps: {
       tray.setToolTip(title || record.title)
       tray.setContextMenu(
         Menu.buildFromTemplate([
-          { label: `Open ${record.title}`, click: () => openAppWindow(appId, { title: record.title }) },
+          { label: `Open ${record.title}`, click: () => launch(appId) },
           { type: 'separator' },
           {
             label: 'Remove from menu bar',
@@ -368,7 +470,7 @@ export function installDesktopApps(deps: {
           },
         ]),
       )
-      tray.on('click', () => openAppWindow(appId, { title: record.title }))
+      tray.on('click', () => launch(appId))
       appTrays.set(appId, tray)
     }
     return true
@@ -425,7 +527,7 @@ export function installDesktopApps(deps: {
   })
 
   return {
-    openAppWindow,
+    launch,
     teardown: () => {
       for (const appId of [...appShortcuts.keys()]) clearAppRuntimeGrants(appId)
       for (const appId of [...appTrays.keys()]) clearAppRuntimeGrants(appId)

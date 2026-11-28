@@ -4,23 +4,17 @@ import { ArrowLeft, Pin } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { AppRenderer } from '@/components/apps/AppRenderer'
 import { AppShareModal } from '@/components/apps/AppShareModal'
-import { DesktopAppPermissionsModal } from '@/components/apps/DesktopAppPermissionsModal'
+import { DesktopAppButton, useDesktopApps } from '@/components/apps/useDesktopApps'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconButton } from '@/components/ui/IconButton'
 import { ActionMenu, type MenuAction } from '@/components/ui/ActionMenu'
 import { useToast } from '@/components/ui/toast'
-import {
-  appDetailQuery,
-  deleteApp,
-  detailApp,
-  orgAppPolicyQuery,
-  remixApp,
-} from '@/lib/api/apps'
+import { appDetailQuery, deleteApp, detailApp, remixApp } from '@/lib/api/apps'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
+import { desktopApps } from '@/lib/desktopApps'
 import { keys } from '@/lib/query/keys'
-import type { InstalledDesktopApp } from '@shared/desktopApps'
 
 export const Route = createFileRoute('/apps/$appId')({
   component: AppDetailPage,
@@ -34,36 +28,23 @@ function AppDetailPage() {
   const cloud = useCloudSession()
   const isViewer = useIsCloudViewer()
   const isStandaloneWindow = clientRuntime.windowKind === 'app'
-  const isDesktop = clientRuntime.kind === 'electron' && Boolean(clientRuntime.desktopApps)
+  const desktop = useDesktopApps()
 
   const detail = useQuery(appDetailQuery(appId))
-  const orgPolicy = useQuery({ ...orgAppPolicyQuery, enabled: isDesktop })
-  const [installed, setInstalled] = useState<InstalledDesktopApp | null>(null)
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
-  const [permOpen, setPermOpen] = useState(false)
 
   const app = useMemo(() => detail.data && detailApp(detail.data), [detail.data])
+  const installed = desktop.records.get(appId)
 
-  // Automatic version check on open: sync latest version & bundle_sha256 so any
-  // update automatically pauses version-locked Tier 2/3 Desktop permissions.
+  // An installed app's permissions pause when the app changed since they were allowed.
   useEffect(() => {
-    if (!isDesktop || !app) return
-    let active = true
-    void clientRuntime.desktopApps!
+    if (!desktopApps || !app) return
+    void desktopApps
       .syncVersion(app.id, app.current_version, app.bundle_sha256 ?? '', app.capabilities ?? [])
-      .then((synced) => {
-        if (!active) return
-        setInstalled(synced)
-        if (synced?.permissionsPaused) {
-          toast('App updated — elevated permissions paused until re-approved', 'danger')
-        }
-      })
+      .then((synced) => synced && queryClient.invalidateQueries({ queryKey: keys.desktopApps }))
       .catch(() => {})
-    return () => {
-      active = false
-    }
-  }, [isDesktop, app?.id, app?.current_version, app?.bundle_sha256])
+  }, [app, queryClient])
 
   useEffect(() => {
     if (isStandaloneWindow && app?.title) {
@@ -110,11 +91,7 @@ function AppDetailPage() {
     )
   }
 
-  const canToggleTop =
-    isStandaloneWindow &&
-    Boolean(installed) &&
-    !installed!.permissionsPaused &&
-    installed!.permissions.includes('always_on_top')
+  const canToggleTop = isStandaloneWindow && installed && !installed.permissionsPaused && installed.permissions.includes('always_on_top')
 
   const toggleTop = async () => {
     const next = !alwaysOnTop
@@ -125,10 +102,7 @@ function AppDetailPage() {
   const paused = installed?.permissionsPaused ?? false
   const actions: MenuAction[] = [
     ...(isViewer ? [] : [{ label: 'Remix in a new chat', onSelect: () => remixMutation.mutate() }]),
-    ...(!isDesktop || isStandaloneWindow ? []
-      : installed ? [{ label: 'Open in window', onSelect: () => void clientRuntime.desktopApps?.openWindow(app.id, { title: app.title }) }]
-        : [{ label: 'Install as desktop app', onSelect: () => setPermOpen(true) }]),
-    ...(isDesktop && installed ? [{ label: 'Permissions', onSelect: () => setPermOpen(true) }] : []),
+    ...desktop.actions(app),
     ...(!isStandaloneWindow && !isViewer && app.can_edit !== false ? [{
       label: 'Delete',
       onSelect: () => {
@@ -147,7 +121,7 @@ function AppDetailPage() {
         ) : null}
         <h1 className="min-w-0 flex-1 truncate px-1.5 text-[13.5px] font-medium text-ink">{app.title}</h1>
         {paused ? (
-          <Button size="sm" onClick={() => setPermOpen(true)}>
+          <Button size="sm" onClick={() => desktop.review(app)}>
             <span className="size-1.5 rounded-full bg-running" aria-hidden />
             Review permissions
           </Button>
@@ -157,6 +131,7 @@ function AppDetailPage() {
             <Pin size={14} />
           </IconButton>
         ) : null}
+        {isStandaloneWindow ? null : <DesktopAppButton desktop={desktop} app={app} />}
         <Button size="sm" onClick={() => setShareOpen(true)}>{cloud.active ? 'Share' : 'Manage'}</Button>
         {actions.length ? <ActionMenu label="More actions" actions={actions} /> : null}
       </header>
@@ -170,20 +145,7 @@ function AppDetailPage() {
       </div>
 
       {shareOpen ? <AppShareModal open onClose={() => setShareOpen(false)} app={app} /> : null}
-      {permOpen && isDesktop ? (
-        <DesktopAppPermissionsModal
-          open
-          onClose={() => setPermOpen(false)}
-          app={app}
-          installed={installed}
-          orgPolicy={orgPolicy.data}
-          onSaved={(next) => {
-            setInstalled(next)
-            void queryClient.invalidateQueries({ queryKey: keys.desktopApps })
-            toast('Updated Desktop App permissions')
-          }}
-        />
-      ) : null}
+      {desktop.dialog}
     </div>
   )
 }

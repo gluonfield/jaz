@@ -1,12 +1,6 @@
-export type DesktopAppTier2Permission =
-  | 'notifications'
-  | 'always_on_top'
-  | 'shortcuts'
-  | 'tray'
+export const DESKTOP_APP_PERMISSIONS = ['notifications', 'always_on_top', 'shortcuts', 'tray', 'fs', 'full_access'] as const
 
-export type DesktopAppTier3Permission = 'fs' | 'full_access'
-
-export type DesktopAppPermission = DesktopAppTier2Permission | DesktopAppTier3Permission
+export type DesktopAppPermission = (typeof DESKTOP_APP_PERMISSIONS)[number]
 
 export interface DesktopAppIconSpec {
   kind?: string
@@ -31,6 +25,8 @@ export interface InstalledDesktopApp {
   permissionsPaused: boolean
   isExternalOrg: boolean
   launcherPath?: string
+  // The CDHash of a macOS launcher's shim loader, which a connecting shim must match.
+  codeHash?: string
   shortcutAccelerator?: string
   installedAt: string
   updatedAt: string
@@ -43,6 +39,8 @@ export interface InstallDesktopAppInput {
   description?: string
   kind: 'artifact' | 'document'
   icon?: DesktopAppIconSpec
+  // The launcher icon as a square PNG data URL.
+  iconPng: string
   version: number
   bundleSha256: string
   declaredCapabilities: string[]
@@ -65,7 +63,8 @@ export interface DesktopAppsAPI {
   get: (appId: string) => Promise<InstalledDesktopApp | null>
   install: (input: InstallDesktopAppInput) => Promise<InstalledDesktopApp>
   uninstall: (appId: string) => Promise<{ ok: boolean }>
-  openWindow: (appId: string, opts?: { title?: string }) => Promise<void>
+  open: (appId: string) => Promise<void>
+  reveal: (appId: string) => Promise<void>
   setPermissions: (
     appId: string,
     bundleSha256: string,
@@ -89,6 +88,12 @@ export interface DesktopAppsAPI {
   fsWrite: (appId: string, folderPath: string, relPath: string, content: string) => Promise<boolean>
 }
 
-export function isTier3Permission(p: DesktopAppPermission): p is DesktopAppTier3Permission {
-  return p === 'fs' || p === 'full_access'
+// Reaching the user's files or running programs, which apps from outside the org never get.
+export function isMachineAccess(permission: DesktopAppPermission): boolean {
+  return permission === 'fs' || permission === 'full_access'
+}
+
+// The desktop permissions an app declares as desktop:<permission> capabilities.
+export function declaredDesktopPermissions(capabilities: readonly string[] = []): DesktopAppPermission[] {
+  return DESKTOP_APP_PERMISSIONS.filter((permission) => capabilities.includes(`desktop:${permission}`))
 }

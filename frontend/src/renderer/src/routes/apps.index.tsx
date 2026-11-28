@@ -6,7 +6,7 @@ import { AppCard } from '@/components/apps/AppCard'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { AppShareModal } from '@/components/apps/AppShareModal'
 import { AppThumbnail, ThumbnailSheet } from '@/components/apps/AppThumbnail'
-import { DesktopAppPermissionsModal } from '@/components/apps/DesktopAppPermissionsModal'
+import { useDesktopApps } from '@/components/apps/useDesktopApps'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconButton } from '@/components/ui/IconButton'
@@ -16,17 +16,10 @@ import { Segmented } from '@/components/ui/Segmented'
 import { Skeleton } from '@/components/ui/Skeleton'
 import type { MenuAction } from '@/components/ui/ActionMenu'
 import { useToast } from '@/components/ui/toast'
-import {
-  appsQuery,
-  deleteApp,
-  orgAppPolicyQuery,
-  remixApp,
-  type AppKind,
-  type JazApp,
-} from '@/lib/api/apps'
+import { appsQuery, deleteApp, remixApp, type AppKind, type JazApp } from '@/lib/api/apps'
 import { mcpEntrypointsQuery } from '@/lib/api/mcp'
-import { clientRuntime } from '@/lib/clientRuntime'
 import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
+import { installFolder } from '@/lib/desktopApps'
 import { shortDate } from '@/lib/format/time'
 import { keys } from '@/lib/query/keys'
 import type { InstalledDesktopApp } from '@shared/desktopApps'
@@ -47,7 +40,7 @@ const KINDS: { value: KindFilter; label: string }[] = [
 const EMPTY: Record<AppsTab, { title: string; text: string }> = {
   mine: { title: 'No apps yet', text: 'Publish an artifact or document from a chat and it lives here.' },
   team: { title: 'Nothing shared yet', text: 'Apps shared with your team or a space appear here.' },
-  desktop: { title: 'No desktop apps', text: 'Install any app to give it its own window.' },
+  desktop: { title: 'No installed apps', text: 'Install an app to give it its own window and icon.' },
   connected: { title: 'No connected apps', text: 'Apps from your connected MCP servers appear here.' },
 }
 
@@ -80,28 +73,16 @@ function AppsLibraryPage() {
   const toast = useToast()
   const cloud = useCloudSession()
   const isViewer = useIsCloudViewer()
-  const isDesktop = clientRuntime.kind === 'electron' && Boolean(clientRuntime.desktopApps)
+  const desktop = useDesktopApps()
 
   const [tab, setTab] = useState<AppsTab>('mine')
   const [search, setSearch] = useState('')
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
   const [kindMenuOpen, setKindMenuOpen] = useState(false)
   const [shareApp, setShareApp] = useState<JazApp | null>(null)
-  const [permTarget, setPermTarget] = useState<{ app: JazApp; installed: InstalledDesktopApp | null } | null>(null)
 
   const allApps = useQuery(appsQuery({ scope: 'all' }))
   const mcpApps = useQuery(mcpEntrypointsQuery)
-  const orgPolicy = useQuery({ ...orgAppPolicyQuery, enabled: isDesktop })
-  const desktopInstalled = useQuery({
-    queryKey: keys.desktopApps,
-    queryFn: () => clientRuntime.desktopApps!.list(),
-    enabled: isDesktop,
-  })
-
-  const installedById = useMemo(
-    () => new Map((desktopInstalled.data ?? []).map((item) => [item.appId, item])),
-    [desktopInstalled.data],
-  )
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteApp(id),
@@ -123,43 +104,32 @@ function AppsLibraryPage() {
     onError: (err) => toast(err instanceof Error ? err.message : 'Could not remix app', 'danger'),
   })
 
-  const uninstallDesktopMutation = useMutation({
-    mutationFn: (appId: string) => clientRuntime.desktopApps!.uninstall(appId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.desktopApps })
-      toast('Uninstalled Desktop App')
-    },
-  })
-
   const needle = search.trim().toLowerCase()
   const apps = useMemo(() => {
     const published = allApps.data ?? []
     const list = tab === 'mine' ? published.filter((app) => app.is_owner !== false)
       : tab === 'team' ? published.filter((app) => app.visibility !== 'private')
-        : tab === 'desktop' ? (desktopInstalled.data ?? []).map((installed) => published.find((app) => app.id === installed.appId) ?? installedAsApp(installed))
+        : tab === 'desktop' ? [...desktop.records.values()].map((installed) => published.find((app) => app.id === installed.appId) ?? installedAsApp(installed))
           : []
     return list.filter((app) =>
       (kindFilter === 'all' || app.kind === kindFilter) &&
       (!needle || app.title.toLowerCase().includes(needle) || (app.description ?? '').toLowerCase().includes(needle)))
-  }, [allApps.data, desktopInstalled.data, kindFilter, needle, tab])
+  }, [allApps.data, desktop.records, kindFilter, needle, tab])
 
   const tabs = [
     { value: 'mine' as const, label: 'Yours' },
     ...(cloud.active ? [{ value: 'team' as const, label: 'Shared' }] : []),
-    ...(isDesktop ? [{ value: 'desktop' as const, label: 'Installed' }] : []),
+    ...(desktop.available ? [{ value: 'desktop' as const, label: 'Installed' }] : []),
     { value: 'connected' as const, label: 'Connected' },
   ]
 
-  const appActions = (app: JazApp, installed: InstalledDesktopApp | null): MenuAction[] => [
-    ...(installed ? [
-      { label: 'Open in window', onSelect: () => void clientRuntime.desktopApps?.openWindow(app.id, { title: app.title }) },
-      { label: 'Permissions', onSelect: () => setPermTarget({ app, installed }) },
-    ] : isDesktop ? [
-      { label: 'Install as desktop app', onSelect: () => setPermTarget({ app, installed: null }) },
-    ] : []),
+  const appActions = (app: JazApp): MenuAction[] => [
+    ...(!desktop.available ? []
+      : desktop.records.has(app.id) ? [{ label: 'Open App', onSelect: () => desktop.open(app.id) }]
+        : [{ label: 'Install App', onSelect: () => void desktop.install(app) }]),
     { label: cloud.active ? 'Share' : 'Manage', onSelect: () => setShareApp(app) },
     ...(isViewer ? [] : [{ label: 'Remix in a new chat', onSelect: () => remixMutation.mutate(app.id) }]),
-    ...(installed ? [{ label: 'Uninstall', onSelect: () => uninstallDesktopMutation.mutate(app.id) }] : []),
+    ...desktop.actions(app),
     ...(!isViewer && app.can_edit !== false ? [{
       label: 'Delete',
       onSelect: () => {
@@ -185,26 +155,28 @@ function AppsLibraryPage() {
       onOpen: () => void navigate({ to: '/apps/$serverId/$tool', params: { serverId: entry.server_id, tool: entry.tool } }),
     }))
     : apps.map((app) => {
-      const installed = installedById.get(app.id) ?? null
+      const installed = desktop.records.get(app.id)
       return {
         key: app.id,
         title: app.title,
-        detail: `${app.kind === 'document' ? 'Document' : 'Interactive'} · ${shortDate(app.updated_at)}`,
+        detail: tab === 'desktop' && installed?.launcherPath
+          ? `Installed in ${installFolder(installed.launcherPath)}`
+          : `${app.kind === 'document' ? 'Document' : 'Interactive'} · ${shortDate(app.updated_at)}`,
         mark: installed?.permissionsPaused ? (
-          <span title="Updated since you approved its permissions" className="size-2 shrink-0 rounded-full bg-running" />
+          <span title="Changed since you allowed its permissions" className="size-2 shrink-0 rounded-full bg-running" />
         ) : app.visibility !== 'private' ? (
           <span title={app.visibility === 'team' ? 'Shared with your team' : app.visibility === 'space' ? 'Shared with a space' : 'Shared with selected people'} className="shrink-0 text-ink-3">
             <Users size={15} aria-hidden />
           </span>
         ) : null,
         preview: <AppThumbnail app={app} />,
-        actions: appActions(app, installed),
+        actions: appActions(app),
         onOpen: () => void navigate({ to: '/apps/$appId', params: { appId: app.id } }),
       }
     })
 
   const filtered = Boolean(needle) || kindFilter !== 'all'
-  const loading = tab === 'connected' ? mcpApps.isPending : tab === 'desktop' ? desktopInstalled.isPending || allApps.isPending : allApps.isPending
+  const loading = tab === 'connected' ? mcpApps.isPending : allApps.isPending
 
   return (
     <div className="mx-auto flex w-full max-w-[1120px] flex-col px-8 pb-12 pt-10 max-sm:px-4 max-sm:pt-6">
@@ -271,19 +243,7 @@ function AppsLibraryPage() {
       </div>
 
       {shareApp ? <AppShareModal open onClose={() => setShareApp(null)} app={shareApp} /> : null}
-      {permTarget ? (
-        <DesktopAppPermissionsModal
-          open
-          onClose={() => setPermTarget(null)}
-          app={permTarget.app}
-          installed={permTarget.installed}
-          orgPolicy={orgPolicy.data}
-          onSaved={() => {
-            void queryClient.invalidateQueries({ queryKey: keys.desktopApps })
-            toast('Updated Desktop App installation')
-          }}
-        />
-      ) : null}
+      {desktop.dialog}
     </div>
   )
 }

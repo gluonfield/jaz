@@ -43,12 +43,8 @@ import { readNodeCloudConfig } from '@shared/cloudConfig'
 import { installDroppedFileInspection, installFileActions } from '@main/fileActions'
 import { attachContextMenu } from '@main/contextMenu'
 import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
-import {
-  extractDesktopAppDeepLinkArg,
-  installDesktopApps,
-  parseDesktopAppDeepLink,
-  type DesktopAppsController,
-} from '@main/desktopApps'
+import { installDesktopApps, type DesktopAppsController } from '@main/desktopApps'
+import { SHIM_LAUNCH_ARG, appLaunchArg } from '@main/desktopAppLaunchers'
 import { createAssistant } from '@main/assistant'
 import { extractAssistantDeepLinkArg, parseAssistantDeepLink } from '@shared/assistant'
 import { LOCAL_BACKEND_URL } from '@shared/localBackend'
@@ -86,7 +82,6 @@ if (app.isPackaged) {
 
 let mainWindow: BrowserWindow | null = null
 let desktopApps: DesktopAppsController | null = null
-let pendingAppDeepLink: string | null = extractDesktopAppDeepLinkArg(process.argv)
 const oidcGate = createOidcCallbackGate()
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
@@ -115,12 +110,6 @@ app.on('open-url', (event, url) => {
     assistant.dispatch(assistantAction)
     return
   }
-  const appId = parseDesktopAppDeepLink(url)
-  if (appId) {
-    if (desktopApps) desktopApps.openAppWindow(appId)
-    else pendingAppDeepLink = appId
-    return
-  }
   oidcGate.consume(url, mainWindow)
 })
 
@@ -130,10 +119,9 @@ app.on('second-instance', (_event, argv) => {
     assistant.dispatch(assistantAction)
     return
   }
-  const appId = extractDesktopAppDeepLinkArg(argv)
-  if (appId) {
-    if (desktopApps) desktopApps.openAppWindow(appId)
-    else pendingAppDeepLink = appId
+  const appId = appLaunchArg(argv)
+  if (appId && desktopApps) {
+    desktopApps.launch(appId)
     return
   }
   const callback = extractOidcCallbackArg(argv)
@@ -477,12 +465,10 @@ if (singleInstanceLock) {
     })
   }
   setupLauncher((window) => connectionSession.attach(window))
-  createWindow()
-  if (pendingAppDeepLink && desktopApps) {
-    const id = pendingAppDeepLink
-    pendingAppDeepLink = null
-    desktopApps.openAppWindow(id)
-  }
+  // A macOS app launcher that had to start Jaz only needs it running, not on screen.
+  createWindow(!process.argv.includes(SHIM_LAUNCH_ARG))
+  const launchedApp = appLaunchArg(process.argv)
+  if (launchedApp) desktopApps.launch(launchedApp)
   updates.start()
   app.on('activate', () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
