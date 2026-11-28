@@ -143,7 +143,7 @@ export class VoiceConnection {
     this.onEvent({ type: 'error', message })
   }
 
-  private gatherICE(): Promise<void> {
+  private gatherICE(fastWindowMs = 150): Promise<void> {
     if (this.peer.iceGatheringState === 'complete') return Promise.resolve()
     return new Promise((resolve, reject) => {
       const cleanup = () => {
@@ -160,10 +160,12 @@ export class VoiceConnection {
         cleanup()
         reject(new DOMException('Voice ended', 'AbortError'))
       }
+      // OpenAI and Claude answer with public ICE-lite candidates; waiting up to
+      // 10s for slow virtual/VPN/mDNS interfaces stalls connect for no gain.
       const timeout = setTimeout(() => {
         cleanup()
-        reject(new Error('Microphone connection timed out.'))
-      }, 10_000)
+        resolve()
+      }, fastWindowMs)
       this.peer.addEventListener('icegatheringstatechange', changed)
       this.abort.signal.addEventListener('abort', aborted, { once: true })
       changed()

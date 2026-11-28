@@ -10,8 +10,9 @@ export class ClaudeVoiceBridge {
   private sequence = 0
   private pending = new Map<number, { resolve: (value: ClaudeVoiceReply['value']) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
 
-  constructor(owner: BrowserWindow, onEvent: (id: string, data: string) => void, options = { origin: 'https://claude.ai', preload: join(__dirname, '../preload/index.js') }) {
-    const { origin, preload } = options
+  constructor(owner: BrowserWindow, onEvent: (id: string, data: string) => void, options: { origin?: string; preload?: string } = {}) {
+    const origin = options.origin ?? 'https://claude.ai'
+    const preload = options.preload ?? join(__dirname, '../preload/index.js')
     this.window = new BrowserWindow({
       parent: owner,
       show: false,
@@ -83,7 +84,10 @@ export class ClaudeVoiceBridge {
         reject(new Error('Loading Claude voice timed out.'))
         this.dispose()
       }, 20000)
-      void this.window.loadURL(origin + '/new').then(resolve, reject).finally(() => clearTimeout(timer))
+      void this.window.loadURL(origin + '/new').then(resolve, (error) => {
+        this.dispose()
+        reject(error)
+      }).finally(() => clearTimeout(timer))
     })
   }
 
@@ -110,8 +114,16 @@ export class ClaudeVoiceBridge {
   }
 }
 
-export function installClaudeVoice(options?: { origin: string; preload: string }): void {
-  const bridges = new Map<number, { bridge: ClaudeVoiceBridge; calls: Set<string>; requests: number }>()
+const DEFAULT_BRIDGE_IDLE_TIMEOUT_MS = 60_000
+
+export function installClaudeVoice(options?: { origin?: string; preload?: string; idleTimeoutMs?: number }): void {
+  const idleTimeoutMs = options?.idleTimeoutMs ?? DEFAULT_BRIDGE_IDLE_TIMEOUT_MS
+  const bridges = new Map<number, {
+    bridge: ClaudeVoiceBridge
+    calls: Set<string>
+    requests: number
+    idleTimer?: ReturnType<typeof setTimeout>
+  }>()
   ipcMain.handle(CLAUDE_VOICE_CHANNEL, async (event, input: unknown) => {
     const owner = trustedWindow(event)
     const command = parseClaudeVoiceCommand(input)
@@ -136,7 +148,12 @@ export function installClaudeVoice(options?: { origin: string; preload: string }
       }, options)
       entry = { bridge, calls, requests: 0 }
       bridges.set(owner, entry)
+      const currentEntry = entry
       bridge.window.once('closed', () => {
+        if (currentEntry.idleTimer) {
+          clearTimeout(currentEntry.idleTimer)
+          currentEntry.idleTimer = undefined
+        }
         if (!sender.isDestroyed()) {
           for (const id of calls) {
             sender.send(CLAUDE_VOICE_CHANNEL + ':event', id, JSON.stringify({ type: 'jaz_disconnected' }))
@@ -146,6 +163,10 @@ export function installClaudeVoice(options?: { origin: string; preload: string }
           bridges.delete(owner)
         }
       })
+    }
+    if (entry.idleTimer) {
+      clearTimeout(entry.idleTimer)
+      entry.idleTimer = undefined
     }
     if (command.type === 'start') {
       entry.calls.add(command.id)
@@ -163,8 +184,18 @@ export function installClaudeVoice(options?: { origin: string; preload: string }
         entry.calls.delete(command.id)
       }
       entry.requests--
-      if (!entry.calls.size && !entry.requests) {
-        entry.bridge.dispose()
+      if (!entry.calls.size && !entry.requests && !entry.bridge.window.isDestroyed()) {
+        if (idleTimeoutMs <= 0) {
+          entry.bridge.dispose()
+        } else {
+          const target = entry
+          target.idleTimer = setTimeout(() => {
+            target.idleTimer = undefined
+            if (!target.calls.size && !target.requests) {
+              target.bridge.dispose()
+            }
+          }, idleTimeoutMs)
+        }
       }
     }
   })

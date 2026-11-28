@@ -4,9 +4,18 @@ import { CLAUDE_VOICE_CHANNEL, type ClaudeVoiceCommand, type ClaudeVoiceReply, t
 type ModelCatalog = { model_selector_config: { id: string; models: { id: string; name: string; disabled?: boolean }[] }[] }
 type Call = { socket: WebSocket; organization: string; conversation: string; keepAlive: ReturnType<typeof setInterval> }
 
+type AccountInfo = { organization: string; model?: string; status: ClaudeVoiceStatus }
+
+const ACCOUNT_CACHE_TTL_MS = 60_000
+
 export function installClaudeVoice(): void {
   const calls = new Map<string, Call>()
   const starting = new Map<string, AbortController>()
+  let cachedAccount: { at: number; activeOrg: string; value: AccountInfo } | undefined
+
+  function activeOrgCookie(): string {
+    return document.cookie.split('; ').find((entry) => entry.startsWith('lastActiveOrg='))?.slice('lastActiveOrg='.length) ?? ''
+  }
 
   async function request(path: string, body?: object, signal?: AbortSignal): Promise<Response> {
     const response = await fetch('/api/' + path, {
@@ -15,6 +24,9 @@ export function installClaudeVoice(): void {
       ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
     })
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        cachedAccount = undefined
+      }
       throw new Error(response.status === 401 || response.status === 403
         ? 'Sign in to Claude in the Jaz side browser, then reopen Voice settings.'
         : 'Claude returned HTTP ' + response.status + '.')
@@ -22,17 +34,27 @@ export function installClaudeVoice(): void {
     return response
   }
 
-  async function account(signal?: AbortSignal): Promise<{ organization: string; model?: string; status: ClaudeVoiceStatus }> {
+  async function account(signal?: AbortSignal, allowCache = false): Promise<AccountInfo> {
+    const active = activeOrgCookie()
+    if (allowCache && cachedAccount && cachedAccount.activeOrg === active && Date.now() - cachedAccount.at < ACCOUNT_CACHE_TTL_MS) {
+      return cachedAccount.value
+    }
     const organizations = await (await request('organizations', undefined, signal)).json() as { uuid: string }[]
-    const active = document.cookie.split('; ').find((entry) => entry.startsWith('lastActiveOrg='))?.slice('lastActiveOrg='.length)
     const organization = organizations.find((entry) => entry.uuid === active)?.uuid ?? (organizations.length === 1 ? organizations[0].uuid : '')
     if (!organization) {
+      cachedAccount = undefined
       throw new Error('Choose your Claude account in the Jaz side browser, then reopen Voice settings.')
     }
     const catalog = await (await request('organizations/' + organization + '/model_selector/voice', undefined, signal)).json() as ModelCatalog
     const model = catalog.model_selector_config.find((entry) => entry.id === 'voice')?.models
       .find((model) => model.name === 'Opus' && !model.disabled)?.id
-    return { organization, model, status: { available: Boolean(model), ...(model ? {} : { reason: 'Opus voice is unavailable for this Claude account.' }) } }
+    const value: AccountInfo = {
+      organization,
+      model,
+      status: { available: Boolean(model), ...(model ? {} : { reason: 'Opus voice is unavailable for this Claude account.' }) },
+    }
+    cachedAccount = model ? { at: Date.now(), activeOrg: active, value } : undefined
+    return value
   }
 
   function close(id: string): void {
@@ -56,13 +78,14 @@ export function installClaudeVoice(): void {
         try {
           return (await account()).status
         } catch (error) {
+          cachedAccount = undefined
           return { available: false, reason: (error as Error).message }
         }
       case 'start': {
         close(command.id)
         const abort = new AbortController()
         starting.set(command.id, abort)
-        const { organization, model, status } = await account(abort.signal)
+        const { organization, model, status } = await account(abort.signal, true)
         if (!model) {
           throw new Error(status.reason)
         }

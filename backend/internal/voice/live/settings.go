@@ -48,25 +48,47 @@ func (s *Service) Settings() (Status, error) {
 			providers[i].Reason = err.Error()
 		}
 	}
+	settings, err := s.loadSettings(func() string {
+		if !providers[0].Available && providers[1].Available {
+			return ProviderAPI
+		}
+		return ProviderOAuth
+	})
+	if err != nil {
+		return Status{}, err
+	}
+	return Status{Settings: settings, Providers: providers, Voices: voices(settings.Provider)}, nil
+}
+
+func (s *Service) activeSettings() (Settings, error) {
+	return s.loadSettings(func() string {
+		if _, oauthErr := s.credentials(ProviderOAuth); oauthErr != nil {
+			if _, apiErr := s.credentials(ProviderAPI); apiErr == nil {
+				return ProviderAPI
+			}
+		}
+		return ProviderOAuth
+	})
+}
+
+func (s *Service) loadSettings(defaultProvider func() string) (Settings, error) {
 	settings := Settings{Agent: "openai", Provider: ProviderOAuth}
 	stored, err := s.store.LoadSetting("voice", "live")
 	switch {
 	case err == nil:
 		if err := json.Unmarshal(stored.Value, &settings); err != nil {
-			return Status{}, err
+			return Settings{}, err
 		}
 	case errors.Is(err, storage.ErrSettingNotFound):
-		if !providers[0].Available && providers[1].Available {
-			settings.Provider = ProviderAPI
-		}
+		settings.Provider = defaultProvider()
 	default:
-		return Status{}, err
+		return Settings{}, err
 	}
 	settings = settings.withDefaultVoice()
 	if err := settings.validate(); err != nil {
-		return Status{}, err
+		return Settings{}, err
 	}
-	return Status{Settings: settings, Providers: providers, Voices: voices(settings.Provider)}, nil
+	return settings, nil
 }
 
 func (s *Service) SaveSettings(settings Settings) (Status, error) {

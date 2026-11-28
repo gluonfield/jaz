@@ -36,7 +36,7 @@ afterEach(async () => {
   originals.clear()
 })
 
-async function fixture({ autoAck = true, history, lostResponse = false, rejectedInput = false, provider = 'openai' } = {}) {
+async function fixture({ autoAck = true, history, lostResponse = false, rejectedInput = false, provider = 'openai', iceGatheringState = 'complete', settleMs = 10 } = {}) {
   const requests = []
   const wire = []
   const states = []
@@ -96,8 +96,8 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
     async resume() {}
     async close() {}
   })
-  replace('RTCPeerConnection', class {
-    iceGatheringState = 'complete'
+  replace('RTCPeerConnection', class extends EventTarget {
+    iceGatheringState = iceGatheringState
     createDataChannel() {
       if (provider === 'claude') {
         throw new Error('Claude must use its own signaling transport')
@@ -165,7 +165,7 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
   compiledDesktop(desktop, desktop.exports)
   session = new VoiceSession('thread', (state) => states.push(state), () => {}, desktop.exports.createDesktopVoiceHost())
   session.start()
-  await delay(10)
+  await delay(settleMs)
   expect(states.at(-1)).toMatchObject({ phase: 'listening', error: '' })
   const emit = (event) => provider === 'claude' ? nativeListener?.(JSON.stringify(event)) : channel.onmessage({ data: JSON.stringify(event) })
   const speak = (text, id = `turn-${++turn}`) => {
@@ -465,4 +465,13 @@ test('Claude voice accepts native model resolution, delegates once and reads the
   f.agent({ type: 'acp', acp: { id: 'thread', state: 'idle', stop_reason: 'end_turn' } })
   await delay(30)
   expect(f.wire.some((event) => event.type === 'user_message' && event.data.kind === 'observation' && event.data.respond && event.data.text.includes('notes/green.md'))).toBe(true)
+})
+
+test('voice connect proceeds after bounded fast ICE when gathering does not complete', async () => {
+  const startedAt = Date.now()
+  const f = await fixture({ iceGatheringState: 'gathering', settleMs: 250 })
+  const elapsedMs = Date.now() - startedAt
+  expect(f.states.at(-1).phase).toBe('listening')
+  expect(elapsedMs).toBeGreaterThanOrEqual(140)
+  expect(elapsedMs).toBeLessThan(2000)
 })

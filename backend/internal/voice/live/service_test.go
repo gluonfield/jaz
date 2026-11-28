@@ -2,12 +2,14 @@ package live
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -266,5 +268,72 @@ func TestClaudeVoiceUsesClientAuthenticationAndModelSelection(t *testing.T) {
 	}
 	if _, err := service.PrepareClaude("v=0\r\noffer", "Raw mobile context", ""); !errors.Is(err, ErrInput) {
 		t.Fatalf("a provider change entered another provider's setup: %v", err)
+	}
+}
+
+func testJWT(exp time.Time) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
+	payload, _ := json.Marshal(map[string]int64{"exp": exp.Unix()})
+	return header + "." + base64.RawURLEncoding.EncodeToString(payload) + ".sig"
+}
+
+func TestConnectSkipsUnusedProviderProbes(t *testing.T) {
+	store := &settingsStore{value: json.RawMessage(`{"agent":"openai","provider":"openai","voice":"cove"}`)}
+	var probed []string
+	service := NewService(store, func(id string) (Credential, error) {
+		probed = append(probed, id)
+		return Credential{Token: "secret-" + id, AccountID: "account"}, nil
+	})
+	service.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 201, Body: io.NopCloser(strings.NewReader("v=0\r\nanswer"))}, nil
+	})
+	if _, err := service.Connect(context.Background(), "v=0\r\noffer", "context", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(probed) != 1 || probed[0] != ProviderOAuth {
+		t.Fatalf("expected single probe for saved provider, got %v", probed)
+	}
+
+	probed = nil
+	store.value = json.RawMessage(`{"agent":"claude","provider":"claude","voice":"buttery"}`)
+	if _, err := service.PrepareClaude("v=0\r\noffer", "context", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(probed) != 0 {
+		t.Fatalf("PrepareClaude should not probe OpenAI credentials, got %v", probed)
+	}
+}
+
+func TestConnectProactivelyRefreshesExpiringJWTWithout401RoundTrip(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	expiring := testJWT(now.Add(10 * time.Second))
+	fresh := testJWT(now.Add(10 * time.Minute))
+
+	refreshes := 0
+	attempts := 0
+	store := &settingsStore{value: json.RawMessage(`{"agent":"openai","provider":"openai","voice":"cove"}`)}
+	service := NewService(store, func(string) (Credential, error) {
+		return Credential{
+			Token:     expiring,
+			AccountID: "account",
+			Refresh: func(context.Context) (Credential, error) {
+				refreshes++
+				return Credential{Token: fresh, AccountID: "account"}, nil
+			},
+		}, nil
+	})
+	service.now = func() time.Time { return now }
+	service.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		attempts++
+		if r.Header.Get("Authorization") != "Bearer "+fresh {
+			t.Fatalf("expected proactively refreshed token on attempt 1, got %q", r.Header.Get("Authorization"))
+		}
+		return &http.Response{StatusCode: 201, Body: io.NopCloser(strings.NewReader("v=0\r\nanswer"))}, nil
+	})
+	if _, err := service.Connect(context.Background(), "v=0\r\noffer", "context", ""); err != nil {
+		t.Fatal(err)
+	}
+	if refreshes != 1 || attempts != 1 {
+		t.Fatalf("expected proactive refresh with 1 HTTP attempt, got refreshes=%d attempts=%d", refreshes, attempts)
 	}
 }
