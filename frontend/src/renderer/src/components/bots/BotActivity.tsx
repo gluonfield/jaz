@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { CornerDownRight } from 'lucide-react'
-import { useEffect, useState, type MouseEvent } from 'react'
+import { ChevronRight, CornerDownRight } from 'lucide-react'
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotOwed, BotOwedThread, BotThreadActivity } from '@/lib/api/types'
-import { type ConnectedTaskThread, TASK_GROUPS, connectedTaskThreads, taskName, taskState } from '@/lib/bots'
+import { type ConnectedTaskThread, TASK_GROUPS, connectedTaskThreads, taskBrief, taskName, taskState } from '@/lib/bots'
 import { clockTime, formatDuration, isToday, shortDate } from '@/lib/format/time'
 
 const EMPTY_OWED: BotOwed[] = []
@@ -96,8 +96,9 @@ function TaskButton({ task, at, now, onOpen }: TaskRow & { now: number; onOpen: 
   )
 }
 
-// A task's name, what was asked, its next step or reason, all connected
-// threads and, when it waits on you, its question in the chat.
+// A task at a glance: its name and state, its latest note or what was asked
+// in a couple of lines, its question in the chat when it waits on you, and
+// its threads to open. Text that says more stays behind Full details.
 function TaskModal({
   botId,
   task,
@@ -111,46 +112,59 @@ function TaskModal({
   now: number
   onClose: () => void
 }) {
+  const [full, setFull] = useState(false)
   const name = taskName(task)
+  const [label, group] = taskState(task)
   const request = task.request.trim()
-  const next = task.next?.trim()
-  const nextLabel = task.status === 'stopped' || task.status === 'cancelled' ? 'Reason' : 'Next step'
+  const note = task.next?.trim() ?? ''
+  const brief = taskBrief(note || request)
+  const noteLabel = task.status === 'stopped' || task.status === 'cancelled' ? 'Reason' : 'Next step'
+  const details = [['Request', request], [noteLabel, note]].filter(([, text]) => text && text !== brief && text !== name)
   // The chat jumps to a message once per link, so a repeated click scrolls itself.
   const toMessage = (event: MouseEvent<HTMLAnchorElement>) => {
     onClose()
     document.getElementById(event.currentTarget.hash.slice(1))?.scrollIntoView({ block: 'center' })
   }
   return (
-    <Modal open onClose={onClose} title={name} description={taskState(task)[0]} size="sm">
-      <div className="flex flex-col gap-4 text-[13px]">
-        {request && request !== name ? <p className="whitespace-pre-wrap wrap-break-word text-ink-2">{task.request}</p> : null}
-        {next ? (
-          <section aria-label={nextLabel} className="flex flex-col gap-1">
-            <h3 className="text-[12px] font-medium text-ink-3">{nextLabel}</h3>
-            <p className="whitespace-pre-wrap wrap-break-word text-ink-2">{task.next}</p>
-          </section>
+    <Modal open onClose={onClose} title={name} size="sm" chromeless>
+      <div className="flex flex-col gap-4 p-5 text-[13px] leading-[19px]">
+        <header className="flex flex-col gap-1 pr-7">
+          <h2 className="text-[16px] font-semibold leading-[22px] text-balance wrap-break-word text-ink">{name}</h2>
+          <p className={`text-[12px] ${group === 'Waiting for you' ? 'font-medium text-accent-strong' : 'text-ink-3'}`}>{label}</p>
+        </header>
+        {brief && brief !== name ? <p className="text-pretty wrap-break-word text-ink-2">{brief}</p> : null}
+        {task.status === 'waiting_for_user' && task.question_seq ? (
+          <Link to="/bots/$botId" params={{ botId }} search={{ message: task.question_seq }} hash={`message-${task.question_seq}`} onClick={toMessage} className="inline-flex h-8 items-center self-start rounded-full bg-primary px-3 font-medium text-on-primary transition-colors duration-150 hover:bg-primary-strong">Answer in chat</Link>
         ) : null}
         {threads.length ? (
           <section aria-label="Threads" className="flex flex-col">
-            <h3 className="mb-1 flex items-center justify-between text-[12px] font-medium text-ink-3">
-              <span>Threads</span>
-              <span className="tabular-nums">{threads.length}</span>
+            <h3 className={`${HEADING} text-ink-3`}>
+              Threads <span className="ml-0.5 font-normal tabular-nums opacity-70">{threads.length}</span>
             </h3>
             <ul className="flex flex-col">
               {threads.map((entry) => (
                 <li key={entry.id}>
-                  <ThreadLink
-                    line={connectedThreadLine(entry, now)}
-                    depth={entry.depth}
-                    onClick={onClose}
-                  />
+                  <ThreadLink line={connectedThreadLine(entry, now)} depth={entry.depth} onClick={onClose}>
+                    <ChevronRight size={14} aria-hidden className="-mr-1 shrink-0 text-ink-3" />
+                  </ThreadLink>
                 </li>
               ))}
             </ul>
           </section>
         ) : null}
-        {task.status === 'waiting_for_user' && task.question_seq ? (
-          <Link to="/bots/$botId" params={{ botId }} search={{ message: task.question_seq }} hash={`message-${task.question_seq}`} onClick={toMessage} className="self-start font-medium text-ink-2 hover:text-ink">Answer in chat</Link>
+        {details.length ? (
+          <section className="flex flex-col gap-3">
+            <button type="button" aria-expanded={full} onClick={() => setFull(!full)} className="flex cursor-pointer items-center gap-1 self-start text-[12px] text-ink-3 transition-colors duration-150 hover:text-ink-2">
+              <ChevronRight size={12} aria-hidden className={`transition-transform duration-150 ${full ? 'rotate-90' : ''}`} />
+              Full details
+            </button>
+            {full ? details.map(([heading, text]) => (
+              <section key={heading} aria-label={heading} className="flex flex-col gap-1">
+                <h3 className="text-[12px] font-medium text-ink-3">{heading}</h3>
+                <p className="whitespace-pre-wrap wrap-break-word text-ink-2">{text}</p>
+              </section>
+            )) : null}
+          </section>
         ) : null}
       </div>
     </Modal>
@@ -189,7 +203,7 @@ function connectedThreadLine(entry: ConnectedTaskThread, now: number): ThreadLin
   return { id: entry.id, title: entry.id, state: '' }
 }
 
-function ThreadLink({ line, depth = 0, onClick }: { line: ThreadLine; depth?: number; onClick?: () => void }) {
+function ThreadLink({ line, depth = 0, onClick, children }: { line: ThreadLine; depth?: number; onClick?: () => void; children?: ReactNode }) {
   const indent = depth > 0 ? Math.min(depth, 4) * 14 : 0
   return (
     <Link
@@ -203,6 +217,7 @@ function ThreadLink({ line, depth = 0, onClick }: { line: ThreadLine; depth?: nu
       {depth > 0 ? <CornerDownRight size={12} aria-hidden className="shrink-0 text-ink-3" /> : null}
       <span className="min-w-0 flex-1 truncate text-ink">{line.title}</span>
       {line.state ? <span className={`shrink-0 text-[12px] tabular-nums ${line.tone ? TONES[line.tone] : 'text-ink-3'}`}>{line.state}</span> : null}
+      {children}
     </Link>
   )
 }

@@ -69,6 +69,15 @@ export function taskName(task: Pick<BotOwed, 'name' | 'request'>): string {
   return concise || firstLine.replace(/\s+/g, ' ').trim() || task.request
 }
 
+// A task's text in a couple of lines: its whole sentences while they fit,
+// else its whole words.
+export function taskBrief(text: string, limit = 180): string {
+  const line = text.replace(/\s+/g, ' ').trim()
+  if (line.length <= limit) return line
+  const cut = line.slice(0, limit + 1)
+  return cut.match(/^.{60,}[.!?](?= )/)?.[0] ?? `${cut.replace(/\s+\S*$/, '')}…`
+}
+
 export type ConnectedTaskThread = {
   id: string
   depth: number

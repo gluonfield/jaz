@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { botChat, connectedTaskThreads, dragSections, lastBotId, placePin, rememberBot, taskName, taskState } from './bots'
+import { botChat, connectedTaskThreads, dragSections, lastBotId, placePin, rememberBot, taskBrief, taskName, taskState } from './bots'
 import { optimisticTranscriptMessages } from './optimisticUserMessage'
 import { mergeEarlierHistory } from './sessionHistory'
 
@@ -193,6 +193,13 @@ test('taskName uses the concise name and falls back to a clean single line for o
   expect(taskName({ name: '  Connected threads  ', request: 'Full long request\nwith multiple lines' })).toBe('Connected threads')
   expect(taskName({ request: 'Overnight stress run; done when all checks pass' })).toBe('Overnight stress run')
   expect(taskName({ request: '\n  Fix   bot task list\n\nSecond paragraph details' })).toBe('Fix bot task list')
+})
+
+test('taskBrief keeps short text whole and cuts long text at a sentence, else at a word', () => {
+  expect(taskBrief('  Waiting on\n the staging  deploy ')).toBe('Waiting on the staging deploy')
+  const sentences = 'The diff review is checking that results survive a restart. The design review already passed. After both land, the bot rechecks the sidebar counts and the follow-up conversation links, then reports back.'
+  expect(taskBrief(sentences)).toBe('The diff review is checking that results survive a restart. The design review already passed.')
+  expect(taskBrief('Continue the existing thread to redesign the task modal so opening a task shows a clean view of its title and state', 60)).toBe('Continue the existing thread to redesign the task modal so…')
 })
 
 test('connectedTaskThreads lists direct links and nested descendants in display order without duplicates', () => {

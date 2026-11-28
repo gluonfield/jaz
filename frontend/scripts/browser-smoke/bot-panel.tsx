@@ -20,7 +20,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const minutes = (n: number) => new Date(Date.now() - n * 60_000).toISOString()
   const bot: Bot = { id: 'panel', kind: 'bot', name: 'Jaz Self Improvement Bot', avatar: { shape: 'hex', color: 'amber' }, unread: false, status: 'idle', updated_at: minutes(0) }
   const owed: BotOwed[] = [
-    { id: 4, name: 'Keep delegated work visible', request: 'Keep bot tasks and their results visible across delegated work, restarts and follow-up conversations', status: 'in_progress', moving: true, opening_seq: 3, threads: [{ id: 'side-a', title: 'Commitments and lost results', state: 'working' }] },
+    { id: 4, name: 'Keep delegated work visible', request: 'Keep bot tasks and their results visible across delegated work, restarts and follow-up conversations', next: 'The diff review is checking that results survive a restart. The design review already passed. After both land, the bot rechecks the sidebar counts and the follow-up conversation links, then reports back here with screenshots of both themes.', status: 'in_progress', moving: true, opening_seq: 3, threads: [{ id: 'side-a', title: 'Commitments and lost results', state: 'working' }] },
     { id: 3, request: 'Which fixes matter this week', status: 'in_progress', threads: [{ id: 'side-e', title: 'Fixes triage', state: 'finished' }] },
     { id: 6, request: 'Compare the supplier quotes', status: 'stopped', threads: [{ id: 'side-h', title: 'Quote comparison', state: 'finished' }] },
     { id: 5, request: 'Overnight stress run; done when all overnight checks pass and their results are reviewed', status: 'pending', blocked: true, opening_seq: 9 },
@@ -230,7 +230,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const groupOf = (title: string) => find(title)?.closest('section')?.getAttribute('aria-label')
   const tasksShown = () => Boolean(group('Waiting for you'))
   const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
-  const body = () => dialog()?.querySelector('header + div')?.textContent ?? ''
+  const body = () => [...dialog()?.querySelectorAll('header ~ *') ?? []].map((part) => part.textContent).join('')
   const threadLines = () => [...dialog()?.querySelectorAll('[aria-label="Threads"] a') ?? []].map((line) => line.textContent).join('|')
   const selected = () => document.querySelector('[role="tablist"][aria-label="Bot details"] [aria-selected="true"]')
   const tabpanel = () => document.getElementById(selected()!.getAttribute('aria-controls')!)!
@@ -337,13 +337,24 @@ export async function exerciseBotPanel(): Promise<void> {
     }
     await click(owed[0].name!)
     await until('a task did not open a modal with its name, what was asked and all connected threads', () => dialog()?.querySelector('h2')?.textContent === owed[0].name && Boolean(link('side-a')) && Boolean(link('review-a1')) && Boolean(link('review-a2')))
-    if (router.state.location.pathname !== '/bots/panel' || !dialog()!.textContent?.includes('Working') || !dialog()!.textContent?.includes(owed[0].request)) {
-      throw new Error('Bot panel: a task modal left the bot or lost its request/state')
+    if (router.state.location.pathname !== '/bots/panel' || dialog()!.querySelector('header')!.textContent !== `${owed[0].name}Working`) {
+      throw new Error('Bot panel: a task modal left the bot or lost its name or state')
+    }
+    if (!body().startsWith('The diff review is checking that results survive a restart. The design review already passed.Threads 3') || !body().endsWith('Full details')) {
+      throw new Error(`Bot panel: a task modal did not open on its short summary and threads: ${body()}`)
     }
     await capture('bot-panel-task-modal')
     dark(true)
     await capture('bot-panel-task-modal-dark')
     dark(false)
+    await click('Full details')
+    await until('Full details did not show the whole request and next step', () => dialog()!.querySelector('[aria-label="Request"] p')?.textContent === owed[0].request && dialog()!.querySelector('[aria-label="Next step"] p')?.textContent === owed[0].next)
+    await capture('bot-panel-task-modal-details')
+    dark(true)
+    await capture('bot-panel-task-modal-details-dark')
+    dark(false)
+    await click('Full details')
+    await until('Full details did not close', () => !dialog()!.querySelector('[aria-label="Request"]'))
     await window.smoke.resize(390, 844)
     if (dialog()!.getBoundingClientRect().right > innerWidth) throw new Error('Bot panel: a task modal overflows on a phone')
     await capture('bot-panel-task-modal-phone')
@@ -377,7 +388,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await until('the question did not open in the bot chat', () => !dialog() && router.state.location.pathname === '/bots/panel' && (router.state.location.search as { message?: number }).message === 15)
     find('Choose public artifact sharing defaults')!.focus()
     await window.smoke.key('Enter')
-    await until('a waiting task with a thread did not open from the keyboard', () => threadLines() === 'Sharing auditFinished' && body().endsWith('Answer in chat'))
+    await until('a waiting task with a thread did not open from the keyboard', () => threadLines() === 'Sharing auditFinished' && body().startsWith('Answer in chat'))
     await click('Sharing audit')
     await until('a waiting task\'s thread did not open', () => router.state.location.pathname === '/sessions/sharing-audit' && !dialog())
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
@@ -386,7 +397,7 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: legacy commitment rows or a closed task\'s thread leaked into the history')
     }
     await click('Calmer bot faces')
-    await until('a closed task did not open its modal with what was asked and its threads', () => dialog()?.querySelector('h2')?.textContent === 'Calmer bot faces' && dialog()!.textContent!.includes('Done') && body() === 'Make the bot faces calmer so a busy sidebar does not flickerThreads1Faces redesignFinished')
+    await until('a closed task did not open its modal with what was asked and its threads', () => dialog()?.querySelector('h2')?.textContent === 'Calmer bot faces' && dialog()!.textContent!.includes('Done') && body() === 'Make the bot faces calmer so a busy sidebar does not flickerThreads 1Faces redesignFinished')
     await capture('bot-panel-task-done')
     await click('Close')
     await click('Muse-style identity cards')
