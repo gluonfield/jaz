@@ -785,7 +785,7 @@ export function ThreadView({
                     onReplaceContexts={appContexts.replaceContexts}
                     onSend={handleSend}
                     onQueuePrompt={queue.onQueuePrompt}
-                    onStop={stopSession}
+                    onStop={chat ? undefined : stopSession}
                     onClearGoal={clearGoal}
                     onVoice={voiceAvailable && voice.phase === 'off' ? voice.start : undefined}
                     voiceActive={voice.phase !== 'off'}

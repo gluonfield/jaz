@@ -158,14 +158,13 @@ export function ComposerCard({
       }
     },
   })
-  const canSendWhileStreaming = streaming && sendWhileStreaming
-  const attachmentBusy = attachmentDraft.busy || resolving
+  const sendBlocked = disabled || attachmentDraft.busy || resolving || (streaming && !sendWhileStreaming)
   const hasNonTextDraftContent =
     attachmentDraft.files.length > 0 || attachmentDraft.uploaded.length > 0 || hasMessageContextContent(contextInputs(contexts))
   const hasSendableDraft = (messageEmpty: boolean) => !messageEmpty || hasNonTextDraftContent
   const hasDraftContent = hasSendableDraft(mention.isEmpty)
   const showVoiceButton = !hasDraftContent && Boolean(onVoice)
-  const submitDisabled = !hasDraftContent || disabled || attachmentBusy || (streaming && !canSendWhileStreaming)
+  const submitDisabled = !hasDraftContent || sendBlocked
   const showStopButton = !voiceActive && streaming && onStop && (!sendWhileStreaming || !hasDraftContent)
   const dictation = useDictation({
     identity: `${draftStorage}:${draftStorageKey ?? ''}`,
@@ -294,14 +293,7 @@ export function ComposerCard({
     // Tokens expand on the way out: tagged paths become absolute, skill
     // references pass through for the agent's skill catalog to resolve.
     const trimmed = value.trim()
-    if (
-      !hasSendableDraft(trimmed === '') ||
-      disabled ||
-      attachmentBusy ||
-      (streaming && !canSendWhileStreaming)
-    ) {
-      return
-    }
+    if (sendBlocked || !hasSendableDraft(trimmed === '')) return
     const send = () =>
       handler(trimmed, {
         planRequested: planModeOn,
@@ -588,7 +580,7 @@ export function ComposerCard({
               textarea keeps focus for Enter and Escape. */}
           {dictation.phase ? (
             <div className="absolute inset-0 flex flex-col justify-end bg-surface">
-              <DictationControls dictation={dictation} canSend={!disabled && !attachmentBusy && (!streaming || canSendWhileStreaming)} queue={false} />
+              <DictationControls dictation={dictation} canSend={!sendBlocked} queue={false} />
             </div>
           ) : null}
         </div>
@@ -655,7 +647,7 @@ export function Composer({
   leftSlot?: ReactNode
   attachable?: boolean
   chat?: boolean
-  onStop: () => void
+  onStop?: () => void
   onClearGoal?: () => void
   onVoice?: () => void
   voiceActive?: boolean
