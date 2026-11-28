@@ -22,6 +22,7 @@ var tmpl = template.Must(template.New("jazplatform").ParseFS(promptTemplates, "*
 // and the whole memory block, protocol included, is omitted.
 type MemoryData struct {
 	Root                string
+	CloudDB             bool
 	LongTerm            string
 	ShortTerm           string
 	ShortTermCharacters int
@@ -31,17 +32,23 @@ type MemoryData struct {
 
 type RuntimePaths struct {
 	Root             string
-	AgentsPath       string
-	SoulPath         string
 	SkillsPath       string
 	SessionsPath     string
 	DefaultWorkspace string
 	WorktreesPath    string
 }
 
+type CloudInstructions struct {
+	HasOrg      bool
+	OrgAgents   string
+	HasSpace    bool
+	SpaceAgents string
+}
+
 type Data struct {
 	Agents          string
 	AgentNames      []string
+	Cloud           *CloudInstructions
 	Date            string
 	Time            string
 	Timezone        string
@@ -50,7 +57,6 @@ type Data struct {
 	Cwd             string
 	Device          string
 	RuntimePaths    RuntimePaths
-	Soul            string
 	BrowserEnabled  bool
 	ArtifactSurface string
 	CanvasDir       string

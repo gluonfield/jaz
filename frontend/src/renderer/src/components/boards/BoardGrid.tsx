@@ -5,17 +5,16 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { BoardLayoutEntry } from '@/lib/api/boards'
-import type { Board, BoardItem } from '@/lib/api/types'
+import type { BoardLayoutEntry, BoardTile as Tile, BoardView } from '@/lib/api/boards'
+import { BoardTile } from './BoardTile'
 import { OpenInMainCue } from './OpenInMainCue'
-import { WidgetTile } from './WidgetTile'
 
 const GAP = 12
 const MAX_ROWS = 64
 const OPEN_CUE_MS = 1600
 
 interface DragState {
-  widgetId: string
+  appId: string
   mode: 'move' | 'resize'
   startX: number
   startY: number
@@ -29,27 +28,24 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 // Coarse tile grid: tiles snap to whole cells, the user owns placement.
 // Pointer-based drag/resize keeps the dependency footprint at zero.
 export function BoardGrid({
-  board,
-  items,
-  theme,
-  scale,
+  view,
   onLayoutChange,
   onRemove,
-  onNewWidget,
+  onEdit,
+  onAddTile,
 }: {
-  board: Board
-  items: BoardItem[]
-  theme: 'light' | 'dark'
-  scale: number
-  onLayoutChange: (entry: BoardLayoutEntry) => void
-  onRemove: (widgetId: string) => void
-  onNewWidget?: () => void
+  view: BoardView
+  onLayoutChange?: (entry: BoardLayoutEntry) => void
+  onRemove?: (appId: string) => void
+  onEdit?: (loopId: string) => void
+  onAddTile?: () => void
 }) {
+  const { tiles, grid_cols: cols, row_height: rowH } = view
   const containerRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   const [drag, setDrag] = useState<DragState | null>(null)
   const dragRef = useRef<DragState | null>(null)
-  // Free cell under the pointer; hovering it offers "+ Add widget".
+  // Free cell under the pointer; hovering it offers "+ Add tile".
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null)
   // Single board-level cue: a tile in a popped-out window opened in the main
   // app, flashed at the click point. One owner here beats per-tile state.
@@ -75,8 +71,6 @@ export function BoardGrid({
     cueTimer.current = window.setTimeout(() => setOpenCue(null), OPEN_CUE_MS)
   }
 
-  const cols = board.grid_cols > 0 ? board.grid_cols : 6
-  const rowH = board.row_height > 0 ? board.row_height : 120
   const cellW = width > 0 ? (width - GAP * (cols - 1)) / cols : 0
 
   const cellLeft = (x: number) => x * (cellW + GAP)
@@ -88,7 +82,7 @@ export function BoardGrid({
     const { origin } = state
     if (state.mode === 'move') {
       return {
-        widget_id: state.widgetId,
+        app_id: state.appId,
         x: clamp(Math.round((cellLeft(origin.x) + state.dx) / (cellW + GAP)), 0, cols - origin.w),
         y: clamp(Math.round((cellTop(origin.y) + state.dy) / (rowH + GAP)), 0, MAX_ROWS),
         w: origin.w,
@@ -96,7 +90,7 @@ export function BoardGrid({
       }
     }
     return {
-      widget_id: state.widgetId,
+      app_id: state.appId,
       x: origin.x,
       y: origin.y,
       w: clamp(Math.round((tileWidth(origin.w) + state.dx + GAP) / (cellW + GAP)), 1, cols - origin.x),
@@ -104,19 +98,20 @@ export function BoardGrid({
     }
   }
 
-  const startDrag = (e: ReactPointerEvent, item: BoardItem, mode: DragState['mode']) => {
+  const startDrag = (e: ReactPointerEvent, tile: Tile, mode: DragState['mode']) => {
+    if (!onLayoutChange) return
     // Buttons and links inside the header keep their click behavior.
     if ((e.target as HTMLElement).closest('button, a')) return
     if (cellW <= 0) return
     e.preventDefault()
     const state: DragState = {
-      widgetId: item.widget_id,
+      appId: tile.app.id,
       mode,
       startX: e.clientX,
       startY: e.clientY,
       dx: 0,
       dy: 0,
-      origin: { x: item.x, y: item.y, w: item.w, h: item.h },
+      origin: { x: tile.x, y: tile.y, w: tile.w, h: tile.h },
     }
     dragRef.current = state
     setDrag(state)
@@ -153,32 +148,32 @@ export function BoardGrid({
   }
 
   // The single source of truth for "is this rectangle blocked by a tile".
-  const overlapsItems = (x: number, y: number, w: number, h: number, excludeId?: string) =>
-    items.some(
+  const overlapsTiles = (x: number, y: number, w: number, h: number, excludeId?: string) =>
+    tiles.some(
       (it) =>
-        it.widget_id !== excludeId &&
+        it.app.id !== excludeId &&
         x < it.x + it.w &&
         it.x < x + w &&
         y < it.y + it.h &&
         it.y < y + h,
     )
   const overlapsOthers = (entry: BoardLayoutEntry) =>
-    overlapsItems(entry.x, entry.y, entry.w, entry.h, entry.widget_id)
+    overlapsTiles(entry.x, entry.y, entry.w, entry.h, entry.app_id)
 
   const ghost = drag ? target(drag) : null
   const ghostBlocked = ghost ? overlapsOthers(ghost) : false
   // While dragging the grid extends past the content so every legal cell is
-  // visible; at rest it keeps one blank row so "+ Add widget" can start a
+  // visible; at rest it keeps one blank row so "+ Add tile" can start a
   // fresh line below the content, not just fill gaps between tiles.
-  const contentRows = Math.max(4, ...items.map((item) => item.y + item.h))
+  const contentRows = Math.max(4, ...tiles.map((tile) => tile.y + tile.h))
   const rows = drag
     ? Math.max(contentRows + 2, (ghost?.y ?? 0) + (ghost?.h ?? 0) + 2, 8)
-    : contentRows + (onNewWidget ? 1 : 0)
+    : contentRows + (onAddTile ? 1 : 0)
 
   // Track the hovered cell only; whether it is free is derived at render
   // time, so the ghost vanishes by itself when a tile appears under it.
   const onHoverMove = (e: ReactPointerEvent) => {
-    if (!onNewWidget) return
+    if (!onAddTile) return
     if (dragRef.current) {
       setHover(null)
       return
@@ -232,10 +227,10 @@ export function BoardGrid({
           }}
         />
       ) : null}
-      {onNewWidget && hover && !drag && !overlapsItems(hover.x, hover.y, 1, 1) ? (
+      {onAddTile && hover && !drag && !overlapsTiles(hover.x, hover.y, 1, 1) ? (
         <button
           type="button"
-          onClick={onNewWidget}
+          onClick={onAddTile}
           className="absolute z-10 flex items-center justify-center gap-1.5 rounded-card border border-dashed border-border/70 text-[12px] text-ink-3 transition-colors duration-150 hover:border-primary/60 hover:text-primary"
           style={{
             left: cellLeft(hover.x),
@@ -245,40 +240,41 @@ export function BoardGrid({
           }}
         >
           <Plus size={14} />
-          Add widget
+          Add tile
         </button>
       ) : null}
-      {items.map((item) => {
-        const isDragging = drag?.widgetId === item.widget_id
+      {tiles.map((tile) => {
+        const { loop } = tile
+        const isDragging = drag?.appId === tile.app.id
         const style: React.CSSProperties = {
-          left: cellLeft(item.x),
-          top: cellTop(item.y),
-          width: tileWidth(item.w),
-          height: tileHeight(item.h),
+          left: cellLeft(tile.x),
+          top: cellTop(tile.y),
+          width: tileWidth(tile.w),
+          height: tileHeight(tile.h),
         }
         if (isDragging && drag) {
           if (drag.mode === 'move') {
             style.transform = `translate(${drag.dx}px, ${drag.dy}px)`
           } else {
-            style.width = Math.max(cellW, tileWidth(item.w) + drag.dx)
-            style.height = Math.max(rowH, tileHeight(item.h) + drag.dy)
+            style.width = Math.max(cellW, tileWidth(tile.w) + drag.dx)
+            style.height = Math.max(rowH, tileHeight(tile.h) + drag.dy)
           }
         }
         return (
           <div
-            key={item.widget_id}
-            data-widget-id={item.widget_id}
+            key={tile.app.id}
+            data-tile={tile.app.id}
             className={`absolute ${isDragging ? 'z-20' : ''}`}
             style={style}
           >
-            <WidgetTile
-              item={item}
-              theme={theme}
-              scale={scale}
+            <BoardTile
+              tile={tile}
+              scale={view.font_scale}
               dragging={isDragging}
-              onHeaderPointerDown={(e) => startDrag(e, item, 'move')}
-              onResizePointerDown={(e) => startDrag(e, item, 'resize')}
-              onRemove={() => onRemove(item.widget_id)}
+              onHeaderPointerDown={onLayoutChange ? (e) => startDrag(e, tile, 'move') : undefined}
+              onResizePointerDown={onLayoutChange ? (e) => startDrag(e, tile, 'resize') : undefined}
+              onRemove={onRemove ? () => onRemove(tile.app.id) : undefined}
+              onEdit={onEdit && loop ? () => onEdit(loop.id) : undefined}
               onOpenedInMain={showOpenCue}
             />
           </div>

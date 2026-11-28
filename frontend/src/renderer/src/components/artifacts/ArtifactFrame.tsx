@@ -1,6 +1,6 @@
 import { LoaderCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { artifactErrorForDisplay, buildArtifactDocument, type AgentState, type ArtifactInput } from '@/lib/artifacts'
+import { artifactErrorForDisplay, buildArtifactDocument, type AgentState, type ArtifactInput, type ResolvedAsset } from '@/lib/artifacts'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
 
 interface ArtifactMessage {
@@ -13,6 +13,8 @@ interface ArtifactMessage {
   name?: string
   title?: string
   state?: unknown
+  id?: string
+  path?: string
 }
 
 const MIN_HEIGHT = 180
@@ -22,17 +24,20 @@ function clampHeight(height: number): number {
   return Math.max(MIN_HEIGHT, Math.ceil(height))
 }
 
-export function ArtifactFrame({ input, data, agentState, viewState, pending = false, executionError = '', onSendPrompt, onOpenLink, onOpenView, onViewState }: {
+export function ArtifactFrame({ input, data, agentState, viewState, pluginView = false, assetOrigin, pending = false, executionError = '', onSendPrompt, onOpenLink, onOpenView, onViewState, onResolveAsset }: {
   input: ArtifactInput
   data?: unknown
   agentState?: AgentState
   viewState?: unknown
+  pluginView?: boolean
+  assetOrigin?: string
   pending?: boolean
   executionError?: string
   onSendPrompt?: (text: string, files: File[]) => void
   onOpenLink?: (href: string) => boolean
   onOpenView?: (name: string, title: string) => void
   onViewState?: (state: unknown) => void
+  onResolveAsset?: (path: string) => Promise<ResolvedAsset>
 }) {
   const theme = useArtifactThemeCSS()
   const frameRef = useRef<HTMLIFrameElement>(null)
@@ -40,10 +45,17 @@ export function ArtifactFrame({ input, data, agentState, viewState, pending = fa
   const [height, setHeight] = useState(280)
   const [error, setError] = useState('')
   const [built] = useState({ data, agentState })
+  const hasResolveAsset = Boolean(onResolveAsset)
   const doc = useMemo(() => {
     if (executionError) return ''
-    return buildArtifactDocument(input, theme, { ...built, viewState: savedViewState.current })
-  }, [built, executionError, input, theme])
+    return buildArtifactDocument(input, theme, {
+      ...built,
+      viewState: savedViewState.current,
+      pluginView,
+      assetOrigin,
+      resolveAsset: hasResolveAsset,
+    })
+  }, [assetOrigin, built, executionError, hasResolveAsset, input, pluginView, theme])
   const sendData = useCallback(() => {
     const frame = frameRef.current?.contentWindow
     if (data !== built.data) frame?.postMessage({ type: 'jaz:canvas-data', data }, '*')
@@ -72,10 +84,34 @@ export function ArtifactFrame({ input, data, agentState, viewState, pending = fa
         onViewState(savedViewState.current)
       }
       if (message?.type === 'jaz:artifact-send-prompt' && message.text?.trim()) onSendPrompt?.(message.text.trim(), message.files?.filter((file): file is File => file instanceof File) ?? [])
+      if (message?.type === 'jaz:artifact-resolve-asset' && typeof message.id === 'string' && typeof message.path === 'string') {
+        const source = frameRef.current?.contentWindow
+        const requestId = message.id
+        if (!onResolveAsset) {
+          source?.postMessage({ type: 'jaz:artifact-resolve-asset-result', id: requestId, error: 'Asset resolution is unavailable' }, '*')
+          return
+        }
+        void onResolveAsset(message.path).then(
+          (asset) => {
+            if (frameRef.current?.contentWindow === source) {
+              source?.postMessage({ type: 'jaz:artifact-resolve-asset-result', id: requestId, asset }, '*')
+            }
+          },
+          (err: unknown) => {
+            if (frameRef.current?.contentWindow === source) {
+              source?.postMessage({
+                type: 'jaz:artifact-resolve-asset-result',
+                id: requestId,
+                error: err instanceof Error ? err.message : 'Could not resolve asset',
+              }, '*')
+            }
+          },
+        )
+      }
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [onOpenLink, onSendPrompt, onOpenView, onViewState])
+  }, [onOpenLink, onOpenView, onResolveAsset, onSendPrompt, onViewState])
 
   const displayError = executionError || error
 

@@ -17,6 +17,8 @@ import type { BrowserDownloadAPI } from '@shared/browserDownloads'
 import type { VoiceOverlayAPI } from '@shared/voice'
 import type { ConnectionSessionAPI } from '@shared/connectionSession'
 import type { FileActionsAPI, InspectDroppedFile } from '@shared/fileActions'
+import type { DesktopAppsAPI } from '@shared/desktopApps'
+import type { AssistantAPI } from '@shared/assistant'
 
 declare global {
   interface Window {
@@ -24,11 +26,13 @@ declare global {
       claudeVoice: ClaudeVoiceAPI
       connectionSession: ConnectionSessionAPI
       fileActions: FileActionsAPI
+      desktopApps: DesktopAppsAPI
       computer: ComputerAPI
       systemPermissions: SystemPermissionsAPI
       permissionGuide: PermissionGuideAPI
       voiceOverlay: VoiceOverlayAPI
       island: IslandAPI
+      assistant: AssistantAPI
       dictation: DictationAPI
       browserProfiles: BrowserProfileAPI
       browserPasswords: BrowserPasswordAPI
@@ -36,22 +40,19 @@ declare global {
       browserPasskeyFallback: boolean
       browserCommand: (request: BrowserCommandRequest) => Promise<unknown>
       encryptCredential: (value: string) => string
-      decryptCredential: (value: string) => string
+      decryptCredential: (value: string, allowLegacy?: boolean) => string
       apiBaseUrl: string
+      cloudUrl?: string
+      localEnabled?: boolean
       localBackendTransport?: string
       windowKind: WindowKind
       inspectDroppedFile: InspectDroppedFile
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
       setWindowButtonsVisible: (visible: boolean) => void
       startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
-      getDeviceIdentity: () => Promise<{ device_id: string; public_key: string }>
-      getDeviceMetadata: () => Promise<{
-        name: string
-        platform: string
-        device_family: string
-        model_identifier: string
-        app_version: string
-      }>
+      beginOidcSignIn?: () => Promise<{ redirectUri?: string } | void>
+      onOidcCallback?: (handler: (url: string) => void) => () => void
+      pickDirectory?: () => Promise<string | null>
       configureNotifications: (config: NotificationConfig) => Promise<boolean>
       notchAccess: () => Promise<NotchAccess>
       shareFocusStatus: () => Promise<NotchAccess>

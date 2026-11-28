@@ -16,5 +16,5 @@
       "@main/*": ["./src/main/*"]
     }
   },
-  "include": ["electron.vite.config.ts", "vite.web.config.ts", "vite.telemetry.ts", "vite.pdfjs.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
+  "include": ["electron.vite.config.ts", "vite.web.config.ts", "vite.cloud.ts", "vite.telemetry.ts", "vite.pdfjs.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
 }

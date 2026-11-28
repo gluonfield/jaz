@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -34,7 +35,8 @@ func newConfiguredBotService(t *testing.T, root string) (*Service, *sqlitestore.
 		manager.Close()
 		_ = store.Close()
 	})
-	service := NewService(store, filepath.Join(root, "bots"), manager, nil, nil,
+	inst := instructions.NewLocalFSStore(root, instructions.WithBotHomeResolver(HomeResolver(store)))
+	service := NewService(store, filepath.Join(root, "bots"), inst, manager, nil, nil,
 		loops.NewService(store, nil, logger), sessionevents.New(), logger)
 	return service, store, manager
 }
@@ -208,7 +210,7 @@ func TestConfiguredPromptReachesOwnAndGroupChats(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		modules, err := Prompt(store, thread)
+		modules, err := Prompt(store, service.instructions, thread)
 		if err != nil || len(modules) != 2 || modules[1] != "Follow robotics research." || !strings.Contains(modules[0], "send_message") {
 			t.Fatalf("prompt for %s = %v, %v", id, modules, err)
 		}
@@ -234,7 +236,7 @@ func TestBotPromptIsPersistedBeforeModelResume(t *testing.T) {
 	manager := acp.NewManager(store, acp.Config{
 		Root: root, Agents: map[string]acp.AgentConfig{"fixture": {Command: filepath.Join(root, "missing-agent")}},
 		ResumePrompt: func(session storage.Session) (promptmodule.Modules, error) {
-			modules, err := Prompt(store, session)
+			modules, err := Prompt(store, service.instructions, session)
 			supplied = modules
 			return modules, err
 		},

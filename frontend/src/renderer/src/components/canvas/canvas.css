@@ -348,7 +348,7 @@
   transform-origin: top left;
 }
 
-.canvas-fit-content :is(pre, .overflow-x-auto) {
+.canvas-fit-content :is(pre, .overflow-x-auto, .markdown-table) {
   overflow: visible;
 }
 

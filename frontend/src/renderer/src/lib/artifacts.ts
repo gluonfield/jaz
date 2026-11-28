@@ -6,6 +6,14 @@ export interface ArtifactInput {
   loadingMessages: string[]
 }
 
+export interface ResolvedAsset {
+  url: string
+  size: number
+  contentType: string
+  etag?: string
+  expiresAt: string
+}
+
 const RESIZE_OBSERVER_LAYOUT_WARNING = 'ResizeObserver loop completed with undelivered notifications.'
 
 export function artifactErrorForDisplay(message: string): string | undefined {
@@ -14,6 +22,82 @@ export function artifactErrorForDisplay(message: string): string | undefined {
 
 const ARTIFACT_CSP =
   "default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://esm.sh https://cdn.jsdelivr.net https://unpkg.com; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; font-src data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; img-src data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://fonts.gstatic.com https://fonts.googleapis.com; connect-src https://cdnjs.cloudflare.com https://esm.sh https://cdn.jsdelivr.net https://unpkg.com; media-src data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; frame-src 'none'; base-uri 'none'; form-action 'none'"
+
+export function sanitizeAssetOrigin(raw?: string): string {
+  if (!raw) return ''
+  try {
+    const parsed = new URL(raw)
+    if (parsed.protocol === 'jaz-local:') {
+      return parsed.host === 'backend' ? 'jaz-local://backend' : ''
+    }
+    if (parsed.protocol === 'https:') {
+      return parsed.origin
+    }
+    if (parsed.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)) {
+      return parsed.origin
+    }
+  } catch {
+    // Ignore malformed origins.
+  }
+  return ''
+}
+
+export function buildArtifactCSP(pluginView = false, assetOrigin?: string): string {
+  if (!pluginView) return ARTIFACT_CSP
+  const safeOrigin = sanitizeAssetOrigin(assetOrigin)
+  const originSuffix = safeOrigin ? ` ${safeOrigin}` : ''
+  return [
+    "default-src 'none'",
+    "script-src 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://esm.sh https://cdn.jsdelivr.net https://unpkg.com",
+    "style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com",
+    'font-src data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com',
+    `img-src data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://fonts.gstatic.com https://fonts.googleapis.com${originSuffix}`,
+    `connect-src https://cdnjs.cloudflare.com https://esm.sh https://cdn.jsdelivr.net https://unpkg.com${originSuffix}`,
+    `media-src data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com${originSuffix}`,
+    'worker-src blob:',
+    "frame-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join('; ')
+}
+
+export function resolvePluginAssetRelpath(assetPath: string, viewFile?: string): string {
+  const trimmed = assetPath.trim()
+  if (!trimmed || trimmed.includes('\0') || trimmed.includes('\\') || trimmed.startsWith('/') || trimmed.endsWith('/') || trimmed.includes('//')) {
+    throw new Error('Asset path must be relative to the thread workspace')
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    throw new Error('Asset path must be relative to the thread workspace')
+  }
+  if (/[?#]/.test(trimmed)) {
+    throw new Error('Asset path must not include query or fragment parameters')
+  }
+  const parts: string[] = []
+  if (viewFile) {
+    const viewParts = viewFile.trim().replace(/\\/g, '/').split('/').filter((segment) => segment && segment !== '.')
+    if (viewParts.includes('..')) {
+      throw new Error('View path must stay inside the thread workspace')
+    }
+    if (viewParts.length > 1) {
+      parts.push(...viewParts.slice(0, -1))
+    }
+  }
+  for (const segment of trimmed.split('/')) {
+    if (!segment || segment === '.') continue
+    if (segment === '..') {
+      if (parts.length === 0) {
+        throw new Error('Asset path must stay inside the thread workspace')
+      }
+      parts.pop()
+      continue
+    }
+    parts.push(segment)
+  }
+  if (parts.length === 0) {
+    throw new Error('Asset path is required')
+  }
+  return parts.join('/')
+}
 
 const REACT_CDN = 'https://esm.sh/react@19.2.0'
 const REACT_DOM_CDN = 'https://esm.sh/react-dom@19.2.0'
@@ -68,6 +152,34 @@ const bridgeScript = `
   new ResizeObserver(measure).observe(document.documentElement);
   window.addEventListener('load', measure);
   requestAnimationFrame(measure);
+})();
+`
+
+const assetBridgeScript = `
+(() => {
+  let nextId = 1;
+  const pending = new Map();
+  window.addEventListener('message', (event) => {
+    if (event.source !== parent) return;
+    const message = event.data;
+    if (message?.type !== 'jaz:artifact-resolve-asset-result' || typeof message.id !== 'string') return;
+    const entry = pending.get(message.id);
+    if (!entry) return;
+    pending.delete(message.id);
+    if (message.error) entry.reject(new Error(String(message.error)));
+    else entry.resolve(message.asset);
+  });
+  const resolveAsset = (path) => {
+    if (typeof path !== 'string' || !path.trim()) {
+      return Promise.reject(new Error('Asset path is required'));
+    }
+    const id = 'asset-' + (nextId++);
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      parent.postMessage({ type: 'jaz:artifact-resolve-asset', id, path }, '*');
+    });
+  };
+  window.jaz = Object.assign(window.jaz || {}, { resolveAsset });
 })();
 `
 
@@ -173,12 +285,12 @@ function dataScript(data: unknown, agentState: AgentState = 'idle'): string {
 
 const canvasCSS = 'html,body{overflow:hidden!important}body{transform-origin:top left}*{scrollbar-width:none}'
 
-// Tile-only extension: the widget author designs blind, so the host measures
+// Tile-only extension: a tile's author designs blind, so the host measures
 // what actually rendered — dead space below the content, overflow past the
 // tile, clipped elements, broken images — and reports it as jaz:artifact-layout.
 // The loop sees the problems in its next-run prompt. Inline artifacts auto-size
 // to content, so they never load this.
-const widgetBridgeScript = `
+const tileBridgeScript = `
 (() => {
   const post = (data) => parent.postMessage(Object.assign({ type: 'jaz:artifact-layout' }, data), '*');
   const doc = document.documentElement;
@@ -230,18 +342,25 @@ const widgetBridgeScript = `
 })();
 `
 
-export function parseArtifactToolArgs(raw?: string): ArtifactInput | null {
-  if (!raw) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return null
+function toolRecord(raw: unknown): Record<string, unknown> | undefined {
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw) } catch { return undefined }
   }
-  if (!parsed || typeof parsed !== 'object') return null
-  const input = parsed as Record<string, unknown>
+  return raw && typeof raw === 'object' ? raw as Record<string, unknown> : undefined
+}
+
+export function artifactToolError(raw: unknown): string {
+  const result = toolRecord(raw)
+  if (result?.status !== 'error' && result?.isError !== true) return ''
+  return typeof result.error === 'string' ? result.error : 'Artifact failed.'
+}
+
+export function parseArtifactToolArgs(raw?: unknown): ArtifactInput | null {
+  const input = toolRecord(raw)
+  if (!input) return null
   const title = typeof input.title === 'string' ? input.title.trim() : ''
-  const code = typeof input.widget_code === 'string' ? input.widget_code : ''
+  const source = input.html ?? input.widget_code
+  const code = typeof source === 'string' ? source : ''
   if (!title || !code.trim()) return null
   return {
     title,
@@ -266,16 +385,27 @@ export function buildArtifactThemeCSS(darkOverride?: boolean): string {
   return themeCSS(values, darkOverride ?? root.classList.contains('dark'))
 }
 
-// Inline artifacts, board widgets and canvas HTML share the theme and CSP.
+// Inline artifacts, board tiles and canvas HTML share the theme and CSP.
 // Each surface adds its own layout and interaction bridge.
 export function buildArtifactDocument(
   input: ArtifactInput,
   theme: string,
-  opts: { measureLayout?: boolean; canvas?: boolean; data?: unknown; agentState?: AgentState; viewState?: unknown } = {},
+  opts: {
+    measureLayout?: boolean
+    canvas?: boolean
+    data?: unknown
+    agentState?: AgentState
+    viewState?: unknown
+    pluginView?: boolean
+    assetOrigin?: string
+    resolveAsset?: boolean
+  } = {},
 ): string {
+  const csp = buildArtifactCSP(opts.pluginView, opts.assetOrigin)
   const data = opts.canvas || opts.data !== undefined ? dataScript(opts.data, opts.agentState) : ''
   const viewState = opts.viewState !== undefined ? viewStateScript(opts.viewState) : ''
-  const bridge = bridgeScript + (opts.measureLayout ? widgetBridgeScript : '') + (opts.canvas ? canvasBridgeScript : '') + data + viewState
+  const assets = opts.resolveAsset ? assetBridgeScript : ''
+  const bridge = bridgeScript + (opts.measureLayout ? tileBridgeScript : '') + (opts.canvas ? canvasBridgeScript : '') + data + viewState + assets
   if (opts.canvas) {
     theme += canvasCSS
   }
@@ -283,8 +413,8 @@ export function buildArtifactDocument(
   // viewport — then a fragment using height:100% fills the tile. Inline
   // artifacts grow to their content instead, so they must NOT get this.
   const css = opts.measureLayout ? `${artifactCSS(theme)} html,body{height:100%}` : artifactCSS(theme)
-  if (isFullHTMLDocument(input.code)) return injectArtifactHost(input.code, theme, bridge)
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}"><style>${css}</style><script>${bridge}</script></head><body>${input.code}</body></html>`
+  if (isFullHTMLDocument(input.code)) return injectArtifactHost(input.code, theme, bridge, csp)
+  return `<!doctype html><html><head><meta charset="utf-8">${contentSecurityMeta(csp)}<style>${css}</style><script>${bridge}</script></head><body>${input.code}</body></html>`
 }
 
 // A canvas component is CommonJS compiled from the agent's TSX. React and any
@@ -313,32 +443,29 @@ createRoot(document.getElementById('root')).render(React.createElement(module.ex
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}"><style>${artifactCSS(theme)} html,body,#root{height:100%}${canvasCSS}</style><script>${bridgeScript}${canvasBridgeScript}${dataScript(data)}</script><script type="importmap">${JSON.stringify({ imports })}</script></head><body><div id="root"></div><script type="module">${main}</script></body></html>`
 }
 
-function isFullHTMLDocument(code: string): boolean {
+// A full document lays out its own page; a fragment is laid out by its host.
+export function isFullHTMLDocument(code: string): boolean {
   const head = code.trimStart().slice(0, 64).toLowerCase()
   return head.startsWith('<!doctype') || head.startsWith('<html')
 }
 
-function injectArtifactHost(code: string, theme: string, bridge: string): string {
-  const support = `${contentSecurityMeta(code)}<style>${theme}</style><script>${bridge}</script>`
-  const headOpen = code.search(/<head(?:\s[^>]*)?>/i)
-  if (headOpen >= 0) {
-    const end = code.indexOf('>', headOpen)
-    if (end >= 0) return code.slice(0, end + 1) + support + code.slice(end + 1)
+const HEAD_PREFIX = /^\s*(?:<!doctype\s[^>]*>\s*)?(?:<html(?:\s[^>]*)?>\s*)?<head(?:\s[^>]*)?>/i
+const DOC_PREFIX = /^\s*(?:<!doctype\s[^>]*>\s*)?(?:<html(?:\s[^>]*)?>\s*)?/i
+
+function injectArtifactHost(code: string, theme: string, bridge: string, csp: string): string {
+  const support = `${contentSecurityMeta(csp)}<style>${theme}</style><script>${bridge}</script>`
+  const head = HEAD_PREFIX.exec(code)
+  if (head) {
+    const end = head[0].length
+    return code.slice(0, end) + support + code.slice(end)
   }
-  const headClose = code.search(/<\/head\s*>/i)
-  if (headClose >= 0) return code.slice(0, headClose) + support + code.slice(headClose)
-  const bodyOpen = code.search(/<body(?:\s[^>]*)?>/i)
-  if (bodyOpen >= 0) {
-    const end = code.indexOf('>', bodyOpen)
-    if (end >= 0) return code.slice(0, end + 1) + support + code.slice(end + 1)
-  }
-  return support + code
+  const prefix = DOC_PREFIX.exec(code)
+  const end = prefix ? prefix[0].length : 0
+  return code.slice(0, end) + `<head>${support}</head>` + code.slice(end)
 }
 
-function contentSecurityMeta(code: string): string {
-  return /content-security-policy/i.test(code)
-    ? ''
-    : `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}">`
+function contentSecurityMeta(csp: string): string {
+  return `<meta http-equiv="Content-Security-Policy" content="${csp}">`
 }
 
 function loadingMessages(value: unknown): string[] {

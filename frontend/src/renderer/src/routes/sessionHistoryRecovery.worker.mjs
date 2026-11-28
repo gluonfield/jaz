@@ -30,7 +30,18 @@ const reactDOM = await import('react-dom')
 mock.module('react-dom', () => ({ ...reactDOM, createPortal: (children) => children }))
 mock.module('@/lib/connection', () => ({
   useBackendChange: () => {},
-  useConnection: () => ({ status: 'disconnected', url: 'http://localhost', pairing: null, error: null }),
+  useIsCloud: () => false,
+  isCloudConnection: () => false,
+  useConnection: () => ({
+    status: 'disconnected',
+    url: 'http://localhost',
+    error: null,
+    mode: 'local',
+    auth: 'none',
+    oidcLoginUrl: '',
+    capabilities: {},
+    user: null,
+  }),
 }))
 const browserSessionsModule = await import('@/lib/browserSessions')
 mock.module('@/lib/browserSessions', () => ({

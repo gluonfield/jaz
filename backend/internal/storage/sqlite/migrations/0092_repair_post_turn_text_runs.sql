@@ -65,10 +65,22 @@ runs AS (
   WHERE broken = 1
 )
 UPDATE session_events
-SET acp = json_set(acp, '$.text_run_id', runs.run_id)
-FROM runs
-WHERE session_events.thread_id = runs.thread_id
-  AND session_events.seq = runs.seq;
+SET acp = json_set(
+  acp,
+  '$.text_run_id',
+  (
+    SELECT runs.run_id
+    FROM runs
+    WHERE runs.thread_id = session_events.thread_id
+      AND runs.seq = session_events.seq
+  )
+)
+WHERE EXISTS (
+  SELECT 1
+  FROM runs
+  WHERE runs.thread_id = session_events.thread_id
+    AND runs.seq = session_events.seq
+);
 
 UPDATE threads
 SET event_compaction_version = 0

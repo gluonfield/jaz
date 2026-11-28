@@ -1,0 +1,38 @@
+/* MapLibre's own controls, drawn from the Jaz palette instead of its stock white. */
+.jaz-map .maplibregl-ctrl-group {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg);
+  box-shadow: none;
+}
+.jaz-map .maplibregl-ctrl-group button {
+  width: 28px;
+  height: 28px;
+}
+.jaz-map .maplibregl-ctrl-group button + button {
+  border-top-color: var(--color-border);
+}
+.jaz-map .maplibregl-ctrl-group button:not(:disabled):hover {
+  background: var(--color-surface-2);
+}
+.dark .jaz-map .maplibregl-ctrl-icon,
+.dark .jaz-map .maplibregl-ctrl-attrib-button {
+  filter: invert(1);
+}
+.jaz-map .maplibregl-ctrl-attrib {
+  background: color-mix(in oklab, var(--color-bg) 82%, transparent);
+  color: var(--color-ink-3);
+  font: 10px/1.4 var(--font-sans);
+}
+.jaz-map .maplibregl-ctrl-attrib.maplibregl-compact {
+  background: var(--color-bg);
+}
+.jaz-map .maplibregl-ctrl-attrib a {
+  color: inherit;
+}
+.jaz-map .maplibregl-cooperative-gesture-screen {
+  background: color-mix(in oklab, var(--color-ink) 58%, transparent);
+  color: var(--color-bg);
+  font: 500 13px/1.4 var(--font-sans);
+}

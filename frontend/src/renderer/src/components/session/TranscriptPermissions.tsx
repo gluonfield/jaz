@@ -5,6 +5,7 @@ import type { ACPPermission, SessionEvent } from '@/lib/api/types'
 import { useOverflowing } from '@/lib/hooks/useOverflowing'
 import { MessageMarkdown } from './MessageMarkdown'
 import { QuestionPermissionCard } from '@/components/session/QuestionPermissionCard'
+import { VaultApprovalCard, VaultRequestCard } from '@/components/session/VaultCards'
 import { hasPermissionSurface, isPlanApprovalPermission, normalized } from './TranscriptUtils'
 
 // A plan-exit ("switch_mode") permission carries the proposed plan as markdown.
@@ -53,6 +54,12 @@ export function PermissionCard({
   const [text, setText] = useState('')
   const [error, setError] = useState('')
   if (!permission) return null
+  if (permission.vault_approval) {
+    return <VaultApprovalCard event={event} resolution={resolution} />
+  }
+  if (permission.vault_request) {
+    return <VaultRequestCard event={event} resolution={resolution} />
+  }
   if (isPlanApprovalPermission(permission)) return null
   if (!hasPermissionSurface(permission)) return null
   if (permission.questions?.length) {

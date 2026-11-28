@@ -74,6 +74,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		_ = file.Close()
 	}
 	appendLine(os.Getenv("JAZ_FAKE_ACP_START_LOG"), os.Getpid())
+	appendLine(os.Getenv("JAZ_FAKE_ACP_CLAUDE_AUTH_LOG"), os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"))
 	appendLine(os.Getenv("JAZ_FAKE_ACP_SUGGESTIONS_LOG"), strconv.Quote(os.Getenv("CODEX_ACP_PROMPT_SUGGESTIONS")))
 	// Startup waits while a hold file sits in the agent's directory, as a
 	// slow login refresh holds an agent up.
@@ -135,6 +136,8 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		return fmt.Sprintf("fake:%s:%d", kind, messageSeq)
 	}
 	claim := newFakeSessionClaim()
+	eviction := os.Getenv("JAZ_FAKE_ACP_SESSION_EVICTION")
+	evicted := false
 	var pendingPrompt *jsonrpc.Message
 	var nativeSteering fakeNativeSteering
 	grokInterjections := 0
@@ -284,6 +287,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				continue
 			}
 			if err != nil || req.SessionID != fakeSessionID {
+				if eviction != "" && err == nil {
+					rejectFakeMissingSession(conn, msg, req.SessionID)
+					continue
+				}
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("unknown session", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
@@ -386,12 +393,22 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			sendResult(conn, msg, map[string]any{})
 		case "session/set_mode":
 			var req struct {
-				ModeID string `json:"modeId"`
+				SessionID string `json:"sessionId"`
+				ModeID    string `json:"modeId"`
 			}
 			if err := json.Unmarshal(msg.Params, &req); err != nil || !fakeModeSupported(req.ModeID) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected supported mode", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
+			}
+			if eviction != "" {
+				if os.Remove(eviction) == nil {
+					evicted = true
+				}
+				if evicted || req.SessionID != fakeSessionID {
+					rejectFakeMissingSession(conn, msg, req.SessionID)
+					continue
+				}
 			}
 			// Plan mode waits while a hold file sits in the agent's directory.
 			if req.ModeID == "plan" {
@@ -809,6 +826,15 @@ func validateFakeRulesPrompt(meta map[string]any) error {
 }
 
 func fakeModes() map[string]any {
+	if os.Getenv("JAZ_FAKE_ACP_SESSION_EVICTION") != "" {
+		return map[string]any{
+			"currentModeId": cmp.Or(os.Getenv("JAZ_FAKE_ACP_REPORTED_MODE"), "default"),
+			"availableModes": []map[string]any{
+				{"id": "default", "name": "Default"},
+				{"id": "plan", "name": "Plan"},
+			},
+		}
+	}
 	if os.Getenv("JAZ_FAKE_ACP_NO_MODES") == "1" {
 		return nil
 	}
@@ -850,7 +876,7 @@ func fakeModes() map[string]any {
 }
 
 func fakeModeSupported(mode string) bool {
-	for _, id := range []string{"agent-full-access", "full-access", "always-approve", "bypassPermissions", "acceptEdits", "auto", "plan"} {
+	for _, id := range []string{"agent-full-access", "full-access", "always-approve", "bypassPermissions", "acceptEdits", "auto", "default", "plan"} {
 		if mode == id {
 			return true
 		}

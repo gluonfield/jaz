@@ -5,7 +5,7 @@ import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
 import { apiBaseUrl } from '@/lib/api/client'
-import { sessionFileDownloadUrl } from '@/lib/api/sessions'
+import { effectiveCloudRunId, sessionFileDownloadUrl } from '@/lib/api/sessions'
 import { writeClipboard } from '@/lib/clipboard'
 
 export function CopyPathMenuRow({ path, onClose, autoFocus }: { path: string; onClose: () => void; autoFocus?: boolean }) {
@@ -19,14 +19,16 @@ export function CopyPathMenuRow({ path, onClose, autoFocus }: { path: string; on
   </MenuRow>
 }
 
-export function FileActions({ sessionId, path, beforeDownload }: { sessionId: string; path: string; beforeDownload?: () => Promise<boolean> }) {
+export function FileActions({ sessionId, cloudRunId, path, beforeDownload }: { sessionId: string; cloudRunId?: string; path: string; beforeDownload?: () => Promise<boolean> }) {
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const backendUrl = apiBaseUrl()
-  const href = sessionFileDownloadUrl(sessionId, path)
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
+  const href = sessionFileDownloadUrl(sessionId, path, runId)
   const { data: canReveal } = useQuery({
     queryKey: ['fileFolder', backendUrl, sessionId],
     queryFn: () => window.jaz?.fileActions?.canReveal(backendUrl, sessionId) ?? Promise.resolve(false),
+    enabled: !runId,
     staleTime: 60_000,
     retry: false,
   })

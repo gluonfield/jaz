@@ -2,39 +2,23 @@ package server
 
 import (
 	"encoding/json"
-	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wins/jaz/backend/internal/deviceauth"
-	devicesapi "github.com/wins/jaz/backend/internal/httpapi/devices"
 	"github.com/wins/jaz/backend/internal/serverconfig"
-	"github.com/wins/jaz/backend/internal/storage"
 	sqlite "github.com/wins/jaz/backend/internal/storage/sqlite"
-	"github.com/wins/jaz/backend/internal/terminal"
 )
 
 func TestAuthenticatedMCPProtocol(t *testing.T) {
-	store, err := sqlite.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	devices := deviceauth.New(store)
-	if _, err := devices.RegisterApproved(testDeviceInfo("Owner", "desktop", 1)); err != nil {
-		t.Fatal(err)
-	}
 	protocol := mcp.NewServer(&mcp.Implementation{Name: "security-fixture", Version: "1"}, nil)
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return protocol
 	}, &mcp.StreamableHTTPOptions{JSONResponse: true})
-	srv := httptest.NewServer((&Server{Devices: devices, AuthKey: "internal-credential"}).withAuth(handler))
+	srv := httptest.NewServer((&Server{AuthKey: "internal-credential"}).withAuth(handler))
 	t.Cleanup(srv.Close)
 	for _, credential := range []string{"", "internal-credential"} {
 		body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"security-probe","version":"1"}}}`
@@ -75,80 +59,6 @@ func TestAuthenticatedMCPProtocol(t *testing.T) {
 	}
 }
 
-func TestSharingUsesScopedSingleUseEnrollment(t *testing.T) {
-	store, err := sqlite.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	devices := deviceauth.New(store)
-	_, err = devices.RegisterApproved(testDeviceInfo("Owner", "desktop", 1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler := devicesapi.NewHandler(devices, store, serverconfig.Config{PublicURL: "https://jaz.example"})
-	srv := httptest.NewServer((&Server{Store: store, Devices: devices, AuthKey: "permanent-root", Routes: Routes{
-		{Pattern: "GET /v1/devices/connection-link", Handler: http.HandlerFunc(handler.ConnectionLink)},
-		{Pattern: "POST /v1/devices/register", Handler: http.HandlerFunc(handler.Register)},
-	}}).Handler())
-	t.Cleanup(srv.Close)
-	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/devices/connection-link", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", "Bearer permanent-root")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var link struct {
-		URL string `json:"url"`
-	}
-	err = json.NewDecoder(res.Body).Decode(&link)
-	_ = res.Body.Close()
-	if err != nil || res.StatusCode != http.StatusOK || strings.Contains(link.URL, "permanent-root") {
-		t.Fatalf("sharing leaked a recovery credential or failed: %v", err)
-	}
-	parsed, err := url.Parse(link.URL)
-	if err != nil || parsed.RawQuery != "" {
-		t.Fatalf("enrollment credential sent to HTTP URL: %v", err)
-	}
-	fragment, err := url.ParseQuery(parsed.Fragment)
-	if err != nil {
-		t.Fatal(err)
-	}
-	invite := fragment.Get("key")
-	identity := testDeviceInfo("Phone", "mobile", 2).Identity
-	input, err := json.Marshal(map[string]string{"device_id": identity.DeviceID, "public_key": identity.PublicKey})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, test := range []struct {
-		token  string
-		status int
-	}{
-		{"permanent-root", http.StatusForbidden},
-		{invite, http.StatusOK},
-		{invite, http.StatusUnauthorized},
-	} {
-		req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/devices/register", strings.NewReader(string(input)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Host = "jaz.example"
-		req.Header.Set("X-Forwarded-Proto", "https")
-		req.Header.Set("Authorization", "Bearer "+test.token)
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = res.Body.Close()
-		if res.StatusCode != test.status {
-			t.Fatalf("remote enrollment status=%d want=%d", res.StatusCode, test.status)
-		}
-	}
-}
-
 func TestInternalEndpointsRequireCredentialsBehindTunnel(t *testing.T) {
 	for _, path := range []string{"/mcp/jaztools", "/mcp/jazmem", "/mcp/proxy", "/v1/sessions/thread/browser"} {
 		t.Run(path, func(t *testing.T) {
@@ -171,111 +81,88 @@ func TestInternalEndpointsRequireCredentialsBehindTunnel(t *testing.T) {
 	if res.Code != http.StatusForbidden || res.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatalf("website-origin request status=%d headers=%v", res.Code, res.Header())
 	}
+
+	nullPreflight := httptest.NewRequest(http.MethodOptions, "http://127.0.0.1:5299/health", nil)
+	nullPreflight.RemoteAddr = "127.0.0.1:12345"
+	nullPreflight.Header.Set("Origin", "null")
+	nullPreflight.Header.Set("Access-Control-Request-Private-Network", "true")
+	nullRes := httptest.NewRecorder()
+	(&Server{AuthKey: "root"}).Handler().ServeHTTP(nullRes, nullPreflight)
+	if nullRes.Code != http.StatusForbidden ||
+		nullRes.Header().Get("Access-Control-Allow-Origin") != "" ||
+		nullRes.Header().Get("Access-Control-Allow-Private-Network") != "" {
+		t.Fatalf("null-origin PNA preflight status=%d headers=%v", nullRes.Code, nullRes.Header())
+	}
 }
 
-func TestResourceTicketsAreBoundedAndRevocable(t *testing.T) {
-	store, err := sqlite.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+func TestResourceTicketsAreStatelessScopedAndInvalidateOnKeyRotation(t *testing.T) {
+	srv := &Server{AuthKey: "root"}
+	handler := srv.Handler()
+	issueViaHTTP := func() ResourceTicket {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/v1/auth/check", nil)
+		req.Header.Set("Authorization", "Bearer "+srv.AuthKey)
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("auth check status=%d body=%s", res.Code, res.Body.String())
+		}
+		var body struct {
+			ResourceTicket ResourceTicket `json:"resource_ticket"`
+		}
+		if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		return body.ResourceTicket
 	}
-	t.Cleanup(func() { _ = store.Close() })
-	devices := deviceauth.New(store)
-	registered, err := devices.Register(testDeviceInfo("Browser", "browser", 1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ticket, err := devices.IssueResourceTicket(registered.Token)
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := &Server{AuthKey: "root", Devices: devices}
+
+	first := issueViaHTTP()
+	authed := srv.withAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	for _, test := range []struct {
 		path   string
 		status int
 	}{
-		{"/v1/bots/events?key=" + registered.Token, http.StatusUnauthorized},
-		{"/v1/bots/events?ticket=" + ticket.Token, http.StatusNoContent},
-		{"/v1/settings/agents?ticket=" + ticket.Token, http.StatusUnauthorized},
-		{"/v1/sessions/test/terminal?ticket=" + ticket.Token, http.StatusUnauthorized},
+		{"/v1/bots/events?key=root", http.StatusUnauthorized},
+		{"/v1/bots/events?ticket=" + first.Token, http.StatusNoContent},
+		{"/v1/bots/events?ticket=" + first.Token + "tamper", http.StatusUnauthorized},
+		{"/v1/bots/events?ticket=invalid", http.StatusUnauthorized},
+		{"/v1/org/icon?ticket=" + first.Token, http.StatusNoContent},
+		{"/v1/runs/run_1/files/report.md?ticket=" + first.Token, http.StatusNoContent},
+		{"/v1/runs/run_1/files/sub/chart.png?download=1&ticket=" + first.Token, http.StatusNoContent},
+		{"/v1/runs/run_1/files/report.md?ticket=" + first.Token + "tamper", http.StatusUnauthorized},
+		{"/v1/runs/run_1/files/?ticket=" + first.Token, http.StatusUnauthorized},
+		{"/v1/runs/run_1/uploads/presign?ticket=" + first.Token, http.StatusUnauthorized},
+		{"/v1/settings/agents?ticket=" + first.Token, http.StatusUnauthorized},
+		{"/v1/sessions/test/terminal?ticket=" + first.Token, http.StatusUnauthorized},
 	} {
 		res := httptest.NewRecorder()
-		srv.withAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		})).ServeHTTP(res, httptest.NewRequest(http.MethodGet, test.path, nil))
+		authed.ServeHTTP(res, httptest.NewRequest(http.MethodGet, test.path, nil))
 		if res.Code != test.status {
 			t.Fatalf("%s status=%d want=%d", test.path, res.Code, test.status)
 		}
 	}
-	if _, err := devices.RevokeDevice(registered.Device.ID); err != nil {
-		t.Fatal(err)
+	if validResourceTicket(srv.AuthKey, first.Token, first.ExpiresAt.Add(time.Second)) {
+		t.Fatal("expired resource ticket remained valid")
 	}
-	if _, err := devices.AuthenticateResourceTicket(ticket.Token); err == nil {
-		t.Fatal("revoked device retained resource access")
-	}
-}
 
-func TestRevocationClosesExistingTerminal(t *testing.T) {
-	store, err := sqlite.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+	// 2,000 /v1/auth/check polls must never evict or invalidate an earlier active ticket.
+	for range 2000 {
+		_ = issueViaHTTP()
 	}
-	t.Cleanup(func() { _ = store.Close() })
-	devices := deviceauth.New(store)
-	_, err = devices.RegisterApproved(testDeviceInfo("Owner", "desktop", 1))
-	if err != nil {
-		t.Fatal(err)
+	res := httptest.NewRecorder()
+	authed.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/bots/events?ticket="+first.Token, nil))
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("earlier active ticket failed after 2000 polls: status=%d", res.Code)
 	}
-	phone, err := devices.RegisterApproved(testDeviceInfo("Phone", "mobile", 2))
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "revocation", RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeACP, Cwd: store.RootDir()}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	terminals := terminal.New()
-	t.Cleanup(terminals.Close)
-	handler := devicesapi.NewHandler(devices, store, serverconfig.Config{})
-	srv := httptest.NewServer((&Server{Store: store, AuthKey: "root", Devices: devices, Terminal: terminals, Routes: Routes{
-		{Pattern: "DELETE /v1/devices/{id}", Handler: http.HandlerFunc(handler.Revoke)},
-	}}).Handler())
-	t.Cleanup(srv.Close)
-	dialer := websocket.Dialer{Subprotocols: []string{"jaz", "jaz-auth." + phone.Token}}
-	conn, response, err := dialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/v1/sessions/"+session.ID+"/terminal", http.Header{"Origin": {"https://web.jaz.chat"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	if response.Header.Get("Sec-WebSocket-Protocol") != "jaz" {
-		t.Fatal("upgrade must negotiate jaz without echoing the credential")
-	}
-	var message terminal.Message
-	if err := conn.ReadJSON(&message); err != nil || message.Type != "ready" {
-		t.Fatalf("terminal did not become ready: %v", err)
-	}
-	req, err := http.NewRequest(http.MethodDelete, srv.URL+"/v1/devices/"+phone.Device.ID, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", "Bearer root")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("revoke status=%d", res.StatusCode)
-	}
-	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	for {
-		err := conn.ReadJSON(&message)
-		if err == nil {
-			continue
-		}
-		if timeout, ok := err.(net.Error); ok && timeout.Timeout() {
-			t.Fatal("revoked terminal remained connected")
-		}
-		break
+
+	// Rotating AuthKey invalidates all previously issued tickets immediately.
+	srv.AuthKey = "rotated-root"
+	res = httptest.NewRecorder()
+	authed.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/bots/events?ticket="+first.Token, nil))
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("rotated auth key accepted old ticket: status=%d", res.Code)
 	}
 }
 
@@ -287,5 +174,42 @@ func TestPublicClientOriginUsesNormalizedConnectionURL(t *testing.T) {
 	srv.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK || res.Header().Get("Access-Control-Allow-Origin") != "https://self-hosted.example" {
 		t.Fatalf("configured client origin rejected: status=%d", res.Code)
+	}
+}
+
+func TestMCPSettingsRedactAndPreserveSavedSecrets(t *testing.T) {
+	store, err := sqlite.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+	handler := (&Server{Store: store}).Handler()
+	request := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers", strings.NewReader(`{"name":"Private tools","url":"https://example.invalid/mcp","bearer_token":"sensitive-bearer","headers":[{"name":"X-Key","value":"sensitive-header"}]}`))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil || created.ID == "" {
+		t.Fatalf("create MCP server: %s", response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "sensitive-") {
+		t.Fatal("create response exposed credentials")
+	}
+	request = httptest.NewRequest(http.MethodPut, "/v1/mcp/servers/"+created.ID, strings.NewReader(`{"name":"Renamed tools","url":"https://example.invalid/mcp","headers":[{"name":"X-Key"}]}`))
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	saved, err := store.LoadMCPServer(created.ID)
+	if err != nil || response.Code != http.StatusOK || saved.BearerToken != "sensitive-bearer" || len(saved.Headers) != 1 || saved.Headers[0].Value != "sensitive-header" {
+		t.Fatalf("editing redacted settings lost credentials: %v, %s", err, response.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodPut, "/v1/mcp/servers/"+created.ID, strings.NewReader(`{"name":"Renamed tools","url":"https://example.invalid/mcp","bearer_token":"","headers":[]}`))
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	saved, err = store.LoadMCPServer(created.ID)
+	if err != nil || response.Code != http.StatusOK || saved.BearerToken != "" || len(saved.Headers) != 0 {
+		t.Fatalf("explicit credential removal failed: %v, %s", err, response.Body.String())
 	}
 }

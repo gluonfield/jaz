@@ -45,6 +45,7 @@ type OAuthConfig struct {
 }
 
 type Server struct {
+	WorkspaceID       string            `json:"workspace_id,omitempty"`
 	Source            string            `json:"source,omitempty"`
 	Cwd               string            `json:"cwd,omitempty"`
 	ID                string            `json:"id"`
@@ -66,13 +67,14 @@ type Server struct {
 	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
-// UsesBearer reports whether the server authenticates with a bearer token,
-// which takes the place of OAuth sign-in.
-func (s Server) UsesBearer() bool {
-	return s.BearerToken != "" || s.BearerTokenEnvVar != ""
+func (s Server) UsesManualAuthorization() bool {
+	return s.BearerToken != "" || s.BearerTokenEnvVar != "" || slices.ContainsFunc(s.Headers, func(h Header) bool {
+		return strings.EqualFold(h.Name, "Authorization")
+	})
 }
 
 type ServerInput struct {
+	WorkspaceID       string            `json:"-"`
 	Name              string            `json:"name"`
 	Transport         string            `json:"transport,omitempty"`
 	URL               string            `json:"url"`
@@ -89,6 +91,7 @@ type ServerInput struct {
 // Server is the server these settings describe.
 func (in ServerInput) Server(id string, createdAt, updatedAt time.Time) Server {
 	return Server{
+		WorkspaceID:       in.WorkspaceID,
 		ID:                id,
 		Name:              in.Name,
 		Transport:         in.Transport,

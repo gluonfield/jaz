@@ -42,10 +42,11 @@ export function useModelReasoningState({
 }): ModelReasoningState {
   const usesProvider = acpUsesModelProvider(settings, agent)
   const enabled = acpAgentModelsReady(settings, agent, provider)
+  const catalogQuery = modelCatalogQuery(agent, usesProvider ? provider : undefined)
   const query = useQuery({
-    ...modelCatalogQuery(agent, usesProvider ? provider : undefined),
+    ...catalogQuery,
     enabled,
-    staleTime: 0,
+    ...(settingsMode ? { staleTime: 0 } : {}),
   })
   const ready = enabled && query.isSuccess
   const modelSuggestions = ready ? query.data.models : []
@@ -64,8 +65,8 @@ export function useModelReasoningState({
   const reasoning = reasoningForModel(model, reasoningEffort)
   return {
     modelSuggestions,
-    modelsLoading: enabled && (query.isPending || query.isFetching),
-    modelsReady: ready && !query.isFetching && modelSuggestions.length > 0,
+    modelsLoading: enabled && query.isPending,
+    modelsReady: ready && modelSuggestions.length > 0,
     defaultModel,
     modelsError: !enabled ? undefined : query.error?.message || (ready && modelSuggestions.length === 0
       ? 'No models reported by this agent.'

@@ -48,13 +48,13 @@ func TestCanvasDiscoveryAndPresentationInAnOrdinaryThread(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
-	guide, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: visualize.ReadMeMCPToolName, Arguments: map[string]any{"modules": []string{"canvas", "diagram"}}})
+	guide, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: visualize.GuideMCPToolName, Arguments: map[string]any{"modules": []string{"canvas", "diagram"}}})
 	if err != nil || guide.IsError {
 		t.Fatalf("canvas discovery = %+v, %v", guide, err)
 	}
 	file := filepath.Join(boards.Dir(session.ID), canvas.FileName)
 	text := guide.Content[0].(*mcp.TextContent).Text
-	for _, want := range []string{file, `"pages":[`, "JSON Canvas 1.0", "visualise_show_canvas", "side-panel tab", "Diagram types"} {
+	for _, want := range []string{file, `"pages":[`, "JSON Canvas 1.0", "show_canvas", "side-panel tab", "Diagram types"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("canvas guide missing %q", want)
 		}

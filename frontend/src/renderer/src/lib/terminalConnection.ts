@@ -19,7 +19,6 @@ export function connectTerminal(
   host: HTMLElement,
   path: string,
   onEvent: (event: TerminalEvent) => void,
-  openLink?: (link: string) => void,
 ) {
   const term = new Terminal({
     cursorBlink: true,
@@ -29,7 +28,6 @@ export function connectTerminal(
     macOptionIsMeta: true,
     scrollback: 5000,
     theme: terminalTheme(),
-    linkHandler: openLink ? { activate: (_event, link) => openLink(link) } : undefined,
   })
   const fit = new FitAddon()
   term.loadAddon(fit)

@@ -24,7 +24,8 @@ INSERT INTO mcp_servers (
   oauth_json,
   stdio_json,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  workspace_id
 ) VALUES (
   ?1,
   ?2,
@@ -38,7 +39,8 @@ INSERT INTO mcp_servers (
   ?10,
   ?11,
   ?12,
-  ?13
+  ?13,
+  ?14
 )
 `
 
@@ -56,6 +58,7 @@ type CreateMCPServerParams struct {
 	StdioJson         string         `json:"stdio_json"`
 	CreatedAtMs       int64          `json:"created_at_ms"`
 	UpdatedAtMs       int64          `json:"updated_at_ms"`
+	WorkspaceID       string         `json:"workspace_id"`
 }
 
 func (q *Queries) CreateMCPServer(ctx context.Context, arg CreateMCPServerParams) error {
@@ -73,6 +76,7 @@ func (q *Queries) CreateMCPServer(ctx context.Context, arg CreateMCPServerParams
 		arg.StdioJson,
 		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
+		arg.WorkspaceID,
 	)
 	return err
 }
@@ -104,7 +108,8 @@ SELECT
   oauth_json,
   stdio_json,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  workspace_id
 FROM mcp_servers
 WHERE id = ?1
 LIMIT 1
@@ -124,6 +129,7 @@ type GetMCPServerRow struct {
 	StdioJson         string         `json:"stdio_json"`
 	CreatedAtMs       int64          `json:"created_at_ms"`
 	UpdatedAtMs       int64          `json:"updated_at_ms"`
+	WorkspaceID       string         `json:"workspace_id"`
 }
 
 func (q *Queries) GetMCPServer(ctx context.Context, id string) (GetMCPServerRow, error) {
@@ -143,6 +149,7 @@ func (q *Queries) GetMCPServer(ctx context.Context, id string) (GetMCPServerRow,
 		&i.StdioJson,
 		&i.CreatedAtMs,
 		&i.UpdatedAtMs,
+		&i.WorkspaceID,
 	)
 	return i, err
 }
@@ -161,8 +168,10 @@ SELECT
   oauth_json,
   stdio_json,
   created_at_ms,
-  updated_at_ms
+  updated_at_ms,
+  workspace_id
 FROM mcp_servers
+WHERE (CAST(?1 AS TEXT) = '' OR workspace_id = ?1)
 ORDER BY updated_at_ms DESC
 `
 
@@ -180,10 +189,11 @@ type ListMCPServersRow struct {
 	StdioJson         string         `json:"stdio_json"`
 	CreatedAtMs       int64          `json:"created_at_ms"`
 	UpdatedAtMs       int64          `json:"updated_at_ms"`
+	WorkspaceID       string         `json:"workspace_id"`
 }
 
-func (q *Queries) ListMCPServers(ctx context.Context) ([]ListMCPServersRow, error) {
-	rows, err := q.db.QueryContext(ctx, listMCPServers)
+func (q *Queries) ListMCPServers(ctx context.Context, filterWorkspaceID string) ([]ListMCPServersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMCPServers, filterWorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -205,6 +215,7 @@ func (q *Queries) ListMCPServers(ctx context.Context) ([]ListMCPServersRow, erro
 			&i.StdioJson,
 			&i.CreatedAtMs,
 			&i.UpdatedAtMs,
+			&i.WorkspaceID,
 		); err != nil {
 			return nil, err
 		}

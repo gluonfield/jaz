@@ -75,13 +75,14 @@ func (m *Manager) authorize(ctx context.Context, server mcpconfig.Server, opts m
 		active.cancel()
 	}
 	m.authFlows[tokenID] = pending
+	m.clearAuthorizationFailure(server.ID)
 	m.authMu.Unlock()
 	go func() {
 		defer cancel()
 		status := receiver.authorize(flowCtx, server, redirectURL, onAuthorized)
 		m.authMu.Lock()
 		if m.authFlows[tokenID] == pending {
-			m.setServerStatus(server.ID, status)
+			m.recordAuthorizationFailure(server.ID, status)
 			delete(m.authFlows, tokenID)
 		}
 		m.authMu.Unlock()
@@ -102,34 +103,75 @@ func (m *Manager) authorize(ctx context.Context, server mcpconfig.Server, opts m
 	}
 }
 
+func (m *Manager) clearAuthorizationFailure(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if current := m.statuses[id]; current.Status == "auth_error" {
+		current.Status, current.Error = "needs_auth", signInRequired
+		m.statuses[id] = current
+	}
+}
+
+func (m *Manager) recordAuthorizationFailure(id string, status mcpconfig.ServerStatus) {
+	if status.Status == "connected" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	current := m.serverStatusLocked(id)
+	if m.ctx.Err() != nil || current.Status == "disabled" {
+		return
+	}
+	if status.Status == "needs_auth" || current.Status == "needs_auth" || current.Status == "auth_error" {
+		status.Status = "auth_error"
+		status.ToolCount, status.Tools = current.ToolCount, current.Tools
+	}
+	m.statuses[id] = status
+}
+
 func (m *Manager) runAuthorize(ctx context.Context, server mcpconfig.Server, redirectURL string, fetch codeFetcher, onAuthorized AuthorizationHook) mcpconfig.ServerStatus {
 	handler := newOAuthHandler(server, m.tokens, http.DefaultClient, &m.oauthGuard)
-	handler.mode = oauthModeInteractive
+	handler.interactive = true
 	handler.redirectURL = redirectURL
 	handler.broker = m.broker
 	handler.fetch = fetch
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
-	ss, err := m.connect(sessionCtx, server, handler)
-	if err != nil {
+	previous := m.session(server.ID)
+	if err := m.authorizeServer(sessionCtx, server, handler, previous); err != nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
-	}
-	closeSessions(map[string]*serverSession{server.ID: ss})
-	if !handler.didAuthorize() {
-		if err := handler.AuthorizeFromMetadata(sessionCtx); err != nil {
-			return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
-		}
 	}
 	if err := m.runAuthorizationHook(sessionCtx, server.ID, onAuthorized); err != nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: err.Error(), CheckedAt: time.Now().UTC()}
 	}
 
+	closeSession(previous)
 	status := m.RefreshServer(sessionCtx, server.ID)
 	if status.Status == "" {
 		return mcpconfig.ServerStatus{Status: "error", Error: "The signed-in server is no longer available", CheckedAt: time.Now().UTC()}
 	}
 	return status
+}
+
+func (m *Manager) authorizeServer(ctx context.Context, server mcpconfig.Server, handler *oauthHandler, ss *serverSession) error {
+	if ss != nil && ss.oauth != nil {
+		previous := ss.oauth
+		if previous.serverURL == handler.serverURL && previous.oauth == handler.oauth && previous.tokenID == handler.tokenID {
+			if challenge := previous.authorizationChallenge(); challenge != nil {
+				return handler.authorize(ctx, challenge)
+			}
+		}
+	}
+	ss, err := m.connect(ctx, server, handler)
+	if err != nil {
+		return err
+	}
+	closeSession(ss)
+	if handler.didAuthorize() {
+		return nil
+	}
+	return handler.authorize(ctx, nil)
 }
 
 func (m *Manager) runAuthorizationHook(ctx context.Context, serverID string, onAuthorized AuthorizationHook) error {

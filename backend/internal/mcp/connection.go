@@ -16,6 +16,7 @@ import (
 type serverConnection struct {
 	session      *mcpsdk.ClientSession
 	localSession *mcpsdk.ServerSession
+	oauth        *oauthHandler
 	// redial opens a fresh session to the same server; nil for local servers,
 	// whose sessions live in process.
 	redial   func(context.Context) (*mcpsdk.ClientSession, error)
@@ -47,9 +48,18 @@ func (c *serverConnection) acquire() (func(), error) {
 }
 
 func (c *serverConnection) callTool(ctx context.Context, params *mcpsdk.CallToolParams) (*mcpsdk.CallToolResult, error) {
-	return use(ctx, c, func(session *mcpsdk.ClientSession) (*mcpsdk.CallToolResult, error) {
+	result, err := use(ctx, c, func(session *mcpsdk.ClientSession) (*mcpsdk.CallToolResult, error) {
 		return session.CallTool(ctx, params)
 	})
+	if c.oauth != nil {
+		if challenge := toolOAuthChallenge(result); challenge != nil {
+			return nil, c.oauth.requireAuthorization(challenge)
+		}
+		if isRejectedGrant(err) {
+			return nil, c.oauth.requireAuthorization(&oauthChallenge{})
+		}
+	}
+	return result, err
 }
 
 func (c *serverConnection) readResource(ctx context.Context, uri string) (*mcpsdk.ReadResourceResult, error) {
@@ -155,6 +165,11 @@ func (m *Manager) connectionKey(ctx context.Context, server mcpconfig.Server) ([
 // loadCatalog reads the server's agent tools, what its tools declare for MCP
 // Apps and whether it offers search.
 func (c *serverConnection) loadCatalog(ctx context.Context, server mcpconfig.Server) (*serverSession, error) {
+	release, err := c.acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	var items []remoteTool
 	session := c.current()
 	apps := newServerApps(server.ID, session.InitializeResult())

@@ -23,7 +23,7 @@ type MCPService interface {
 
 type MCPTools struct {
 	service MCPService
-	// boards, when set, lets create/update assign the loop's widget to boards
+	// boards, when set, lets create/update put the loop's app on boards
 	// and exposes loop_boards. Nil leaves loops board-less.
 	boards BoardService
 	// agentNames lists the currently enabled ACP agent names for the schema
@@ -88,7 +88,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "loop_get",
 		Title:       "Get Jaz loop",
-		Description: "Get one Jaz loop, its recent runs, and the boards its widget is on.",
+		Description: "Get one Jaz loop, its recent runs, and the boards its app is on.",
 	}, t.Get)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "loop_create",
@@ -114,7 +114,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "loop_boards",
 			Title:       "List Jaz boards",
-			Description: "List Jaz boards a loop's widget can be assigned to via board_ids on loop_create/loop_update.",
+			Description: "List Jaz boards a loop's app can be placed on via board_ids on loop_create/loop_update.",
 		}, t.Boards)
 	}
 }
@@ -215,7 +215,7 @@ type MCPCreateInput struct {
 	Model           string   `json:"model,omitempty"`
 	ReasoningEffort string   `json:"reasoning_effort,omitempty" jsonschema:"none, minimal, low, medium, high, xhigh, max"`
 	Directory       string   `json:"directory,omitempty" jsonschema:"workspace-relative or absolute directory for loop runs"`
-	BoardIDs        []string `json:"board_ids,omitempty" jsonschema:"board ids to place this loop's widget on; assignment is what enables the widget. Use loop_boards to list ids."`
+	BoardIDs        []string `json:"board_ids,omitempty" jsonschema:"board ids to place this loop's app on; a loop publishes an app only while it is on a board. Use loop_boards to list ids."`
 	Bot             string   `json:"bot,omitempty" jsonschema:"id of the bot that owns the routine; defaults to the calling bot. A routine on a board belongs to the board"`
 	Trigger         *Trigger `json:"trigger,omitempty" jsonschema:"fire on an event instead of the schedule: kind gmail, whatsapp, telegram, slack or webhook, with optional from, subject (email subject or Slack #channel) and contains filters"`
 	WhenMissed      string   `json:"when_missed,omitempty" jsonschema:"what to do with runs and events missed while Jaz was not running: skip (default) drops them; catch_up covers them all in one run when Jaz is back"`
@@ -260,9 +260,9 @@ type MCPUpdateInput struct {
 	WhenMissed      *string   `json:"when_missed,omitempty" jsonschema:"skip or catch_up; see loop_create"`
 	Thread          *string   `json:"thread,omitempty" jsonschema:"child or main; see loop_create"`
 	KeepRunning     *bool     `json:"keep_running,omitempty" jsonschema:"see loop_create"`
-	// BoardIDs reassigns the loop's widget to exactly these boards. Omit to
+	// BoardIDs puts the loop's app on exactly these boards. Omit to
 	// leave assignments untouched; pass an empty array to clear them.
-	BoardIDs *[]string `json:"board_ids,omitempty" jsonschema:"boards to place this loop's widget on; omit to leave unchanged, empty array to remove from all boards. Use loop_boards to list ids."`
+	BoardIDs *[]string `json:"board_ids,omitempty" jsonschema:"boards to place this loop's app on; omit to leave unchanged, empty array to remove from all boards. Use loop_boards to list ids."`
 }
 
 func (t *MCPTools) Update(_ context.Context, req *mcp.CallToolRequest, input MCPUpdateInput) (*mcp.CallToolResult, Loop, error) {
@@ -333,6 +333,11 @@ func (t *MCPTools) load(req *mcp.CallToolRequest, value string) (Loop, error) {
 	loop, err := t.service.Load(id)
 	if err != nil {
 		return Loop{}, err
+	}
+	if wsSvc, ok := t.service.(interface{ ActiveWorkspaceID() string }); ok {
+		if normalizeWorkspaceID(loop.WorkspaceID) != wsSvc.ActiveWorkspaceID() {
+			return Loop{}, ErrNotFound
+		}
 	}
 	if bot := t.bot(req); bot != "" && loop.BotID != bot {
 		return Loop{}, fmt.Errorf("loop %s is not one of your routines", id)

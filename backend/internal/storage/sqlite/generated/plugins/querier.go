@@ -9,14 +9,14 @@ import (
 )
 
 type Querier interface {
-	DeletePluginSource(ctx context.Context, id string) (int64, error)
-	DeletePluginState(ctx context.Context, pluginID string) error
-	GetPluginSource(ctx context.Context, id string) (PluginSource, error)
-	GetPluginState(ctx context.Context, pluginID string) (PluginState, error)
+	DeletePluginSource(ctx context.Context, arg DeletePluginSourceParams) (int64, error)
+	DeletePluginState(ctx context.Context, arg DeletePluginStateParams) error
+	GetPluginSource(ctx context.Context, arg GetPluginSourceParams) (PluginSource, error)
+	GetPluginState(ctx context.Context, arg GetPluginStateParams) (PluginState, error)
 	GetThreadPluginState(ctx context.Context, arg GetThreadPluginStateParams) (ThreadPluginState, error)
-	ListPluginSources(ctx context.Context) ([]PluginSource, error)
-	ListPluginStates(ctx context.Context) ([]PluginState, error)
-	ListThreadPluginStatesByPlugin(ctx context.Context, pluginID string) ([]ListThreadPluginStatesByPluginRow, error)
+	ListPluginSources(ctx context.Context, workspaceID string) ([]PluginSource, error)
+	ListPluginStates(ctx context.Context, workspaceID string) ([]PluginState, error)
+	ListThreadPluginStatesByPlugin(ctx context.Context, arg ListThreadPluginStatesByPluginParams) ([]ListThreadPluginStatesByPluginRow, error)
 	UpdateThreadPluginUIStateIfMatch(ctx context.Context, arg UpdateThreadPluginUIStateIfMatchParams) (int64, error)
 	UpsertPluginSource(ctx context.Context, arg UpsertPluginSourceParams) error
 	UpsertPluginState(ctx context.Context, arg UpsertPluginStateParams) error

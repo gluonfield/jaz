@@ -24,7 +24,7 @@ type Querier interface {
 	ListActiveRunIDs(ctx context.Context, arg ListActiveRunIDsParams) ([]string, error)
 	ListActiveRunsForLoop(ctx context.Context, arg ListActiveRunsForLoopParams) ([]LoopRun, error)
 	ListDueLoopIDs(ctx context.Context, arg ListDueLoopIDsParams) ([]string, error)
-	ListLoops(ctx context.Context, deletedStatus string) ([]Loop, error)
+	ListLoops(ctx context.Context, arg ListLoopsParams) ([]Loop, error)
 	ListRunsByLoop(ctx context.Context, arg ListRunsByLoopParams) ([]LoopRun, error)
 	ListThreadRunsByLoop(ctx context.Context, arg ListThreadRunsByLoopParams) ([]LoopRun, error)
 	LoopEventSeen(ctx context.Context, arg LoopEventSeenParams) (bool, error)

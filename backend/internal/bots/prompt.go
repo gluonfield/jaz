@@ -1,10 +1,12 @@
 package bots
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -12,7 +14,7 @@ import (
 )
 
 // Prompt assembles a bot's identity, saved prompt and scoped home instructions.
-func Prompt(store PromptStore, session storage.Session) (promptmodule.Modules, error) {
+func Prompt(store PromptStore, inst instructions.Store, session storage.Session) (promptmodule.Modules, error) {
 	var identity string
 	if session.SourceType == storage.SourceBotMember {
 		membership, err := store.LoadMembershipByThread(session.ID)
@@ -37,11 +39,11 @@ func Prompt(store PromptStore, session storage.Session) (promptmodule.Modules, e
 	if identity == "" {
 		identity = identityPrompt(session.Title, record.Main)
 	}
-	instructions, err := homeInstructions(session)
+	botRules, err := homeInstructions(inst, session)
 	if err != nil {
 		return nil, err
 	}
-	return promptmodule.New(identity, record.Prompt, instructions, workspaceInstructions(record.Workspaces)), nil
+	return promptmodule.New(identity, record.Prompt, botRules, workspaceInstructions(record.Workspaces)), nil
 }
 
 // WorkerPrompt attaches its owner's durable bot knowledge and linked projects
@@ -70,19 +72,23 @@ func workspaceInstructions(workspaces []string) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("## Linked project workspaces\n\nThese project folders are connected as tools for your work. Their files remain in their source folders; read each relevant AGENTS.md/SOUL.md before making changes. Select a listed folder as the working directory for a child thread. Your persistent bot memory remains in the bot home and is not copied into project files.\n")
+	b.WriteString("## Linked project workspaces\n\nThese project folders are connected as tools for your work. Their files remain in their source folders; read each relevant AGENTS.md before making changes. Select a listed folder as the working directory for a child thread. Your persistent bot memory remains in the bot home and is not copied into project files.\n")
 	for _, workspace := range workspaces {
 		fmt.Fprintf(&b, "- %s\n", workspace)
 	}
 	return b.String()
 }
 
-func homeInstructions(bot storage.Session) (string, error) {
+func homeInstructions(inst instructions.Store, bot storage.Session) (string, error) {
 	if bot.RuntimeRef == nil || bot.RuntimeRef.Cwd == "" {
 		return "", nil
 	}
-	file, err := readFile(bot.RuntimeRef.Cwd, instructionsFile)
-	return file.Content, err
+	doc, err := inst.Get(context.Background(), instructions.Key{
+		Scope:   instructions.ScopeBot,
+		ScopeID: bot.ID,
+		Kind:    instructions.KindBots,
+	})
+	return doc.Content, err
 }
 
 func identityPrompt(name string, main bool) string {

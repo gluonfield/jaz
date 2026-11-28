@@ -24,7 +24,9 @@ type preparedPlugin struct {
 func (s *Store) publish(ctx context.Context, prepared []preparedPlugin) (out []Plugin, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err = os.MkdirAll(s.dir, 0o755); err != nil {
+	dir, _ := s.workspaceDirs()
+	ws := s.ActiveWorkspaceID()
+	if err = os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	existingStates := s.loadStates(ctx)
@@ -45,7 +47,7 @@ func (s *Store) publish(ctx context.Context, prepared []preparedPlugin) (out []P
 			}
 		}
 	}
-	backups, err := os.MkdirTemp(s.dir, ".previous-")
+	backups, err := os.MkdirTemp(dir, ".previous-")
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +58,7 @@ func (s *Store) publish(ctx context.Context, prepared []preparedPlugin) (out []P
 			return
 		}
 		for i := changed - 1; i >= 0; i-- {
-			live := filepath.Join(s.dir, prepared[i].plugin.ID)
+			live := filepath.Join(dir, prepared[i].plugin.ID)
 			previous := filepath.Join(backups, prepared[i].plugin.ID)
 			err = errors.Join(err, os.RemoveAll(live))
 			if _, statErr := os.Lstat(previous); statErr == nil {
@@ -65,7 +67,7 @@ func (s *Store) publish(ctx context.Context, prepared []preparedPlugin) (out []P
 		}
 	}()
 	for i, candidate := range prepared {
-		live := filepath.Join(s.dir, candidate.plugin.ID)
+		live := filepath.Join(dir, candidate.plugin.ID)
 		previous := filepath.Join(backups, candidate.plugin.ID)
 		if candidate.path == "" {
 			if _, statErr := os.Stat(live); errors.Is(statErr, fs.ErrNotExist) {
@@ -92,9 +94,10 @@ func (s *Store) publish(ctx context.Context, prepared []preparedPlugin) (out []P
 					enabled = prev.Enabled
 				}
 				state := storage.PluginStateRecord{
-					PluginID: candidate.plugin.ID,
-					Enabled:  enabled,
-					Config:   prev.Config,
+					WorkspaceID: ws,
+					PluginID:    candidate.plugin.ID,
+					Enabled:     enabled,
+					Config:      prev.Config,
 				}
 				if candidate.source != nil {
 					state.SourceID = candidate.source.ID
@@ -112,7 +115,7 @@ func (s *Store) publish(ctx context.Context, prepared []preparedPlugin) (out []P
 			}
 			out = append(out, candidate.plugin)
 		} else if s.stateStore != nil {
-			if err = s.stateStore.DeletePluginState(ctx, candidate.plugin.ID); err != nil {
+			if err = s.stateStore.DeletePluginState(ctx, ws, candidate.plugin.ID); err != nil {
 				return nil, err
 			}
 		}
@@ -121,8 +124,9 @@ func (s *Store) publish(ctx context.Context, prepared []preparedPlugin) (out []P
 }
 
 func (s *Store) discover(repoRoot, root string) ([]preparedPlugin, error) {
+	_, dataDir := s.workspaceDirs()
 	if _, err := manifest.Read(root); err == nil {
-		plugin, readErr := readPackage(root, s.dataDir, nil)
+		plugin, readErr := readPackage(root, dataDir, nil)
 		if readErr != nil {
 			return nil, readErr
 		}
@@ -146,7 +150,7 @@ func (s *Store) discover(repoRoot, root string) ([]preparedPlugin, error) {
 		if err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalid, err)
 		}
-		plugin, err := readPackage(path, s.dataDir, nil)
+		plugin, err := readPackage(path, dataDir, nil)
 		if err != nil {
 			return err
 		}
@@ -159,7 +163,7 @@ func (s *Store) discover(repoRoot, root string) ([]preparedPlugin, error) {
 		return fs.SkipDir
 	})
 	if err == nil && len(prepared) == 0 {
-		if plugin, bareErr := readPackage(root, s.dataDir, nil); bareErr == nil {
+		if plugin, bareErr := readPackage(root, dataDir, nil); bareErr == nil {
 			return []preparedPlugin{{plugin: plugin, path: root}}, nil
 		}
 		err = fmt.Errorf("%w: %w", ErrInvalid, manifest.ErrNotPlugin)

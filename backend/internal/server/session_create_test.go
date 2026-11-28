@@ -201,3 +201,47 @@ func TestCreateACPSessionFixesTheArtifactSurface(t *testing.T) {
 		t.Fatalf("widget surface status = %d, want 400: loop widgets are not a thread mode", res.Code)
 	}
 }
+
+func TestNativeCloudProfileIsSavedWithItsWorkspace(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	manager := acp.NewManager(store, acp.Config{Root: root, Agents: acp.BuiltinAgents()}, nil)
+	defer manager.Close()
+	cloud := &switchableCloudBridge{active: "workspace-a"}
+	handler := (&Server{Root: root, Store: store, ACP: manager, Cloud: cloud}).Handler()
+	create := func(workspaceID, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(body))
+		req.Header.Set("X-Jaz-Cloud-Workspace", workspaceID)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+	const native = `{"agent":"codex","cloud_credential_profile_id":"acp:codex"}`
+	rec := create("workspace-a", native)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("native create returned %d: %s", rec.Code, rec.Body)
+	}
+	var created storage.Session
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.LoadSession(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Backend == "cloud" || saved.WorkspaceID != "workspace-a" || saved.RuntimeRef == nil || saved.RuntimeRef.CloudCredentialProfileID != "acp:codex" {
+		t.Fatalf("credential selection did not survive reload: %s", rec.Body)
+	}
+	cloud.active = "workspace-b"
+	if rec := create("workspace-a", native); rec.Code != http.StatusConflict {
+		t.Fatalf("stale create returned %d: %s", rec.Code, rec.Body)
+	}
+	const mixed = `{"agent":"codex","backend":"cloud","cloud_credential_profile_id":"acp:codex"}`
+	if rec := create("workspace-b", mixed); rec.Code != http.StatusBadRequest {
+		t.Fatalf("mixed launch returned %d: %s", rec.Code, rec.Body)
+	}
+}

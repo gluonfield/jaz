@@ -1054,6 +1054,7 @@ func TestMCPAuthorizeClientsUsePublicCallbackAndReturnAuthURL(t *testing.T) {
 			handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, MCP: runtime}).Handler()
 
 			req := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/"+server.ID+"/authorize", nil)
+			req.RemoteAddr = "127.0.0.1:4321"
 			req.Header.Set(clientPlatformHeader, platform)
 			req.Header.Set("X-Forwarded-Proto", "https")
 			req.Header.Set("X-Forwarded-Host", "jaz.example.com")

@@ -44,7 +44,7 @@ func TestAntigravityKeepsNativeToolsOnStartAndResume(t *testing.T) {
 			agent.Env = config.Agents[acp.AgentAntigravity].Env
 			config.Agents[acp.AgentAntigravity] = agent
 			config.Adapters = fakeAdapterResolver{launch: acp.AdapterLaunch{Command: os.Args[0], Args: []string{"-test.run=TestFakeACPAgentProcess", "--"}}}
-			config.MCPStore = staticMCPStore{servers: []mcpconfig.Server{
+			config.MCPServers = staticMCPServers{servers: []mcpconfig.Server{
 				jaztools.ServerConfig("http://127.0.0.1:5299/mcp/jaztools"),
 				mcpruntime.ProxyServerConfig("http://127.0.0.1:5299/mcp/proxy"),
 			}}
@@ -65,13 +65,13 @@ func TestAntigravityKeepsNativeToolsOnStartAndResume(t *testing.T) {
 	}
 	native := thread.Session.RuntimeRef.SessionID
 	for range 2 {
-		revision.Add(1)
+		revision.listed.Store(revision.Add(1))
 		if err := turn(ctx, first, thread.SessionID, "Inspect the existing work."); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if processStarts(t, starts) != 1 {
-		t.Fatal("catalogue changes retired the running process")
+		t.Fatal("catalogue changes its MCP client read retired the running process")
 	}
 	first.Close()
 	saved, err := store.LoadSession(thread.SessionID)

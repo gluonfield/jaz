@@ -35,6 +35,7 @@ FROM hits
 JOIN threads t ON t.id = hits.thread_id
 WHERE (CAST(sqlc.arg(include_archived) AS INTEGER) = 1 OR t.archived = 0)
   AND (CAST(sqlc.arg(include_sourced) AS INTEGER) = 1 OR coalesce(t.source_type, '') = '')
+  AND (CAST(sqlc.arg(workspace_id) AS TEXT) = '' OR t.workspace_id = sqlc.arg(workspace_id))
 ORDER BY hits.score
 LIMIT sqlc.arg(limit);
 
@@ -58,5 +59,6 @@ JOIN thread_search_docs d ON d.id = thread_search_fts.rowid
 JOIN threads t ON t.id = d.thread_id
 WHERE (CAST(sqlc.arg(include_archived) AS INTEGER) = 1 OR t.archived = 0)
   AND (CAST(sqlc.arg(include_sourced) AS INTEGER) = 1 OR coalesce(t.source_type, '') = '')
+  AND (CAST(sqlc.arg(workspace_id) AS TEXT) = '' OR t.workspace_id = sqlc.arg(workspace_id))
 ORDER BY bm25(thread_search_fts, 3.0, 2.0, 1.0)
 LIMIT sqlc.arg(limit);

@@ -87,11 +87,19 @@ func probeRefScript(ref string) string {
 }
 
 func formInputScript(ref string, value any) string {
+	return setControlValueScript(ref, value, false)
+}
+
+func setControlValueScript(ref string, value any, vaultMode bool) string {
 	encoded, _ := json.Marshal(value)
 	return elementResolverJS() + `
-	(function(q, value){
+	(function(q, value, vaultMode){
 	const el = jazFindElement(q);
 	if (!el) return {found:false};
+	if (vaultMode) {
+	  globalThis.__jazVaultRedacted = globalThis.__jazVaultRedacted || new WeakSet();
+	  globalThis.__jazVaultRedacted.add(el);
+	}
 	el.scrollIntoView({block:"center", inline:"center"});
 	el.focus();
 	let changed = true;
@@ -101,7 +109,10 @@ func formInputScript(ref string, value any) string {
 	  changed = false;
 	  reason = "target is disabled or read-only";
 	} else if (el instanceof HTMLInputElement && (type === "checkbox" || type === "radio")) {
-	  if (typeof value !== "boolean" || (type === "radio" && !value)) {
+	  if (vaultMode) {
+	    changed = false;
+	    reason = "vault cannot fill " + type + " inputs";
+	  } else if (typeof value !== "boolean" || (type === "radio" && !value)) {
 	    changed = false;
 	    reason = type + " requires " + (type === "radio" ? "true" : "a boolean value");
 	  }
@@ -120,7 +131,7 @@ func formInputScript(ref string, value any) string {
 	    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
 	    if (setter && setter.set) setter.set.call(el, option.value); else el.value = option.value;
 	  }
-	} else if (el instanceof HTMLInputElement && ["button","submit","reset","file","image"].includes(type)) {
+	} else if (el instanceof HTMLInputElement && ["button","submit","reset","file","image","hidden"].includes(type)) {
 	  changed = false;
 	  reason = "input type " + type + " is not editable";
 	} else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
@@ -132,9 +143,9 @@ func formInputScript(ref string, value any) string {
 	  if (next && el.value !== next) {
 	    if (setter && setter.set) setter.set.call(el, previous); else el.value = previous;
 	    changed = false;
-	    reason = "browser rejected the form value";
+	    reason = vaultMode ? "browser rejected the vault value" : "browser rejected the form value";
 	  }
-	} else if (el.isContentEditable) {
+	} else if (!vaultMode && el.isContentEditable) {
 	  el.textContent = String(value);
 	} else {
 	  changed = false;
@@ -145,7 +156,7 @@ func formInputScript(ref string, value any) string {
 	  el.dispatchEvent(new Event("change", {bubbles:true, composed:true}));
 	}
 	return {found:true, changed, label: jazLabel(el), reason};
-	})` + "(" + jsString(strings.TrimSpace(ref)) + "," + string(encoded) + ");"
+	})` + "(" + jsString(strings.TrimSpace(ref)) + "," + string(encoded) + "," + fmt.Sprint(vaultMode) + ");"
 }
 
 func textPresentScript(text string) string {
@@ -255,6 +266,18 @@ func elementResolverJS() string {
 	  const raw = jazName(el) || el.tagName;
 	  return el.tagName.toLowerCase() + " " + JSON.stringify(String(raw || "").replace(/\s+/g, " ").trim().slice(0, 120));
 	}
+	function jazIsSensitiveControl(el){
+	  if (!(el instanceof Element)) return false;
+	  if (globalThis.__jazVaultRedacted && globalThis.__jazVaultRedacted.has(el)) return true;
+	  const tag = el.tagName ? el.tagName.toLowerCase() : "";
+	  if (tag !== "input" && tag !== "textarea") return false;
+	  const inputType = tag === "input" ? String(el.getAttribute("type") || "text").toLowerCase() : "";
+	  if (inputType === "password") return true;
+	  const ac = String(el.getAttribute("autocomplete") || "").toLowerCase().split(/\s+/);
+	  if (ac.some(t => ["cc-number","cc-csc","cc-exp","cc-exp-month","cc-exp-year","current-password","new-password","one-time-code"].includes(t))) return true;
+	  const hint = [el.getAttribute("name"), el.getAttribute("id"), el.getAttribute("aria-label"), el.getAttribute("placeholder")].join(" ").toLowerCase();
+	  return /(card.?number|cc.?num|ccnumber|\bcvv\b|\bcvc\b|\bcsc\b|security.?code)/.test(hint);
+	}
 	function jazName(el){
 	  if (!el) return "";
 	  const labelledBy = el.getAttribute("aria-labelledby");
@@ -263,24 +286,25 @@ func elementResolverJS() string {
 	    const labels = labelledBy.split(/\s+/).map(id => (root && root.getElementById ? root.getElementById(id) : null) || document.getElementById(id)).filter(Boolean).map(label => label.textContent);
 	    if (labels.length) return jazShort(labels.join(" "), 180);
 	  }
-	  const password = el instanceof HTMLInputElement && String(el.getAttribute("type") || "").toLowerCase() === "password";
-	  const raw = el.getAttribute("aria-label") || el.getAttribute("name") || el.getAttribute("placeholder") || el.getAttribute("title") || el.innerText || el.textContent || (password ? "" : el.value) || "";
+	  const sensitive = jazIsSensitiveControl(el);
+	  const raw = el.getAttribute("aria-label") || el.getAttribute("name") || el.getAttribute("placeholder") || el.getAttribute("title") || el.innerText || el.textContent || (sensitive ? "" : el.value) || "";
 	  return jazShort(raw, 180);
 	}
 	function jazStateElement(el, ref){
 	  const tag = el.tagName.toLowerCase();
 	  const inputType = tag === "input" ? String(el.getAttribute("type") || "text").toLowerCase() : "";
-	  const sensitive = inputType === "password";
+	  const sensitive = jazIsSensitiveControl(el);
 	  const value = sensitive ? "" : ("value" in el ? String(el.value || "") : "");
 	  return {
 	    ref,
 	    tag,
 	    role: el.getAttribute("role") || jazImplicitRole(el),
 	    name: jazName(el),
-	    text: jazShort(el.innerText || el.textContent || "", 180),
+	    text: sensitive ? "" : jazShort(el.innerText || el.textContent || "", 180),
 	    href: el.href || "",
 	    input_type: inputType,
 	    value,
+	    sensitive,
 	    required: Boolean(el.required || el.getAttribute("aria-required") === "true"),
 	    disabled: Boolean(el.disabled || el.getAttribute("aria-disabled") === "true"),
 	    read_only: Boolean(el.readOnly || el.getAttribute("aria-readonly") === "true"),

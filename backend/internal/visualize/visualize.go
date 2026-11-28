@@ -15,13 +15,13 @@ import (
 )
 
 const (
-	ReadMeMCPToolName     = "visualise_read_me"
-	ShowWidgetMCPToolName = "visualise_show_widget"
-	ShowCanvasMCPToolName = "visualise_show_canvas"
-	ReadMeDescription     = "Loads visual guidance before creating an artifact. Use the canvas module to discover this thread's editable canvas file, its format, and how to present it. Other modules cover SVG and HTML inline artifacts. Call silently before the first visual artifact in a turn."
-	ShowWidgetDescription = "Shows visual content inline beside your text response: SVG graphics, diagrams, charts, or interactive HTML widgets. Use for flowcharts, architecture and data-flow diagrams, timelines, comparisons of figures, dashboards, calculators, mockups, illustrations, or any answer a picture explains better than text. Takes a finished SVG, HTML fragment, or self-contained HTML document; never a placeholder. Call visualise_read_me before your first call."
+	GuideMCPToolName        = "artifact_guide"
+	ShowArtifactMCPToolName = "show_artifact"
+	ShowCanvasMCPToolName   = "show_canvas"
+	GuideDescription        = "Returns the design rules for artifacts: the self-contained HTML or SVG that Jaz renders. Request the modules that fit the work: diagram, chart, mockup, interactive, art or elicitation. The canvas module instead returns this thread's editable canvas file, its format and how to present it. Call silently before the first artifact in a turn."
+	ShowArtifactDescription = "Shows an artifact inline in the conversation: a chart, diagram, dashboard, calculator, mockup, illustration, widget or other interactive tool, as finished self-contained HTML or SVG, never a placeholder. Use it whenever a picture explains the answer better than text. The artifact stays in this thread; when the user wants to keep, publish, share or install it, call publish_app with the same html. Call artifact_guide before your first call."
 
-	MaxWidgetCodeBytes = 5 << 20
+	MaxArtifactBytes = 5 << 20
 )
 
 type Surface string
@@ -42,7 +42,7 @@ func NormalizeSurface(surface string) Surface {
 }
 
 const (
-	SavedMessage    = "Artifact saved in this conversation for display. Client rendering has not been confirmed."
+	SavedMessage    = "Artifact added to this conversation for display. Client rendering has not been confirmed."
 	PreparedMessage = "Artifact prepared for display in the transcript. Client rendering has not been confirmed."
 	DisplayReminder = "Do not duplicate the artifact in text or with another visualisation tool. Do not claim the user has already seen it."
 )
@@ -59,18 +59,18 @@ type SessionSource interface {
 	LoadSession(id string) (storage.Session, error)
 }
 
-type ReadMeInput struct {
-	Modules  []string `json:"modules,omitempty" jsonschema:"diagram, mockup, interactive, data_viz, art, chart, elicitation, canvas"`
+type GuideInput struct {
+	Modules  []string `json:"modules,omitempty"`
 	Platform string   `json:"platform,omitempty"`
 }
 
-type ShowWidgetInput struct {
-	LoadingMessages []string `json:"loading_messages" jsonschema:"1-4 short strings shown while the artifact renders"`
-	Title           string   `json:"title" jsonschema:"short artifact title"`
-	WidgetCode      string   `json:"widget_code" jsonschema:"raw SVG, HTML fragment, or full self-contained HTML document"`
+type ShowArtifactInput struct {
+	LoadingMessages []string `json:"loading_messages"`
+	Title           string   `json:"title"`
+	HTML            string   `json:"html"`
 }
 
-type ShowWidgetOutput struct {
+type ShowArtifactOutput struct {
 	Status       string `json:"status"`
 	Title        string `json:"title"`
 	ArtifactType string `json:"artifact_type"`
@@ -88,30 +88,30 @@ func NewService(store SessionEventAppender, sessions SessionSource, events Sessi
 }
 
 func (t *Service) AddTo(server *mcp.Server) {
-	t.AddReadMeTo(server)
-	t.AddShowWidgetTo(server)
+	t.AddGuideTo(server)
+	t.AddShowArtifactTo(server)
 	t.AddCanvasTo(server)
 }
 
-func (t *Service) AddReadMeTo(server *mcp.Server) {
+func (t *Service) AddGuideTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ReadMeMCPToolName,
+		Name:        GuideMCPToolName,
 		Title:       "Read artifact guidance",
-		Description: ReadMeDescription,
-		InputSchema: readMeInputSchema(),
-	}, t.ReadMe)
+		Description: GuideDescription,
+		InputSchema: GuideInputSchema(),
+	}, t.ReadGuide)
 }
 
-func (t *Service) AddShowWidgetTo(server *mcp.Server) {
+func (t *Service) AddShowArtifactTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ShowWidgetMCPToolName,
+		Name:        ShowArtifactMCPToolName,
 		Title:       "Show inline artifact",
-		Description: ShowWidgetDescription,
-		InputSchema: showWidgetInputSchema(),
-	}, t.ShowWidget)
+		Description: ShowArtifactDescription,
+		InputSchema: ShowArtifactInputSchema(),
+	}, t.ShowArtifact)
 }
 
-func (t *Service) ReadMe(_ context.Context, req *mcp.CallToolRequest, input ReadMeInput) (*mcp.CallToolResult, any, error) {
+func (t *Service) ReadGuide(_ context.Context, req *mcp.CallToolRequest, input GuideInput) (*mcp.CallToolResult, any, error) {
 	guide, err := t.Guide(mcpsession.SessionID(req), input)
 	if err != nil {
 		return nil, nil, err
@@ -119,7 +119,7 @@ func (t *Service) ReadMe(_ context.Context, req *mcp.CallToolRequest, input Read
 	return textResult(guide)
 }
 
-func (t *Service) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input ShowWidgetInput) (*mcp.CallToolResult, any, error) {
+func (t *Service) ShowArtifact(_ context.Context, req *mcp.CallToolRequest, input ShowArtifactInput) (*mcp.CallToolResult, any, error) {
 	_, artifact, err := BuildArtifact(input)
 	if err != nil {
 		return nil, nil, err
@@ -149,6 +149,11 @@ func (t *Service) Present(sessionID string, artifact *sessionevents.Presentation
 	}
 	artifact.Presented = true
 	events := []sessionevents.Event{{SessionID: sessionID, Type: sessionevents.TypeArtifact, Artifact: artifact}}
+	// A map shown again under its title in the same turn replaces the one it corrects.
+	if artifact.Kind == sessionevents.PresentationMap && session.Turn != nil {
+		events[0].ProjectionKey = fmt.Sprintf("map:%s:%d:%s", sessionID, session.Turn.StartedAt.UnixNano(), artifact.Map.Title)
+		events[0].ProjectionOp = sessionevents.ProjectionReplace
+	}
 	if err := t.Store.AppendSessionEvents(sessionID, events...); err != nil {
 		return nil, err
 	}
@@ -171,33 +176,33 @@ func textResult(texts ...string) (*mcp.CallToolResult, any, error) {
 	return &mcp.CallToolResult{Content: content}, nil, nil
 }
 
-// BuildReadMeGuide returns the design guidance scoped to the requested modules.
+// BuildGuide returns the design guidance scoped to the requested modules.
 // The full guide overflows the agent's tool-result cap, so callers pass only the
 // modules in play (e.g. "chart") and get the design-system core plus those
 // sections. Structure lives in the visualizeguide template package.
-func BuildReadMeGuide(modules []string, platform string) string {
+func BuildGuide(modules []string, platform string) string {
 	return visualizeguide.Render(visualizeguide.For(modules, platform))
 }
 
-func BuildArtifact(input ShowWidgetInput) (ShowWidgetOutput, *sessionevents.ArtifactEvent, error) {
+func BuildArtifact(input ShowArtifactInput) (ShowArtifactOutput, *sessionevents.ArtifactEvent, error) {
 	title := strings.TrimSpace(input.Title)
 	if title == "" {
-		return ShowWidgetOutput{}, nil, errors.New("title is required")
+		return ShowArtifactOutput{}, nil, errors.New("title is required")
 	}
-	code := input.WidgetCode
+	code := input.HTML
 	if strings.TrimSpace(code) == "" {
-		return ShowWidgetOutput{}, nil, errors.New("widget_code is required")
+		return ShowArtifactOutput{}, nil, errors.New("html is required")
 	}
 	codeBytes := len([]byte(code))
-	if codeBytes > MaxWidgetCodeBytes {
-		return ShowWidgetOutput{}, nil, fmt.Errorf("widget_code exceeds %d bytes", MaxWidgetCodeBytes)
+	if codeBytes > MaxArtifactBytes {
+		return ShowArtifactOutput{}, nil, fmt.Errorf("html exceeds %d bytes", MaxArtifactBytes)
 	}
 	messages, err := normalizeLoadingMessages(input.LoadingMessages)
 	if err != nil {
-		return ShowWidgetOutput{}, nil, err
+		return ShowArtifactOutput{}, nil, err
 	}
 	kind := ArtifactKind(code)
-	output := ShowWidgetOutput{
+	output := ShowArtifactOutput{
 		Status:       "ok",
 		Title:        title,
 		ArtifactType: kind,
@@ -234,11 +239,7 @@ func normalizeLoadingMessages(messages []string) ([]string, error) {
 	return out, nil
 }
 
-func readMeInputSchema() map[string]any {
-	return ReadMeInputSchema()
-}
-
-func ReadMeInputSchema() map[string]any {
+func GuideInputSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -252,20 +253,16 @@ func ReadMeInputSchema() map[string]any {
 			},
 			"platform": map[string]any{
 				"type":        "string",
-				"description": "The client platform the widget will render on: mobile when the prompt says Device: Mobile, otherwise desktop.",
+				"description": "The client platform the artifact will render on: mobile when the prompt says Device: Mobile, otherwise desktop.",
 			},
 		},
 	}
 }
 
-func showWidgetInputSchema() map[string]any {
-	return ShowWidgetInputSchema()
-}
-
-func ShowWidgetInputSchema() map[string]any {
+func ShowArtifactInputSchema() map[string]any {
 	return map[string]any{
 		"type":     "object",
-		"required": []string{"loading_messages", "title", "widget_code"},
+		"required": []string{"loading_messages", "title", "html"},
 		"properties": map[string]any{
 			"loading_messages": map[string]any{
 				"type":        "array",
@@ -278,7 +275,7 @@ func ShowWidgetInputSchema() map[string]any {
 				"type":        "string",
 				"description": "Short artifact title.",
 			},
-			"widget_code": map[string]any{
+			"html": map[string]any{
 				"type":        "string",
 				"description": "Raw SVG, HTML fragment, or full self-contained HTML document. For React artifacts, pass the bundled HTML generated by the web-artifacts-builder skill.",
 			},

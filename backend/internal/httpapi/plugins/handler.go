@@ -22,11 +22,16 @@ type MCPRuntime interface {
 	RefreshServersAsync(...string)
 }
 
+type CloudProxy interface {
+	ProxyActiveWorkspace(http.ResponseWriter, *http.Request) bool
+}
+
 type Handler struct {
 	service         *plugins.Service
 	sessions        plugins.SessionStore
 	runtime         MCPRuntime
 	callbackBaseURL string
+	cloud           CloudProxy
 }
 
 func NewHandler(service *plugins.Service, sessions plugins.SessionStore, runtime MCPRuntime, callbackBaseURL string) *Handler {
@@ -38,7 +43,19 @@ func NewHandler(service *plugins.Service, sessions plugins.SessionStore, runtime
 	}
 }
 
+func (h *Handler) WithCloud(cloud CloudProxy) *Handler {
+	h.cloud = cloud
+	return h
+}
+
+func (h *Handler) proxyCloud(w http.ResponseWriter, r *http.Request) bool {
+	return h.cloud != nil && h.cloud.ProxyActiveWorkspace(w, r)
+}
+
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	resp, err := h.service.List(r.Context(), mcpapi.AuthorizeOptions(r, h.callbackBaseURL).LoopbackAllowed)
 	if err != nil {
 		httpapi.WriteError(w, statusFor(err), err)
@@ -48,6 +65,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	plugin, err := h.service.Get(r.Context(), r.PathValue("plugin"), mcpapi.AuthorizeOptions(r, h.callbackBaseURL).LoopbackAllowed)
 	if err != nil {
 		httpapi.WriteError(w, statusFor(err), err)
@@ -57,6 +77,9 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) SetEnabled(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	var input struct {
 		Enabled bool `json:"enabled"`
 	}
@@ -74,6 +97,9 @@ func (h *Handler) SetEnabled(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) SaveConfig(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	var input struct {
 		Values map[string]string `json:"values"`
 	}
@@ -91,6 +117,9 @@ func (h *Handler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	result, err := h.service.Connect(r.Context(), r.PathValue("plugin"), connections.StartOptions{
 		OAuthRedirectURL: h.callbackURL(r),
 		MCP:              mcpapi.AuthorizeOptions(r, h.callbackBaseURL),
@@ -124,6 +153,9 @@ func (h *Handler) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DisconnectAccount(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	result, err := h.service.DisconnectAccount(r.Context(), r.PathValue("id"))
 	if err != nil {
 		if errors.Is(err, connections.ErrConnectionNotFound) {
@@ -214,6 +246,9 @@ func (h *Handler) Page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Install(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	var input plugins.RepositoryInput
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
@@ -229,6 +264,9 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Remove(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	if err := h.service.Remove(r.Context(), r.PathValue("plugin")); err != nil {
 		httpapi.WriteError(w, statusFor(err), err)
 		return
@@ -240,6 +278,9 @@ func (h *Handler) Remove(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListSources(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	sources, err := h.service.ListSources(r.Context())
 	if err != nil {
 		httpapi.WriteError(w, statusFor(err), err)
@@ -249,6 +290,9 @@ func (h *Handler) ListSources(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddSource(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	var input plugins.RepositoryInput
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
@@ -263,6 +307,9 @@ func (h *Handler) AddSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RemoveSource(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	if err := h.service.RemoveSource(r.Context(), r.PathValue("id")); err != nil {
 		httpapi.WriteError(w, statusFor(err), err)
 		return
@@ -271,6 +318,9 @@ func (h *Handler) RemoveSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RefreshSources(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	if err := h.service.SyncSources(r.Context()); err != nil {
 		httpapi.WriteError(w, http.StatusBadGateway, err)
 		return

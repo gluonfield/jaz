@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/filelock"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/search"
 	_ "modernc.org/sqlite"
@@ -21,6 +22,7 @@ type Store struct {
 	root           string
 	secrets        cipher.AEAD
 	db             *sql.DB
+	close          func() error
 	searchQueries  search.Querier
 	exportMirror   sessionExportMirror
 	writeMu        writeMutex
@@ -66,14 +68,35 @@ func New(root string) (*Store, error) {
 	if root == "" {
 		root = DefaultRoot()
 	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return nil, err
+	}
+	// Startup recovers running turns left by the previous owner.
+	release, err := filelock.TryLock(filepath.Join(root, "jaz.sqlite.lock"))
+	if err != nil {
+		return nil, fmt.Errorf("could not acquire exclusive Jaz storage lock in %q: %v", root, err)
+	}
+	store, err := openStore(root)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	store.close = sync.OnceValue(func() error {
+		defer release()
+		return store.db.Close()
+	})
+	return store, nil
+}
+
+func openStore(root string) (_ *Store, err error) {
 	store := &Store{root: root, compactionWake: make(chan struct{}, 1)}
-	for _, dir := range []string{store.RootDir(), store.SessionsDir(), store.WorkspacesDir()} {
+	if err := os.Chmod(root, 0o700); err != nil {
+		return nil, err
+	}
+	for _, dir := range []string{store.SessionsDir(), store.WorkspacesDir()} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, err
 		}
-	}
-	if err := os.Chmod(root, 0o700); err != nil {
-		return nil, err
 	}
 	for _, name := range []string{"jaz.sqlite", "jaz.sqlite-wal", "jaz.sqlite-shm"} {
 		file, err := os.OpenFile(filepath.Join(root, name), os.O_RDWR|os.O_CREATE, 0o600)
@@ -95,34 +118,32 @@ func New(root string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			_ = db.Close()
+		}
+	}()
 	db.SetMaxOpenConns(8)
 	db.SetMaxIdleConns(8)
 	store.db = db
 	store.searchQueries = search.New(db)
 	if err := store.migrate(); err != nil {
-		_ = db.Close()
 		return nil, err
 	}
 	if err := store.protectSecrets(); err != nil {
-		_ = db.Close()
 		return nil, err
 	}
 	if err := store.backfillMissingThreadErrors(); err != nil {
-		_ = db.Close()
 		return nil, err
 	}
 	if err := store.resetStaleRunningThreads(); err != nil {
-		_ = db.Close()
 		return nil, err
 	}
 	return store, nil
 }
 
 func (s *Store) Close() error {
-	if s.db == nil {
-		return nil
-	}
-	return s.db.Close()
+	return s.close()
 }
 
 func (s *Store) RootDir() string {

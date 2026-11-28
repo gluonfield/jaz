@@ -1,20 +1,18 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, powerMonitor, screen, type Display } from 'electron'
+import { restoreWindowContentsFocus } from './diagnostics'
 import {
   alertLabel,
   alertPath,
   alertSender,
-  ISLAND_CAPSULE_WIDTH,
   ISLAND_CHANNEL,
-  ISLAND_EAR_WIDTH,
-  ISLAND_HEIGHT,
   ISLAND_HOLD_MS,
   ISLAND_RETRACT_MS,
   type Alert,
   type IslandCommand,
   type IslandState,
 } from '@shared/notifications'
-import { islandShape, mergeRows } from './islandPolicy'
+import { islandBounds, islandShape, mergeRows } from './islandPolicy'
 import { announce, notchStatus } from './notchHelper'
 
 type Placement = { display: Display; notch: { x: number; width: number; height: number } | null; ears: boolean }
@@ -61,6 +59,8 @@ export function createIsland(open: (path: string) => void) {
       if (rows.length) return
       window?.hide()
       placement = null
+      const focusedWin = BrowserWindow.getFocusedWindow?.()
+      if (focusedWin && focusedWin !== window) restoreWindowContentsFocus(focusedWin)
     }, ISLAND_RETRACT_MS)
   }
 
@@ -130,14 +130,6 @@ export function createIsland(open: (path: string) => void) {
     return { display, notch: shape === 'notch' ? notch : null, ears: ears || status.previews === 'never' }
   }
 
-  function bounds({ display, notch }: Placement) {
-    if (notch) {
-      return { x: display.bounds.x + notch.x - ISLAND_EAR_WIDTH, y: display.bounds.y, width: notch.width + 2 * ISLAND_EAR_WIDTH, height: ISLAND_HEIGHT }
-    }
-    const { workArea } = display
-    return { x: Math.round(workArea.x + (workArea.width - ISLAND_CAPSULE_WIDTH) / 2), y: workArea.y + 8, width: ISLAND_CAPSULE_WIDTH, height: ISLAND_HEIGHT }
-  }
-
   ipcMain.on(`${ISLAND_CHANNEL}ready`, (event) => {
     if (event.sender === window?.webContents) publish()
   })
@@ -174,7 +166,7 @@ export function createIsland(open: (path: string) => void) {
         if (!next) return false
         placement = next
         const win = ensureWindow()
-        win.setBounds(bounds(next))
+        win.setBounds(islandBounds(next.display, next.notch))
         if (hidden) clearTimeout(hidden)
         win.showInactive()
       }

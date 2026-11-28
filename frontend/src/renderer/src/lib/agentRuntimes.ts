@@ -9,6 +9,20 @@ export function enabledACPAgents(settings?: AgentSettings): string[] {
   return (settings?.agents ?? []).filter((agent) => selectableACPAgent(agent) && acpAgentEnabled(settings, agent))
 }
 
+export function acpAgentChecking(settings: AgentSettings | undefined, agent: string): boolean {
+  return settings?.acp_auth?.[agent]?.checking === true
+}
+
+export function hasCheckingACPAgent(settings?: AgentSettings): boolean {
+  return Object.values(settings?.acp_auth ?? {}).some((auth) => auth.checking === true)
+}
+
+export function enabledACPAgentsChecking(settings?: AgentSettings): boolean {
+  return (settings?.agents ?? []).some(
+    (agent) => selectableACPAgent(agent) && Boolean(settings?.acp[agent]?.enabled) && acpAgentChecking(settings, agent),
+  )
+}
+
 export function selectableACPAgent(agent: string | undefined): boolean {
   const slug = (agent ?? '').trim().toLowerCase()
   return Boolean(slug) && !HIDDEN_AGENTS.has(slug)

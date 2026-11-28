@@ -7,38 +7,46 @@ import (
 	"testing"
 )
 
-func TestRequestInfoFromUsesForwardedIP(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.RemoteAddr = "10.0.0.2:1234"
-	req.Header.Set("X-Forwarded-For", "203.0.113.8, 10.0.0.1")
-	req.Header.Set("User-Agent", " JazDesktop/1 ")
-
-	got := RequestInfoFrom(req)
-	if got.IP != "203.0.113.8" {
-		t.Fatalf("IP = %q, want forwarded client IP", got.IP)
+func TestTrustedLocalRequest(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:5299/", nil)
+	req.RemoteAddr = "127.0.0.1:4321"
+	if !TrustedLocalRequest(req) {
+		t.Fatal("expected direct loopback request to be trusted")
 	}
-	if got.UserAgent != "JazDesktop/1" {
-		t.Fatalf("UserAgent = %q, want trimmed user agent", got.UserAgent)
+
+	req.Header.Set("X-Forwarded-For", "203.0.113.8")
+	if TrustedLocalRequest(req) {
+		t.Fatal("expected forwarded request to be untrusted")
 	}
-}
 
-func TestRequestIPFallsBackToRemoteAddr(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.RemoteAddr = "192.0.2.10:4321"
-
-	if got := requestIP(req); got != "192.0.2.10" {
-		t.Fatalf("requestIP = %q, want remote address host", got)
+	remote := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:5299/", nil)
+	remote.RemoteAddr = "192.0.2.10:4321"
+	if TrustedLocalRequest(remote) {
+		t.Fatal("expected remote IP request to be untrusted")
 	}
 }
 
-func TestRequestBaseURLUsesForwardedHost(t *testing.T) {
+func TestRequestBaseURLUsesForwardedHostFromLoopbackProxy(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "127.0.0.1:4321"
 	req.Host = "internal:5299"
 	req.Header.Set("X-Forwarded-Host", "jaz.example.com, proxy.local")
 	req.Header.Set("X-Forwarded-Proto", "https")
 
 	if got := RequestBaseURL(req); got != "https://jaz.example.com" {
 		t.Fatalf("RequestBaseURL = %q", got)
+	}
+}
+
+func TestRequestBaseURLIgnoresSpoofedForwardedHeadersFromRemotePeer(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "198.51.100.7:4321"
+	req.Host = "jaz.local:5299"
+	req.Header.Set("X-Forwarded-Host", "evil.example")
+	req.Header.Set("X-Forwarded-Proto", "https")
+
+	if got := RequestBaseURL(req); got != "http://jaz.local:5299" {
+		t.Fatalf("RequestBaseURL = %q, want http://jaz.local:5299", got)
 	}
 }
 

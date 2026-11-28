@@ -1,76 +1,109 @@
 package server
 
 import (
-	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
-	"errors"
+	"encoding/base64"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
-	"github.com/wins/jaz/backend/internal/deviceauth"
-	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/m365copilot"
 	"github.com/wins/jaz/backend/internal/plugins"
-	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 )
 
+const (
+	clientPlatformHeader  = "X-Jaz-Client-Platform"
+	resourceTicketTTL     = time.Hour
+	resourceTicketPurpose = "jaz-resource-ticket-v1:"
+)
+
+type ResourceTicket struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+func issueResourceTicket(authKey string, now time.Time) ResourceTicket {
+	expires := now.UTC().Add(resourceTicketTTL).Truncate(time.Second)
+	payload := base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(expires.Unix(), 10)))
+	sig := signResourceTicket(authKey, payload)
+	return ResourceTicket{
+		Token:     "tk_" + payload + "." + sig,
+		ExpiresAt: expires,
+	}
+}
+
+func validResourceTicket(authKey, token string, now time.Time) bool {
+	if authKey == "" {
+		return false
+	}
+	rest, ok := strings.CutPrefix(strings.TrimSpace(token), "tk_")
+	if !ok {
+		return false
+	}
+	payload, sig, ok := strings.Cut(rest, ".")
+	if !ok || payload == "" || sig == "" {
+		return false
+	}
+	expected := signResourceTicket(authKey, payload)
+	if subtle.ConstantTimeCompare([]byte(sig), []byte(expected)) != 1 {
+		return false
+	}
+	rawExp, err := base64.RawURLEncoding.DecodeString(payload)
+	if err != nil {
+		return false
+	}
+	expUnix, err := strconv.ParseInt(string(rawExp), 10, 64)
+	if err != nil {
+		return false
+	}
+	return now.UTC().Before(time.Unix(expUnix, 0).UTC())
+}
+
+func signResourceTicket(authKey, payload string) string {
+	mac := hmac.New(sha256.New, []byte(authKey))
+	_, _ = mac.Write([]byte(resourceTicketPurpose))
+	_, _ = mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := sessioncontext.WithClientPlatform(r.Context(), requestClientPlatform(r))
+		r = r.WithContext(ctx)
 		key := s.AuthKey
-		if key == "" || r.URL.Path == "/health" || publicDeviceRequest(r) || publicOAuthCallback(r) {
-			next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, deviceauth.Principal{})))
+		if key == "" || isPublicRoute(r) {
+			next.ServeHTTP(w, r)
 			return
 		}
-		if s.Devices != nil && queryAuthAllowed(r) && r.URL.Query().Get("ticket") != "" {
-			principal, err := s.Devices.AuthenticateResourceTicket(r.URL.Query().Get("ticket"))
-			if err != nil {
-				writeAuthError(w, http.StatusUnauthorized, "unauthorized", err)
+		if queryAuthAllowed(r) {
+			if ticket := r.URL.Query().Get("ticket"); ticket != "" {
+				if validResourceTicket(key, ticket, time.Now().UTC()) {
+					next.ServeHTTP(w, r)
+					return
+				}
+				writeAuthError(w, http.StatusUnauthorized, "unauthorized", fmt.Errorf("invalid or expired resource ticket"))
 				return
 			}
-			s.serveDevice(w, r, principal, next)
-			return
 		}
 		token := requestAuthKey(r)
-		if s.Devices != nil && r.Method == http.MethodPost && r.URL.Path == "/v1/devices/register" && strings.HasPrefix(token, "invite_") {
-			principal := deviceauth.Principal{Kind: deviceauth.PrincipalEnrollment, EnrollmentToken: token}
-			next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, principal)))
-			return
-		}
-		if s.Devices != nil {
-			info := httpapi.RequestInfoFrom(r)
-			principal, err := s.Devices.Authenticate(token, deviceauth.SeenInfo{IP: info.IP, UserAgent: info.UserAgent})
-			if err == nil {
-				s.serveDevice(w, r, principal, next)
-				return
-			}
-			if errors.Is(err, deviceauth.ErrApprovalRequired) {
-				writeAuthError(w, http.StatusForbidden, "device_approval_required", err)
-				return
-			}
-		}
 		if subtle.ConstantTimeCompare([]byte(token), []byte(key)) == 1 {
-			if s.Devices == nil || (httpapi.TrustedLocalRequest(r) && (rootKeyAllowed(r) || s.rootKeyHasFullAccess())) {
-				principal := deviceauth.Principal{Kind: deviceauth.PrincipalRoot}
-				next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, principal)))
-				return
-			}
-			writeAuthError(w, http.StatusForbidden, "device_approval_required", deviceauth.ErrApprovalRequired)
+			next.ServeHTTP(w, r)
 			return
 		}
 		writeAuthError(w, http.StatusUnauthorized, "unauthorized", fmt.Errorf("missing or invalid backend API key"))
 	})
 }
 
-const clientPlatformHeader = "X-Jaz-Client-Platform"
-
-func contextWithClientInfo(r *http.Request, principal deviceauth.Principal) context.Context {
-	ctx := r.Context()
-	if principal.Kind != "" {
-		ctx = deviceauth.WithPrincipal(ctx, principal)
+func isPublicRoute(r *http.Request) bool {
+	if r.Method == http.MethodGet && (r.URL.Path == "/health" || r.URL.Path == "/.well-known/jaz-server") {
+		return true
 	}
-	return sessioncontext.WithClientPlatform(ctx, requestClientPlatform(r))
+	return publicOAuthCallback(r)
 }
 
 func requestClientPlatform(r *http.Request) string {
@@ -83,39 +116,6 @@ func requestClientPlatform(r *http.Request) string {
 	return "desktop"
 }
 
-func (s *Server) rootKeyHasFullAccess() bool {
-	if s.Devices == nil {
-		return true
-	}
-	count, err := s.Devices.ApprovedDeviceCount()
-	return err == nil && count == 0
-}
-
-func rootKeyAllowed(r *http.Request) bool {
-	return r.URL.Path == "/v1/devices" || strings.HasPrefix(r.URL.Path, "/v1/devices/") || internalMCPRequest(r)
-}
-
-func (s *Server) serveDevice(w http.ResponseWriter, r *http.Request, principal deviceauth.Principal, next http.Handler) {
-	ctx, release, err := s.Devices.Track(contextWithClientInfo(r, principal), principal)
-	if err != nil {
-		writeAuthError(w, http.StatusUnauthorized, "unauthorized", err)
-		return
-	}
-	defer release()
-	next.ServeHTTP(w, r.WithContext(ctx))
-}
-
-func publicDeviceRequest(r *http.Request) bool {
-	if r.Method == http.MethodPost && r.URL.Path == "/v1/devices/pairing-requests" {
-		return true
-	}
-	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/devices/pairing-requests/") {
-		rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/devices/pairing-requests/"), "/")
-		return rest != "" && !strings.Contains(rest, "/")
-	}
-	return false
-}
-
 func publicOAuthCallback(r *http.Request) bool {
 	return r.Method == http.MethodGet && (r.URL.Path == plugins.OAuthCallbackPath || r.URL.Path == mcpOAuthCallbackPath || r.URL.Path == m365copilot.OAuthCallbackPath)
 }
@@ -125,20 +125,13 @@ func writeAuthError(w http.ResponseWriter, status int, code string, err error) {
 }
 
 func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
-	principal, _ := deviceauth.PrincipalFromContext(r.Context())
-	response := map[string]any{
-		"ok":        true,
-		"auth_kind": principal.Kind,
-		"device_id": principal.DeviceID,
+	authKind := "none"
+	response := map[string]any{"ok": true}
+	if s.AuthKey != "" {
+		authKind = "bearer"
+		response["resource_ticket"] = issueResourceTicket(s.AuthKey, time.Now().UTC())
 	}
-	if principal.Kind == deviceauth.PrincipalDevice {
-		ticket, err := s.Devices.IssueResourceTicket(requestAuthKey(r))
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		response["resource_ticket"] = ticket
-	}
+	response["auth_kind"] = authKind
 	writeJSON(w, http.StatusOK, response)
 }
 
@@ -161,8 +154,17 @@ func queryAuthAllowed(r *http.Request) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
-	if r.URL.Path == "/v1/bots/events" {
+	if r.URL.Path == "/v1/bots/events" || r.URL.Path == "/v1/org/icon" {
 		return true
+	}
+	if runPath, ok := strings.CutPrefix(r.URL.Path, "/v1/runs/"); ok {
+		runID, rest, hasRest := strings.Cut(runPath, "/")
+		if hasRest && runID != "" {
+			if filePath, isFiles := strings.CutPrefix(rest, "files/"); isFiles && filePath != "" {
+				return true
+			}
+		}
+		return false
 	}
 	sessionPath := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	if sessionPath == r.URL.Path {
@@ -183,13 +185,4 @@ func bearerToken(header string) string {
 		return fields[1]
 	}
 	return ""
-}
-
-func internalMCPRequest(r *http.Request) bool {
-	switch r.URL.Path {
-	case serverconfig.JazToolsMCPPath, serverconfig.JazToolsMCPCompatPath, serverconfig.JazmemMCPPath, serverconfig.MCPProxyPath:
-		return httpapi.LoopbackRequest(r)
-	default:
-		return false
-	}
 }

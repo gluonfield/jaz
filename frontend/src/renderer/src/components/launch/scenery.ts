@@ -1,4 +1,4 @@
-// The brand scenery, shared by the launch splash and the boot screens' terrain:
+// The brand scenery, as the dithered terrain draws it:
 // ranges with sharp crests, lit and shaded faces near each crest thinning into
 // haze below, under a sun (a moon by night) with a faint halo. Each range's
 // features scale with the band's height, so a thin strip and a whole window
@@ -56,7 +56,7 @@ const limb: Range = {
 // Visits each cell the ranges cover in a band `height` rows tall, with its
 // coverage and range (0 is the farthest). Returns the highest covered row per
 // column: the sky's horizon.
-export type Ground = (
+type Ground = (
   cols: number,
   height: number,
   visit: (x: number, y: number, coverage: number, range: number) => void,

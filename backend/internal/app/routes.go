@@ -6,15 +6,17 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/computercontrol"
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	feedcore "github.com/wins/jaz/backend/internal/feed"
 	agentsessionsapi "github.com/wins/jaz/backend/internal/httpapi/agentsessions"
+	appsapi "github.com/wins/jaz/backend/internal/httpapi/apps"
+	boardsapi "github.com/wins/jaz/backend/internal/httpapi/boards"
 	botsapi "github.com/wins/jaz/backend/internal/httpapi/bots"
 	browserapi "github.com/wins/jaz/backend/internal/httpapi/browser"
 	canvasapi "github.com/wins/jaz/backend/internal/httpapi/canvas"
+	cloudapi "github.com/wins/jaz/backend/internal/httpapi/cloud"
 	computerapi "github.com/wins/jaz/backend/internal/httpapi/computer"
-	deviceapi "github.com/wins/jaz/backend/internal/httpapi/devices"
 	feedapi "github.com/wins/jaz/backend/internal/httpapi/feed"
 	filesystemapi "github.com/wins/jaz/backend/internal/httpapi/filesystem"
 	hooksapi "github.com/wins/jaz/backend/internal/httpapi/hooks"
@@ -27,8 +29,10 @@ import (
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
+	vaultapi "github.com/wins/jaz/backend/internal/httpapi/vault"
 	voiceapi "github.com/wins/jaz/backend/internal/httpapi/voice"
 	"github.com/wins/jaz/backend/internal/m365copilot"
+	"github.com/wins/jaz/backend/internal/machinebridge"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/mobilepush"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
@@ -47,8 +51,6 @@ type routeDeps struct {
 	Usage            usagecore.Service
 	Feed             feedcore.Service
 	ModelCatalog     *modelcatalog.Service `optional:"true"`
-	Jaz              Config
-	Devices          *deviceauth.Service `optional:"true"`
 	Store            storage.Store
 	Config           serverconfig.Config               `optional:"true"`
 	Browser          *browsercontrol.ConfiguredBackend `optional:"true"`
@@ -69,19 +71,33 @@ type routeDeps struct {
 	VoiceRelay       *voiceapi.RelayHandler
 	Push             *mobilepush.Service
 	MicrosoftCopilot *m365copilotapi.Handler
+	Apps             *appsapi.Handler         `optional:"true"`
+	Vault            *vaultapi.Handler        `optional:"true"`
+	Cloud            *cloudsync.Service       `optional:"true"`
+	MachineBridge    machinebridge.Controller `optional:"true"`
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
+	listHandler := sessionsapi.NewListHandler(deps.Store)
+	messagesHandler := deps.SessionMessages
+	usageService := deps.Usage
+	feedService := deps.Feed
+	if deps.Cloud != nil {
+		listHandler.WithCloud(deps.Cloud)
+		messagesHandler = messagesHandler.WithCloud(deps.Cloud)
+		usageService = usageService.WithWorkspace(deps.Cloud.ActiveWorkspaceID)
+		feedService = feedService.WithWorkspace(deps.Cloud.ActiveWorkspaceID)
+	}
 	routes := server.Routes{
 		{Pattern: "GET /v1/acp/agents/{agent}/models", Handler: modelcapabilitiesapi.NewAgentModelsHandler(deps.ACP)},
 		{Pattern: "GET " + m365copilot.OAuthCallbackPath, Handler: http.HandlerFunc(deps.MicrosoftCopilot.Callback)},
 		{Pattern: "POST /v1/filesystem/dirs", Handler: http.HandlerFunc(filesystemapi.CreateDirectory)},
-		{Pattern: "GET /v1/sessions", Handler: sessionsapi.NewListHandler(deps.Store)},
+		{Pattern: "GET /v1/sessions", Handler: listHandler},
 		{Pattern: "PUT /v1/sessions/{session}/agent/config", Handler: http.HandlerFunc(deps.AgentSession.SetConfig)},
 		{Pattern: "PUT /v1/sessions/{session}/mcp/discovery", Handler: http.HandlerFunc(deps.AgentSession.SetMCPDiscovery)},
 		{Pattern: "POST /v1/sessions/{session}/agent/tasks/{task}/stop", Handler: http.HandlerFunc(deps.AgentSession.StopTask)},
 		{Pattern: "POST /v1/sessions/{session}/agent/input", Handler: http.HandlerFunc(deps.AgentSession.Input)},
-		{Pattern: "GET /v1/sessions/{session}/messages", Handler: deps.SessionMessages},
+		{Pattern: "GET /v1/sessions/{session}/messages", Handler: messagesHandler},
 		{Pattern: "GET /v1/sessions/{session}/overview", Handler: deps.SessionOverview},
 		{Pattern: "POST /v1/sessions/{session}/plugin-views", Handler: http.HandlerFunc(deps.PluginViews.Open)},
 		{Pattern: "GET /v1/sessions/{session}/plugin-views/state", Handler: http.HandlerFunc(deps.PluginViews.State)},
@@ -100,7 +116,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		{Pattern: "POST /v1/sessions/{session}/voice/transcript", Handler: http.HandlerFunc(deps.Voice.Transcript)},
 		{Pattern: "POST /v1/sessions/{session}/voice/diagnostics", Handler: http.HandlerFunc(deps.Voice.Diagnostics)},
 	}
-	routes = append(routes, usageRoutes(deps.Usage)...)
+	routes = append(routes, usageRoutes(usageService)...)
 	push := mobilepushapi.Handler{Service: deps.Push}
 	routes = append(routes,
 		server.Route{Pattern: "GET /v1/mobile/push", Handler: http.HandlerFunc(push.Status)},
@@ -110,10 +126,9 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "DELETE /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.Unregister)},
 		server.Route{Pattern: "GET /v1/notifications/stream", Handler: http.HandlerFunc(push.Stream)},
 	)
-	routes = appendPluginRoutes(routes, deps.Plugins, deps.PluginSessions, deps.MCP, deps.Config)
-	routes = append(routes, feedRoutes(deps.Feed)...)
+	routes = appendPluginRoutes(routes, deps.Plugins, deps.PluginSessions, deps.MCP, deps.Config, deps.Cloud)
+	routes = append(routes, feedRoutes(feedService)...)
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
-	routes = appendDeviceRoutes(routes, deps.Devices, deps.Store, deps.Config, deps.Jaz.Devices.DisablePairing)
 	if deps.Computer != nil && deps.ComputerSettings != nil {
 		routes = append(routes,
 			server.Route{Pattern: "GET /v1/computer", Handler: deps.ComputerSettings},
@@ -122,8 +137,92 @@ func NewRoutes(deps routeDeps) server.Routes {
 		)
 	}
 	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser, deps.Store)
-	routes = appendMCPRoutes(routes, deps.MCP)
+	routes = appendMCPRoutes(routes, deps.MCP, deps.Cloud)
+	routes = appendAppsRoutes(routes, deps.Apps)
+	routes = appendVaultRoutes(routes, deps.Vault)
+	routes = appendCloudRoutes(routes, deps.Cloud, deps.MachineBridge)
+	if deps.Cloud != nil {
+		handler := cloudapi.NewMCPHandler(deps.Cloud, deps.Store)
+		routes = append(routes, server.Route{Pattern: "POST " + serverconfig.CloudMCPPath, Handler: handler})
+	}
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
+}
+
+func appendCloudRoutes(routes server.Routes, cloud *cloudsync.Service, bridge machinebridge.Controller) server.Routes {
+	if cloud == nil {
+		return routes
+	}
+	h := cloudapi.NewHandler(cloud).WithMachineBridge(bridge)
+	projects := cloudapi.NewProjectsHandler(cloud)
+	return append(routes,
+		server.Route{Pattern: "GET /v1/cloud/status", Handler: httpHandlerFunc(h.Status)},
+		server.Route{Pattern: "GET /v1/cloud/machine-bridge", Handler: httpHandlerFunc(h.MachineBridgeStatus)},
+		server.Route{Pattern: "PUT /v1/cloud/machine-bridge", Handler: httpHandlerFunc(h.UpdateMachineBridge)},
+		server.Route{Pattern: "POST /v1/cloud/connect", Handler: httpHandlerFunc(h.Connect)},
+		server.Route{Pattern: "POST /v1/cloud/switch", Handler: httpHandlerFunc(h.Switch)},
+		server.Route{Pattern: "POST /v1/cloud/disconnect", Handler: httpHandlerFunc(h.Disconnect)},
+		server.Route{Pattern: "POST /v1/cloud/sync", Handler: httpHandlerFunc(h.Sync)},
+		server.Route{Pattern: "GET /v1/acp/profiles", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "PUT /v1/acp/profiles/{agent}", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "DELETE /v1/acp/profiles/{agent}", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "POST /v1/acp/profiles/{agent}/refresh", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "POST /v1/acp/profiles/{agent}/login", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "GET /v1/acp/profiles/{agent}/login/{id}", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "POST /v1/acp/profiles/{agent}/login/{id}/complete", Handler: httpHandlerFunc(h.ACPProfiles)},
+		server.Route{Pattern: "GET /v1/auth/me", Handler: httpHandlerFunc(h.Me)},
+		server.Route{Pattern: "/v1/admin/", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/org/icon", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/models", Handler: httpHandlerFunc(h.ListModels)},
+		server.Route{Pattern: "GET /v1/machines", Handler: httpHandlerFunc(h.ListMachines)},
+		server.Route{Pattern: "GET /v1/members", Handler: httpHandlerFunc(h.ListMembers)},
+		server.Route{Pattern: "POST /v1/members", Handler: httpHandlerFunc(h.CreateMember)},
+		server.Route{Pattern: "PATCH /v1/members/{id}", Handler: httpHandlerFunc(h.UpdateMember)},
+		server.Route{Pattern: "DELETE /v1/members/{id}", Handler: httpHandlerFunc(h.DeleteMember)},
+		server.Route{Pattern: "GET /v1/spaces", Handler: httpHandlerFunc(h.ListSpaces)},
+		server.Route{Pattern: "POST /v1/spaces", Handler: httpHandlerFunc(h.CreateSpace)},
+		server.Route{Pattern: "GET /v1/spaces/{id}", Handler: httpHandlerFunc(projects.GetSpace)},
+		server.Route{Pattern: "PATCH /v1/spaces/{id}", Handler: httpHandlerFunc(h.PatchSpace)},
+		server.Route{Pattern: "DELETE /v1/spaces/{id}", Handler: httpHandlerFunc(projects.DeleteSpace)},
+		server.Route{Pattern: "POST /v1/spaces/{id}/members", Handler: httpHandlerFunc(h.AddSpaceMember)},
+		server.Route{Pattern: "GET /v1/spaces/{id}/sources", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/spaces/{id}/sources/presign", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/spaces/{id}/sources/commit", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "DELETE /v1/spaces/{id}/sources/{source_id}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/spaces/{id}/sources/{source_id}/content", Handler: httpHandlerFunc(projects.ProxySpaceSourceContent)},
+		server.Route{Pattern: "GET /v1/instructions/{scope}/{scope_id}/{kind}", Handler: httpHandlerFunc(h.GetInstruction)},
+		server.Route{Pattern: "PUT /v1/instructions/{scope}/{scope_id}/{kind}", Handler: httpHandlerFunc(h.PutInstruction)},
+		server.Route{Pattern: "GET /v1/usage/summary", Handler: httpHandlerFunc(h.UsageSummary)},
+		server.Route{Pattern: "PATCH /v1/threads/{id}", Handler: httpHandlerFunc(projects.PatchThread)},
+		server.Route{Pattern: "DELETE /v1/threads/{id}", Handler: httpHandlerFunc(projects.DeleteThread)},
+		server.Route{Pattern: "POST /v1/threads/{id}/turns", Handler: httpHandlerFunc(h.CreateTurn)},
+		server.Route{Pattern: "POST /v1/threads/{id}/cancel", Handler: httpHandlerFunc(h.CancelThread)},
+		server.Route{Pattern: "POST /v1/threads/{id}/steer", Handler: httpHandlerFunc(h.SteerThread)},
+		server.Route{Pattern: "PUT /v1/threads/{id}/user-state", Handler: httpHandlerFunc(projects.UpdateThreadUserState)},
+		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/presign", Handler: httpHandlerFunc(h.PresignUpload)},
+		server.Route{Pattern: "POST /v1/runs/{run_id}/uploads/commit", Handler: httpHandlerFunc(h.CommitUpload)},
+		server.Route{Pattern: "POST /v1/runs/{run_id}/assets/grant", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/runs/{run_id}/files/{path...}", Handler: httpHandlerFunc(h.ProxyRunFile)},
+		server.Route{Pattern: "GET /v1/user-skills", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "PUT /v1/user-skills/{name}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "DELETE /v1/user-skills/{name}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/connectors", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "DELETE /v1/connectors/{id}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/github/status", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/github/install/start", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/github/oauth/start", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/github/installations", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "PATCH /v1/github/installations/{id}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "DELETE /v1/github/installations/{id}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/github/repos", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/github/repos/{owner}/{repo}/branches", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/threads/{id}/repos", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "DELETE /v1/threads/{id}/repos/{mount_dir}", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/threads/{id}/repo", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/threads/{id}/repo/changes", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "GET /v1/threads/{id}/repo/diff", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/threads/{id}/repo/push", Handler: httpHandlerFunc(h.Proxy)},
+		server.Route{Pattern: "POST /v1/threads/{id}/repo/pr", Handler: httpHandlerFunc(h.Proxy)},
+	)
 }
 
 func modelCapabilityRoutes(catalog *modelcatalog.Service) server.Routes {
@@ -139,16 +238,59 @@ func modelCapabilityRoutes(catalog *modelcatalog.Service) server.Routes {
 	}
 }
 
-func appendMCPRoutes(routes server.Routes, mcp *mcpruntime.Manager) server.Routes {
+func appendMCPRoutes(routes server.Routes, mcp *mcpruntime.Manager, cloud *cloudsync.Service) server.Routes {
 	if mcp == nil {
 		return routes
 	}
 	handler := mcpappsapi.NewHandler(mcp)
+	if cloud != nil {
+		handler.WithCloud(cloud)
+	}
 	return append(routes,
 		server.Route{Pattern: "GET /v1/mcp/apps", Handler: httpHandlerFunc(handler.List)},
 		server.Route{Pattern: "GET /v1/mcp/apps/{server}/resource", Handler: httpHandlerFunc(handler.Resource)},
 		server.Route{Pattern: "POST /v1/mcp/apps/{server}/tools/call", Handler: httpHandlerFunc(handler.CallTool)},
 		server.Route{Pattern: "GET /v1/search/connections", Handler: mcpsearchapi.NewHandler(mcp)},
+	)
+}
+
+func appendAppsRoutes(routes server.Routes, h *appsapi.Handler) server.Routes {
+	if h == nil {
+		return routes
+	}
+	return append(routes,
+		server.Route{Pattern: "GET /v1/org/app-policies", Handler: httpHandlerFunc(h.GetPolicy)},
+		server.Route{Pattern: "PUT /v1/org/app-policies", Handler: httpHandlerFunc(h.PutPolicy)},
+		server.Route{Pattern: "GET /v1/apps", Handler: httpHandlerFunc(h.List)},
+		server.Route{Pattern: "POST /v1/apps", Handler: httpHandlerFunc(h.Create)},
+		server.Route{Pattern: "POST /v1/apps/drafts", Handler: httpHandlerFunc(h.CreateDraft)},
+		server.Route{Pattern: "GET /v1/apps/{id}", Handler: httpHandlerFunc(h.Get)},
+		server.Route{Pattern: "PUT /v1/apps/{id}", Handler: httpHandlerFunc(h.Put)},
+		server.Route{Pattern: "PATCH /v1/apps/{id}", Handler: httpHandlerFunc(h.Patch)},
+		server.Route{Pattern: "PUT /v1/apps/{id}/acl", Handler: httpHandlerFunc(h.Patch)},
+		server.Route{Pattern: "DELETE /v1/apps/{id}", Handler: httpHandlerFunc(h.Delete)},
+		server.Route{Pattern: "GET /v1/apps/{id}/versions", Handler: httpHandlerFunc(h.ListVersions)},
+		server.Route{Pattern: "POST /v1/apps/{id}/rollback", Handler: httpHandlerFunc(h.Rollback)},
+		server.Route{Pattern: "POST /v1/apps/{id}/remix", Handler: httpHandlerFunc(h.Remix)},
+		server.Route{Pattern: "POST /v1/apps/{id}/ticket", Handler: httpHandlerFunc(h.IssueTicket)},
+		server.Route{Pattern: "GET /v1/apps/{id}/kv", Handler: httpHandlerFunc(h.ListKV)},
+		server.Route{Pattern: "GET /v1/apps/{id}/kv/{key}", Handler: httpHandlerFunc(h.GetKV)},
+		server.Route{Pattern: "PUT /v1/apps/{id}/kv/{key}", Handler: httpHandlerFunc(h.PutKV)},
+		server.Route{Pattern: "DELETE /v1/apps/{id}/kv/{key}", Handler: httpHandlerFunc(h.DeleteKV)},
+		server.Route{Pattern: "POST /v1/apps/{id}/ai/complete", Handler: httpHandlerFunc(h.AIComplete)},
+		server.Route{Pattern: "POST /v1/apps/{id}/tools/call", Handler: httpHandlerFunc(h.CallTool)},
+	)
+}
+
+func appendVaultRoutes(routes server.Routes, h *vaultapi.Handler) server.Routes {
+	if h == nil {
+		return routes
+	}
+	return append(routes,
+		server.Route{Pattern: "GET /v1/vault/items", Handler: httpHandlerFunc(h.List)},
+		server.Route{Pattern: "POST /v1/vault/items", Handler: httpHandlerFunc(h.Create)},
+		server.Route{Pattern: "PATCH /v1/vault/items/{id}", Handler: httpHandlerFunc(h.Update)},
+		server.Route{Pattern: "DELETE /v1/vault/items/{id}", Handler: httpHandlerFunc(h.Delete)},
 	)
 }
 
@@ -175,11 +317,14 @@ func usageRoutes(usage usagecore.Service) server.Routes {
 	}
 }
 
-func appendPluginRoutes(routes server.Routes, service *plugins.Service, sessions plugins.SessionStore, mcp pluginsapi.MCPRuntime, cfg serverconfig.Config) server.Routes {
+func appendPluginRoutes(routes server.Routes, service *plugins.Service, sessions plugins.SessionStore, mcp pluginsapi.MCPRuntime, cfg serverconfig.Config, cloud *cloudsync.Service) server.Routes {
 	if service == nil {
 		return routes
 	}
 	handler := pluginsapi.NewHandler(service, sessions, mcp, cfg.PublicBaseURL())
+	if cloud != nil {
+		handler.WithCloud(cloud)
+	}
 	return append(routes,
 		server.Route{Pattern: "GET /v1/plugins", Handler: httpHandlerFunc(handler.List)},
 		server.Route{Pattern: "GET /v1/plugins/sources", Handler: httpHandlerFunc(handler.ListSources)},
@@ -202,28 +347,6 @@ func appendPluginRoutes(routes server.Routes, service *plugins.Service, sessions
 	)
 }
 
-func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, settings storage.SettingsStorage, cfg serverconfig.Config, disablePairing bool) server.Routes {
-	if devices == nil {
-		return routes
-	}
-	handler := deviceapi.NewHandler(devices, settings, cfg)
-	routes = append(routes,
-		server.Route{Pattern: "GET /v1/devices/connection-link", Handler: httpHandlerFunc(handler.ConnectionLink)},
-		server.Route{Pattern: "PUT /v1/devices/connection-link", Handler: httpHandlerFunc(handler.UpdateConnectionLink)},
-		server.Route{Pattern: "GET /v1/devices", Handler: httpHandlerFunc(handler.List)},
-		server.Route{Pattern: "POST /v1/devices/register", Handler: httpHandlerFunc(handler.Register)},
-		server.Route{Pattern: "DELETE /v1/devices/{id}", Handler: httpHandlerFunc(handler.Revoke)},
-	)
-	// Pairing is the unauthenticated keyless-onboarding surface.
-	if disablePairing {
-		return routes
-	}
-	return append(routes,
-		server.Route{Pattern: "POST /v1/devices/pairing-requests", Handler: httpHandlerFunc(handler.CreatePairing)},
-		server.Route{Pattern: "/v1/devices/pairing-requests/", Handler: httpHandlerFunc(handler.Pairing)},
-	)
-}
-
 func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler, backend *browsercontrol.ConfiguredBackend, store storage.Store) server.Routes {
 	if settings != nil {
 		routes = append(routes,
@@ -239,6 +362,16 @@ func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler,
 		)
 	}
 	return routes
+}
+
+func BoardRoutes(handler *boardsapi.Handler) server.Routes {
+	return server.Routes{
+		{Pattern: "GET /v1/apps/{id}/board", Handler: httpHandlerFunc(handler.Get)},
+		{Pattern: "PATCH /v1/apps/{id}/board", Handler: httpHandlerFunc(handler.Patch)},
+		{Pattern: "POST /v1/apps/{id}/board/tiles", Handler: httpHandlerFunc(handler.AddTiles)},
+		{Pattern: "DELETE /v1/apps/{id}/board/tiles/{app}", Handler: httpHandlerFunc(handler.RemoveTile)},
+		{Pattern: "POST /v1/apps/{id}/tile-feedback", Handler: httpHandlerFunc(handler.TileFeedback)},
+	}
 }
 
 func BotRoutes(handler *botsapi.Handler) server.Routes {
@@ -271,10 +404,24 @@ func HookRoute(handler *hooksapi.Handler) server.PublicRoute {
 	}
 }
 
-func NewPublicRoutes(handler *previewapi.Handler) server.PublicRoutes {
-	return server.PublicRoutes{
-		{Match: handler.IsPublicHostRequest, Handler: handler},
+type publicRoutesDeps struct {
+	fx.In
+
+	Preview *previewapi.Handler
+	Apps    *appsapi.Handler `optional:"true"`
+}
+
+func NewPublicRoutes(deps publicRoutesDeps) server.PublicRoutes {
+	routes := server.PublicRoutes{
+		{Match: deps.Preview.IsPublicHostRequest, Handler: deps.Preview},
 	}
+	if deps.Apps != nil {
+		routes = append(routes, server.PublicRoute{
+			Match:   appsapi.IsAppContentRequest,
+			Handler: httpHandlerFunc(deps.Apps.ServeContent),
+		})
+	}
+	return routes
 }
 
 type httpHandlerFunc func(http.ResponseWriter, *http.Request)

@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from 'motion/react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useRef } from 'react'
 import { DitherArt, MORPH_SECONDS, ditherSize } from '@/components/launch/DitherArt'
+import { useHorizon } from '@/components/launch/Horizon'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
-import { type Mark, type OnboardingStep, onboardingEase, slideExit, slideRise, slideStagger } from './OnboardingParts'
+import { type Mark, type SetupStep, onboardingEase, slideRise, slideStagger } from './OnboardingParts'
 
 const HERO = { cols: 104, rows: 34, delay: 0.2 }
 const HERO_SIZE = ditherSize(HERO.cols, HERO.rows)
@@ -13,6 +14,9 @@ const NO_MARK: Mark = { draw: () => {}, enter: (x, y) => ({ x, y, at: 0 }) }
 // The new slide starts rising in as the mark lands.
 const ARRIVAL = HERO.delay + MORPH_SECONDS - 0.2
 
+// Setup is one card, held by the launch stage's frame of light, which is lit
+// `progress` of the way round. A slide without a mark is its own picture, and
+// the card widens to hold it.
 // A step change plays in three acts while the mark and footer stay put: the
 // slide's copy and controls leave bottom-up, the old mark's dots rebuild the
 // next mark through its own entrance, then the new slide rises in under it.
@@ -27,31 +31,35 @@ const content = {
 
 export function OnboardingStage({
   step,
+  progress,
   mark,
   children,
   footer,
 }: {
-  step: OnboardingStep
+  step: SetupStep
+  progress: number
   mark?: Mark
   children: ReactNode
   footer: ReactNode
 }) {
   const reduced = useReducedEffectsMotion()
   const { draw, enter } = mark ?? NO_MARK
+  const card = useRef<HTMLDivElement>(null)
+  useHorizon(card, progress)
 
   return (
     <motion.div
+      ref={card}
       variants={slideStagger}
       initial="hidden"
       animate="show"
-      exit={slideExit}
-      className="relative flex min-h-[min(640px,calc(100vh-190px))] w-full max-w-[460px] flex-col items-center"
+      className={`relative flex min-h-[min(696px,calc(100vh-184px))] w-full flex-col items-center overflow-x-clip rounded-[22px] bg-bg px-7 pb-6 pt-7 transition-[max-width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${mark ? 'max-w-[516px]' : 'max-w-[856px]'}`}
     >
       <motion.div
         initial={false}
         animate={{ opacity: mark ? 1 : 0 }}
         transition={{ duration: 0.4, ease: onboardingEase, delay: mark ? 0 : ARRIVAL }}
-        className="pointer-events-none absolute inset-x-0 top-0 z-10"
+        className="pointer-events-none absolute inset-x-7 top-7 z-10"
       >
         <DitherArt draw={draw} enter={enter} cols={HERO.cols} rows={HERO.rows} delay={HERO.delay} buildKey="onboarding-hero" />
       </motion.div>

@@ -35,6 +35,10 @@ func TestReopenMarksRunningChatsInterruptedWithoutLosingState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sessions, err := ReadWorktreeSessions(root)
+	if err != nil || len(sessions) != 1 || !reflect.DeepEqual(before, sessions[0]) {
+		t.Fatalf("read-only worktree sessions while the store owns the root = %+v, %v", sessions, err)
+	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}

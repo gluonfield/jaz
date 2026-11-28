@@ -42,8 +42,12 @@ export function fullTime(iso: string): string {
   })
 }
 
+export function isToday(iso: string, now = Date.now()): boolean {
+  return new Date(iso).toDateString() === new Date(now).toDateString()
+}
+
 export function messageTime(iso: string, now = Date.now()): string {
-  return new Date(iso).toDateString() === new Date(now).toDateString() ? clockTime(iso) : fullTime(iso)
+  return isToday(iso, now) ? clockTime(iso) : fullTime(iso)
 }
 
 export function clockTime(iso: string): string {

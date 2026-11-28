@@ -1,15 +1,27 @@
 import { useSyncExternalStore } from 'react'
+import type { ServerAuthMethod, ServerMode } from './api/serverTypes'
 import { normalizeBaseUrl, forgetApiAuthToken } from './api/client'
+import { clientRuntime } from './clientRuntime'
 
 // The backends this device has connected to, offered as switch targets by the
 // connect screen, the sidebar switcher, and Settings. Auth keys already live
 // per-URL under `jaz.backendAuth.<url>` and the launch preference under
-// `jaz.connection`, so this registry just adds the human-facing name and
+// `jaz.connection`, so this registry just adds the human-facing name, mode, and
 // ordering and lives in the same store — one place owns this UI's connection
 // memory. "This machine" (loopback) is implicit and never stored here.
 const BACKENDS_KEY = 'jaz.backends'
 
-export type KnownBackend = { url: string; label: string; lastConnectedAt: string }
+export type KnownBackend = {
+  url: string
+  label: string
+  lastConnectedAt: string
+  managed?: boolean
+  mode?: ServerMode
+  auth?: ServerAuthMethod
+  oidcLoginUrl?: string
+}
+
+export type BackendMetadata = Pick<KnownBackend, 'mode' | 'auth' | 'oidcLoginUrl'>
 
 function read(): KnownBackend[] {
   try {
@@ -20,9 +32,27 @@ function read(): KnownBackend[] {
   }
 }
 
+function mergeConfiguredCloud(list: KnownBackend[]): KnownBackend[] {
+  if (!clientRuntime.cloudUrl) return list
+  const cloudUrl = normalizeBaseUrl(clientRuntime.cloudUrl)
+  if (!cloudUrl) return list
+  const existing = list.find((b) => normalizeBaseUrl(b.url) === cloudUrl)
+  if (existing) {
+    return list.map((b) =>
+      normalizeBaseUrl(b.url) === cloudUrl
+        ? { ...b, managed: true, mode: b.mode ?? 'cloud', auth: b.auth ?? 'oidc' }
+        : b,
+    )
+  }
+  return [
+    ...list,
+    { url: cloudUrl, label: hostLabel(cloudUrl), lastConnectedAt: '', managed: true, mode: 'cloud', auth: 'oidc' },
+  ]
+}
+
 // Most-recently-connected first.
 function sorted(list: KnownBackend[]): KnownBackend[] {
-  return [...list].sort((a, b) => b.lastConnectedAt.localeCompare(a.lastConnectedAt))
+  return [...mergeConfiguredCloud(list)].sort((a, b) => b.lastConnectedAt.localeCompare(a.lastConnectedAt))
 }
 
 // In-memory mirror so every surface re-renders together on connect/rename/forget
@@ -31,12 +61,13 @@ let cache = sorted(read())
 const listeners = new Set<() => void>()
 
 function commit(list: KnownBackend[]): void {
+  const persisted = list.map(({ managed: _managed, ...rest }) => rest)
   try {
-    localStorage.setItem(BACKENDS_KEY, JSON.stringify(list))
+    localStorage.setItem(BACKENDS_KEY, JSON.stringify(persisted))
   } catch {
     // a convenience list; never fail a connect over storage
   }
-  cache = sorted(list)
+  cache = sorted(persisted)
   for (const fn of listeners) fn()
 }
 
@@ -53,22 +84,57 @@ export function useKnownBackends(): KnownBackend[] {
 
 // Record a successful connection, keyed by normalized origin so reconnecting
 // just bumps it. Callers pass only remote backends — local stays implicit.
-export function rememberBackend(url: string, now: string): void {
+export function rememberBackend(url: string, now: string, meta?: BackendMetadata): void {
   const target = normalizeBaseUrl(url)
   if (!target) return
   const list = read()
   const previous = list.find((b) => normalizeBaseUrl(b.url) === target)
   commit([
-    { url: target, label: previous?.label || hostLabel(target), lastConnectedAt: now },
+    {
+      url: target,
+      label: previous?.label || hostLabel(target),
+      lastConnectedAt: now,
+      mode: meta?.mode ?? previous?.mode,
+      auth: meta?.auth ?? previous?.auth,
+      oidcLoginUrl: meta?.oidcLoginUrl ?? previous?.oidcLoginUrl,
+    },
     ...list.filter((b) => normalizeBaseUrl(b.url) !== target),
   ])
+}
+
+export function updateBackendMetadata(url: string, meta: BackendMetadata): void {
+  const target = normalizeBaseUrl(url)
+  if (!target) return
+  const list = read()
+  const existing = list.find((b) => normalizeBaseUrl(b.url) === target)
+  if (!existing) {
+    if (clientRuntime.cloudUrl && normalizeBaseUrl(clientRuntime.cloudUrl) === target) {
+      commit([
+        ...list,
+        { url: target, label: hostLabel(target), lastConnectedAt: '', managed: true, ...meta },
+      ])
+    }
+    return
+  }
+  commit(
+    list.map((b) =>
+      normalizeBaseUrl(b.url) === target
+        ? {
+            ...b,
+            mode: meta.mode ?? b.mode,
+            auth: meta.auth ?? b.auth,
+            oidcLoginUrl: meta.oidcLoginUrl ?? b.oidcLoginUrl,
+          }
+        : b,
+    ),
+  )
 }
 
 export function renameBackend(url: string, label: string): void {
   const target = normalizeBaseUrl(url)
   const name = label.trim()
   if (!target || !name) return
-  commit(read().map((b) => (normalizeBaseUrl(b.url) === target ? { ...b, label: name } : b)))
+  commit(mergeConfiguredCloud(read()).map((b) => (normalizeBaseUrl(b.url) === target ? { ...b, label: name } : b)))
 }
 
 // Registry-level removal. Prefer connection.forgetBackend, which also clears a
@@ -85,6 +151,11 @@ export function removeKnownBackend(url: string): void {
 export function knownBackendLabel(url: string): string | undefined {
   const target = normalizeBaseUrl(url)
   return cache.find((b) => normalizeBaseUrl(b.url) === target)?.label
+}
+
+export function knownBackend(url: string): KnownBackend | undefined {
+  const target = normalizeBaseUrl(url)
+  return cache.find((b) => normalizeBaseUrl(b.url) === target)
 }
 
 function hostLabel(url: string): string {

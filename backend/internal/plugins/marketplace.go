@@ -128,7 +128,8 @@ func (s *Store) marketplace(repoRoot, repoLabel string) ([]preparedPlugin, []Mar
 	if doc.Plugins == nil {
 		return nil, nil, nil, true, fmt.Errorf("%w: marketplace needs a plugins array", ErrInvalid)
 	}
-	siblings := scanSiblingFlavors(repoRoot, s.dataDir)
+	_, dataDir := s.workspaceDirs()
+	siblings := scanSiblingFlavors(repoRoot, dataDir)
 	var prepared []preparedPlugin
 	var entries []MarketplaceEntry
 	var skipped []SkippedPlugin
@@ -166,7 +167,7 @@ func (s *Store) marketplace(repoRoot, repoLabel string) ([]preparedPlugin, []Mar
 			skipped = append(skipped, SkippedPlugin{Name: item.Name, Reason: "local source must stay inside the repository"})
 			continue
 		}
-		plugin, err := readPackage(resolved, s.dataDir, nil)
+		plugin, err := readPackage(resolved, dataDir, nil)
 		if err != nil || plugin.ID != item.Name {
 			skipped = append(skipped, SkippedPlugin{Name: item.Name, Reason: "local source has no valid matching plugin manifest"})
 			continue

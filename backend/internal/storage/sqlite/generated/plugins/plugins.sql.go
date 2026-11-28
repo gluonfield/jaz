@@ -12,11 +12,17 @@ import (
 
 const deletePluginSource = `-- name: DeletePluginSource :execrows
 DELETE FROM plugin_sources
-WHERE id = ?1
+WHERE workspace_id = ?1
+  AND id = ?2
 `
 
-func (q *Queries) DeletePluginSource(ctx context.Context, id string) (int64, error) {
-	result, err := q.db.ExecContext(ctx, deletePluginSource, id)
+type DeletePluginSourceParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) DeletePluginSource(ctx context.Context, arg DeletePluginSourceParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deletePluginSource, arg.WorkspaceID, arg.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -25,25 +31,38 @@ func (q *Queries) DeletePluginSource(ctx context.Context, id string) (int64, err
 
 const deletePluginState = `-- name: DeletePluginState :exec
 DELETE FROM plugin_state
-WHERE plugin_id = ?1
+WHERE workspace_id = ?1
+  AND plugin_id = ?2
 `
 
-func (q *Queries) DeletePluginState(ctx context.Context, pluginID string) error {
-	_, err := q.db.ExecContext(ctx, deletePluginState, pluginID)
+type DeletePluginStateParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	PluginID    string `json:"plugin_id"`
+}
+
+func (q *Queries) DeletePluginState(ctx context.Context, arg DeletePluginStateParams) error {
+	_, err := q.db.ExecContext(ctx, deletePluginState, arg.WorkspaceID, arg.PluginID)
 	return err
 }
 
 const getPluginSource = `-- name: GetPluginSource :one
-SELECT id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms
+SELECT workspace_id, id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms
 FROM plugin_sources
-WHERE id = ?1
+WHERE workspace_id = ?1
+  AND id = ?2
 LIMIT 1
 `
 
-func (q *Queries) GetPluginSource(ctx context.Context, id string) (PluginSource, error) {
-	row := q.db.QueryRowContext(ctx, getPluginSource, id)
+type GetPluginSourceParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) GetPluginSource(ctx context.Context, arg GetPluginSourceParams) (PluginSource, error) {
+	row := q.db.QueryRowContext(ctx, getPluginSource, arg.WorkspaceID, arg.ID)
 	var i PluginSource
 	err := row.Scan(
+		&i.WorkspaceID,
 		&i.ID,
 		&i.Repository,
 		&i.Url,
@@ -60,16 +79,23 @@ func (q *Queries) GetPluginSource(ctx context.Context, id string) (PluginSource,
 }
 
 const getPluginState = `-- name: GetPluginState :one
-SELECT plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms
+SELECT workspace_id, plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms
 FROM plugin_state
-WHERE plugin_id = ?1
+WHERE workspace_id = ?1
+  AND plugin_id = ?2
 LIMIT 1
 `
 
-func (q *Queries) GetPluginState(ctx context.Context, pluginID string) (PluginState, error) {
-	row := q.db.QueryRowContext(ctx, getPluginState, pluginID)
+type GetPluginStateParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	PluginID    string `json:"plugin_id"`
+}
+
+func (q *Queries) GetPluginState(ctx context.Context, arg GetPluginStateParams) (PluginState, error) {
+	row := q.db.QueryRowContext(ctx, getPluginState, arg.WorkspaceID, arg.PluginID)
 	var i PluginState
 	err := row.Scan(
+		&i.WorkspaceID,
 		&i.PluginID,
 		&i.Enabled,
 		&i.SourceID,
@@ -123,13 +149,14 @@ func (q *Queries) GetThreadPluginState(ctx context.Context, arg GetThreadPluginS
 }
 
 const listPluginSources = `-- name: ListPluginSources :many
-SELECT id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms
+SELECT workspace_id, id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms
 FROM plugin_sources
+WHERE workspace_id = ?1
 ORDER BY id ASC
 `
 
-func (q *Queries) ListPluginSources(ctx context.Context) ([]PluginSource, error) {
-	rows, err := q.db.QueryContext(ctx, listPluginSources)
+func (q *Queries) ListPluginSources(ctx context.Context, workspaceID string) ([]PluginSource, error) {
+	rows, err := q.db.QueryContext(ctx, listPluginSources, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +165,7 @@ func (q *Queries) ListPluginSources(ctx context.Context) ([]PluginSource, error)
 	for rows.Next() {
 		var i PluginSource
 		if err := rows.Scan(
+			&i.WorkspaceID,
 			&i.ID,
 			&i.Repository,
 			&i.Url,
@@ -164,13 +192,14 @@ func (q *Queries) ListPluginSources(ctx context.Context) ([]PluginSource, error)
 }
 
 const listPluginStates = `-- name: ListPluginStates :many
-SELECT plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms
+SELECT workspace_id, plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms
 FROM plugin_state
+WHERE workspace_id = ?1
 ORDER BY plugin_id ASC
 `
 
-func (q *Queries) ListPluginStates(ctx context.Context) ([]PluginState, error) {
-	rows, err := q.db.QueryContext(ctx, listPluginStates)
+func (q *Queries) ListPluginStates(ctx context.Context, workspaceID string) ([]PluginState, error) {
+	rows, err := q.db.QueryContext(ctx, listPluginStates, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +208,7 @@ func (q *Queries) ListPluginStates(ctx context.Context) ([]PluginState, error) {
 	for rows.Next() {
 		var i PluginState
 		if err := rows.Scan(
+			&i.WorkspaceID,
 			&i.PluginID,
 			&i.Enabled,
 			&i.SourceID,
@@ -220,8 +250,14 @@ SELECT
 FROM thread_plugin_state s
 JOIN threads t ON t.id = s.thread_id
 WHERE s.plugin_id = ?1
+  AND (CAST(?2 AS TEXT) = '' OR t.workspace_id = ?2)
 ORDER BY t.updated_at_ms DESC, s.thread_id ASC
 `
+
+type ListThreadPluginStatesByPluginParams struct {
+	PluginID    string `json:"plugin_id"`
+	WorkspaceID string `json:"workspace_id"`
+}
 
 type ListThreadPluginStatesByPluginRow struct {
 	ThreadID          string         `json:"thread_id"`
@@ -238,8 +274,8 @@ type ListThreadPluginStatesByPluginRow struct {
 	ThreadCwd         sql.NullString `json:"thread_cwd"`
 }
 
-func (q *Queries) ListThreadPluginStatesByPlugin(ctx context.Context, pluginID string) ([]ListThreadPluginStatesByPluginRow, error) {
-	rows, err := q.db.QueryContext(ctx, listThreadPluginStatesByPlugin, pluginID)
+func (q *Queries) ListThreadPluginStatesByPlugin(ctx context.Context, arg ListThreadPluginStatesByPluginParams) ([]ListThreadPluginStatesByPluginRow, error) {
+	rows, err := q.db.QueryContext(ctx, listThreadPluginStatesByPlugin, arg.PluginID, arg.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +349,7 @@ func (q *Queries) UpdateThreadPluginUIStateIfMatch(ctx context.Context, arg Upda
 }
 
 const upsertPluginSource = `-- name: UpsertPluginSource :exec
-INSERT INTO plugin_sources (id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms)
+INSERT INTO plugin_sources (workspace_id, id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms)
 VALUES (
   ?1,
   ?2,
@@ -325,9 +361,10 @@ VALUES (
   ?8,
   ?9,
   ?10,
-  ?11
+  ?11,
+  ?12
 )
-ON CONFLICT(id) DO UPDATE SET
+ON CONFLICT(workspace_id, id) DO UPDATE SET
   repository = excluded.repository,
   url = excluded.url,
   ref = excluded.ref,
@@ -341,6 +378,7 @@ ON CONFLICT(id) DO UPDATE SET
 `
 
 type UpsertPluginSourceParams struct {
+	WorkspaceID   string `json:"workspace_id"`
 	ID            string `json:"id"`
 	Repository    string `json:"repository"`
 	Url           string `json:"url"`
@@ -356,6 +394,7 @@ type UpsertPluginSourceParams struct {
 
 func (q *Queries) UpsertPluginSource(ctx context.Context, arg UpsertPluginSourceParams) error {
 	_, err := q.db.ExecContext(ctx, upsertPluginSource,
+		arg.WorkspaceID,
 		arg.ID,
 		arg.Repository,
 		arg.Url,
@@ -372,7 +411,7 @@ func (q *Queries) UpsertPluginSource(ctx context.Context, arg UpsertPluginSource
 }
 
 const upsertPluginState = `-- name: UpsertPluginState :exec
-INSERT INTO plugin_state (plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms)
+INSERT INTO plugin_state (workspace_id, plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms)
 VALUES (
   ?1,
   ?2,
@@ -383,9 +422,10 @@ VALUES (
   ?7,
   ?8,
   ?9,
-  ?10
+  ?10,
+  ?11
 )
-ON CONFLICT(plugin_id) DO UPDATE SET
+ON CONFLICT(workspace_id, plugin_id) DO UPDATE SET
   enabled = excluded.enabled,
   source_id = excluded.source_id,
   source_repository = excluded.source_repository,
@@ -398,6 +438,7 @@ ON CONFLICT(plugin_id) DO UPDATE SET
 `
 
 type UpsertPluginStateParams struct {
+	WorkspaceID      string `json:"workspace_id"`
 	PluginID         string `json:"plugin_id"`
 	Enabled          int64  `json:"enabled"`
 	SourceID         string `json:"source_id"`
@@ -412,6 +453,7 @@ type UpsertPluginStateParams struct {
 
 func (q *Queries) UpsertPluginState(ctx context.Context, arg UpsertPluginStateParams) error {
 	_, err := q.db.ExecContext(ctx, upsertPluginState,
+		arg.WorkspaceID,
 		arg.PluginID,
 		arg.Enabled,
 		arg.SourceID,

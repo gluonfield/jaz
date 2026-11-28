@@ -16,8 +16,8 @@ export interface LoopInput {
   model?: string
   reasoning_effort?: string
   directory?: string
-  // Boards the loop's widget is assigned to; assignment is what enables the
-  // widget (there is no separate toggle).
+  // Boards the loop's app is a tile on; being on a board is what makes the
+  // loop publish an app.
   board_ids?: string[]
 }
 

@@ -33,8 +33,8 @@ test('opens with the first prompt visible only after persisting it once', async 
         validTimestamp: true,
       },
     },
-    projectedBeforeHistory: ['inspect this'],
-    projectedAfterHistory: ['server copy'],
+    projectedBeforeHistory: [[1_000_000, 'inspect this']],
+    projectedAfterHistory: [[1, 'inspect this']],
     requests: [
       { path: '/v1/sessions', body: { title: 'Inspect this' } },
       {

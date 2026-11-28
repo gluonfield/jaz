@@ -2,8 +2,11 @@ import type { BrowserNavigationDirection } from '../../../shared/browserNavigati
 import type { NotchAccess, NotificationConfig } from '../../../shared/notifications'
 import type { UpdateStatus } from '../../../shared/update'
 import type { VoiceOverlayAPI } from '@shared/voice'
+import type { AssistantAPI } from '@shared/assistant'
 import type { WindowKind } from '@shared/windowKind'
 import type { ConnectionSessionAPI } from '@shared/connectionSession'
+import type { DesktopAppsAPI } from '@shared/desktopApps'
+import { normalizeCloudUrl, parseBoolFlag } from '@shared/cloudConfig'
 import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
 export { LOCAL_BACKEND_URL as DEFAULT_API_BASE_URL } from '@shared/localBackend'
@@ -13,31 +16,29 @@ export type ClientPlatform = 'desktop' | 'browser'
 
 export interface ClientRuntime {
   connectionSession?: ConnectionSessionAPI
+  desktopApps?: DesktopAppsAPI
   voiceOverlay?: VoiceOverlayAPI
+  assistant?: AssistantAPI
   kind: ClientRuntimeKind
   platform: ClientPlatform
   deviceKind: ClientPlatform
   windowKind: WindowKind
+  cloudUrl: string
   capabilities: {
     localBackend: boolean
     updates: boolean
     previewWebview: boolean
   }
   encryptCredential?: (value: string) => string
-  decryptCredential?: (value: string) => string
+  decryptCredential?: (value: string, allowLegacy?: boolean) => string
   defaultApiBaseUrl: () => string
   localBackendTransport?: string
   setNativeTheme?: (source: 'light' | 'dark' | 'system') => void
   setWindowButtonsVisible?: (visible: boolean) => void
   startLocalBackend?: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
-  getDeviceIdentity?: () => Promise<{ device_id: string; public_key: string }>
-  getDeviceMetadata?: () => Promise<{
-    name: string
-    platform: string
-    device_family: string
-    model_identifier: string
-    app_version: string
-  }>
+  beginOidcSignIn?: () => Promise<{ redirectUri?: string } | void>
+  onOidcCallback?: (handler: (url: string) => void) => () => void
+  pickDirectory?: () => Promise<string | null>
   configureNotifications?: (config: NotificationConfig) => Promise<boolean>
   notchAccess?: () => Promise<NotchAccess>
   shareFocusStatus?: () => Promise<NotchAccess>
@@ -57,26 +58,48 @@ export interface ClientRuntime {
   onPreviewFindShortcut?: (handler: () => void) => () => void
 }
 
+function isHostedCloudWebBuild(): boolean {
+  return parseBoolFlag(import.meta.env.VITE_JAZ_LOCAL_ENABLED, true) === false
+}
+
+function webOriginCloudUrl(): string {
+  const origin = normalizeCloudUrl(typeof window !== 'undefined' ? window.location?.origin : undefined)
+  return origin && origin !== LOCAL_BACKEND_URL ? origin : ''
+}
+
+function webCloudUrl(): string {
+  const configured = normalizeCloudUrl(import.meta.env.VITE_JAZ_CLOUD_URL)
+  if (configured) {
+    return configured
+  }
+  return isHostedCloudWebBuild() ? webOriginCloudUrl() : ''
+}
+
 function webDefaultApiBaseUrl(): string {
   const configured = import.meta.env.VITE_JAZ_API_URL?.trim()
   // "origin" targets the origin the app is served from, so one build works
   // behind a reverse proxy at any domain (app and API share an origin).
-  if (configured === 'origin') return window.location.origin
+  if (configured === 'origin') return typeof window !== 'undefined' ? window.location.origin : ''
   if (configured) return configured
+  const cloudUrl = webCloudUrl()
+  if (cloudUrl) return cloudUrl
   return LOCAL_BACKEND_URL
 }
 
 function createRuntime(): ClientRuntime {
-  const electron = window.jaz
+  const electron = typeof window !== 'undefined' ? window.jaz : undefined
   if (electron) {
+    const localEnabled = electron.localEnabled ?? true
     return {
       kind: 'electron',
       connectionSession: electron.connectionSession,
+      desktopApps: electron.desktopApps,
       platform: 'desktop',
       deviceKind: 'desktop',
       windowKind: electron.windowKind,
+      cloudUrl: normalizeCloudUrl(electron.cloudUrl),
       capabilities: {
-        localBackend: true,
+        localBackend: localEnabled,
         updates: true,
         previewWebview: true,
       },
@@ -85,10 +108,11 @@ function createRuntime(): ClientRuntime {
       setNativeTheme: electron.setNativeTheme,
       setWindowButtonsVisible: electron.setWindowButtonsVisible,
       startLocalBackend: electron.startLocalBackend,
-      getDeviceIdentity: electron.getDeviceIdentity,
+      beginOidcSignIn: electron.beginOidcSignIn,
+      onOidcCallback: electron.onOidcCallback,
       encryptCredential: electron.encryptCredential,
       decryptCredential: electron.decryptCredential,
-      getDeviceMetadata: electron.getDeviceMetadata,
+      pickDirectory: electron.pickDirectory,
       configureNotifications: electron.configureNotifications,
       notchAccess: electron.notchAccess,
       shareFocusStatus: electron.shareFocusStatus,
@@ -107,6 +131,7 @@ function createRuntime(): ClientRuntime {
       onBrowserCloseShortcut: electron.onBrowserCloseShortcut,
       onPreviewFindShortcut: electron.onPreviewFindShortcut,
       voiceOverlay: electron.voiceOverlay,
+      assistant: electron.assistant,
     }
   }
   return {
@@ -114,6 +139,7 @@ function createRuntime(): ClientRuntime {
     platform: 'browser',
     deviceKind: 'browser',
     windowKind: 'main',
+    cloudUrl: webCloudUrl(),
     capabilities: {
       localBackend: false,
       updates: false,
@@ -140,7 +166,8 @@ export function backendFetch(url: string, init?: RequestInit): Promise<Response>
 // native titlebar and redraws its own; window-top headers clear them there.
 // The browser client (even on a Mac) keeps the OS title bar, so there is
 // nothing at the window's top-left to dodge.
-export const isMacDesktop = clientRuntime.kind === 'electron' && /Mac/.test(navigator.platform)
+export const isMacDesktop =
+  clientRuntime.kind === 'electron' && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform)
 
 export function openExternal(url: string): void {
   if (clientRuntime.openExternalURL) {
@@ -155,5 +182,5 @@ export function popOutBoard(boardId: string): void {
     clientRuntime.openBoardWindow(boardId)
     return
   }
-  window.open(`/boards/${boardId}`, '_blank', 'noopener,noreferrer')
+  window.open(`/apps/${boardId}`, '_blank', 'noopener,noreferrer')
 }

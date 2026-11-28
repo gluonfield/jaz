@@ -11,6 +11,9 @@ import (
 )
 
 func (s *Server) handleListLoops(w http.ResponseWriter, r *http.Request) {
+	if s.proxyCloud(w, r) {
+		return
+	}
 	if s.Loops == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("loops are not configured"))
 		return
@@ -27,6 +30,9 @@ func (s *Server) handleListLoops(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateLoop(w http.ResponseWriter, r *http.Request) {
+	if s.proxyCloud(w, r) {
+		return
+	}
 	if s.Loops == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("loops are not configured"))
 		return
@@ -61,17 +67,20 @@ func (s *Server) handleCreateLoop(w http.ResponseWriter, r *http.Request) {
 }
 
 // loopCoordinator builds the shared create/update use case for the REST surface.
-// Boards come from the widget service; there is no card sink because REST
+// Boards come from the boards service; there is no card sink because REST
 // requests carry no thread to announce into.
 func (s *Server) loopCoordinator() loops.Coordinator {
 	coordinator := loops.Coordinator{Loops: s.Loops, Owner: s.RoutineOwner}
-	if s.Widgets != nil {
-		coordinator.Boards = s.Widgets.LoopBoards()
+	if s.Boards != nil {
+		coordinator.Boards = s.Boards.LoopBoards()
 	}
 	return coordinator
 }
 
 func (s *Server) handleLoopAction(w http.ResponseWriter, r *http.Request) {
+	if s.proxyCloud(w, r) {
+		return
+	}
 	if s.Loops == nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("loops are not configured"))
 		return
@@ -89,14 +98,18 @@ func (s *Server) handleLoopAction(w http.ResponseWriter, r *http.Request) {
 		case http.MethodPatch:
 			s.handlePatchLoop(w, r, loopID)
 		case http.MethodDelete:
+			if _, err := s.Loops.LoadForActiveWorkspace(loopID); err != nil {
+				writeError(w, http.StatusNotFound, err)
+				return
+			}
 			if err := s.Loops.Delete(loopID); err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
-			// The loop's widget dies with it; a lingering placement would
-			// invisibly occupy board cells.
-			if s.Widgets != nil {
-				s.Widgets.PurgeOrphans()
+			// The loop's tiles go with it; a lingering one would occupy
+			// board cells with nothing to refresh it.
+			if s.Boards != nil {
+				s.Boards.PurgeOrphans(r.Context())
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		default:
@@ -108,6 +121,10 @@ func (s *Server) handleLoopAction(w http.ResponseWriter, r *http.Request) {
 	case action == "runs" && r.Method == http.MethodGet:
 		s.handleListLoopRuns(w, r, loopID)
 	case action == "run" && r.Method == http.MethodPost:
+		if _, err := s.Loops.LoadForActiveWorkspace(loopID); err != nil {
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
 		run, err := s.Loops.RunNow(r.Context(), loopID)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
@@ -119,8 +136,8 @@ func (s *Server) handleLoopAction(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleGetLoop(w http.ResponseWriter, _ *http.Request, loopID string) {
-	loop, err := s.Loops.Load(loopID)
+func (s *Server) handleGetLoop(w http.ResponseWriter, r *http.Request, loopID string) {
+	loop, err := s.Loops.LoadForActiveWorkspace(loopID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return
@@ -131,15 +148,19 @@ func (s *Server) handleGetLoop(w http.ResponseWriter, _ *http.Request, loopID st
 		return
 	}
 	boardIDs := []string{}
-	if s.Widgets != nil {
-		if _, boards, found, err := s.Widgets.StateForLoop(loopID); err == nil && found {
-			boardIDs = boards
+	if s.Boards != nil {
+		if _, assigned, err := s.Boards.StateForLoop(r.Context(), loopID); err == nil && assigned != nil {
+			boardIDs = assigned
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"loop": loop, "runs": runs, "board_ids": boardIDs})
 }
 
 func (s *Server) handlePatchLoop(w http.ResponseWriter, r *http.Request, loopID string) {
+	if _, err := s.Loops.LoadForActiveWorkspace(loopID); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
 	var req patchLoopRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -167,6 +188,10 @@ func (s *Server) handlePatchLoop(w http.ResponseWriter, r *http.Request, loopID 
 }
 
 func (s *Server) handleListLoopRuns(w http.ResponseWriter, r *http.Request, loopID string) {
+	if _, err := s.Loops.LoadForActiveWorkspace(loopID); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
 	limit := 20
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		_, _ = fmt.Sscanf(raw, "%d", &limit)
@@ -194,8 +219,8 @@ type loopRequest struct {
 	Trigger         *loops.Trigger `json:"trigger,omitempty"`
 	WhenMissed      string         `json:"when_missed,omitempty"`
 	Thread          string         `json:"thread,omitempty"`
-	// BoardIDs assigns the loop's widget to boards; assignment is what enables
-	// widget publishing (there is no separate toggle).
+	// BoardIDs puts the loop's app on boards; a loop publishes an app only
+	// while it is on a board (there is no separate toggle).
 	BoardIDs []string `json:"board_ids,omitempty"`
 }
 

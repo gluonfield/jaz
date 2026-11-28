@@ -19,6 +19,18 @@ import (
 
 var filename = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]*$`)
 
+func validViewFile(raw string) bool {
+	if raw == "" || strings.HasPrefix(raw, "/") || strings.HasSuffix(raw, "/") || strings.ContainsRune(raw, '\\') {
+		return false
+	}
+	for part := range strings.SplitSeq(raw, "/") {
+		if !filename.MatchString(part) {
+			return false
+		}
+	}
+	return true
+}
+
 type SessionStore interface {
 	ListSessionPluginViews() ([]storage.SessionPluginView, error)
 }
@@ -51,7 +63,9 @@ func (s *Store) PageWithContext(ctx context.Context, plugin string, sessions Ses
 	if !manifest.SafeName(plugin) {
 		return PageContent{}, fmt.Errorf("%w: name %q", ErrInvalid, plugin)
 	}
-	installed, err := manifest.Read(filepath.Join(s.dir, plugin))
+	dir, _ := s.workspaceDirs()
+	ws := s.ActiveWorkspaceID()
+	installed, err := manifest.Read(filepath.Join(dir, plugin))
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, manifest.ErrNotPlugin) {
 		return PageContent{}, ErrNotFound
 	}
@@ -69,7 +83,7 @@ func (s *Store) PageWithContext(ctx context.Context, plugin string, sessions Ses
 	seenThreads := map[string]bool{}
 
 	if s.stateStore != nil {
-		rows, err := s.stateStore.ListThreadPluginStatesByPlugin(ctx, plugin)
+		rows, err := s.stateStore.ListThreadPluginStatesByPlugin(ctx, ws, plugin)
 		if err != nil {
 			return PageContent{}, err
 		}
@@ -104,6 +118,9 @@ func (s *Store) PageWithContext(ctx context.Context, plugin string, sessions Ses
 	}
 	latest := map[string]storage.SessionPluginView{}
 	for _, presentation := range presentations {
+		if presentation.WorkspaceID != "" && presentation.WorkspaceID != ws {
+			continue
+		}
 		if seenThreads[presentation.ID] {
 			continue
 		}
@@ -132,7 +149,7 @@ func (s *Store) PageWithContext(ctx context.Context, plugin string, sessions Ses
 	groups := map[source][]PageThread{}
 	var ordered []source
 	for _, thread := range threads {
-		if !filepath.IsAbs(thread.Folder) || !filename.MatchString(thread.File) {
+		if !filepath.IsAbs(thread.Folder) || !validViewFile(thread.File) {
 			continue
 		}
 		key := source{folder: filepath.Clean(thread.Folder), file: thread.File}

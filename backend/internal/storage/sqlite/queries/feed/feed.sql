@@ -5,6 +5,7 @@ WHERE archived = 0
   AND unread = 1
   AND status = 'idle'
   AND COALESCE(source_type, '') = ''
+  AND workspace_id = sqlc.arg(workspace_id)
 ORDER BY last_attention_at_ms DESC;
 
 -- name: LastUserPromptAt :one

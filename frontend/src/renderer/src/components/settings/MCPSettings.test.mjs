@@ -14,11 +14,14 @@ mock.module('@/lib/clientRuntime', () => ({
 
 mock.module('@/components/ui/Modal', () => ({ Modal: () => null }))
 
-test('MCP Settings manages custom servers while preserving the shared runtime inventory', async () => {
+test.each([
+  ['needs_auth', 'Sign in required'],
+  ['auth_error', 'authorization failed: access_denied'],
+])('MCP Settings shows sign-in for a custom server with status %s', async (status, label) => {
   const { MCPSettings } = await import('@/components/settings/MCPSettings')
   const client = new QueryClient()
   const servers = [
-    { id: 'custom', name: 'Custom fixture' },
+    { id: 'custom', name: 'Custom fixture', status, error: status === 'auth_error' ? label : undefined },
     { id: 'connection', name: 'Connected fixture', source: 'connection' },
     { id: 'plugin', name: 'Plugin fixture', source: 'plugin' },
   ].map((server) => ({
@@ -34,6 +37,9 @@ test('MCP Settings manages custom servers while preserving the shared runtime in
   client.setQueryData(keys.mcpServers, { servers, oauth_redirect_url: 'https://jaz.chat/oauth/callback' })
   const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(MCPSettings)))
   expect(html).toContain('Custom fixture')
+  expect(html).toContain(label)
+  expect(html).toContain('Sign in to MCP server')
+  expect(html).not.toContain('Show Custom fixture tools')
   expect(html).not.toContain('Connected fixture')
   expect(html).not.toContain('Plugin fixture')
   expect(html).toContain('Manage connected apps in Connections')

@@ -9,6 +9,7 @@ import (
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/loops"
@@ -21,7 +22,6 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/threads"
 	"github.com/wins/jaz/backend/internal/visualize"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 type fakeACPService struct {
@@ -84,7 +84,7 @@ func TestThreadToolsCreateDiscoverAndRead(t *testing.T) {
 		events,
 		store,
 		store,
-		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		&boards.SessionPublisher{Service: newTestBoards(store), Sessions: store, Loops: store},
 		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),

@@ -7,8 +7,8 @@ import { useConnection } from '@/lib/connection'
 import type { BrowserSessions } from '@/lib/browserSessions'
 
 export function useBrowserHost(sessions: BrowserSessions): void {
-  const { status, url } = useConnection()
-  const connected = status === 'connected' || status === 'reconnecting'
+  const { status, url, mode } = useConnection()
+  const connected = (status === 'connected' || status === 'reconnecting') && mode !== 'cloud'
   const { data: settings } = useQuery({ ...browserSettingsQuery, enabled: connected })
   useEffect(() => {
     if (!connected || !window.jaz?.browserCommand || clientRuntime.windowKind !== 'main' || !settings?.enabled) return

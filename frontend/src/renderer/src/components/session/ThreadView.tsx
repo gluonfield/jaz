@@ -1,12 +1,11 @@
 import { useComputerControl } from '@/lib/hooks/useComputerControl'
-import { usePrefetchQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { ArrowDown, Play } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
-import { UserBubble } from '@/components/session/Bubble'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { NativeModelOptions } from '@/components/session/NativeModelOptions'
 import { useSessionConfig } from '@/components/session/useSessionConfig'
@@ -16,27 +15,28 @@ import { ThreadCanvas } from '@/components/canvas/ThreadCanvas'
 import { CanvasChatToggle, useCanvasChat } from '@/components/canvas/CanvasChat'
 import { useAppContexts } from '@/components/apps/useAppContexts'
 import { useCanvasContexts } from '@/components/canvas/useCanvasContexts'
-import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
+import { FileReaderLinkProvider, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
+import { MessageDeliveryActions } from '@/components/session/DeliveryStatus'
+import { ArtifactPanelContext } from '@/lib/artifactPanel'
 import { SessionErrorNotice, type SessionErrorAction } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
 import { GoalStatusBar } from '@/components/session/GoalStatusBar'
+import { CloudSpendBanner } from '@/components/session/CloudSpendBanner'
 import { PendingSteerBubble } from '@/components/session/PendingSteerBubble'
 import { PendingSessionHistory } from '@/components/session/PendingSessionHistory'
 import { SidePanel } from '@/components/session/SidePanel'
+import { SidePanelLauncher } from '@/components/session/SidePanelTabs'
 import { SessionTitlebar } from '@/components/session/SessionTitlebar'
 import { SidePanelDrawer } from '@/components/session/SidePanelDrawer'
 import { useSidePanelState } from '@/components/session/SidePanelState'
-import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ThreadFindBar } from '@/components/session/ThreadFindBar'
 import { ThreadOutline } from '@/components/session/ThreadOutline'
-import { ToolCalls } from '@/components/session/ToolCalls'
 import { Transcript } from '@/components/session/Transcript'
 import { deriveSessionView, isCodexACPSession, sessionEventErrorMessage } from '@/components/session/sessionView'
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
 import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
-import { liveOptimisticUserMessage } from '@/components/session/liveTranscript'
 import { useLiveSessionSend } from '@/components/session/useLiveSessionSend'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Button } from '@/components/ui/Button'
@@ -44,22 +44,28 @@ import { HorizontalResizeHandle } from '@/components/ui/HorizontalResizeHandle'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
+import { isCloudApiSession } from '@/lib/api/client'
+import { updateThreadUserState } from '@/lib/api/cloudSpaces'
+import { uploadCloudFile } from '@/lib/api/cloudUploads'
+import { isSpendCapError } from '@/lib/api/cloudUsage'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
 import {
   answerSessionInteractiveResponse,
   cancelSession,
   clearSessionGoal,
   sendSessionSideChat,
+  sessionCloudRunId,
   sessionEventsQuery,
   sessionOverviewQuery,
   sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import type { AgentSessionState, ChatMessage, SessionEvent, SessionOverview } from '@/lib/api/types'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { MCPAppThreadContext, type MCPAppThread } from '@/lib/mcpAppThread'
 import { SidePanelSlot } from '@/lib/sidePanelSlot'
-import { isPanelPresentation } from '@/lib/sidePanelTabs'
+import { isPanelPresentation, type CanvasTarget } from '@/lib/sidePanelTabs'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { type HistoryPaging, useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
@@ -72,11 +78,7 @@ import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SpawnedThreadView } from '@/lib/spawnedThreads'
-import {
-  type OptimisticUserMessage,
-  optimisticTranscriptMessages,
-  pendingOptimisticUserMessage,
-} from '@/lib/optimisticUserMessage'
+import type { PendingUserMessage } from '@/lib/outbox'
 
 function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick: () => void }) {
   return (
@@ -152,7 +154,7 @@ export function ThreadView({
   page?: string
   item?: string
   navigationKey?: string
-  initialPrompt?: OptimisticUserMessage
+  initialPrompt?: PendingUserMessage
   header?: ReactNode
   details?: (view: ThreadDetailsView) => ReactNode
   openDetails?: boolean
@@ -165,10 +167,13 @@ export function ThreadView({
   const reportHistoryError = useCallback((message: string) => {
     toast(`Couldn't load earlier history: ${message}`, 'danger')
   }, [toast])
-  useComputerControl(sessionId)
   const detail = useSessionHistory(sessionId, reportHistoryError)
+  const isCloudThreadView = detail.data?.session.backend === 'cloud' || isCloudApiSession()
+  const isViewer = useIsCloudViewer()
+  const isReadOnly = isCloudThreadView && isViewer
+  useComputerControl(sessionId, !isCloudThreadView)
   const voice = useVoiceMode(sessionId)
-  const voiceAvailable = useQuery(voiceAvailableQuery).data
+  const voiceAvailable = useQuery({ ...voiceAvailableQuery, enabled: !isCloudThreadView }).data
   const { start: startVoiceConversation } = voice
   const startVoice = useLocation({ select: (location) => location.state.startVoice })
   const navigate = useNavigate()
@@ -177,8 +182,10 @@ export function ThreadView({
     void navigate({ replace: true, state: (previous) => ({ ...previous, startVoice: undefined }) })
     startVoiceConversation()
   }, [navigate, startVoice, startVoiceConversation])
-  const overview = useQuery(sessionOverviewQuery(sessionId))
-  usePrefetchQuery(sessionRepoQuery(sessionId))
+  const overview = useQuery({ ...sessionOverviewQuery(sessionId), enabled: !isCloudThreadView })
+  useEffect(() => {
+    if (!isCloudThreadView) void queryClient.prefetchQuery(sessionRepoQuery(sessionId))
+  }, [isCloudThreadView, queryClient, sessionId])
   const events = useQuery(sessionEventsQuery(sessionId))
   const shownCriticalErrors = useRef(new Set<string>())
   const [lastSessionEventAt, setLastSessionEventAt] = useState<string>()
@@ -227,11 +234,13 @@ export function ThreadView({
   const { containerRef: panelContainerRef } = sidePanel
   useEffect(() => (floatPanel && panelSlot.row ? panelContainerRef(panelSlot.row) : undefined), [floatPanel, panelSlot.row, panelContainerRef])
 
-  const { live, streaming, send: sendLiveMessage, abort: abortLiveMessage } = useLiveSessionSend({
+  const { live, streaming, messages: transcriptMessages, send: sendLiveMessage, retry, discard, abort: abortLiveMessage } = useLiveSessionSend({
     sessionId,
     onCriticalError: notifyCriticalError,
     history: detail.data,
+    initialPrompt,
   })
+  const deliveryActions = useMemo(() => ({ retry, discard }), [retry, discard])
   const [bottomDockHeight, setBottomDockHeight] = useState(0)
   const transcriptBottomPadding = Math.max(bottomDockHeight + TRANSCRIPT_DOCK_GAP_PX, 160)
   const {
@@ -263,9 +272,10 @@ export function ThreadView({
   // what app views reported, and on a canvas the selection too.
   const { take: takeAppContexts } = appContexts
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
+    if (isReadOnly) return Promise.resolve()
     pinToBottom()
     return sendMessage(text, { ...options, contexts: options.contexts ?? [...(canvasContexts.present ? canvasContexts.contexts : []), ...takeAppContexts()] })
-  }, [pinToBottom, sendMessage, canvasContexts.present, canvasContexts.contexts, takeAppContexts])
+  }, [isReadOnly, pinToBottom, sendMessage, canvasContexts.present, canvasContexts.contexts, takeAppContexts])
   const appThread = useMemo<MCPAppThread>(() => ({
     id: sessionId,
     send: (text) => void handleSend(text),
@@ -274,6 +284,7 @@ export function ThreadView({
     openView,
   }), [sessionId, handleSend, appContexts.report, sidePanel.openApp, openView])
   const markdownArtifacts = useMemo(() => ({ mode: 'source' as const, onSendPrompt: handleSend }), [handleSend])
+  const artifactPanel = useMemo(() => ({ openArtifact: sidePanel.openArtifact, openPublishedApp: sidePanel.openPublishedApp }), [sidePanel.openArtifact, sidePanel.openPublishedApp])
   const threadFind = useThreadFind(sessionId, scrollRef, pauseFollowing)
   const [revealedMessageSeq, setRevealedMessageSeq] = useState<number>()
   const jumpedMessageRef = useRef(0)
@@ -300,22 +311,24 @@ export function ThreadView({
   }, [revealedMessageSeq, pauseFollowing, scrollToMessage])
 
   const stopSession = useCallback(() => {
-    // The turn runs detached server-side; clear local optimistic state now.
+    if (isReadOnly) return
+    // The turn runs detached server-side; clear the local stream state now.
     abortLiveMessage()
-    void cancelSession(sessionId)
+    void cancelSession(sessionId, isCloudThreadView)
       .catch(() => {})
       .finally(() => {
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        queryClient.invalidateQueries({ queryKey: keys.usage })
+        queryClient.invalidateQueries({ queryKey: isCloudThreadView ? keys.cloudUsageSummary : keys.usage })
       })
-  }, [abortLiveMessage, queryClient, sessionId])
+  }, [abortLiveMessage, isCloudThreadView, isReadOnly, queryClient, sessionId])
 
   const clearGoal = useCallback(() => {
+    if (isReadOnly) return
     void clearSessionGoal(sessionId)
       .then(() => queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) }))
       .catch((error) => toast(error instanceof Error ? error.message : 'Could not turn Goal mode off', 'danger'))
-  }, [queryClient, sessionId, toast])
+  }, [isReadOnly, queryClient, sessionId, toast])
 
   const sendACPFallback = useCallback(async (
     targetSessionID: string,
@@ -342,6 +355,7 @@ export function ThreadView({
     action: 'implement' | 'clarify',
     text = '',
   ) => {
+    if (isReadOnly) return
     const parentVisible = approval.sessionId !== sessionId
     if (approval.type === 'message') {
       await sendACPFallback(
@@ -373,15 +387,26 @@ export function ThreadView({
     queryClient.invalidateQueries({ queryKey: keys.sessionMessages(approval.sessionId) })
     queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
     queryClient.invalidateQueries({ queryKey: keys.usage })
-  }, [queryClient, sendACPFallback, sessionId])
+  }, [isReadOnly, queryClient, sendACPFallback, sessionId])
+
+  const uploadAttachment = useCallback(
+    (file: File) => {
+      if (isReadOnly) return Promise.reject(new Error('View-only access'))
+      return isCloudThreadView
+        ? uploadCloudFile(detailSession?.run_id || sessionId, file)
+        : uploadSessionAttachment(sessionId, file)
+    },
+    [detailSession?.run_id, isCloudThreadView, isReadOnly, sessionId],
+  )
 
   const handleSideChatSend = useCallback(async (
     sideChatID: string,
     message: string,
     options: SendMessageOptions = {},
   ) => {
+    if (isReadOnly) return
     const uploaded = options.files?.length
-      ? await Promise.all(options.files.map((file) => uploadSessionAttachment(sessionId, file)))
+      ? await Promise.all(options.files.map((file) => uploadAttachment(file)))
       : []
     const prepared = preparedSendMessage(options, uploaded)
     await sendSessionSideChat(sessionId, {
@@ -391,15 +416,25 @@ export function ThreadView({
       attachment_ids: prepared.attachmentIds,
     })
     await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
-  }, [queryClient, sessionId])
+  }, [isReadOnly, queryClient, sessionId, uploadAttachment])
 
 
 
   useEffect(() => {
-    if (seenRequestedRef.current) return
+    if (seenRequestedRef.current || !detail.isSuccess) return
     seenRequestedRef.current = true
+    if (isCloudThreadView) {
+      if (isReadOnly || !detail.data.session.unread) return
+      void updateThreadUserState(sessionId, {
+        last_read_seq: detail.data.latest_event_seq || 1,
+        unread: false,
+      })
+        .catch(() => {})
+        .finally(() => invalidateSessionLists(queryClient))
+      return
+    }
     void markThreadSeen(sessionId).finally(() => invalidateSessionLists(queryClient))
-  }, [sessionId, queryClient])
+  }, [detail.data, detail.isSuccess, isCloudThreadView, isReadOnly, sessionId, queryClient])
 
   // A deep link jumps once. Without this the effect re-fires on every streamed
   // update and drags the reader back to the linked message after they have
@@ -477,16 +512,11 @@ export function ThreadView({
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
   const pendingSteer = session.pending_steer_message
-  const initialUser = pendingOptimisticUserMessage(messages, initialPrompt ?? null)
-  const optimisticUser = isACP && live ? liveOptimisticUserMessage(live) : initialUser
-  const empty = messages.length === 0 && transcriptEvents.length === 0 && !optimisticUser && !visibleSessionError && !sessionRunning
-  // ACP turns stream through events. While the request is active, the local
-  // send time is the turn boundary; replayed user rows can be timestamped after
-  // early live events and would otherwise fold those events into the prior turn.
-  const transcriptMessages = optimisticTranscriptMessages(messages, optimisticUser)
+  const empty = transcriptMessages.length === 0 && transcriptEvents.length === 0 && !visibleSessionError && !sessionRunning
+  const sendError = transcriptMessages.findLast((message) => message.delivery?.error)?.delivery?.error
   const goalStatusVisible = goalActive
   const canContinueFromInlineError =
-    isACP && !sessionRunning && !streaming && (!live || Boolean(live.error)) && !hasBlockingPendingPermission
+    !isReadOnly && isACP && !sessionRunning && !streaming && (!live || Boolean(live.error)) && !hasBlockingPendingPermission
   const continueErrorAction: SessionErrorAction | undefined =
     canContinueFromInlineError ? {
       label: 'Continue',
@@ -504,13 +534,18 @@ export function ThreadView({
   ) : null
 
   const overviewLabel = details ? 'Details' : undefined
+  const cloudRunId = sessionCloudRunId(session)
   // Docked, never overlapping: the chat pane flexes and stays centered
   // between the sidebar and this panel.
-  const canvasBoard = <ThreadCanvas page={page} item={item} navigationKey={navigationKey} onPage={canvasContexts.onPage} sessionId={session.id} inset={canvas && canvasChat.shown ? canvasChat.width + 8 : 0} working={sessionRunning} bindSelection={canvasContexts.bindSelection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
+  const canvasBoard = (target?: CanvasTarget) => <ThreadCanvas page={target?.page ?? page} item={target ? target.item : item} navigationKey={target?.navigationKey ?? navigationKey} onPage={canvasContexts.onPage} sessionId={session.id} cloudRunId={cloudRunId} inset={canvas && canvasChat.shown ? canvasChat.width + 8 : 0} working={sessionRunning} bindSelection={canvasContexts.bindSelection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
   const sidePanelDrawer = (
     <SidePanelDrawer panel={sidePanel} isMobile={isMobile}>
       <SidePanel
         canvas={canvasBoard}
+        launcher={<SidePanelLauncher session={session} messages={messages} events={displayEvents} live={live}
+          readCanvas={!canvas && !isCloudThreadView} working={sessionRunning} sideChatAvailable={sideChatAvailable}
+          onAdd={sidePanel.addTab} onOpenFile={sidePanel.openFile}
+        />}
         session={session}
         progress={panelProgress}
         subagents={providerSubagents}
@@ -522,11 +557,11 @@ export function ThreadView({
         sideChatEvents={sideChatEvents}
         overview={details?.({ agentSession: derived.agentSession, working: sessionRunning, threads: spawnedThreads, subagents: providerSubagents })}
         overviewLabel={overviewLabel}
-        onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
-        onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
+        onAddBrowserAnnotation={isReadOnly ? undefined : composerContexts.addBrowserAnnotation}
+        onUploadAttachment={isReadOnly ? undefined : uploadAttachment}
         onSend={handleSend}
-        onQueuePrompt={queue.onQueuePrompt}
-        onQueueAction={queue.onQueueAction}
+        onQueuePrompt={isReadOnly ? () => Promise.resolve() : queue.onQueuePrompt}
+        onQueueAction={isReadOnly ? () => Promise.resolve() : queue.onQueueAction}
         onSendSideChat={handleSideChatSend}
       />
     </SidePanelDrawer>
@@ -534,8 +569,10 @@ export function ThreadView({
 
   return (
     <MCPAppThreadContext value={appThread}>
+    <MessageDeliveryActions value={deliveryActions}>
     <MarkdownArtifactContext value={markdownArtifacts}>
-    <FileReaderLinkProvider sessionId={session.id} documentPath={session.runtime_ref?.cwd ? `${session.runtime_ref.cwd}/` : undefined} onOpen={sidePanel.openFile}>
+    <ArtifactPanelContext value={artifactPanel}>
+    <FileReaderLinkProvider sessionId={session.id} cloudRunId={cloudRunId} documentPath={session.runtime_ref?.cwd ? `${session.runtime_ref.cwd}/` : undefined} onOpen={sidePanel.openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         {/* Phone: the closed side panel slides off to the right (translateX 100%);
             clip horizontal overflow so it can't be revealed by scrolling.
@@ -623,37 +660,6 @@ export function ThreadView({
                               lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
                             />
                           </>
-                        ) : live ? (
-                          <div className="flex flex-col gap-2">
-                            <motion.div
-                              className="w-full"
-                              initial={{ opacity: 0, y: 8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                            >
-                              <UserBubble
-                                text={live.user}
-                                createdAt={live.at}
-                                contexts={live.contexts}
-                                attachments={live.attachments}
-                                attachmentSessionId={sessionId}
-                              />
-                            </motion.div>
-                            <ThinkingBlock text={live.reasoning} pending={streaming} />
-                            <ToolCalls
-                              live
-                              calls={live.tools.map((tool) => ({
-                                ...tool,
-                                pending: streaming && tool.result === undefined,
-                              }))}
-                              onArtifactPrompt={handleSend}
-                            />
-                            {live.assistant ? (
-                              <MessageMarkdown text={live.assistant} />
-                            ) : streaming ? (
-                              <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
-                            ) : null}
-                          </div>
                         ) : null
                       }
                     />
@@ -671,7 +677,7 @@ export function ThreadView({
               />
             )}
             <ThreadFindBar find={threadFind} />
-            <SelectionContextToolbar scrollRef={scrollRef} onAdd={composerContexts.addSelection} />
+            {!isReadOnly ? <SelectionContextToolbar scrollRef={scrollRef} onAdd={composerContexts.addSelection} /> : null}
 
             {showPlanDecision && planDecisionError ? (
               <p className="absolute inset-x-0 bottom-32 mx-auto max-w-[640px] rounded-card bg-danger-soft px-3 py-2 text-sm text-danger select-text">
@@ -685,7 +691,11 @@ export function ThreadView({
               onHeightChange={setBottomDockHeight}
             >
               <VoiceMode voice={voice} face={voice.bot?.avatar ?? null} />
-              {showPlanDecision ? (
+              {isReadOnly ? (
+                <div className="rounded-card border border-border bg-surface px-4 py-3 text-center text-[13px] text-ink-3">
+                  View-only access — you can read this thread and its files, but cannot send messages.
+                </div>
+              ) : showPlanDecision ? (
                 <PlanDecisionCard
                   pending={planDecisionPending}
                   onImplement={() => {
@@ -708,6 +718,11 @@ export function ThreadView({
               ) : (
                 <>
                   {goalStatusVisible ? <GoalStatusBar goal={goal} /> : null}
+                  {isCloudThreadView ? (
+                    <CloudSpendBanner
+                      capError={[live?.error, sendError].find((error) => error && isSpendCapError(new Error(error))) ?? null}
+                    />
+                  ) : null}
                   <Composer
                     placeholder={canvasContexts.present ? canvasContexts.placeholder : placeholder}
                     streaming={sessionRunning}
@@ -730,11 +745,11 @@ export function ThreadView({
                     onReplaceContexts={appContexts.replaceContexts}
                     onSend={handleSend}
                     onQueuePrompt={queue.onQueuePrompt}
-                    onStop={stopSession}
+                    onStop={chat ? undefined : stopSession}
                     onClearGoal={clearGoal}
                     onVoice={voiceAvailable && voice.phase === 'off' ? voice.start : undefined}
                     voiceActive={voice.phase !== 'off'}
-                    onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
+                    onUploadAttachment={uploadAttachment}
                     attachable={!canvas}
                     leftSlot={canvas ? <CanvasChatToggle chat={canvasChat} /> : undefined}
                     onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
@@ -749,7 +764,7 @@ export function ThreadView({
           <div ref={canvas && !floatPanel ? sidePanel.containerRef : undefined} className={canvas ? 'flex h-full min-w-0 flex-1' : 'contents'}>
             {canvas ? (
               <div ref={canvasChat.containerRef} className={`relative h-full min-w-0 flex-1${canvasChat.resizing ? ' canvas-chat-resizing' : ''}`}>
-                {canvasBoard}
+                {canvasBoard()}
               </div>
             ) : null}
 
@@ -758,7 +773,9 @@ export function ThreadView({
         </FileDropScope>
       </PreviewLinkProvider>
     </FileReaderLinkProvider>
+    </ArtifactPanelContext>
     </MarkdownArtifactContext>
+    </MessageDeliveryActions>
     </MCPAppThreadContext>
   )
 }

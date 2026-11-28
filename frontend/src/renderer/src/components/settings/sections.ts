@@ -1,5 +1,6 @@
 import {
   ArchiveRestore,
+  AudioLines,
   Bell,
   Bot,
   Boxes,
@@ -7,12 +8,15 @@ import {
   ChartNoAxesColumn,
   Globe,
   Keyboard,
+  Laptop,
+  Layers,
+  Lock,
   type LucideIcon,
   MonitorSmartphone,
-  AudioLines,
   Palette,
   Plug,
   Puzzle,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
 } from 'lucide-react'
@@ -24,10 +28,13 @@ export type SettingsSection =
   | 'appearance'
   | 'personalization'
   | 'memory'
+  | 'vault'
   | 'browser'
   | 'computer'
+  | 'machines'
+  | 'cloud'
+  | 'admin'
   | 'usage'
-  | 'devices'
   | 'keyboard'
   | 'mcp'
   | 'plugins'
@@ -36,34 +43,42 @@ export type SettingsSection =
   | 'voice'
   | 'archived'
 
-type SettingsNavItem = {
+export type SettingsGroup = 'workspace' | 'app'
+
+export type SettingsNavItem = {
   id: SettingsSection
   label: string
   icon: LucideIcon
-  // The menu heading this item sits under; consecutive items share it.
-  group?: string
+  group: SettingsGroup
   fullHeight?: boolean
   wide?: boolean
   experimental?: boolean
+  requiresCloud?: boolean
+  requiresCloudAdmin?: boolean
+  requiresLocal?: boolean
+  requiresLocalOrCloud?: boolean
 }
 
 export const SETTINGS_SECTIONS: SettingsNavItem[] = [
-  { id: 'general', label: 'General', icon: SlidersHorizontal },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard },
-  { id: 'voice', label: 'Voice', icon: AudioLines },
-  { id: 'personalization', label: 'Personalization', icon: Sparkles, group: 'You', fullHeight: true },
-  { id: 'memory', label: 'Memory', icon: Brain, group: 'You' },
-  { id: 'providers', label: 'Model Providers', icon: Boxes, group: 'Capabilities' },
-  { id: 'agents', label: 'Agents (ACP)', icon: Bot, group: 'Capabilities' },
-  { id: 'mcp', label: 'MCP servers', icon: Plug, group: 'Capabilities' },
-  { id: 'plugins', label: 'Plugins', icon: Puzzle, group: 'Capabilities', wide: true },
-  { id: 'browser', label: 'Browser', icon: Globe, group: 'Capabilities' },
-  { id: 'computer', label: 'Computer Use', icon: MonitorSmartphone, group: 'Capabilities' },
-  { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn, group: 'Account' },
-  { id: 'devices', label: 'Devices', icon: MonitorSmartphone, group: 'Account' },
-  { id: 'archived', label: 'Archived threads', icon: ArchiveRestore, group: 'Account' },
+  { id: 'cloud', label: 'Workspace', icon: Layers, group: 'workspace' },
+  { id: 'admin', label: 'Admin', icon: ShieldCheck, group: 'workspace', wide: true, requiresCloudAdmin: true },
+  { id: 'personalization', label: 'Personalization', icon: Sparkles, group: 'workspace', fullHeight: true },
+  { id: 'memory', label: 'Memory', icon: Brain, group: 'workspace', requiresLocal: true },
+  { id: 'vault', label: 'Vault', icon: Lock, group: 'workspace', requiresLocalOrCloud: true },
+  { id: 'agents', label: 'Agents (ACP)', icon: Bot, group: 'workspace', requiresLocalOrCloud: true },
+  { id: 'plugins', label: 'Plugins', icon: Puzzle, group: 'workspace', wide: true },
+  { id: 'mcp', label: 'MCP servers', icon: Plug, group: 'workspace' },
+  { id: 'machines', label: 'Connected Machines', icon: Laptop, group: 'workspace', requiresCloud: true },
+  { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn, group: 'workspace' },
+  { id: 'archived', label: 'Archived threads', icon: ArchiveRestore, group: 'workspace' },
+  { id: 'general', label: 'General', icon: SlidersHorizontal, group: 'app' },
+  { id: 'appearance', label: 'Appearance', icon: Palette, group: 'app' },
+  { id: 'notifications', label: 'Notifications', icon: Bell, group: 'app' },
+  { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard, group: 'app' },
+  { id: 'voice', label: 'Voice', icon: AudioLines, group: 'app', requiresLocal: true },
+  { id: 'providers', label: 'Model Providers', icon: Boxes, group: 'app', requiresLocal: true },
+  { id: 'browser', label: 'Browser', icon: Globe, group: 'app', requiresLocal: true },
+  { id: 'computer', label: 'Computer Use', icon: MonitorSmartphone, group: 'app', requiresLocal: true },
 ]
 
 export const isSettingsSection = (value: unknown): value is SettingsSection =>
@@ -82,9 +97,21 @@ export function useExperimentalFeaturesEnabled(): [boolean, (enabled: boolean) =
   return [enabled, setExperimentalFeaturesEnabled]
 }
 
-export function visibleSettingsSections(experimentalEnabled: boolean): SettingsNavItem[] {
-  if (import.meta.env.DEV || experimentalEnabled) return SETTINGS_SECTIONS
-  return SETTINGS_SECTIONS.filter((item) => !item.experimental)
+export function visibleSettingsSections(
+  experimentalEnabled: boolean,
+  hasCloud = false,
+  localBackend = true,
+  cloudAdmin = false,
+): SettingsNavItem[] {
+  return SETTINGS_SECTIONS.filter((item) => {
+    if (item.requiresCloud && !hasCloud) return false
+    if (item.requiresCloudAdmin && !cloudAdmin) return false
+    if (item.requiresLocal && !localBackend) return false
+    if (item.id === 'memory' && hasCloud) return false
+    if (item.requiresLocalOrCloud && !localBackend && !hasCloud) return false
+    if (!import.meta.env?.DEV && !experimentalEnabled && item.experimental) return false
+    return true
+  })
 }
 
 function experimentalFeaturesEnabled(): boolean {

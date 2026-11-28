@@ -18,6 +18,7 @@ if (process.env.JAZ_SYSTEM_PERMISSIONS_TEST_CHILD === '1') {
     app,
     ipcMain: { handle: (name, handler) => handlers.set(name, handler) },
     shell: { openExternal: async (url) => opened.push(url) },
+    webContents: { getFocusedWebContents: () => null },
     systemPreferences: {
       isTrustedAccessibilityClient: (prompt) => {
         expect(prompt).toBe(false)
@@ -36,6 +37,8 @@ if (process.env.JAZ_SYSTEM_PERMISSIONS_TEST_CHILD === '1') {
   }))
   mock.module('@main/notifications', () => ({ sendTestNotification: async () => (tests++, shown), openNotificationSettings: async () => opened.push('notifications') }))
   mock.module('@main/permissionGuide', () => ({ guidePermission: async (permission, url, granted) => guided.push({ permission, url, granted }) }))
+  const { setTrustedRendererPath } = await import('./permissions')
+  setTrustedRendererPath('/Applications/Jaz.app/Contents/Resources/app.asar/out/renderer/index.html')
   const { installSystemPermissions } = await import('./systemPermissions')
   installSystemPermissions()
   afterAll(() => mock.restore())

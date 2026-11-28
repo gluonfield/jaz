@@ -515,15 +515,23 @@ exit 0
 	defer store.Close()
 	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/antigravity/auth/login", nil)
-	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, req)
-	if res.Code != http.StatusOK {
-		t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
+	start := func() acpAuthLoginResponse {
+		t.Helper()
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/acp/agents/antigravity/auth/login", nil))
+		if res.Code != http.StatusOK {
+			t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
+		}
+		var started acpAuthLoginResponse
+		if err := json.Unmarshal(res.Body.Bytes(), &started); err != nil {
+			t.Fatal(err)
+		}
+		return started
 	}
-	var started acpAuthLoginResponse
-	if err := json.Unmarshal(res.Body.Bytes(), &started); err != nil {
-		t.Fatal(err)
+	abandoned := start()
+	started := start()
+	if got := waitForACPAuthLogin(t, handler, abandoned.ID); got.Status != "failed" {
+		t.Fatalf("retry did not replace the pending sign-in: %#v", got)
 	}
 
 	deadline := time.Now().Add(10 * time.Second)
@@ -557,6 +565,201 @@ exit 0
 	}
 	if !strings.Contains(done.Output, "received=SIGN-CODE-7") {
 		t.Fatalf("login did not relay pasted code through the pty: %q", done.Output)
+	}
+}
+
+func TestACPAuthLoginAntigravityGoogleCloudSignsInOverACP(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell test harness is Unix-only")
+	}
+	home := t.TempDir()
+	bin := t.TempDir()
+	testexec.Write(t, filepath.Join(bin, "antigravity"), `#!/bin/sh
+if [ "$1" = "models" ]; then
+    [ -f "$HOME/cloud-sign-in" ] || exit 1
+    echo "Fake Model"
+    exit 0
+fi
+[ "$1" = "acp" ] || exit 2
+IFS= read -r init
+printf '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1}}\n'
+IFS= read -r auth
+case "$auth" in *'"method":"authenticate"'*'"methodId":"oauth-business"'*) ;; *) exit 3 ;; esac
+cp "$HOME/.gemini/antigravity-cli/settings.json" "$HOME/cloud-sign-in"
+printf '{"jsonrpc":"2.0","id":2,"result":{}}\n'
+`, "")
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	settingsDir := filepath.Join(home, ".gemini", "antigravity-cli")
+	if err := os.MkdirAll(settingsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(settingsDir, "settings.json"), []byte(`{"trustedWorkspaces":["/work"],"gcp":{"project":"old"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/acp/agents/antigravity/auth/login",
+		strings.NewReader(`{"google_cloud":{"project":" credits-project ","location":"global"}}`)))
+	if res.Code != http.StatusOK {
+		t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var started acpAuthLoginResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+	if !started.OpensBrowser {
+		t.Fatalf("Google Cloud sign-in did not report that the agent opens the browser: %#v", started)
+	}
+	if done := waitForACPAuthLogin(t, handler, started.ID); done.Status != "succeeded" {
+		t.Fatalf("login status = %#v", done)
+	}
+	raw, err := os.ReadFile(filepath.Join(home, "cloud-sign-in"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen struct {
+		TrustedWorkspaces []string `json:"trustedWorkspaces"`
+		GCP               struct{ Project, Location string }
+	}
+	if err := json.Unmarshal(raw, &seen); err != nil {
+		t.Fatal(err)
+	}
+	if seen.GCP.Project != "credits-project" || seen.GCP.Location != "global" || len(seen.TrustedWorkspaces) != 1 {
+		t.Fatalf("settings Antigravity signed in with = %s", raw)
+	}
+}
+
+func TestACPAuthLoginAntigravityPayAsYouGoAnswersTheSignInWizard(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the antigravity sign-in wizard runs on a unix pty")
+	}
+	home := t.TempDir()
+	bin := t.TempDir()
+	// Like agy, the fake repaints its whole screen only when the terminal is
+	// resized, starts each menu with the cursor on the first item, draws the
+	// sign-in page as a hyperlink, and opens its project and location fields
+	// already holding a value.
+	testexec.Write(t, filepath.Join(bin, "antigravity"), `#!/bin/bash
+if [ "$1" = "models" ]; then
+    [ -f "$HOME/pay-as-you-go" ] || exit 1
+    echo "Fake Model"
+    exit 0
+fi
+[ $# = 0 ] || exit 2
+stty raw -echo
+show() {
+    printf '\033[2J\033[H%s' "$1" > "$HOME/screen"
+    cat "$HOME/screen"
+}
+(
+    size=$(stty size < /dev/tty)
+    while sleep 0.1; do
+        now=$(stty size < /dev/tty) || exit
+        [ "$now" = "$size" ] || cat "$HOME/screen"
+        size=$now
+    done
+) &
+# bash's read turns Enter into its line end, so Enter is the empty key.
+key() { IFS= read -rsn1 key || exit 4; }
+pick() {
+    cursor=1
+    while :; do
+        key
+        case "$key" in
+        $'\033') IFS= read -rsn2 arrow
+            [ "$arrow" = "[B" ] && cursor=$((cursor + 1))
+            [ "$arrow" = "[A" ] && cursor=$((cursor - 1)) ;;
+        '' | $'\r') [ "$cursor" = "$1" ] || exit 3
+            return ;;
+        esac
+    done
+}
+line() {
+    value=$1
+    while :; do
+        key
+        case "$key" in
+        '' | $'\r') return ;;
+        $'\025') value= ;;
+        *) value="$value$key" ;;
+        esac
+    done
+}
+show $' Select login method:\r\n > 1. Google OAuth\r\n   2. Use a Google Cloud project'
+pick 2
+show $' Select Google Cloud sign-in method:\r\n > 1. Continue with Google Cloud\r\n   2. Use advanced SSO config'
+pick 1
+show $' \033]8;id=1;https://accounts.google.com/o/oauth2/auth?state=fake\a Click here to authenticate\033]8;;\a\r\n paste the authorization code below:'
+line
+code=$value
+show $' Select billing model:\r\n > 1. Gemini subscription\r\n   2. Pay As You Go'
+pick 2
+show ' Provide Google Cloud project:'
+line stale
+project=$value
+show ' Provide location:'
+line stale
+printf '%s %s %s' "$code" "$project" "$value" > "$HOME/pay-as-you-go"
+show ' Signed in'
+sleep 60
+`, "")
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/acp/agents/antigravity/auth/login",
+		strings.NewReader(`{"google_cloud":{"project":"credits-project","location":"global","pay_as_you_go":true}}`)))
+	if res.Code != http.StatusOK {
+		t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var started acpAuthLoginResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); started.AuthURL == ""; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("sign-in page never surfaced: %#v", started)
+		}
+		get := httptest.NewRecorder()
+		handler.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/v1/acp/auth-logins/"+started.ID, nil))
+		if err := json.Unmarshal(get.Body.Bytes(), &started); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if started.AuthURL != "https://accounts.google.com/o/oauth2/auth?state=fake" {
+		t.Fatalf("sign-in page = %q", started.AuthURL)
+	}
+	in := httptest.NewRecorder()
+	handler.ServeHTTP(in, httptest.NewRequest(http.MethodPost, "/v1/acp/auth-logins/"+started.ID+"/input", strings.NewReader(`{"input":"CODE-7"}`)))
+	if in.Code != http.StatusOK {
+		t.Fatalf("input status = %d, body = %s", in.Code, in.Body.String())
+	}
+	if done := waitForACPAuthLogin(t, handler, started.ID); done.Status != "succeeded" {
+		t.Fatalf("login status = %#v", done)
+	}
+	answered, err := os.ReadFile(filepath.Join(home, "pay-as-you-go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(answered) != "CODE-7 credits-project global" {
+		t.Fatalf("wizard was answered with %q", answered)
 	}
 }
 

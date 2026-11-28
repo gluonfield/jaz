@@ -1,10 +1,11 @@
 import { memo } from 'react'
-import type { ChatMessage, MessageBlock } from '@/lib/api/types'
+import type { ChatMessage, MessageBlock, MessageDelivery } from '@/lib/api/types'
 import { browserAnnotationFromJSON } from '@/lib/messageContext'
 import type { ComposerContext } from '@/lib/messageContext'
 import { messageText } from '@/lib/messageText'
 import { MessageActions } from '@/components/session/MessageActions'
 import { AssistantMarkdown } from './AssistantMarkdown'
+import { DeliveryStatus } from './DeliveryStatus'
 import { UserMessageMarkdown } from './MessageMarkdown'
 import { MessageAttachments, type MessageAttachment } from '@/components/session/MessageAttachments'
 import { MessageContexts } from './MessageContexts'
@@ -54,18 +55,25 @@ function isVisibleToolBlock(block: MessageBlock): block is Extract<MessageBlock,
 export function UserBubble({
   text,
   createdAt,
+  actorLabel,
   contexts = [],
   attachments = [],
   attachmentSessionId,
+  delivery,
 }: {
   text: string
   createdAt?: string
+  actorLabel?: string
   contexts?: ComposerContext[]
   attachments?: MessageAttachment[]
   attachmentSessionId?: string
+  delivery?: MessageDelivery
 }) {
   return (
     <div className="group/message flex flex-col items-end gap-1">
+      {actorLabel ? (
+        <span className="px-1 text-[11px] font-medium text-ink-3">{actorLabel}</span>
+      ) : null}
       <MessageAttachments attachments={attachments} attachmentSessionId={attachmentSessionId} />
       {text || contexts.length ? (
         <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm [overflow-wrap:break-word] select-text">
@@ -73,7 +81,7 @@ export function UserBubble({
           <UserMessageMarkdown text={text} />
         </div>
       ) : null}
-      <MessageActions text={text} createdAt={createdAt} />
+      {delivery ? <DeliveryStatus delivery={delivery} /> : <MessageActions text={text} createdAt={createdAt} />}
     </div>
   )
 }
@@ -128,9 +136,11 @@ export const Bubble = memo(function Bubble({
         <UserBubble
           text={messageText(message)}
           createdAt={message.created_at}
+          actorLabel={message.actor_display_name || message.actor_email}
           contexts={messageContexts(message)}
           attachments={message.blocks?.filter((block) => block.type === 'attachment') ?? []}
           attachmentSessionId={attachmentSessionId}
+          delivery={message.delivery}
         />
       )
     case 'assistant': {

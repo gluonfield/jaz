@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/templates/jazplatform"
@@ -54,7 +55,7 @@ func (s shown) held(thread storage.Session) map[int64]string {
 // it: the bot's identity, and the identity files that changed since its last
 // successful turn started. Agents load those files as a session starts, not
 // every turn.
-func TurnNote(store NoteStore) func(storage.Session) (note, promptDigest string) {
+func TurnNote(store NoteStore, inst instructions.Store) func(storage.Session) (note, promptDigest string) {
 	return func(thread storage.Session) (string, string) {
 		if thread.SourceType == storage.SourceBotWorker && thread.RuntimeRef != nil {
 			modules, err := WorkerPrompt(store, thread)
@@ -62,7 +63,7 @@ func TurnNote(store NoteStore) func(storage.Session) (note, promptDigest string)
 				return fmt.Sprintf("Owner context unavailable: %v\n\n", err), thread.PromptDigest
 			}
 			text := modules.Text()
-			version := digest([]byte(text))
+			version := instructions.Digest([]byte(text))
 			note := ""
 			if thread.RuntimeRef.SessionID != "" && thread.PromptDigest != version {
 				note = "Your owner's connected project context changed. Use these current links:\n\n" + text + "\n\n"
@@ -73,7 +74,7 @@ func TurnNote(store NoteStore) func(storage.Session) (note, promptDigest string)
 			return "", ""
 		}
 		last := lastShown(thread.PromptDigest)
-		note, identity := identityNote(store, thread, last.Identity)
+		note, identity := identityNote(store, inst, thread, last.Identity)
 		note += changedFilesNote(thread)
 		note += workspaceFilesNote(store, thread)
 		now := shown{Identity: identity, Session: thread.RuntimeRef.SessionID, Context: thread.Usage.ContextTokens}
@@ -109,7 +110,7 @@ func workspaceFilesNote(store PromptStore, thread storage.Session) string {
 	}
 	var b strings.Builder
 	for _, workspace := range record.Workspaces {
-		for _, name := range []string{"AGENTS.md", "SOUL.md", "MEMORY.md"} {
+		for _, name := range []string{"AGENTS.md", "MEMORY.md"} {
 			path := filepath.Join(workspace, name)
 			if info, err := os.Stat(path); err == nil && info.ModTime().After(since) {
 				fmt.Fprintf(&b, "Project context file %q changed; read it before working on that project.\n", path)
@@ -140,11 +141,11 @@ func SteerNote(store NoteStore) func(storage.Session) string {
 
 // identityNote refreshes instructions for agents that retain their start prompt.
 // Include role policy in the digest so edits reach existing conversations.
-func identityNote(store PromptStore, thread storage.Session, seen string) (note, version string) {
+func identityNote(store PromptStore, inst instructions.Store, thread storage.Session, seen string) (note, version string) {
 	if !acp.KeepsStartPrompt(thread.RuntimeRef.Agent) {
 		return "", ""
 	}
-	identity, err := Prompt(store, thread)
+	identity, err := Prompt(store, inst, thread)
 	if err != nil || identity == nil {
 		return "", seen
 	}
@@ -153,7 +154,7 @@ func identityNote(store PromptStore, thread storage.Session, seen string) (note,
 		return "", seen
 	}
 	text := promptmodule.New(policy, identity.Text()).Text()
-	version = digest([]byte(text))
+	version = instructions.Digest([]byte(text))
 	if thread.RuntimeRef.SessionID == "" || seen == version {
 		return "", version
 	}
@@ -200,7 +201,7 @@ func taskNote(store NoteStore, bot string, held map[int64]string) (note string, 
 		if err != nil {
 			return fmt.Sprintf("Your open tasks could not be read: %v.\n\n", err), held
 		}
-		lines[commitment.ID] = digest([]byte(line))
+		lines[commitment.ID] = instructions.Digest([]byte(line))
 		if held[commitment.ID] == lines[commitment.ID] {
 			unchanged = append(unchanged, fmt.Sprintf("#%d", commitment.ID))
 			continue

@@ -29,4 +29,5 @@ if (process.platform === 'darwin') {
     '-Xlinker', 'native/dictation/Info.plist',
   )
   compile('resources/macos/jaz-notch', 'native/notch/main.swift')
+  compile('resources/macos/jaz-keychain', 'native/keychain/main.swift')
 }

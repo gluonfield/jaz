@@ -10,6 +10,16 @@ type sessionIDKey struct{}
 type cwdKey struct{}
 type clientPlatformKey struct{}
 type sourceTypeKey struct{}
+type workspaceIDKey struct{}
+
+func WithWorkspaceID(ctx context.Context, workspaceID string) context.Context {
+	return context.WithValue(ctx, workspaceIDKey{}, workspaceID)
+}
+
+func WorkspaceID(ctx context.Context) string {
+	id, _ := ctx.Value(workspaceIDKey{}).(string)
+	return id
+}
 
 func WithSourceType(ctx context.Context, sourceType string) context.Context {
 	return context.WithValue(ctx, sourceTypeKey{}, sourceType)

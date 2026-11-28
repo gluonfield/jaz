@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	botcore "github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -32,7 +33,8 @@ func TestBotStreamSnapshotsAndPublishesChangesAcrossThreads(t *testing.T) {
 	bus := sessionevents.New()
 	manager := acp.NewManager(store, acp.Config{Root: root, Agents: map[string]acp.AgentConfig{"fixture": {Command: "unused"}}}, logger)
 	defer manager.Close()
-	service := botcore.NewService(store, filepath.Join(root, "bots"), manager, nil, nil, loops.NewService(store, nil, logger), bus, logger)
+	inst := instructions.NewLocalFSStore(root, instructions.WithBotHomeResolver(botcore.HomeResolver(store)))
+	service := botcore.NewService(store, filepath.Join(root, "bots"), inst, manager, nil, nil, loops.NewService(store, nil, logger), bus, logger)
 	handler := NewHandler(service, bus)
 	httpServer := httptest.NewServer(http.HandlerFunc(handler.Events))
 	defer httpServer.Close()

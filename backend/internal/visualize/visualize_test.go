@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
@@ -15,7 +16,7 @@ import (
 	"github.com/wins/jaz/backend/internal/visualize"
 )
 
-func TestShowWidgetSavesAndPublishesTheSameDelivery(t *testing.T) {
+func TestShowArtifactSavesAndPublishesTheSameDelivery(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -31,13 +32,13 @@ func TestShowWidgetSavesAndPublishesTheSameDelivery(t *testing.T) {
 	bus := sessionevents.New()
 	events := bus.Subscribe(t.Context(), session.ID)
 	tools := visualize.NewService(store, store, bus, nil)
-	result, structured, err := tools.ShowWidget(t.Context(), &mcp.CallToolRequest{
+	result, structured, err := tools.ShowArtifact(t.Context(), &mcp.CallToolRequest{
 		Extra: &mcp.RequestExtra{Header: mcpsession.Header(session.ID)},
 	}, widgetInput())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if structured != nil || len(result.Content) != 2 || result.Content[0].(*mcp.TextContent).Text != "Artifact saved in this conversation for display. Client rendering has not been confirmed." || !strings.Contains(result.Content[1].(*mcp.TextContent).Text, "Do not claim the user has already seen it.") {
+	if structured != nil || len(result.Content) != 2 || result.Content[0].(*mcp.TextContent).Text != "Artifact added to this conversation for display. Client rendering has not been confirmed." || !strings.Contains(result.Content[1].(*mcp.TextContent).Text, "Do not claim the user has already seen it.") {
 		t.Fatalf("delivery receipt = %#v, %#v", result, structured)
 	}
 	page, err := store.LoadTranscriptPage(t.Context(), session.ID, storage.TranscriptPageRequest{Turns: 14, ChatOnly: true})
@@ -45,7 +46,7 @@ func TestShowWidgetSavesAndPublishesTheSameDelivery(t *testing.T) {
 		t.Fatalf("chat history = %+v, %v", page, err)
 	}
 	saved := page.Events[0]
-	if saved.Seq == 0 || saved.SessionID != session.ID || saved.Artifact == nil || saved.Artifact.Artifact.Title != "System map" || saved.Artifact.Artifact.WidgetCode != widgetInput().WidgetCode || !saved.Artifact.Presented {
+	if saved.Seq == 0 || saved.SessionID != session.ID || saved.Artifact == nil || saved.Artifact.Artifact.Title != "System map" || saved.Artifact.Artifact.WidgetCode != widgetInput().HTML || !saved.Artifact.Presented {
 		t.Fatalf("saved artifact = %+v", saved)
 	}
 	select {
@@ -61,7 +62,7 @@ func TestShowWidgetSavesAndPublishesTheSameDelivery(t *testing.T) {
 		t.Fatalf("artifact left the turn undelivered: %+v, %v", loaded.Turn, err)
 	}
 	tools.Store = rejectedEvents{}
-	result, _, err = tools.ShowWidget(t.Context(), &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(session.ID)}}, widgetInput())
+	result, _, err = tools.ShowArtifact(t.Context(), &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(session.ID)}}, widgetInput())
 	if err == nil || result != nil {
 		t.Fatalf("failed save got a success receipt: %+v, %v", result, err)
 	}
@@ -78,7 +79,7 @@ func (rejectedEvents) AppendSessionEvents(string, ...sessionevents.Event) error 
 	return errors.New("write failed")
 }
 
-func TestShowWidgetDoesNotClaimDeliveryWithoutASessionOrForPrivateTurns(t *testing.T) {
+func TestShowArtifactDoesNotClaimDeliveryWithoutASessionOrForPrivateTurns(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +87,7 @@ func TestShowWidgetDoesNotClaimDeliveryWithoutASessionOrForPrivateTurns(t *testi
 	t.Cleanup(func() { _ = store.Close() })
 	tools := visualize.NewService(store, store, sessionevents.New(), nil)
 	for _, id := range []string{"", "missing"} {
-		result, _, err := tools.ShowWidget(t.Context(), &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(id)}}, widgetInput())
+		result, _, err := tools.ShowArtifact(t.Context(), &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(id)}}, widgetInput())
 		if err == nil || result != nil {
 			t.Fatalf("session %q got a success receipt: %+v, %v", id, result, err)
 		}
@@ -103,7 +104,7 @@ func TestShowWidgetDoesNotClaimDeliveryWithoutASessionOrForPrivateTurns(t *testi
 		if err := store.StartSessionTurn(session.ID, turn); err != nil {
 			t.Fatal(err)
 		}
-		result, _, err := tools.ShowWidget(t.Context(), &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(session.ID)}}, widgetInput())
+		result, _, err := tools.ShowArtifact(t.Context(), &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(session.ID)}}, widgetInput())
 		if err != nil || !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "not displayed") {
 			t.Fatalf("private receipt = %+v, %v", result, err)
 		}
@@ -118,17 +119,77 @@ func TestShowWidgetDoesNotClaimDeliveryWithoutASessionOrForPrivateTurns(t *testi
 	}
 }
 
-func widgetInput() visualize.ShowWidgetInput {
-	return visualize.ShowWidgetInput{
-		LoadingMessages: []string{"Rendering"},
-		Title:           "System map",
-		WidgetCode:      `<svg width="100%" viewBox="0 0 680 120" role="img"><title>Map</title><desc>System map</desc></svg>`,
+func TestMapShownAgainUnderItsTitleReplacesTheEarlierOneInThatTurn(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bus := sessionevents.New()
+	live := bus.Subscribe(t.Context(), session.ID)
+	tools := visualize.NewService(store, store, bus, nil)
+	show := func(title string, latitude float64) sessionevents.Event {
+		t.Helper()
+		_, err := tools.Present(session.ID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationMap, Map: &sessionevents.PlaceMap{
+			Title:  title,
+			Places: []sessionevents.Place{{Name: "Hotel", Latitude: latitude, Longitude: 113.8}},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return <-live
+	}
+	shown := func() []float64 {
+		t.Helper()
+		page, err := store.LoadTranscriptPage(t.Context(), session.ID, storage.TranscriptPageRequest{Turns: 14, ChatOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var latitudes []float64
+		for _, event := range page.Events {
+			latitudes = append(latitudes, event.Artifact.Map.Places[0].Latitude)
+		}
+		return latitudes
+	}
+	if err := store.StartSessionTurn(session.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	wrong := show("Hotel", 22.70)
+	corrected := show("Hotel", 22.72)
+	if wrong.ProjectionKey == "" || corrected.ProjectionKey != wrong.ProjectionKey || corrected.ProjectionOp != sessionevents.ProjectionReplace {
+		t.Fatalf("clients cannot replace the earlier map: %+v, %+v", wrong, corrected)
+	}
+	show("Restaurants nearby", 22.73)
+	if got := shown(); !reflect.DeepEqual(got, []float64{22.72, 22.73}) {
+		t.Fatalf("maps after a correction and a second map = %v", got)
+	}
+	if err := store.FinishSessionTurn(session.ID, storage.StatusIdle, "", time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StartSessionTurn(session.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	show("Hotel", 22.74)
+	if got := shown(); !reflect.DeepEqual(got, []float64{22.72, 22.73, 22.74}) {
+		t.Fatalf("a later turn replaced an earlier answer's map: %v", got)
 	}
 }
 
-func TestReadMeFiltersToRequestedModules(t *testing.T) {
+func widgetInput() visualize.ShowArtifactInput {
+	return visualize.ShowArtifactInput{
+		LoadingMessages: []string{"Rendering"},
+		Title:           "System map",
+		HTML:            `<svg width="100%" viewBox="0 0 680 120" role="img"><title>Map</title><desc>System map</desc></svg>`,
+	}
+}
+
+func TestGuideFiltersToRequestedModules(t *testing.T) {
 	tools := visualize.NewService(nil, nil, nil, nil)
-	result, structured, err := tools.ReadMe(context.Background(), &mcp.CallToolRequest{}, visualize.ReadMeInput{Modules: []string{"chart"}})
+	result, structured, err := tools.ReadGuide(context.Background(), &mcp.CallToolRequest{}, visualize.GuideInput{Modules: []string{"chart"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,8 +221,8 @@ func TestReadMeFiltersToRequestedModules(t *testing.T) {
 	}
 }
 
-func TestBuildReadMeGuideByModule(t *testing.T) {
-	diagram := visualize.BuildReadMeGuide([]string{"diagram"}, "")
+func TestBuildGuideByModule(t *testing.T) {
+	diagram := visualize.BuildGuide([]string{"diagram"}, "")
 	if !strings.Contains(diagram, "## SVG setup") || !strings.Contains(diagram, "## Diagram types") {
 		t.Fatal("diagram guide must include SVG setup and Diagram types")
 	}
@@ -169,7 +230,7 @@ func TestBuildReadMeGuideByModule(t *testing.T) {
 		t.Fatal("diagram guide must exclude chart sections")
 	}
 
-	core := visualize.BuildReadMeGuide(nil, "")
+	core := visualize.BuildGuide(nil, "")
 	if !strings.Contains(core, "## Modules") || !strings.Contains(core, "## Core Design System") {
 		t.Fatal("empty-modules guide must keep the index and design-system core")
 	}
@@ -179,23 +240,23 @@ func TestBuildReadMeGuideByModule(t *testing.T) {
 		}
 	}
 
-	multi := visualize.BuildReadMeGuide([]string{"chart", "diagram"}, "")
+	multi := visualize.BuildGuide([]string{"chart", "diagram"}, "")
 	if !strings.Contains(multi, "## Charts (Chart.js)") || !strings.Contains(multi, "## Diagram types") {
 		t.Fatal("multi-module guide must union the requested modules' sections")
 	}
 }
 
-func TestReadMeGuideUsesMobileLayoutGuidance(t *testing.T) {
-	desktop := visualize.BuildReadMeGuide([]string{"chart"}, "desktop")
-	mobile := visualize.BuildReadMeGuide([]string{"chart"}, "mobile")
-	if !strings.Contains(desktop, "The widget container is 680px wide.") {
+func TestGuideUsesMobileLayoutGuidance(t *testing.T) {
+	desktop := visualize.BuildGuide([]string{"chart"}, "desktop")
+	mobile := visualize.BuildGuide([]string{"chart"}, "mobile")
+	if !strings.Contains(desktop, "The artifact container is 680px wide.") {
 		t.Fatalf("desktop guide missing 680px width:\n%s", desktop)
 	}
 	if strings.Contains(desktop, "Mobile column cap") {
 		t.Fatalf("desktop guide must not include mobile column cap:\n%s", desktop)
 	}
 	for _, want := range []string{
-		"The widget container is 380px wide.",
+		"The artifact container is 380px wide.",
 		"Mobile column cap",
 		"never lay out more than TWO columns",
 		"do not write `repeat(3, …)` or `repeat(4, …)`",
@@ -206,8 +267,8 @@ func TestReadMeGuideUsesMobileLayoutGuidance(t *testing.T) {
 	}
 }
 
-func TestReadMePlatformSchemaIsPlainString(t *testing.T) {
-	properties := visualize.ReadMeInputSchema()["properties"].(map[string]any)
+func TestGuidePlatformSchemaIsPlainString(t *testing.T) {
+	properties := visualize.GuideInputSchema()["properties"].(map[string]any)
 	platform := properties["platform"].(map[string]any)
 	if platform["type"] != "string" {
 		t.Fatalf("platform schema = %#v, want string", platform)

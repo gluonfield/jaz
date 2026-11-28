@@ -4,8 +4,9 @@
 @import './tasks.css';
 
 /* Class-based dark mode: tokens are redefined under :root.dark below, so the
- * `dark:` variant is only needed for the rare per-element tweak. */
-@custom-variant dark (&:where(.dark, .dark *));
+ * `dark:` variant is only needed for the rare per-element tweak. `.night` is
+ * the launch stage, dark whatever the theme. */
+@custom-variant dark (&:where(.dark, .dark *, .night, .night *));
 
 /* Keyboard focus styling applies only while navigating with Tab; see
  * lib/dom/keyboardFocus. */
@@ -55,6 +56,10 @@
   --color-danger-soft: oklch(0.95 0.025 25);
   /* A solid destructive fill, like ending a call: one vivid red in both themes. */
   --color-danger-solid: oklch(0.64 0.24 24);
+  /* A switch's tracks are Apple's system green and gray fill, never the theme's
+   * primary: near-white in dark graphite, that left a white knob on a white track. */
+  --color-switch-on: #34c759;
+  --color-switch-off: rgb(120 120 128 / 0.16);
 
   --color-border: oklch(0.905 0.006 var(--hue));
 
@@ -175,7 +180,8 @@
  * lifts to a clear cobalt with dark on-primary text. :where keeps the
  * defaults below the user's :root.dark Appearance overrides, even when those
  * load first. */
-:root:where(.dark) {
+:root:where(.dark),
+.night {
   color-scheme: dark;
 
   --color-bg: oklch(0.195 0.005 var(--hue));
@@ -205,6 +211,8 @@
   --color-ok: oklch(0.74 0.15 150);
   --color-danger: oklch(0.7 0.18 25);
   --color-danger-soft: oklch(0.31 0.07 25);
+  --color-switch-on: #30d158;
+  --color-switch-off: rgb(120 120 128 / 0.32);
 
   --color-border: oklch(0.31 0.008 var(--hue));
 
@@ -291,8 +299,6 @@
   max-width: var(--prose-max);
 }
 .file-prose {
-  max-width: 84ch;
-  margin-inline: auto;
   padding: clamp(1rem, 3vw, 2rem);
 }
 .markdown-document-card {
@@ -313,7 +319,6 @@
   mask-image: linear-gradient(#000 75%, transparent);
 }
 .markdown-document-preview .file-prose {
-  max-width: none;
   padding: 1rem 1.25rem;
   font-size: 12px;
   line-height: 1.6;
@@ -514,9 +519,21 @@ img.chat-prose-link-icon {
   padding: 0.1em 0 0.1em 0.75em;
   color: var(--color-ink);
 }
-/* Rows read across without column lines: a heavier rule closes the header and
-   hairlines divide rows, inset to the padding of the card MarkdownTable wraps
-   tables in. */
+/* The card code and tables sit on, in a thread and in a document alike. */
+:where(.prose-card, .document-editor .tableWrapper) {
+  margin: 0.75rem 0;
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-border) 60%, transparent);
+}
+/* A table scrolls across its card when wide. Its rows read across without
+   column lines: a heavier rule closes the header and hairlines divide rows,
+   inset to the card's padding. */
+:where(.markdown-table, .document-editor .tableWrapper) {
+  max-width: 100%;
+  padding: 0.25rem 0.875rem;
+  overflow-x: auto;
+}
 :where(.chat-prose, .file-prose) table {
   width: 100%;
   margin: 0;
@@ -576,6 +593,13 @@ img.chat-prose-link-icon {
   from {
     opacity: 0;
     transform: translateY(8px);
+  }
+}
+
+/* A send still waiting on the server says so only after a beat. */
+@keyframes delivery-wait {
+  from {
+    opacity: 0;
   }
 }
 

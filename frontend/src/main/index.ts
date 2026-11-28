@@ -7,6 +7,7 @@ import {
   type Rectangle,
   type WebContents,
   app,
+  dialog,
   ipcMain,
   nativeTheme,
   screen,
@@ -20,9 +21,9 @@ import { attachBrowserCloseShortcut } from '@main/browserCloseShortcut'
 import { attachWindowOpenHandler } from '@main/browserPopups'
 import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { installCredentialEncryption } from './credentialEncryption'
-import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { registerDictation } from './dictation'
-import { configureAppPermissions } from './permissions'
+import { configureAppPermissions, setTrustedRendererPath, trustedWindow } from './permissions'
+import { OIDC_BEGIN_CHANNEL, createOidcCallbackGate, extractOidcCallbackArg } from './oidcProtocol'
 import { createNotifications } from './notifications'
 import { notchAccess, shareFocus } from './notchHelper'
 import { attachPreviewFindShortcuts } from './previewFind'
@@ -38,16 +39,21 @@ import { setupLauncher, teardownLauncher } from './spotlight'
 import { attachVoiceOverlay } from './voiceOverlay'
 import { createUpdateController } from './updater'
 import { createConnectionSession } from '@main/connectionSession'
+import { readNodeCloudConfig } from '@shared/cloudConfig'
 import { installDroppedFileInspection, installFileActions } from '@main/fileActions'
 import { attachContextMenu } from '@main/contextMenu'
 import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
+import { installDesktopApps, type DesktopAppsController } from '@main/desktopApps'
+import { SHIM_LAUNCH_ARG, appLaunchArg } from '@main/desktopAppLaunchers'
+import { createAssistant } from '@main/assistant'
+import { extractAssistantDeepLinkArg, parseAssistantDeepLink } from '@shared/assistant'
 import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
 // the renderer mounts so a dark launch doesn't flash white behind the content.
 const DARK_BG = '#141517'
 
-const APP_NAME = 'Jaz'
+const APP_NAME = app.isPackaged ? 'Jaz' : 'Jaz Dev'
 
 app.setName(APP_NAME)
 app.setAppUserModelId('dev.wins.jaz')
@@ -62,15 +68,72 @@ if (process.platform === 'darwin') {
 installBrowserProfileImport()
 installBrowserPasswords()
 
+const rendererPath = join(__dirname, '../renderer/index.html')
+setTrustedRendererPath(rendererPath)
+
+const singleInstanceLock = app.requestSingleInstanceLock()
+if (!singleInstanceLock) {
+  app.quit()
+}
+
+if (app.isPackaged) {
+  app.setAsDefaultProtocolClient('jaz')
+}
+
 let mainWindow: BrowserWindow | null = null
+let desktopApps: DesktopAppsController | null = null
+const oidcGate = createOidcCallbackGate()
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
 const notifications = createNotifications(openInMain)
+const assistant = createAssistant(
+  () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
+  (showOnReady = true) => {
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow(showOnReady)
+    return mainWindow!
+  },
+)
+const initialAssistantAction = extractAssistantDeepLinkArg(process.argv)
+if (initialAssistantAction) assistant.dispatch(initialAssistantAction)
+const cloudConfig = readNodeCloudConfig(process.env)
 const connectionSession = createConnectionSession({
-  rendererPath: join(__dirname, '../renderer/index.html'),
+  rendererPath,
+  localEnabled: cloudConfig.localEnabled,
   startLocal: startLocalBackend,
-  profile: () => ({ ...getDeviceIdentity(), ...getDeviceMetadata() }),
   stopConsumers: () => notifications.stop(),
+})
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  const assistantAction = parseAssistantDeepLink(url)
+  if (assistantAction) {
+    assistant.dispatch(assistantAction)
+    return
+  }
+  oidcGate.consume(url, mainWindow)
+})
+
+app.on('second-instance', (_event, argv) => {
+  const assistantAction = extractAssistantDeepLinkArg(argv)
+  if (assistantAction) {
+    assistant.dispatch(assistantAction)
+    return
+  }
+  const appId = appLaunchArg(argv)
+  if (appId && desktopApps) {
+    desktopApps.launch(appId)
+    return
+  }
+  const callback = extractOidcCallbackArg(argv)
+  if (callback) {
+    oidcGate.consume(callback, mainWindow)
+    return
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
 })
 
 function installApplicationMenu(): void {
@@ -172,7 +235,7 @@ app.on('web-contents-created', (_event, contents) => {
   attachWindowOpenHandler(contents, shell.openExternal, (url) => openPreviewURL(url, contents))
 })
 
-function createWindow(): void {
+function createWindow(showOnReady = true): void {
   const mac = process.platform === 'darwin'
   // Opens filling the screen the pointer is on, under the boot splash.
   const { x, y, width, height } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
@@ -197,8 +260,9 @@ function createWindow(): void {
 
   mainWindow = win
   connectionSession.attach(win, true)
+  assistant.attach(win)
   attachVoiceOverlay(win)
-  attachWindowLifecycle(win, { label: 'main', onDidFinishLoad: () => updates.sendStatusTo(win) })
+  attachWindowLifecycle(win, { label: 'main', showOnReady, onDidFinishLoad: () => updates.sendStatusTo(win) })
   attachBrowserNavigationCommands(win)
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
@@ -281,17 +345,32 @@ function openBoardWindow(boardId: string): void {
   win.on('close', () => saveBoardBounds(boardId, win.getBounds()))
   win.on('closed', () => boardWindows.delete(boardId))
   if (process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/boards/${boardId}`)
+    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/apps/${boardId}`)
   } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: `/boards/${boardId}` })
+    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: `/apps/${boardId}` })
   }
 }
 
-app.whenReady().then(() => {
-  configureBrowserSessions(join(__dirname, '../preload/chrome.js'), join(__dirname, '../preload/passkeyFallback.js'))
+if (singleInstanceLock) {
+  app.whenReady().then(() => {
+  configureBrowserSessions(
+    join(__dirname, '../preload/chrome.js'),
+    join(__dirname, '../preload/passkeyFallback.js'),
+    join(__dirname, '../preload/browserPasswordsFrame.js'),
+  )
   installBrowserDownloads()
   installDroppedFileInspection()
   installFileActions(connectionSession)
+  desktopApps = installDesktopApps({
+    preloadPath: join(__dirname, '../preload/index.js'),
+    rendererPath,
+    appIcon,
+    attachWindow: (win, label) => {
+      connectionSession.attach(win)
+      attachWindowLifecycle(win, { label })
+      attachBrowserNavigationCommands(win)
+    },
+  })
   installApplicationMenu()
   registerDictation()
 
@@ -315,14 +394,28 @@ app.whenReady().then(() => {
   installCredentialEncryption()
   ipcMain.handle('jaz:start-local-backend', (event) => {
     const record = connectionSession.authorizeOwner(event)
+    if (!cloudConfig.localEnabled) {
+      return Promise.resolve({ ok: false, error: 'Local backend is disabled for this build' })
+    }
     const document = record.document
     return startLocalBackend().then((result) => {
       connectionSession.authorizeOwner(event, document)
       return result
     })
   })
-  ipcMain.handle('jaz:get-device-identity', () => getDeviceIdentity())
-  ipcMain.handle('jaz:get-device-metadata', () => getDeviceMetadata())
+  ipcMain.handle(OIDC_BEGIN_CHANNEL, async (event) => {
+    const record = connectionSession.authorizeOwner(event)
+    const redirectUri = await oidcGate.beginLoopback(record.window.webContents.id, () => mainWindow)
+    return { redirectUri }
+  })
+  ipcMain.handle('jaz:pick-directory', async (event) => {
+    trustedWindow(event)
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = win
+      ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+      : await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
   ipcMain.handle('jaz:configure-notifications', (event, config) => {
     connectionSession.authorizeOwner(event)
     const active = connectionSession.current()
@@ -372,7 +465,10 @@ app.whenReady().then(() => {
     })
   }
   setupLauncher((window) => connectionSession.attach(window))
-  createWindow()
+  // A macOS app launcher that had to start Jaz only needs it running, not on screen.
+  createWindow(!process.argv.includes(SHIM_LAUNCH_ARG))
+  const launchedApp = appLaunchArg(process.argv)
+  if (launchedApp) desktopApps.launch(launchedApp)
   updates.start()
   app.on('activate', () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -382,14 +478,18 @@ app.whenReady().then(() => {
     mainWindow.show()
     mainWindow.focus()
   })
-})
+  })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', () => {
+  oidcGate.clear()
   notifications.stop()
+  assistant.teardown()
+  desktopApps?.teardown()
   teardownLauncher()
   stopLocalBackend('before_quit')
 })

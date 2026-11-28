@@ -1,5 +1,8 @@
+import { decodeStoredCredential, encodeStoredCredential, type StoredCredential } from './credentialEnvelope'
+
 const STORE = 'credentials'
-type Saved = { iv: Uint8Array<ArrayBuffer>; ciphertext: ArrayBuffer; deviceId: string }
+type Saved = { iv: Uint8Array<ArrayBuffer>; ciphertext: ArrayBuffer }
+export type StoredBrowserCredential = StoredCredential
 
 async function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -43,23 +46,29 @@ async function encryptionKey(): Promise<CryptoKey> {
   return selected || proposed
 }
 
-export async function saveBrowserCredential(url: string, token: string, deviceId: string, current: () => boolean): Promise<void> {
+export async function saveBrowserCredential(
+  url: string,
+  token: string,
+  current: () => boolean,
+  refreshToken?: string,
+): Promise<void> {
   const key = await encryptionKey()
   const iv = crypto.getRandomValues(new Uint8Array(12))
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(url) }, key, new TextEncoder().encode(token))
+  const payload = encodeStoredCredential(token, refreshToken)
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(url) }, key, new TextEncoder().encode(payload))
   await transaction('readwrite', (store) => {
     if (!current()) throw new Error('Connection changed before it could be saved')
-    return store.put({ iv, ciphertext, deviceId } satisfies Saved, url)
+    return store.put({ iv, ciphertext } satisfies Saved, url)
   })
 }
 
-export async function loadBrowserCredential(url: string): Promise<{ token: string; deviceId: string } | undefined> {
+export async function loadBrowserCredential(url: string): Promise<StoredBrowserCredential | undefined> {
   const saved = await read<Saved>(url)
   if (!saved) return undefined
   const key = await read<CryptoKey>('key')
   if (!key) throw new Error('Saved browser credential key is missing')
   const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: saved.iv, additionalData: new TextEncoder().encode(url) }, key, saved.ciphertext)
-  return { token: new TextDecoder().decode(plaintext), deviceId: saved.deviceId }
+  return decodeStoredCredential(new TextDecoder().decode(plaintext))
 }
 
 export async function forgetBrowserCredential(url: string): Promise<void> {

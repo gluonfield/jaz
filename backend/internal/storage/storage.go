@@ -21,7 +21,8 @@ var ErrThreadRunning = errors.New("a turn holds the thread")
 var ErrQueueChanged = errors.New("queued selection changed")
 
 const (
-	RuntimeACP = "acp"
+	RuntimeACP       = "acp"
+	LocalWorkspaceID = "local"
 )
 
 const (
@@ -76,14 +77,15 @@ func SessionStatusForACPState(state, stopReason string) string {
 }
 
 type RuntimeRef struct {
-	Type             string `json:"type"`
-	Agent            string `json:"agent,omitempty"`
-	SessionID        string `json:"session_id,omitempty"`
-	Cwd              string `json:"cwd,omitempty"`
-	ProjectPath      string `json:"project_path,omitempty"`
-	ArtifactSurface  string `json:"artifact_surface,omitempty"`
-	MCPServerPolicy  string `json:"mcp_server_policy,omitempty"`
-	DeferredMCPTools *bool  `json:"deferred_mcp_tools,omitempty"`
+	CloudCredentialProfileID string `json:"cloud_credential_profile_id,omitempty"`
+	Type                     string `json:"type"`
+	Agent                    string `json:"agent,omitempty"`
+	SessionID                string `json:"session_id,omitempty"`
+	Cwd                      string `json:"cwd,omitempty"`
+	ProjectPath              string `json:"project_path,omitempty"`
+	ArtifactSurface          string `json:"artifact_surface,omitempty"`
+	MCPServerPolicy          string `json:"mcp_server_policy,omitempty"`
+	DeferredMCPTools         *bool  `json:"deferred_mcp_tools,omitempty"`
 }
 
 // Usage follows provider-facing token vocabulary: InputTokens includes cache
@@ -139,31 +141,38 @@ func (u Usage) Countable() bool {
 }
 
 type Session struct {
-	ID              string          `json:"id"`
-	Slug            string          `json:"slug"`
-	Title           string          `json:"title,omitempty"`
-	ManualTitle     bool            `json:"manual_title,omitempty"`
-	TitleLocked     bool            `json:"title_locked,omitempty"`
-	ParentID        string          `json:"parent_id,omitempty"`
-	Status          string          `json:"status"`
-	Turn            *Turn           `json:"turn,omitempty"`
-	Error           string          `json:"error,omitempty"`
-	Runtime         string          `json:"runtime"`
-	RuntimeRef      *RuntimeRef     `json:"runtime_ref,omitempty"`
-	ModelProvider   string          `json:"model_provider,omitempty"`
-	Model           string          `json:"model,omitempty"`
-	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
-	Goal            *goal.State     `json:"goal,omitempty"`
-	Usage           Usage           `json:"usage,omitempty"`
-	QueuedMessages  []QueuedMessage `json:"queued_messages,omitempty"`
-	PendingSteer    *QueuedMessage  `json:"pending_steer_message,omitempty"`
-	SourceType      string          `json:"source_type,omitempty"`
-	SourceID        string          `json:"source_id,omitempty"`
-	Archived        bool            `json:"archived,omitempty"`
-	Pinned          bool            `json:"pinned,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
-	LastAttentionAt time.Time       `json:"last_attention_at"`
+	ID                     string          `json:"id"`
+	Slug                   string          `json:"slug"`
+	Title                  string          `json:"title,omitempty"`
+	ManualTitle            bool            `json:"manual_title,omitempty"`
+	TitleLocked            bool            `json:"title_locked,omitempty"`
+	ParentID               string          `json:"parent_id,omitempty"`
+	Status                 string          `json:"status"`
+	Turn                   *Turn           `json:"turn,omitempty"`
+	Error                  string          `json:"error,omitempty"`
+	Runtime                string          `json:"runtime"`
+	RuntimeRef             *RuntimeRef     `json:"runtime_ref,omitempty"`
+	ModelProvider          string          `json:"model_provider,omitempty"`
+	Model                  string          `json:"model,omitempty"`
+	ReasoningEffort        string          `json:"reasoning_effort,omitempty"`
+	Goal                   *goal.State     `json:"goal,omitempty"`
+	Usage                  Usage           `json:"usage,omitempty"`
+	QueuedMessages         []QueuedMessage `json:"queued_messages,omitempty"`
+	PendingSteer           *QueuedMessage  `json:"pending_steer_message,omitempty"`
+	SourceType             string          `json:"source_type,omitempty"`
+	SourceID               string          `json:"source_id,omitempty"`
+	WorkspaceID            string          `json:"workspace_id,omitempty"`
+	SpaceID                string          `json:"space_id,omitempty"`
+	Visibility             string          `json:"visibility,omitempty"`
+	RunID                  string          `json:"run_id,omitempty"`
+	OwnerUserID            string          `json:"owner_user_id,omitempty"`
+	PersonalSourcesEnabled bool            `json:"personal_sources_enabled,omitempty"`
+	Backend                string          `json:"backend,omitempty"`
+	Archived               bool            `json:"archived,omitempty"`
+	Pinned                 bool            `json:"pinned,omitempty"`
+	CreatedAt              time.Time       `json:"created_at"`
+	UpdatedAt              time.Time       `json:"updated_at"`
+	LastAttentionAt        time.Time       `json:"last_attention_at"`
 	// CompletedAt is when the thread's last successful turn ended, and
 	// CompletedTurnStartedAt when it started.
 	CompletedAt            time.Time `json:"completed_at,omitzero"`
@@ -417,7 +426,10 @@ type Message struct {
 	CreatedAt time.Time `json:"created_at"`
 	// FromUser explicitly records human authorship; unmarked messages never
 	// count as user activity.
-	FromUser bool `json:"from_user,omitempty"`
+	FromUser         bool   `json:"from_user,omitempty"`
+	ActorUserID      string `json:"actor_user_id,omitempty"`
+	ActorDisplayName string `json:"actor_display_name,omitempty"`
+	ActorEmail       string `json:"actor_email,omitempty"`
 }
 
 type CreateSession struct {
@@ -431,6 +443,7 @@ type CreateSession struct {
 	ReasoningEffort string
 	SourceType      string
 	SourceID        string
+	WorkspaceID     string
 	// Commitment is the open commitment of the bot SourceID that the thread
 	// serves.
 	Commitment int64
@@ -438,6 +451,7 @@ type CreateSession struct {
 
 type SessionFilter struct {
 	Query           string
+	WorkspaceID     string
 	After           *SessionPosition
 	ParentID        string
 	ParentOnly      bool
@@ -455,14 +469,15 @@ type SessionFilter struct {
 }
 
 type SessionPluginView struct {
-	ID        string
-	Title     string
-	Status    string
-	UpdatedAt time.Time
-	Folder    string
-	Seq       int64
-	Reference string
-	File      string
+	ID          string
+	WorkspaceID string
+	Title       string
+	Status      string
+	UpdatedAt   time.Time
+	Folder      string
+	Seq         int64
+	Reference   string
+	File        string
 }
 
 type SessionPosition struct {
@@ -471,6 +486,15 @@ type SessionPosition struct {
 }
 
 func SessionMatchesFilter(session Session, filter SessionFilter) bool {
+	if filter.WorkspaceID != "" {
+		ws := session.WorkspaceID
+		if ws == "" {
+			ws = LocalWorkspaceID
+		}
+		if ws != filter.WorkspaceID {
+			return false
+		}
+	}
 	if filter.Query != "" && !strings.Contains(strings.ToLower(session.Title+"\n"+session.Slug), strings.ToLower(filter.Query)) {
 		return false
 	}

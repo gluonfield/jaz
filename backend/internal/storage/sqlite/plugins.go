@@ -11,8 +11,8 @@ import (
 	pluginsdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/plugins"
 )
 
-func (s *Store) ListPluginSources(ctx context.Context) ([]storage.PluginSourceRecord, error) {
-	rows, err := pluginsdb.New(s.db).ListPluginSources(ctx)
+func (s *Store) ListPluginSources(ctx context.Context, workspaceID string) ([]storage.PluginSourceRecord, error) {
+	rows, err := pluginsdb.New(s.db).ListPluginSources(ctx, firstNonEmpty(workspaceID, storage.LocalWorkspaceID))
 	if err != nil {
 		return nil, err
 	}
@@ -23,8 +23,11 @@ func (s *Store) ListPluginSources(ctx context.Context) ([]storage.PluginSourceRe
 	return out, nil
 }
 
-func (s *Store) GetPluginSource(ctx context.Context, id string) (storage.PluginSourceRecord, bool, error) {
-	row, err := pluginsdb.New(s.db).GetPluginSource(ctx, id)
+func (s *Store) GetPluginSource(ctx context.Context, workspaceID, id string) (storage.PluginSourceRecord, bool, error) {
+	row, err := pluginsdb.New(s.db).GetPluginSource(ctx, pluginsdb.GetPluginSourceParams{
+		WorkspaceID: firstNonEmpty(workspaceID, storage.LocalWorkspaceID),
+		ID:          id,
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.PluginSourceRecord{}, false, nil
 	}
@@ -53,6 +56,7 @@ func (s *Store) SavePluginSource(ctx context.Context, record storage.PluginSourc
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return pluginsdb.New(s.db).UpsertPluginSource(ctx, pluginsdb.UpsertPluginSourceParams{
+		WorkspaceID:   firstNonEmpty(record.WorkspaceID, storage.LocalWorkspaceID),
 		ID:            record.ID,
 		Repository:    record.Repository,
 		Url:           record.URL,
@@ -67,15 +71,18 @@ func (s *Store) SavePluginSource(ctx context.Context, record storage.PluginSourc
 	})
 }
 
-func (s *Store) DeletePluginSource(ctx context.Context, id string) (bool, error) {
+func (s *Store) DeletePluginSource(ctx context.Context, workspaceID, id string) (bool, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	rows, err := pluginsdb.New(s.db).DeletePluginSource(ctx, id)
+	rows, err := pluginsdb.New(s.db).DeletePluginSource(ctx, pluginsdb.DeletePluginSourceParams{
+		WorkspaceID: firstNonEmpty(workspaceID, storage.LocalWorkspaceID),
+		ID:          id,
+	})
 	return rows > 0, err
 }
 
-func (s *Store) ListPluginStates(ctx context.Context) ([]storage.PluginStateRecord, error) {
-	rows, err := pluginsdb.New(s.db).ListPluginStates(ctx)
+func (s *Store) ListPluginStates(ctx context.Context, workspaceID string) ([]storage.PluginStateRecord, error) {
+	rows, err := pluginsdb.New(s.db).ListPluginStates(ctx, firstNonEmpty(workspaceID, storage.LocalWorkspaceID))
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +93,11 @@ func (s *Store) ListPluginStates(ctx context.Context) ([]storage.PluginStateReco
 	return out, nil
 }
 
-func (s *Store) GetPluginState(ctx context.Context, pluginID string) (storage.PluginStateRecord, bool, error) {
-	row, err := pluginsdb.New(s.db).GetPluginState(ctx, pluginID)
+func (s *Store) GetPluginState(ctx context.Context, workspaceID, pluginID string) (storage.PluginStateRecord, bool, error) {
+	row, err := pluginsdb.New(s.db).GetPluginState(ctx, pluginsdb.GetPluginStateParams{
+		WorkspaceID: firstNonEmpty(workspaceID, storage.LocalWorkspaceID),
+		PluginID:    pluginID,
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.PluginStateRecord{}, false, nil
 	}
@@ -113,6 +123,7 @@ func (s *Store) SavePluginState(ctx context.Context, record storage.PluginStateR
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return pluginsdb.New(s.db).UpsertPluginState(ctx, pluginsdb.UpsertPluginStateParams{
+		WorkspaceID:      firstNonEmpty(record.WorkspaceID, storage.LocalWorkspaceID),
 		PluginID:         record.PluginID,
 		Enabled:          boolInt(record.Enabled),
 		SourceID:         record.SourceID,
@@ -126,10 +137,13 @@ func (s *Store) SavePluginState(ctx context.Context, record storage.PluginStateR
 	})
 }
 
-func (s *Store) DeletePluginState(ctx context.Context, pluginID string) error {
+func (s *Store) DeletePluginState(ctx context.Context, workspaceID, pluginID string) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	return pluginsdb.New(s.db).DeletePluginState(ctx, pluginID)
+	return pluginsdb.New(s.db).DeletePluginState(ctx, pluginsdb.DeletePluginStateParams{
+		WorkspaceID: firstNonEmpty(workspaceID, storage.LocalWorkspaceID),
+		PluginID:    pluginID,
+	})
 }
 
 func (s *Store) GetThreadPluginState(ctx context.Context, threadID, pluginID, view, stateKey string) (storage.ThreadPluginStateRecord, bool, error) {
@@ -157,8 +171,11 @@ func (s *Store) GetThreadPluginState(ctx context.Context, threadID, pluginID, vi
 	}, true, nil
 }
 
-func (s *Store) ListThreadPluginStatesByPlugin(ctx context.Context, pluginID string) ([]storage.ThreadPluginStateRecord, error) {
-	rows, err := pluginsdb.New(s.db).ListThreadPluginStatesByPlugin(ctx, pluginID)
+func (s *Store) ListThreadPluginStatesByPlugin(ctx context.Context, workspaceID, pluginID string) ([]storage.ThreadPluginStateRecord, error) {
+	rows, err := pluginsdb.New(s.db).ListThreadPluginStatesByPlugin(ctx, pluginsdb.ListThreadPluginStatesByPluginParams{
+		PluginID:    pluginID,
+		WorkspaceID: workspaceID,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -239,6 +256,7 @@ func pluginSourceFromDB(row pluginsdb.PluginSource) storage.PluginSourceRecord {
 	var paths []string
 	_ = json.Unmarshal([]byte(row.Paths), &paths)
 	return storage.PluginSourceRecord{
+		WorkspaceID:   firstNonEmpty(row.WorkspaceID, storage.LocalWorkspaceID),
 		ID:            row.ID,
 		Repository:    row.Repository,
 		URL:           row.Url,
@@ -257,6 +275,7 @@ func pluginStateFromDB(row pluginsdb.PluginState) storage.PluginStateRecord {
 	var config map[string]string
 	_ = json.Unmarshal([]byte(row.ConfigJson), &config)
 	return storage.PluginStateRecord{
+		WorkspaceID:      firstNonEmpty(row.WorkspaceID, storage.LocalWorkspaceID),
 		PluginID:         row.PluginID,
 		Enabled:          row.Enabled != 0,
 		SourceID:         row.SourceID,

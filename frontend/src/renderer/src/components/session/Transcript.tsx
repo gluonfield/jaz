@@ -15,6 +15,7 @@ import { useHistoryWindow } from '@/components/session/useHistoryWindow'
 import type { HistoryPaging } from '@/lib/hooks/useSessionHistory'
 import { SpokenReply } from '@/components/session/SpokenReply'
 import { ActivityBlock } from './ActivityBlock'
+import { AppDeliverableCard } from './AppDeliverableCard'
 import { Bubble } from './Bubble'
 import { LiveEvent } from './LiveEvent'
 import type { SessionErrorAction } from './SessionErrorNotice'
@@ -77,6 +78,7 @@ function itemKey(item: TimelineItem): string {
     case 'message':
       return `message-${item.message.seq}`
     case 'activity':
+    case 'app':
       return item.key
     case 'event':
       return `event-${stableEventKey(item.event, item.eventIndex)}`
@@ -212,6 +214,8 @@ export const Transcript = memo(function Transcript({
             revealTools={options.revealTools}
           />
         )
+      case 'app':
+        return <AppDeliverableCard key={itemKey(item)} call={item.call} />
       case 'event': {
         if (item.collapseVoice && item.event.voice) {
           return <SpokenReply key={itemKey(item)} voice={item.event.voice} findActive={findActive} showCopy={showAssistantCopy} />

@@ -2,12 +2,16 @@ package sqlite
 
 import (
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"io/fs"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/pressly/goose/v3"
+	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	_ "modernc.org/sqlite"
@@ -643,5 +647,271 @@ func TestClearUnappliedGrokModelMigration(t *testing.T) {
 		if got != check.want {
 			t.Fatalf("%s = %s, want %s", check.query, got, check.want)
 		}
+	}
+}
+
+func TestWorkspaceEntitiesMigrationUpDown(t *testing.T) {
+	root := t.TempDir()
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	ctx := t.Context()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	// Populate data across local, cloudA, and cloudB including duplicate
+	// plugin_sources/plugin_state IDs and two main=1 bots across workspaces.
+	localBot, err := store.CreateSession(storage.CreateSession{Slug: "local-prime", Title: "Prime", SourceType: storage.SourceBot, WorkspaceID: storage.LocalWorkspaceID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloudABot, err := store.CreateSession(storage.CreateSession{Slug: "cloud-a-prime", Title: "Prime", SourceType: storage.SourceBot, WorkspaceID: "cloudA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveBot(storage.BotRecord{ThreadID: localBot.ID, WorkspaceID: storage.LocalWorkspaceID, Kind: "bot", Shape: "circle", Color: "blue", Main: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveBot(storage.BotRecord{ThreadID: cloudABot.ID, WorkspaceID: "cloudA", Kind: "bot", Shape: "hex", Color: "green", Main: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, board := range []storage.App{
+		{ID: "board-local-1", WorkspaceID: storage.LocalWorkspaceID, Title: "Local Board", Kind: storage.AppKindBoard},
+		{ID: "board-cloud-a", WorkspaceID: "cloudA", Title: "Cloud A Board", Kind: storage.AppKindBoard},
+	} {
+		if _, err := store.CreateApp(ctx, board); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.SaveLoop(loops.Loop{ID: "loop-local-1", WorkspaceID: storage.LocalWorkspaceID, Name: "Local Loop", Prompt: "p", Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 * * * *", Timezone: "UTC"}, Status: loops.StatusActive, Runtime: loops.RuntimeACP, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveLoop(loops.Loop{ID: "loop-cloud-a", WorkspaceID: "cloudA", Name: "Cloud A Loop", Prompt: "p", Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 * * * *", Timezone: "UTC"}, Status: loops.StatusActive, Runtime: loops.RuntimeACP, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	for _, loopApp := range []storage.App{
+		{ID: "loop-app-local-1", WorkspaceID: storage.LocalWorkspaceID, Title: "Local W", Kind: storage.AppKindArtifact, LoopID: "loop-local-1"},
+		{ID: "loop-app-cloud-a", WorkspaceID: "cloudA", Title: "Cloud A W", Kind: storage.AppKindArtifact, LoopID: "loop-cloud-a"},
+	} {
+		if _, err := store.CreateApp(ctx, loopApp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.PlaceBoardTiles(ctx, "board-local-1", []storage.TilePlacement{{AppID: "loop-app-local-1", X: 2, Y: 1, W: 3, H: 2, PlacedBy: storage.TilePlacedByUser}}); err != nil {
+		t.Fatal(err)
+	}
+	localMCP, err := store.CreateMCPServer(mcpconfig.ServerInput{WorkspaceID: storage.LocalWorkspaceID, Name: "local-srv", URL: "https://local.example.com/mcp", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateMCPServer(mcpconfig.ServerInput{WorkspaceID: "cloudA", Name: "cloud-srv", URL: "https://cloud.example.com/mcp", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ws := range []string{storage.LocalWorkspaceID, "cloudA", "cloudB"} {
+		if err := store.SavePluginSource(ctx, storage.PluginSourceRecord{
+			WorkspaceID: ws, ID: "shared/source", Repository: "shared/source", URL: "https://example.com/shared.git", CatalogJSON: json.RawMessage(`[]`), UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("save plugin source in %s: %v", ws, err)
+		}
+		if err := store.SavePluginState(ctx, storage.PluginStateRecord{
+			WorkspaceID: ws, PluginID: "shared-plugin", Enabled: ws == storage.LocalWorkspaceID, UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("save plugin state in %s: %v", ws, err)
+		}
+	}
+
+	migrations, err := fs.Sub(sqliteMigrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, store.db, migrations, goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.DownTo(ctx, 95); err != nil {
+		t.Fatalf("downgrade 0096 failed: %v", err)
+	}
+
+	// Verify downgraded tables dropped workspace_id and kept local plugin rows.
+	for _, table := range []string{"bots", "boards", "widgets", "loops", "mcp_servers", "plugin_sources", "plugin_state"} {
+		cols, err := tableColumns(store.db, table)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cols["workspace_id"] {
+			t.Fatalf("%s still has workspace_id after downgrade to 95", table)
+		}
+	}
+	var srcCount, stateCount int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM plugin_sources WHERE id = 'shared/source'`).Scan(&srcCount); err != nil || srcCount != 1 {
+		t.Fatalf("downgraded plugin_sources count = %d, err = %v; want 1", srcCount, err)
+	}
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM plugin_state WHERE plugin_id = 'shared-plugin' AND enabled = 1`).Scan(&stateCount); err != nil || stateCount != 1 {
+		t.Fatalf("downgraded plugin_state count = %d, err = %v; want 1", stateCount, err)
+	}
+
+	// Re-open to re-apply 0096 and verify columns, indexes, and preserved local data.
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = New(root)
+	if err != nil {
+		t.Fatalf("re-upgrade 0096 failed: %v", err)
+	}
+	for table, wantIdx := range map[string]string{
+		"bots":        "idx_bots_workspace",
+		"loops":       "idx_loops_workspace",
+		"mcp_servers": "idx_mcp_servers_workspace",
+	} {
+		cols, err := tableColumns(store.db, table)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !cols["workspace_id"] {
+			t.Fatalf("%s missing workspace_id after re-upgrade", table)
+		}
+		indexes, err := indexNames(store.db, table)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !indexes[wantIdx] {
+			t.Fatalf("%s missing index %s after re-upgrade", table, wantIdx)
+		}
+	}
+	reloadedBot, err := store.LoadBot(localBot.ID)
+	if err != nil || reloadedBot.WorkspaceID != storage.LocalWorkspaceID || !reloadedBot.Main {
+		t.Fatalf("reloaded local bot = %+v, %v", reloadedBot, err)
+	}
+	// The board and its loop tile came back as apps, layout intact.
+	var boardID string
+	if err := store.db.QueryRow(`SELECT id FROM apps WHERE kind = 'board' AND title = 'Local Board' AND workspace_id = 'local'`).Scan(&boardID); err != nil {
+		t.Fatalf("reloaded local board: %v", err)
+	}
+	tiles, err := store.ListBoardTiles(ctx, boardID)
+	if err != nil || len(tiles) != 1 || tiles[0].Loop == nil || tiles[0].Loop.ID != "loop-local-1" || tiles[0].App.Title != "Local W" || tiles[0].X != 2 || tiles[0].Y != 1 || tiles[0].W != 3 || tiles[0].H != 2 || tiles[0].PlacedBy != storage.TilePlacedByUser {
+		t.Fatalf("reloaded local board tiles = %+v, %v", tiles, err)
+	}
+	reloadedMCP, err := store.LoadMCPServer(localMCP.ID)
+	if err != nil || reloadedMCP.WorkspaceID != storage.LocalWorkspaceID {
+		t.Fatalf("reloaded local mcp = %+v, %v", reloadedMCP, err)
+	}
+	reloadedState, ok, err := store.GetPluginState(ctx, storage.LocalWorkspaceID, "shared-plugin")
+	if err != nil || !ok || !reloadedState.Enabled {
+		t.Fatalf("reloaded local plugin state = %+v, ok=%v, err=%v", reloadedState, ok, err)
+	}
+}
+
+func TestBoardsAsAppsMigrationKeepsBoardsTilesAndLoopApps(t *testing.T) {
+	root := t.TempDir()
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := t.Context()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	for _, loop := range []loops.Loop{
+		{ID: "loop-html", Name: "Inbox", Status: loops.StatusActive},
+		{ID: "loop-app", Name: "Revenue", Status: loops.StatusActive},
+		{ID: "loop-gone", Name: "Gone", Status: loops.StatusDeleted},
+	} {
+		loop.Prompt = "p"
+		loop.Schedule = loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 * * * *", Timezone: "UTC"}
+		loop.Runtime = loops.RuntimeACP
+		loop.CreatedAt = now
+		loop.UpdatedAt = now
+		if err := store.SaveLoop(loop); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	migrations, err := fs.Sub(sqliteMigrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, store.db, migrations, goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.DownTo(ctx, 100); err != nil {
+		t.Fatalf("downgrade 0101 failed: %v", err)
+	}
+	const pinned = "pinnedpinnedpinnedpinned00"
+	const revenue = "revenuerevenuerevenue00000"
+	for _, stmt := range []string{
+		`INSERT INTO boards (id, name, font_scale, created_at_ms, updated_at_ms) VALUES ('board-ops', 'Ops', 1.25, 1, 2)`,
+		// A loop that still holds pre-app HTML, one whose HTML already became
+		// an app, and one that was deleted.
+		`INSERT INTO widgets (id, loop_id, title, current_version, size_hint, last_error, last_layout, published_run_id, created_at_ms, updated_at_ms)
+		 VALUES ('w-html', 'loop-html', 'Inbox zero', 2, '3x2', 'boom', '{"clipped":1}', 'run-9', 3, 4),
+		        ('w-app', 'loop-app', 'Revenue', 0, '', NULL, '', '', 3, 4),
+		        ('w-gone', 'loop-gone', 'Gone', 1, '', NULL, '', '', 3, 4)`,
+		`INSERT INTO widget_versions (widget_id, version, html, created_at_ms) VALUES ('w-html', 1, '<p>v1</p>', 3), ('w-html', 2, '<p>v2</p>', 4), ('w-gone', 1, '<p>gone</p>', 4)`,
+		`INSERT INTO apps (id, title, current_version, loop_id, created_at_ms, updated_at_ms)
+		 VALUES ('` + pinned + `', 'Notes', 1, '', 5, 6), ('` + revenue + `', 'Revenue', 1, 'loop-app', 5, 6)`,
+		`INSERT INTO app_versions (app_id, version, bundle_sha256, entry_path, storage_dir, created_at_ms)
+		 VALUES ('` + pinned + `', 1, 'sha-notes', 'index.html', '/tmp/notes', 5), ('` + revenue + `', 1, 'sha-revenue', 'index.html', '/tmp/revenue', 5)`,
+		`INSERT INTO app_kv (app_id, scope_type, scope_owner_id, key, value_text, updated_at_ms) VALUES ('` + pinned + `', 'personal', 'local', 'k', 'v', 6)`,
+		`INSERT INTO board_widgets (board_id, widget_id, app_id, x, y, w, h, placed_by, created_at_ms, updated_at_ms)
+		 VALUES ('board-ops', 'w-html', NULL, 0, 0, 3, 2, 'user', 7, 8),
+		        ('board-ops', 'w-app', NULL, 3, 0, 2, 2, 'llm', 7, 8),
+		        ('board-ops', 'w-gone', NULL, 0, 2, 2, 2, 'llm', 7, 8),
+		        ('board-ops', 'app_` + pinned + `', '` + pinned + `', 0, 4, 3, 3, 'user', 7, 8)`,
+	} {
+		if _, err := store.db.Exec(stmt); err != nil {
+			t.Fatalf("seed %s: %v", stmt, err)
+		}
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = New(root)
+	if err != nil {
+		t.Fatalf("upgrade to boards as apps failed: %v", err)
+	}
+
+	boards, err := store.ListApps(ctx, storage.LocalWorkspaceID, storage.AppListFilter{Kind: storage.AppKindBoard, Query: "Ops"})
+	if err != nil || len(boards) != 1 || boards[0].CurrentVersion != 0 || !boards[0].CreatedAt.Equal(time.UnixMilli(1).UTC()) {
+		t.Fatalf("migrated board = %+v, %v", boards, err)
+	}
+	boardID := boards[0].ID
+	if scale, err := store.BoardFontScale(ctx, boardID); err != nil || scale != 1.25 {
+		t.Fatalf("font scale = %v, %v", scale, err)
+	}
+	tiles, err := store.ListBoardTiles(ctx, boardID)
+	if err != nil || len(tiles) != 3 {
+		t.Fatalf("tiles = %+v, %v", tiles, err)
+	}
+	html, app, notes := tiles[0], tiles[1], tiles[2]
+	if html.Loop == nil || html.Loop.ID != "loop-html" || html.App.Title != "Inbox zero" || html.App.CurrentVersion != 0 || html.W != 3 || html.H != 2 || html.PlacedBy != storage.TilePlacedByUser || html.LastError != "boom" {
+		t.Fatalf("tile of a loop with pre-app HTML = %+v", html)
+	}
+	if app.Loop == nil || app.Loop.ID != "loop-app" || app.App.ID != revenue || app.App.CurrentVersion != 1 || app.App.BundleSHA256 != "sha-revenue" || app.X != 3 {
+		t.Fatalf("tile of a loop that already had its app = %+v", app)
+	}
+	if notes.Loop != nil || notes.App.ID != pinned || notes.Y != 4 || notes.W != 3 || notes.H != 3 {
+		t.Fatalf("pinned app tile = %+v", notes)
+	}
+	loopApp, err := store.GetLoopApp(ctx, "loop-html")
+	if err != nil || loopApp.AppID != html.App.ID || loopApp.SizeHint != "3x2" || loopApp.LastLayout != `{"clipped":1}` || loopApp.PublishedRunID != "run-9" {
+		t.Fatalf("loop app = %+v, %v", loopApp, err)
+	}
+	legacy, err := store.ListLegacyWidgetHTML(ctx)
+	if err != nil || len(legacy) != 1 || legacy[0].AppID != html.App.ID || legacy[0].HTML != "<p>v2</p>" || legacy[0].Title != "Inbox zero" {
+		t.Fatalf("pre-app HTML awaiting conversion = %+v, %v", legacy, err)
+	}
+	if _, err := store.GetLoopApp(ctx, "loop-gone"); !errors.Is(err, storage.ErrAppNotFound) {
+		t.Fatalf("deleted loop kept an app: %v", err)
+	}
+	if entry, err := store.GetAppKV(ctx, pinned, storage.AppKVScopePersonal, storage.AppKVLocalOwnerID, "k"); err != nil || entry.Value != "v" {
+		t.Fatalf("app storage = %+v, %v", entry, err)
+	}
+	// Loop apps that never published stay out of the library.
+	library, err := store.ListApps(ctx, storage.LocalWorkspaceID, storage.AppListFilter{Kind: storage.AppKindArtifact})
+	if err != nil || len(library) != 2 {
+		t.Fatalf("library = %+v, %v", library, err)
 	}
 }

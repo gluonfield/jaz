@@ -161,10 +161,12 @@ type SpawnRequest struct {
 	// session (empty keeps the agent default).
 	ReasoningEffort string
 	// SourceType/SourceID tag sessions created by backend automation such as loops.
-	SourceType      string
-	SourceID        string
-	ArtifactSurface string
-	MCPServerPolicy string
+	SourceType               string
+	SourceID                 string
+	WorkspaceID              string
+	CloudCredentialProfileID string
+	ArtifactSurface          string
+	MCPServerPolicy          string
 	// SystemPromptExtensions are runtime-only prompt modules appended at
 	// session creation. They are not persisted in thread storage.
 	SystemPromptExtensions promptmodule.Modules
@@ -243,7 +245,7 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		logger = log.Default()
 	}
 	launchCtx, stopLaunches := context.WithCancel(context.Background())
-	return &Manager{
+	m := &Manager{
 		launchCtx:         launchCtx,
 		stopLaunches:      stopLaunches,
 		cfg:               cfg,
@@ -262,6 +264,7 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		resumeLocks:       sessionlock.New(),
 		inputLocks:        sessionlock.New(),
 	}
+	return m
 }
 
 // providers returns the current effective provider set. It reads the live
@@ -276,6 +279,7 @@ func (m *Manager) providers() map[string]provider.ModelProviderConfig {
 }
 
 type agentConn struct {
+	cloudOAuth    cloudOAuthLease
 	state         *connectionState
 	conn          jsonrpc.MessageConn
 	peer          *jsonrpc.Peer
@@ -311,11 +315,11 @@ func (m *Manager) trackPromptSends(c *agentConn, job *jobState) {
 	}
 }
 
-func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (*agentConn, error) {
-	return m.connectWithHandler(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions, jsonrpc.HandlerFunc(m.handleJSONRPC))
+func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, auth *cloudLaunchAuth) (*agentConn, error) {
+	return m.connectWithHandler(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions, auth, jsonrpc.HandlerFunc(m.handleJSONRPC))
 }
 
-func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (_ *agentConn, err error) {
+func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, launchAuth *cloudLaunchAuth, handler jsonrpc.Handler) (_ *agentConn, err error) {
 	modelMetadata, err := m.resolveCodexCustomProviderModelMetadata(name, cfg)
 	if err != nil {
 		return nil, err
@@ -340,7 +344,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		}
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd, launchPrompt)
+	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd, launchPrompt, launchAuth)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -349,6 +353,14 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 	state := newConnectionState()
 	peer := jsonrpc.NewPeer(promptTracker, state.handler(m, handler))
 	ac := &agentConn{state: state, conn: promptTracker, peer: peer, cancel: cancel, closed: runCtx.Done(), stderr: stderr, promptTracker: promptTracker}
+	if launchAuth != nil && launchAuth.initial.OAuth != nil {
+		ac.cloudOAuth = cloudOAuthLease{
+			workspaceID: launchAuth.workspaceID,
+			profileID:   launchAuth.initial.ID,
+			version:     launchAuth.initial.Version,
+			expiresAt:   launchAuth.initial.OAuth.ExpiresAt,
+		}
+	}
 	defer func() {
 		if err != nil {
 			ac.close()
@@ -394,7 +406,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		return nil, fmt.Errorf("unsupported acp protocol version %d", initialized.ProtocolVersion)
 	}
 	state.initialized(initRaw)
-	methodID, missingAuth := autoAuthMethod(name, initRaw, env)
+	methodID, missingAuth := autoAuthMethod(name, initRaw, env, launchAuth != nil)
 	if methodID != "" {
 		if _, err := peer.Call(ctx, acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID}); err != nil {
 			return nil, fmt.Errorf("authenticate acp agent: %w", withProcessStderr(err, stderr))
@@ -613,10 +625,15 @@ func (m *Manager) startSession(ctx context.Context, created createdSession, stat
 	absCwd := session.RuntimeRef.Cwd
 	ctx = mcpsession.With(ctx, session.ID)
 	ctx = sessioncontext.WithSourceType(ctx, session.SourceType)
+	ctx = sessioncontext.WithWorkspaceID(ctx, session.WorkspaceID)
 	if cfg.Local {
 		return m.spawnLocalSession(session, req.ACPAgent, absCwd, req.SystemPromptExtensions, state)
 	}
-	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
+	auth, err := m.cloudLaunchAuth(ctx, cfg.cloudCredentialProfileID, 0)
+	if err != nil {
+		return nil, err
+	}
+	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions, auth)
 	if err != nil {
 		return nil, err
 	}

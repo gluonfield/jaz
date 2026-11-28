@@ -9,6 +9,8 @@ import {
   visibleSettingsSections,
 } from '@/components/settings/sections'
 import { searchConnections, searchThreads } from '@/lib/api/search'
+import { clientRuntime } from '@/lib/clientRuntime'
+import { useHasCloud, useIsCloudAdmin, useIsCloudOnly } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import type { PaletteCommand, PaletteSection, PaletteThread } from './commandPaletteTypes'
 
@@ -33,6 +35,9 @@ export function useCommandPaletteItems({
 }) {
   const navigate = useNavigate()
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
+  const hasCloud = useHasCloud()
+  const cloudOnly = useIsCloudOnly()
+  const cloudAdmin = useIsCloudAdmin()
   const debouncedQuery = useDebouncedValue(query.trim(), 140)
   const searchEnabled = open && debouncedQuery.length >= 2
 
@@ -52,7 +57,7 @@ export function useCommandPaletteItems({
       {
         id: 'connect-machine',
         kind: 'command',
-        title: 'Connect to a machine',
+        title: clientRuntime.capabilities.localBackend ? 'Connect to a machine' : 'Connect to Jaz Cloud',
         icon: Server,
         run: () => {
           onOpenChange(false)
@@ -79,7 +84,7 @@ export function useCommandPaletteItems({
   // section name), keeping the resting palette uncluttered.
   const settingsCommands = useMemo<PaletteCommand[]>(
     () =>
-      visibleSettingsSections(experimentalEnabled).map((sectionItem) => ({
+      visibleSettingsSections(experimentalEnabled, hasCloud, !cloudOnly, cloudAdmin).map((sectionItem) => ({
         id: `settings-${sectionItem.id}`,
         kind: 'command',
         title: sectionItem.label,
@@ -89,7 +94,7 @@ export function useCommandPaletteItems({
           onOpenSettings(sectionItem.id)
         },
       })),
-    [experimentalEnabled, onOpenChange, onOpenSettings],
+    [cloudAdmin, cloudOnly, experimentalEnabled, hasCloud, onOpenChange, onOpenSettings],
   )
 
   // Archived chats stay searchable and get their own section after the active

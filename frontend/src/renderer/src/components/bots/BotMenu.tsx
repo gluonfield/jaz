@@ -5,6 +5,7 @@ import { ContextMenu, MenuRow } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
 import { deleteBot } from '@/lib/api/bots'
 import type { Bot } from '@/lib/api/types'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
 import { usePins } from './usePins'
@@ -21,6 +22,8 @@ export function BotMenu({ bot, point, onClose, onRename }: {
   const openBotId = useParams({ strict: false }).botId
   const toast = useToast()
   const pin = usePins()
+  const isViewer = useIsCloudViewer()
+  if (isViewer) return null
 
   const run = (action: () => void) => () => {
     onClose()

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { botChat, dragSections, placePin, taskStateLabel } from './bots'
-import { optimisticTranscriptMessages } from './optimisticUserMessage'
+import { botChat, connectedTaskThreads, dragSections, lastBotId, placePin, rememberBot, taskBrief, taskName, taskState } from './bots'
+import { outboxTranscript } from './outbox'
 import { mergeEarlierHistory } from './sessionHistory'
 
 describe('bot chat log', () => {
@@ -125,14 +125,14 @@ describe('bot chat log', () => {
 test('a sent message keeps its place in the chat from send to save', () => {
   const self = { id: 'gimli', name: 'Gimli' }
   const earlier = { seq: 7, role: 'user', from_user: true, content: 'check the inbox', blocks: [], created_at: '2026-10-18T19:00:00Z' }
-  const typed = { baselineMessageSeq: 7, message: { role: 'user', from_user: true, content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.100Z' } }
+  const typed = { id: 'a', baselineMessageSeq: 7, message: { role: 'user', content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.100Z' } }
   const saved = { seq: 8, role: 'user', from_user: true, content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.450Z' }
-  const keys = (messages) => botChat(messages, [], self, []).entries.map((entry) => entry.key)
-  const sending = keys(optimisticTranscriptMessages([earlier], typed))
-  const accepted = keys(optimisticTranscriptMessages([earlier, saved], typed))
-  const reloaded = keys([earlier, saved])
-  expect(accepted).toEqual(sending)
-  expect(reloaded).toEqual(sending)
+  const keys = (messages, state) => botChat(state ? outboxTranscript(messages, [{ ...typed, state }]).messages : messages, [], self, []).entries.map((entry) => entry.key)
+  const sending = keys([earlier], 'sending')
+  expect(keys([earlier], 'sent')).toEqual(sending)
+  expect(keys([earlier, saved], 'sent')).toEqual(sending)
+  expect(keys([earlier, saved], 'delivered')).toEqual(sending)
+  expect(keys([earlier, saved])).toEqual(sending)
 })
 
 test('a question the bot asks shows in its chat, carries its answer and stands in for a written reply', () => {
@@ -172,17 +172,136 @@ test('a drag previews where the bot lands and keeps it, hidden, where the drag b
 })
 
 test('a finished worker does not make an open task look complete', () => {
-  expect(taskStateLabel({ status: 'in_progress', threads: [{ state: 'finished' }] })).toBe('Not delivered yet')
+  expect(taskState({ status: 'in_progress', threads: [{ state: 'finished' }] })).toEqual(['Not delivered yet', 'In progress', true])
 })
 
 test('task state distinguishes active work and blockers from worker completion', () => {
-  expect(taskStateLabel({ status: 'in_progress', moving: true, threads: [{ state: 'working' }] })).toBe('Working')
-  expect(taskStateLabel({ status: 'pending', blocked: true })).toBe('Waiting on another task')
-  expect(taskStateLabel({ status: 'waiting_for_user' })).toBe('Waiting for you')
-  expect(taskStateLabel({ status: 'stopped' })).toBe('Stopped')
+  expect(taskState({ status: 'in_progress', moving: true, threads: [{ state: 'working' }] })).toEqual(['Working', 'In progress'])
+  expect(taskState({ status: 'pending', blocked: true, moving: true })).toEqual(['Waiting on another task', 'Queued', true])
+  expect(taskState({ status: 'waiting_for_user', moving: true })).toEqual(['Waiting for you', 'Waiting for you'])
+  expect(taskState({ status: 'stopped' })).toEqual(['Stopped', 'Stopped'])
+  expect(taskState({ status: 'pending' })).toEqual(['Not started', 'Queued'])
+  expect(taskState({ status: 'in_progress', stalled: true })).toEqual(['Needs follow-up', 'In progress', true])
 })
 
 test('a closed task says how it closed, whatever its threads did', () => {
-  expect(taskStateLabel({ status: 'completed', threads: [{ state: 'finished' }] })).toBe('Done')
-  expect(taskStateLabel({ status: 'cancelled', threads: [{ state: 'failed' }] })).toBe('Dropped')
+  expect(taskState({ status: 'completed', threads: [{ state: 'finished' }] })).toEqual(['Done', 'Done'])
+  expect(taskState({ status: 'cancelled', threads: [{ state: 'failed' }] })).toEqual(['Dropped', 'Stopped', true])
+})
+
+test('taskName uses the concise name and falls back to a clean single line for older unnamed tasks', () => {
+  expect(taskName({ name: '  Connected threads  ', request: 'Full long request\nwith multiple lines' })).toBe('Connected threads')
+  expect(taskName({ request: 'Overnight stress run; done when all checks pass' })).toBe('Overnight stress run')
+  expect(taskName({ request: '\n  Fix   bot task list\n\nSecond paragraph details' })).toBe('Fix bot task list')
+})
+
+test('taskBrief keeps short text whole and cuts long text at a sentence, else at a word', () => {
+  expect(taskBrief('  Waiting on\n the staging  deploy ')).toBe('Waiting on the staging deploy')
+  const sentences = 'The diff review is checking that results survive a restart. The design review already passed. After both land, the bot rechecks the sidebar counts and the follow-up conversation links, then reports back.'
+  expect(taskBrief(sentences)).toBe('The diff review is checking that results survive a restart. The design review already passed.')
+  const words = 'Continue the existing thread to redesign the task modal so opening a task shows a clean and calm view of its title and state, a short summary of the latest note, and clear links that jump straight into each connected thread'
+  expect(taskBrief(words)).toBe('Continue the existing thread to redesign the task modal so opening a task shows a clean and calm view of its title and state, a short summary of the latest note, and clear links…')
+})
+
+test('connectedTaskThreads lists direct links and nested descendants in display order without duplicates', () => {
+  const task = {
+    threads: [
+      { id: 'worker-1', title: 'Worker 1', state: 'finished' },
+      { id: 'child-1', parent_id: 'worker-1', title: 'Child 1', state: 'working' },
+      { id: 'worker-2', title: 'Worker 2', state: 'failed' },
+      { id: 'idle-child', parent_id: 'worker-2', title: 'Idle child', state: 'idle' },
+      { id: 'worker-1', title: 'Duplicate worker', state: 'finished' },
+    ],
+  }
+  const started = {
+    'worker-1': [{ kind: 'side_chat', at: '2026-11-22T09:01:00Z', title: 'Child 1', status: 'running', running: true, thread_id: 'child-1' }],
+    'child-1': [{ kind: 'side_chat', at: '2026-11-22T09:02:00Z', title: 'Grandchild 1', status: 'idle', thread_id: 'grandchild-1' }],
+  }
+  const connected = connectedTaskThreads(task, started)
+  expect(connected.map((row) => [row.id, row.depth])).toEqual([
+    ['worker-1', 0],
+    ['child-1', 1],
+    ['grandchild-1', 2],
+    ['worker-2', 0],
+    ['idle-child', 1],
+  ])
+  expect(connected[1].thread?.state).toBe('working')
+  expect(connected[2].activity?.title).toBe('Grandchild 1')
+  expect(connected[4].thread?.state).toBe('idle')
+})
+
+test('connectedTaskThreads handles parent_id trees without started and stays cycle-safe', () => {
+  const fromParentIds = connectedTaskThreads({
+    threads: [
+      { id: 'root', title: 'Root', state: 'finished' },
+      { id: 'child', parent_id: 'root', title: 'Child', state: 'gone' },
+      { id: 'grandchild', parent_id: 'child', title: 'Grandchild', state: 'background' },
+    ],
+  })
+  expect(fromParentIds.map((row) => [row.id, row.depth, row.thread?.state])).toEqual([
+    ['root', 0, 'finished'],
+    ['child', 1, 'gone'],
+    ['grandchild', 2, 'background'],
+  ])
+
+  const cyclic = connectedTaskThreads(
+    {
+      threads: [
+        { id: 'a', title: 'Thread A', state: 'working' },
+        { id: 'b', title: 'Thread B', state: 'finished' },
+      ],
+    },
+    {
+      a: [{ kind: 'side_chat', at: '2026-11-22T09:01:00Z', title: 'Thread B', thread_id: 'b' }],
+      b: [{ kind: 'side_chat', at: '2026-11-22T09:02:00Z', title: 'Thread A', thread_id: 'a' }],
+    },
+  )
+  expect(cyclic.map((row) => [row.id, row.depth])).toEqual([
+    ['a', 0],
+    ['b', 1],
+  ])
+
+  const viaStartedIntermediate = connectedTaskThreads(
+    {
+      threads: [
+        { id: 'w1', title: 'Worker 1', state: 'finished' },
+        { id: 'g1', parent_id: 'c1', title: 'Grandchild 1', state: 'working' },
+      ],
+    },
+    {
+      w1: [{ kind: 'side_chat', at: '2026-11-22T09:01:00Z', title: 'Child 1', status: 'idle', thread_id: 'c1' }],
+    },
+  )
+  expect(viaStartedIntermediate.map((row) => [row.id, row.depth])).toEqual([
+    ['w1', 0],
+    ['c1', 1],
+    ['g1', 2],
+  ])
+})
+
+test('remembered bot selection stays isolated per workspace', () => {
+  const prev = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  const stored = new Map()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    writable: true,
+    value: {
+      getItem: (key) => stored.get(key) ?? null,
+      setItem: (key, value) => stored.set(key, value),
+      removeItem: (key) => stored.delete(key),
+    },
+  })
+  try {
+    rememberBot('bot_local', 'local')
+    rememberBot('bot_example', 'ws_example')
+    rememberBot('bot_personal', 'ws_personal')
+    expect(lastBotId('local')).toBe('bot_local')
+    expect(lastBotId()).toBe('bot_local')
+    expect(lastBotId('ws_example')).toBe('bot_example')
+    expect(lastBotId('ws_personal')).toBe('bot_personal')
+    expect(lastBotId('ws_empty')).toBeUndefined()
+  } finally {
+    if (prev) Object.defineProperty(globalThis, 'localStorage', prev)
+    else delete globalThis.localStorage
+  }
 })

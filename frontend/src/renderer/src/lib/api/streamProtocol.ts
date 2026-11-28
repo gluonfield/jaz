@@ -1,3 +1,4 @@
+import { ApiError } from './response'
 import type { ToolCallJSON } from './types'
 
 export interface AgentStreamEvent {
@@ -44,7 +45,7 @@ export function readSessionMessageStream(
       } catch {
         // keep status text
       }
-      throw new Error(detail)
+      throw new ApiError(res.status, detail)
     }
 
     const reader = res.body.getReader()

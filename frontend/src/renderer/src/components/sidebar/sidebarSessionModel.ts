@@ -1,3 +1,4 @@
+import type { CloudSpace } from '@/lib/api/cloudSpaces'
 import type { Project } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 
@@ -5,6 +6,18 @@ export const SESSION_PAGE_SIZE = 50
 const PROJECT_SESSION_LIMIT = 5
 const UNGROUPED_BLOCK_KEY = 'ungrouped'
 export type SessionBlockKey = `project:${string}` | typeof UNGROUPED_BLOCK_KEY
+
+export type SidebarGroupBy = 'project' | 'date' | 'status' | 'environment' | 'none'
+export type SidebarSortBy = 'updated' | 'created'
+export type SidebarShowFilter = 'all' | 'active' | 'unread'
+
+export interface SidebarFilterOptions {
+  spaces?: CloudSpace[]
+  groupBy?: SidebarGroupBy
+  sortBy?: SidebarSortBy
+  show?: SidebarShowFilter
+  now?: Date
+}
 
 export interface SessionListItem {
   session: Session
@@ -15,6 +28,8 @@ export type SessionProjectGroup = {
   key: string
   label: string
   items: SessionListItem[]
+  kind?: 'local' | 'cloud' | 'bucket'
+  space?: CloudSpace
 }
 
 export type SessionSections = {
@@ -65,10 +80,19 @@ function withLocalChildState(items: SessionListItem[]): SessionListItem[] {
   }))
 }
 
-function sessionsBySavedProject(items: SessionListItem[], projects: Project[]) {
-  const groups = new Map<string, SessionProjectGroup>(projects.map((project) => [
+function sessionsBySavedProject(
+  items: SessionListItem[],
+  projects: Project[],
+  spaces: CloudSpace[],
+  keepEmpty: boolean,
+) {
+  const cloudGroups = new Map<string, SessionProjectGroup>(spaces.map((space) => [
+    space.id,
+    { key: space.id, label: space.name, items: [], kind: 'cloud', space },
+  ]))
+  const localGroups = new Map<string, SessionProjectGroup>(projects.map((project) => [
     project.path,
-    { key: project.path, label: project.name, items: [] },
+    { key: project.path, label: project.name, items: [], kind: 'local' },
   ]))
   const byID = new Map(items.map((item) => [item.session.id, item]))
   const childProjectByParentID = new Map<string, string>()
@@ -82,28 +106,45 @@ function sessionsBySavedProject(items: SessionListItem[], projects: Project[]) {
   const ungrouped: SessionListItem[] = []
 
   for (const item of items) {
-    const group = groups.get(sidebarProjectPath(item, byID, childProjectByParentID))
-    if (!group) {
-      ungrouped.push(item)
+    const spaceID = item.session.space_id?.trim()
+    if (spaceID) {
+      const cloudGroup = cloudGroups.get(spaceID)
+      if (cloudGroup) {
+        cloudGroup.items.push(item)
+        continue
+      }
+    }
+    const localGroup = localGroups.get(sidebarProjectPath(item, byID, childProjectByParentID))
+    if (localGroup) {
+      localGroup.items.push(item)
       continue
     }
-    group.items.push(item)
+    ungrouped.push(item)
   }
 
   return {
-    groups: [...groups.values()]
-      .filter((group) => group.items.length > 0)
+    groups: [...cloudGroups.values(), ...localGroups.values()]
+      .filter((group) => keepEmpty || group.items.length > 0)
       .map((group) => ({ ...group, items: withLocalChildState(group.items) })),
     ungrouped: withLocalChildState(ungrouped),
   }
 }
 
-function sessionTime(session: Session): number {
-  const ms = Date.parse(session.last_attention_at || session.updated_at)
+function sessionTime(session: Session, sortBy: SidebarSortBy = 'updated'): number {
+  const raw = sortBy === 'created'
+    ? (session.created_at || session.updated_at || session.last_attention_at)
+    : (session.last_attention_at || session.updated_at)
+  const ms = Date.parse(raw)
   return Number.isNaN(ms) ? 0 : ms
 }
 
-function groupSessionsForDisplay(sessions: Session[]): SessionListItem[] {
+function matchesShowFilter(session: Session, show: SidebarShowFilter): boolean {
+  if (show === 'unread') return Boolean(session.unread)
+  if (show === 'active') return session.status === 'running' || Boolean(session.unread)
+  return true
+}
+
+function groupSessionsForDisplay(sessions: Session[], sortBy: SidebarSortBy = 'updated'): SessionListItem[] {
   const ids = new Set(sessions.map((session) => session.id))
   const children = new Map<string, Session[]>()
   const roots: Session[] = []
@@ -120,10 +161,10 @@ function groupSessionsForDisplay(sessions: Session[]): SessionListItem[] {
   const groupTime = (session: Session, visiting = new Set<string>()): number => {
     const cached = groupTimes.get(session.id)
     if (cached !== undefined) return cached
-    if (visiting.has(session.id)) return sessionTime(session)
+    if (visiting.has(session.id)) return sessionTime(session, sortBy)
 
     visiting.add(session.id)
-    let latest = sessionTime(session)
+    let latest = sessionTime(session, sortBy)
     for (const child of children.get(session.id) ?? []) {
       latest = Math.max(latest, groupTime(child, visiting))
     }
@@ -133,7 +174,7 @@ function groupSessionsForDisplay(sessions: Session[]): SessionListItem[] {
   }
 
   const compareGroups = (a: Session, b: Session): number =>
-    groupTime(b) - groupTime(a) || sessionTime(b) - sessionTime(a) || a.id.localeCompare(b.id)
+    groupTime(b) - groupTime(a) || sessionTime(b, sortBy) - sessionTime(a, sortBy) || a.id.localeCompare(b.id)
 
   const ordered: SessionListItem[] = []
   const emitted = new Set<string>()
@@ -151,11 +192,110 @@ function groupSessionsForDisplay(sessions: Session[]): SessionListItem[] {
   return ordered
 }
 
-export function sidebarSessionSections(sessions: Session[], projects: Project[]): SessionSections {
-  const items = groupSessionsForDisplay(sessions)
+const DATE_BUCKETS = [
+  { key: 'date:today', label: 'Today' },
+  { key: 'date:yesterday', label: 'Yesterday' },
+  { key: 'date:7d', label: 'Previous 7 days' },
+  { key: 'date:30d', label: 'Previous 30 days' },
+  { key: 'date:older', label: 'Older' },
+] as const
+
+const STATUS_BUCKETS = [
+  { key: 'status:running', label: 'Running' },
+  { key: 'status:unread', label: 'Unread' },
+  { key: 'status:attention', label: 'Needs attention' },
+  { key: 'status:idle', label: 'Idle' },
+] as const
+
+const ENVIRONMENT_BUCKETS = [
+  { key: 'env:cloud', label: 'Cloud' },
+  { key: 'env:local', label: 'Local' },
+] as const
+
+function startOfDay(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+}
+
+function dateBucketKey(ms: number, now: Date): string {
+  const todayStart = startOfDay(now)
+  const dayMs = 24 * 60 * 60 * 1000
+  if (ms >= todayStart) return 'date:today'
+  if (ms >= todayStart - dayMs) return 'date:yesterday'
+  if (ms >= todayStart - 7 * dayMs) return 'date:7d'
+  if (ms >= todayStart - 30 * dayMs) return 'date:30d'
+  return 'date:older'
+}
+
+function statusBucketKey(session: Session): string {
+  if (session.status === 'running') return 'status:running'
+  if (session.unread) return 'status:unread'
+  if (session.status === 'error' || session.status === 'interrupted') return 'status:attention'
+  return 'status:idle'
+}
+
+function groupByBuckets(
+  items: SessionListItem[],
+  order: ReadonlyArray<{ key: string; label: string }>,
+  bucketKeyOf: (item: SessionListItem) => string,
+): SessionProjectGroup[] {
+  const buckets = new Map<string, SessionProjectGroup>(
+    order.map((entry) => [entry.key, { key: entry.key, label: entry.label, items: [], kind: 'bucket' }]),
+  )
+  for (const item of items) {
+    const bucket = buckets.get(bucketKeyOf(item))
+    if (bucket) bucket.items.push(item)
+  }
+  return [...buckets.values()]
+    .filter((bucket) => bucket.items.length > 0)
+    .map((bucket) => ({ ...bucket, items: withLocalChildState(bucket.items) }))
+}
+
+export function sidebarSessionSections(
+  sessions: Session[],
+  projects: Project[],
+  options: SidebarFilterOptions = {},
+): SessionSections {
+  const sortBy = options.sortBy ?? 'updated'
+  const show = options.show ?? 'all'
+  const groupBy = options.groupBy ?? 'project'
+  const spaces = options.spaces ?? []
+  const now = options.now ?? new Date()
+
+  const visible = show === 'all' ? sessions : sessions.filter((session) => matchesShowFilter(session, show))
+  const items = groupSessionsForDisplay(visible, sortBy)
   const pinnedItems = withLocalChildState(items.filter((item) => item.session.pinned))
   const recentItems = withLocalChildState(items.filter((item) => !item.session.pinned))
-  return { pinnedItems, recentItems, ...sessionsBySavedProject(recentItems, projects) }
+
+  if (groupBy === 'none') {
+    return { pinnedItems, recentItems, groups: [], ungrouped: recentItems }
+  }
+  if (groupBy === 'date') {
+    return {
+      pinnedItems,
+      recentItems,
+      groups: groupByBuckets(recentItems, DATE_BUCKETS, (item) => dateBucketKey(sessionTime(item.session, sortBy), now)),
+      ungrouped: [],
+    }
+  }
+  if (groupBy === 'status') {
+    return {
+      pinnedItems,
+      recentItems,
+      groups: groupByBuckets(recentItems, STATUS_BUCKETS, (item) => statusBucketKey(item.session)),
+      ungrouped: [],
+    }
+  }
+  if (groupBy === 'environment') {
+    return {
+      pinnedItems,
+      recentItems,
+      groups: groupByBuckets(recentItems, ENVIRONMENT_BUCKETS, (item) =>
+        item.session.backend === 'cloud' ? 'env:cloud' : 'env:local',
+      ),
+      ungrouped: [],
+    }
+  }
+  return { pinnedItems, recentItems, ...sessionsBySavedProject(recentItems, projects, spaces, show === 'all') }
 }
 
 export function applySessionDragOrder(

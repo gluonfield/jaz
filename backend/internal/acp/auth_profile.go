@@ -407,14 +407,23 @@ func antigravityAuthStatus(auth AgentAuthConfig, authenticated bool) resolvedAge
 }
 
 // agy keeps its OAuth in the OS keyring. Cache successful `agy models` probes
-// briefly, and keep signed-out probes fresh for post-login verification.
+// (and their parsed model catalog) briefly, and keep signed-out probes fresh
+// for post-login verification.
 var antigravityAuthCache = struct {
 	sync.Mutex
 	authedUntil map[string]time.Time
+	catalog     map[string]AgentModelCatalog
 	generation  uint64
-}{authedUntil: map[string]time.Time{}}
+}{
+	authedUntil: map[string]time.Time{},
+	catalog:     map[string]AgentModelCatalog{},
+}
 
 const antigravityAuthTTL = 30 * time.Second
+
+func antigravityCacheKey(path string, env map[string]string) string {
+	return path + "\x00" + env["HOME"]
+}
 
 func antigravityCLIAuthenticated(env map[string]string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -423,7 +432,7 @@ func antigravityCLIAuthenticated(env map[string]string) bool {
 	if err != nil {
 		return false
 	}
-	key := cmd.Path + "\x00" + env["HOME"]
+	key := antigravityCacheKey(cmd.Path, env)
 	antigravityAuthCache.Lock()
 	fresh := time.Now().Before(antigravityAuthCache.authedUntil[key])
 	generation := antigravityAuthCache.generation
@@ -431,16 +440,55 @@ func antigravityCLIAuthenticated(env map[string]string) bool {
 	if fresh {
 		return true
 	}
-	if cmd.Run() != nil {
+	out, err := cmd.Output()
+	if err != nil {
 		return false
 	}
+	catalog := antigravityCatalog(string(out))
 	antigravityAuthCache.Lock()
 	defer antigravityAuthCache.Unlock()
 	if generation != antigravityAuthCache.generation {
 		return false
 	}
 	antigravityAuthCache.authedUntil[key] = time.Now().Add(antigravityAuthTTL)
+	antigravityAuthCache.catalog[key] = catalog
 	return true
+}
+
+func cachedAntigravityCatalog(env map[string]string) (AgentModelCatalog, bool) {
+	path, err := antigravityExecutable(env["PATH"])
+	if err != nil {
+		return AgentModelCatalog{}, false
+	}
+	key := antigravityCacheKey(path, env)
+	antigravityAuthCache.Lock()
+	defer antigravityAuthCache.Unlock()
+	if !time.Now().Before(antigravityAuthCache.authedUntil[key]) {
+		return AgentModelCatalog{}, false
+	}
+	catalog, ok := antigravityAuthCache.catalog[key]
+	if !ok {
+		return AgentModelCatalog{}, false
+	}
+	return cloneAgentModelCatalog(catalog), true
+}
+
+func cloneAgentModelCatalog(catalog AgentModelCatalog) AgentModelCatalog {
+	out := AgentModelCatalog{
+		DefaultModel: catalog.DefaultModel,
+		Models:       make([]AgentModel, len(catalog.Models)),
+	}
+	for i, model := range catalog.Models {
+		model.Aliases = append([]string(nil), model.Aliases...)
+		model.InputModalities = append([]string(nil), model.InputModalities...)
+		model.Reasoning.Efforts = append([]string(nil), model.Reasoning.Efforts...)
+		if model.Pricing != nil {
+			pricing := *model.Pricing
+			model.Pricing = &pricing
+		}
+		out.Models[i] = model
+	}
+	return out
 }
 
 // invalidateAntigravityAuthCache drops cached results so a disconnect is
@@ -449,6 +497,7 @@ func invalidateAntigravityAuthCache() {
 	antigravityAuthCache.Lock()
 	antigravityAuthCache.generation++
 	clear(antigravityAuthCache.authedUntil)
+	clear(antigravityAuthCache.catalog)
 	antigravityAuthCache.Unlock()
 }
 

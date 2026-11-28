@@ -126,7 +126,7 @@ func TestKimiConfiguredEffortUsesNativeThinkingContract(t *testing.T) {
 	if err != nil || effort != "max" {
 		t.Fatalf("native effort was rejected before session negotiation: %q, %v", effort, err)
 	}
-	ac, err := manager.connect(t.Context(), AgentKimi, configured, root, "", "", nil)
+	ac, err := manager.connect(t.Context(), AgentKimi, configured, root, "", "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

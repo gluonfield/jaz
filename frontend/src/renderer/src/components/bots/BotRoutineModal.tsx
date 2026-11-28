@@ -9,6 +9,7 @@ import { apiUrl } from '@/lib/api/client'
 import { botRoutinesQuery, deleteLoop, loopDetailQuery, runLoopNow, updateLoop } from '@/lib/api/loops'
 import type { Bot, LoopRun } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { hasTime, messageTime } from '@/lib/format/time'
 import { keys } from '@/lib/query/keys'
 
@@ -24,6 +25,7 @@ const RUN_STATUS: Record<LoopRun['status'], [string, string]> = {
 // One of a bot's routines: what it does, when and where it runs, how its
 // recent runs went, and the actions on it.
 export function BotRoutineModal({ bot, loopId, onClose }: { bot: Bot; loopId: string; onClose: () => void }) {
+  const isViewer = useIsCloudViewer()
   const queryClient = useQueryClient()
   const toast = useToast()
   const routines = useQuery(botRoutinesQuery(bot.id))
@@ -56,25 +58,27 @@ export function BotRoutineModal({ bot, loopId, onClose }: { bot: Bot; loopId: st
       title={loop.name}
       description={paused ? 'Paused' : undefined}
       footer={
-        <>
-          <Button
-            variant="danger"
-            disabled={act.isPending}
-            onClick={() => {
-              if (window.confirm(`Delete ${loop.name}?`)) act.mutate('delete')
-            }}
-          >
-            Delete
-          </Button>
-          <div className="flex gap-2">
-            <Button variant="secondary" disabled={act.isPending} onClick={() => act.mutate('toggle')}>
-              {paused ? 'Resume' : 'Pause'}
+        isViewer ? undefined : (
+          <>
+            <Button
+              variant="danger"
+              disabled={act.isPending}
+              onClick={() => {
+                if (window.confirm(`Delete ${loop.name}?`)) act.mutate('delete')
+              }}
+            >
+              Delete
             </Button>
-            <Button variant="primary" disabled={act.isPending} onClick={() => act.mutate('run')}>
-              Run now
-            </Button>
-          </div>
-        </>
+            <div className="flex gap-2">
+              <Button variant="secondary" disabled={act.isPending} onClick={() => act.mutate('toggle')}>
+                {paused ? 'Resume' : 'Pause'}
+              </Button>
+              <Button variant="primary" disabled={act.isPending} onClick={() => act.mutate('run')}>
+                Run now
+              </Button>
+            </div>
+          </>
+        )
       }
     >
       <div className="flex flex-col gap-4">

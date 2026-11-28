@@ -10,9 +10,13 @@ import (
 )
 
 func (s *Store) LoadFeed() ([]storage.FeedItem, error) {
+	return s.LoadFeedForWorkspace(storage.LocalWorkspaceID)
+}
+
+func (s *Store) LoadFeedForWorkspace(workspaceID string) ([]storage.FeedItem, error) {
 	q := feed.New(s.db)
 	ctx := context.Background()
-	rows, err := q.ListFeed(ctx)
+	rows, err := q.ListFeed(ctx, firstNonEmpty(workspaceID, storage.LocalWorkspaceID))
 	if err != nil {
 		return nil, err
 	}

@@ -8,16 +8,19 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/boards"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/coordinator"
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/gitinfo"
 	repoapi "github.com/wins/jaz/backend/internal/httpapi/repo"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/m365copilot"
@@ -38,7 +41,6 @@ import (
 	"github.com/wins/jaz/backend/internal/terminal"
 	"github.com/wins/jaz/backend/internal/threads"
 	"github.com/wins/jaz/backend/internal/voice"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 type ACPManager interface {
@@ -88,9 +90,19 @@ type ManagedToolStatusReader interface {
 	Prepare(context.Context, string, map[string]string) error
 }
 
+type CloudBridge interface {
+	ActiveWorkspaceID() string
+	GetSession(context.Context, string) (storage.Session, bool, error)
+	CreateThread(context.Context, cloudsync.CreateThreadRequest) (storage.Session, error)
+	StreamEvents(context.Context, string, int64, func(sessionevents.Event)) error
+	UpdateUserState(context.Context, string, storage.CloudThreadUserStatePatch) (storage.Session, json.RawMessage, error)
+	CancelThread(context.Context, string) (json.RawMessage, int, error)
+}
+
 type Server struct {
 	Agent                *agent.Agent
 	Store                storage.Store
+	Cloud                CloudBridge
 	Routes               Routes
 	PublicRoutes         PublicRoutes
 	ACP                  ACPManager
@@ -103,7 +115,7 @@ type Server struct {
 	Loops                *loops.Service
 	RoutineOwner         loops.OwnerFunc
 	Threads              *threads.Service
-	Widgets              *widgets.Service
+	Boards               *boards.Service
 	STT                  voice.STT
 	TTS                  voice.TTS
 	ModelProviderRuntime provider.ReloadableProvider
@@ -114,10 +126,12 @@ type Server struct {
 	AgentCatalog acp.AgentCatalog
 	AuthKey      string
 	ServerConfig serverconfig.Config
+	Instructions instructions.Store
 	// Prompts derives the system prompt fresh per turn from disk, so skill
 	// and prompt-file edits apply without a restart.
-	Prompts *coordinator.Builder
-	Root    string
+	Prompts    *coordinator.Builder
+	PluginsDir func() string
+	Root       string
 	// Workspace is the directory sessions run within; the new-thread directory
 	// picker browses it (confined by pathsafe).
 	Workspace string
@@ -131,12 +145,14 @@ type Server struct {
 	MemorySourceQueue     sourceQueueStatsReader
 
 	Terminal     *terminal.Manager
-	Devices      *deviceauth.Service
 	terminalOnce sync.Once
 
-	acpAuthLoginJobs   sync.Map
-	antigravityLoginMu sync.Mutex
-	worktreePruneMu    sync.Mutex
+	acpAuthLoginJobs sync.Map
+	acpAuthProbes    acpAuthProbeCache
+	antigravityAuth  atomic.Pointer[acpAuthTurn]
+	worktreePruneMu  sync.Mutex
+	assetKeyOnce     sync.Once
+	assetKey         []byte
 }
 
 type sourceQueueStatsReader interface {
@@ -228,8 +244,37 @@ func (s *Server) handleListWorkspaceFiles(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"root": abs, "entries": entries, "truncated": truncated})
 }
 
+func (s *Server) activeWorkspaceID() string {
+	if s.Cloud != nil {
+		if ws := s.Cloud.ActiveWorkspaceID(); ws != "" {
+			return ws
+		}
+	}
+	return storage.LocalWorkspaceID
+}
+
+func (s *Server) activePluginsDir() string {
+	if s.PluginsDir != nil {
+		return s.PluginsDir()
+	}
+	return ""
+}
+
+func (s *Server) proxyCloud(w http.ResponseWriter, r *http.Request) bool {
+	if s.activeWorkspaceID() == storage.LocalWorkspaceID || s.Cloud == nil {
+		return false
+	}
+	p, ok := s.Cloud.(interface {
+		ProxyActiveWorkspace(http.ResponseWriter, *http.Request) bool
+	})
+	return ok && p.ProxyActiveWorkspace(w, r)
+}
+
 // handleListSkills lists the skill catalog for the composer's $-mention picker.
 func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
+	if s.proxyCloud(w, r) {
+		return
+	}
 	var (
 		catalog skills.Catalog
 		err     error
@@ -240,9 +285,9 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, resolveErr)
 			return
 		}
-		catalog, err = skills.LoadForWorkspace(s.Root, cwd)
+		catalog, err = skills.LoadForWorkspaceWithPluginsDir(s.Root, cwd, s.activePluginsDir(), nil)
 	} else {
-		catalog, err = skills.Load(s.Root)
+		catalog, err = skills.LoadFromPluginsDir(s.Root, s.activePluginsDir(), nil)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -259,7 +304,25 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session, err := s.Store.LoadSession(sessionRef)
+	if err == nil && storage.NormalizeWorkspaceID(session.WorkspaceID) != s.activeWorkspaceID() {
+		err = storage.ErrSessionNotFound
+	}
 	if err != nil {
+		if s.Cloud != nil {
+			cloudSession, found, cloudErr := s.Cloud.GetSession(r.Context(), sessionRef)
+			if cloudErr == nil && found {
+				if !hasAction {
+					writeJSON(w, http.StatusOK, sessionview.Public(cloudSession))
+					return
+				}
+				if action == "events" {
+					s.streamCloudSessionEvents(w, r, cloudSession.ID)
+					return
+				}
+				writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
+				return
+			}
+		}
 		writeError(w, http.StatusNotFound, err)
 		return
 	}
@@ -305,7 +368,17 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session, err := s.Store.LoadSession(sessionRef)
+	if err == nil && storage.NormalizeWorkspaceID(session.WorkspaceID) != s.activeWorkspaceID() {
+		err = storage.ErrSessionNotFound
+	}
 	if err != nil {
+		if s.Cloud != nil {
+			cloudSession, found, cloudErr := s.Cloud.GetSession(r.Context(), sessionRef)
+			if cloudErr == nil && found {
+				s.handleCloudSessionAction(w, r, cloudSession, action)
+				return
+			}
+		}
 		writeError(w, http.StatusNotFound, err)
 		return
 	}

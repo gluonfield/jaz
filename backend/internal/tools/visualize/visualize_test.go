@@ -18,17 +18,17 @@ import (
 )
 
 func TestDefinitions(t *testing.T) {
-	readDef := ReadMeTool{}.Definition()
-	if got := tools.DefinitionName(readDef); got != visualizesvc.ReadMeMCPToolName {
-		t.Fatalf("read tool name = %q, want %q", got, visualizesvc.ReadMeMCPToolName)
+	readDef := GuideTool{}.Definition()
+	if got := tools.DefinitionName(readDef); got != visualizesvc.GuideMCPToolName {
+		t.Fatalf("read tool name = %q, want %q", got, visualizesvc.GuideMCPToolName)
 	}
-	showDef := ShowWidgetTool{}.Definition()
-	if got := tools.DefinitionName(showDef); got != visualizesvc.ShowWidgetMCPToolName {
-		t.Fatalf("show tool name = %q, want %q", got, visualizesvc.ShowWidgetMCPToolName)
+	showDef := ShowArtifactTool{}.Definition()
+	if got := tools.DefinitionName(showDef); got != visualizesvc.ShowArtifactMCPToolName {
+		t.Fatalf("show tool name = %q, want %q", got, visualizesvc.ShowArtifactMCPToolName)
 	}
 }
 
-func TestReadMeExecuteFiltersByModule(t *testing.T) {
+func TestGuideExecuteFiltersByModule(t *testing.T) {
 	cases := []struct {
 		modules []any
 		want    []string
@@ -51,7 +51,7 @@ func TestReadMeExecuteFiltersByModule(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		result, err := ReadMeTool{Visualize: &visualizesvc.Service{}}.Execute(context.Background(), map[string]any{"modules": tc.modules})
+		result, err := GuideTool{Visualize: &visualizesvc.Service{}}.Execute(context.Background(), map[string]any{"modules": tc.modules})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -68,8 +68,8 @@ func TestReadMeExecuteFiltersByModule(t *testing.T) {
 	}
 }
 
-func TestReadMeExecuteEmptyReturnsCore(t *testing.T) {
-	result, err := ReadMeTool{Visualize: &visualizesvc.Service{}}.Execute(context.Background(), nil)
+func TestGuideExecuteEmptyReturnsCore(t *testing.T) {
+	result, err := GuideTool{Visualize: &visualizesvc.Service{}}.Execute(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestNativeCanvasDiscoveryAndPresentation(t *testing.T) {
 	bus := sessionevents.New()
 	events := bus.Subscribe(t.Context(), session.ID)
 	service := visualizesvc.NewService(store, store, bus, boards)
-	read := ReadMeTool{Visualize: service}
+	read := GuideTool{Visualize: service}
 	show := ShowCanvasTool{Visualize: service}
 	input := map[string]any{"modules": []any{"canvas", "diagram"}}
 	if _, err := read.Execute(t.Context(), input); err == nil {
@@ -109,7 +109,7 @@ func TestNativeCanvasDiscoveryAndPresentation(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := filepath.Join(boards.Dir(session.ID), canvas.FileName)
-	for _, want := range []string{file, "visualise_show_canvas", "Diagram types"} {
+	for _, want := range []string{file, "show_canvas", "Diagram types"} {
 		if !strings.Contains(result.Content, want) {
 			t.Fatalf("native guide missing %q", want)
 		}
@@ -144,11 +144,11 @@ func TestNativeCanvasDiscoveryAndPresentation(t *testing.T) {
 	}
 }
 
-func TestShowWidgetAutoDetectsSVG(t *testing.T) {
-	result, err := ShowWidgetTool{}.Execute(context.Background(), map[string]any{
+func TestShowArtifactAutoDetectsSVG(t *testing.T) {
+	result, err := ShowArtifactTool{}.Execute(context.Background(), map[string]any{
 		"loading_messages": []any{"Rendering"},
 		"title":            "Flow",
-		"widget_code":      `<svg width="100%" viewBox="0 0 680 120" role="img"></svg>`,
+		"html":             `<svg width="100%" viewBox="0 0 680 120" role="img"></svg>`,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -164,10 +164,10 @@ func TestShowWidgetAutoDetectsSVG(t *testing.T) {
 	}
 }
 
-func TestShowWidgetRequiresLoadingMessages(t *testing.T) {
-	_, err := ShowWidgetTool{}.Execute(context.Background(), map[string]any{
-		"title":       "Flow",
-		"widget_code": "<div></div>",
+func TestShowArtifactRequiresLoadingMessages(t *testing.T) {
+	_, err := ShowArtifactTool{}.Execute(context.Background(), map[string]any{
+		"title": "Flow",
+		"html":  "<div></div>",
 	})
 	if err == nil {
 		t.Fatal("expected error")

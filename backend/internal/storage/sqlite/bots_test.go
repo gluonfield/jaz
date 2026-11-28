@@ -27,6 +27,7 @@ func TestBotRecordAndRoutineOwnershipRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	record.Pinned = 1
+	record.WorkspaceID = storage.LocalWorkspaceID
 	loaded, err := store.LoadBot(thread.ID)
 	if err != nil || !reflect.DeepEqual(loaded, record) {
 		t.Fatalf("loaded bot = %+v, %v", loaded, err)

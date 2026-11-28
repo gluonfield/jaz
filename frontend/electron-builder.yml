@@ -30,6 +30,8 @@ mac:
   extraFiles:
     - from: resources/macos/jaz-notch
       to: MacOS/jaz-notch
+    - from: resources/macos/jaz-keychain
+      to: MacOS/jaz-keychain
   extendInfo:
     NSScreenCaptureUsageDescription: Jaz uses screen capture to let your agents see and control desktop apps.
     NSMicrophoneUsageDescription: Jaz uses the microphone for voice input.

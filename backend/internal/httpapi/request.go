@@ -7,28 +7,19 @@ import (
 	"strings"
 )
 
-type RequestInfo struct {
-	IP        string
-	UserAgent string
-}
-
-func RequestInfoFrom(r *http.Request) RequestInfo {
-	return RequestInfo{
-		IP:        requestIP(r),
-		UserAgent: strings.TrimSpace(r.UserAgent()),
-	}
-}
-
 func RequestBaseURL(r *http.Request) string {
-	host := firstHeaderValue(r.Header.Get("X-Forwarded-Host"))
+	var host, proto string
+	if LoopbackRequest(r) {
+		host = firstHeaderValue(r.Header.Get("X-Forwarded-Host"))
+		proto = strings.ToLower(firstHeaderValue(r.Header.Get("X-Forwarded-Proto")))
+	}
 	if host == "" {
 		host = strings.TrimSpace(r.Host)
 	}
 	if host == "" {
 		return ""
 	}
-	proto := firstHeaderValue(r.Header.Get("X-Forwarded-Proto"))
-	if proto == "" {
+	if proto != "http" && proto != "https" {
 		proto = "http"
 		if r.TLS != nil {
 			proto = "https"
@@ -60,27 +51,6 @@ func LoopbackRequest(r *http.Request) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
-}
-
-func requestIP(r *http.Request) string {
-	for _, header := range []string{"X-Forwarded-For", "X-Real-IP"} {
-		raw := strings.TrimSpace(r.Header.Get(header))
-		if raw == "" {
-			continue
-		}
-		host := strings.TrimSpace(strings.Split(raw, ",")[0])
-		if ip := net.ParseIP(host); ip != nil {
-			return ip.String()
-		}
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.String()
-	}
-	return strings.TrimSpace(host)
 }
 
 func firstHeaderValue(value string) string {

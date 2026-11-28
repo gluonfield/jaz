@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
-import { DevicesSettings } from '@/components/settings/DevicesSettings'
 import { MCPSettings } from '@/components/settings/MCPSettings'
 import { BrowserSettings } from '@/components/settings/BrowserSettings'
 import { cachedApiAuthToken, apiBaseUrl, apiWebSocket, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
@@ -29,12 +28,6 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
     if (authorization === 'Bearer fixture-host-credential' && !url.startsWith(local + '/')) {
       throw new Error('Host credential escaped the local backend')
     }
-    if (url.endsWith('/v1/devices')) {
-      return Response.json({ can_manage: authorization === 'Bearer fixture-host-credential', devices: [{ id: 'phone', name: 'Phone', kind: 'mobile', status: 'approved', created_at: new Date().toISOString() }], pairings: [] })
-    }
-    if (url.endsWith('/v1/devices/connection-link')) {
-      return Response.json({ url: 'https://backend.example#key=invite_fixture', base_url: 'https://backend.example', public_url: 'https://backend.example' })
-    }
     if (url.includes('/v1/mcp/servers')) {
       const server = { id: 'private-tools', name: 'Private tools', url: 'https://tools.example/mcp', enabled: false, status: 'disabled', tool_count: 0, transport: 'streamable_http', bearer_token_set: tokenSet, headers: [{ name: 'X-Key', value_set: true }], created_at: '', updated_at: '' }
       if (init?.method === 'PUT') {
@@ -50,10 +43,10 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
     }
     return originalFetch(input, init)
   }
-  const render = (view: 'devices' | 'mcp' | 'browser', key: string) => {
+  const render = (view: 'mcp' | 'browser', key: string) => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     clients.push(client)
-    root.render(<QueryClientProvider client={client} key={key}>{view === 'devices' ? <DevicesSettings /> : view === 'browser' ? <BrowserSettings /> : <MCPSettings />}</QueryClientProvider>)
+    root.render(<QueryClientProvider client={client} key={key}>{view === 'browser' ? <BrowserSettings /> : <MCPSettings />}</QueryClientProvider>)
   }
   const button = (text: string) => [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === text)
   try {
@@ -96,22 +89,6 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
     }
     for (const [width, name] of [[1440, 'desktop'], [390, 'phone']] as const) {
       await window.smoke.resize(width, 900)
-      for (const host of [true, false]) {
-        setApiBaseUrl(host ? local : 'https://remote.example')
-        render('devices', `${name}-${host}`)
-        await until(() => Boolean(element.textContent?.includes('Phone')))
-        await until(() => Boolean(button('Add device')) === host)
-        if (Boolean(button('Revoke')) !== host) {
-          throw new Error('Device-management controls do not follow the server capability')
-        }
-        if (!host && !element.textContent?.includes('Manage devices from the host computer.')) {
-          throw new Error('Remote devices have no explanation for management ownership')
-        }
-        if (element.scrollWidth > element.clientWidth) {
-          throw new Error('Device settings overflow horizontally')
-        }
-        await window.smoke.capture(`security-${host ? 'host' : 'remote'}-${name}`)
-      }
       setApiBaseUrl('https://remote.example')
       tokenSet = true
       render('mcp', `mcp-${name}`)

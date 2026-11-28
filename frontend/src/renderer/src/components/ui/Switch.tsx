@@ -1,22 +1,21 @@
 import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 
-// iOS-style toggle. On = brand-filled track; off = faint track; the knob stays
-// white in both.
-function SwitchTrack({ checked, compact = false }: { checked: boolean; compact?: boolean }) {
+// The system switch of macOS and iOS: a white knob on a green or gray track.
+export function SwitchTrack({ checked, compact = false }: { checked: boolean; compact?: boolean }) {
   return (
     <span
       aria-hidden
       className={`relative inline-flex shrink-0 items-center rounded-full transition-colors duration-150 ${
         compact ? 'h-4 w-7' : 'h-5 w-9'
-      } ${checked ? 'bg-primary' : 'bg-ink/20'}`}
+      } ${checked ? 'bg-switch-on' : 'bg-switch-off'}`}
     >
       <motion.span
         layout
         transition={{ type: 'spring', stiffness: 500, damping: 34 }}
-        className={`absolute rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.3)] ${
-          compact ? 'size-3' : 'size-3.5'
-        } ${checked ? (compact ? 'right-0.5' : 'right-1') : compact ? 'left-0.5' : 'left-1'}`}
+        className={`absolute rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/0.2),0_1px_1px_rgb(0_0_0/0.1)] ${
+          compact ? 'size-3' : 'size-4'
+        } ${checked ? 'right-0.5' : 'left-0.5'}`}
       />
     </span>
   )

@@ -1,10 +1,47 @@
+import type { CloudThreadGitRepoSpec } from '@/lib/api/cloudThreadRepos'
 import type { UsageWindow } from '@/lib/usageWindow'
 import { ApiError, readAPIResponse } from '@/lib/api/response'
 import { queryOptions } from '@tanstack/react-query'
+import { cloudWorkspaceHeaders } from '@/lib/api/cloudScope'
+import { request } from '@/lib/api/client'
+import { sanitizeAssetOrigin, type ResolvedAsset } from '@/lib/artifacts'
+import { backendTransportUrl } from '@/lib/clientRuntime'
 import type { MessageContextInput } from '@/lib/messageContext'
 import { telemetry } from '@/lib/telemetry'
 import { keys } from '../query/keys'
-import { apiEmbeddedGetUrl, apiFetch, del, get, post, put } from './client'
+import {
+  apiBaseUrl,
+  apiEmbeddedGetUrl,
+  apiFetch,
+  del,
+  get,
+  isCloudApiSession,
+  post,
+  put,
+  resolveBackendUrl,
+  secureBackendConnection,
+} from './client'
+import { updateThreadUserState } from './cloudSpaces'
+import {
+  cloudRunFileBytes,
+  cloudRunFileDownloadUrl,
+  cloudRunFileUrl,
+  grantCloudRunAsset,
+  normalizeAssetGrant,
+  readCloudRunFile,
+  type AssetGrantWire,
+} from './cloudUploads'
+import {
+  cancelCloudThread,
+  cloudThreadToSession,
+  createCloudThread,
+  deleteCloudThread,
+  fetchCloudThreadMessages,
+  getCloudThread,
+  listCloudThreads,
+  patchCloudThread,
+  steerCloudThread,
+} from './cloudThreads'
 import {
   fileKey,
   type Attachment,
@@ -34,16 +71,50 @@ export interface CreateSessionInput {
   // Per-session overrides of the Settings > Agents defaults; model_provider
   // applies to ACP agents with provider-backed models.
   model_provider?: string
+  backend?: 'cloud'
+  model_profile_id?: string
+  cloud_credential_profile_id?: string
+  cloud_workspace_id?: string
   model?: string
   reasoning_effort?: string
   config_options?: Record<string, string>
+  space_id?: string
+  visibility?: 'private' | 'space'
+  machine_id?: string
+  executor_target?: string
+  git_repos?: CloudThreadGitRepoSpec[]
+  git_repo?: string
+  git_base_branch?: string
+  git_branch?: string
 }
 
 export async function createSession(input: CreateSessionInput = {}): Promise<Session> {
-  const { config_options, ...request } = input
-  const session = await post<Session>('/v1/sessions', request)
-  for (const [id, value] of Object.entries(config_options ?? {})) {
-    await setSessionAgentConfig(session.id, id, value)
+  if (isCloudApiSession()) {
+    if (input.cloud_credential_profile_id) throw new Error('Native runs must be started from the paired Desktop')
+    const thread = await createCloudThread({
+      title: input.title,
+      space_id: input.space_id,
+      model_profile_id: input.model_profile_id,
+      model: input.model,
+      reasoning_effort: input.reasoning_effort,
+      executor_target: input.executor_target ?? input.machine_id,
+      git_repos: input.git_repos,
+      git_repo: input.git_repo,
+      git_base_branch: input.git_base_branch,
+      git_branch: input.git_branch,
+    })
+    return cloudThreadToSession(thread)
+  }
+  const { config_options, cloud_workspace_id, ...payload } = input
+  const session = await request<Session>('/v1/sessions', {
+    method: 'POST',
+    headers: { ...cloudWorkspaceHeaders(cloud_workspace_id), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (session.backend !== 'cloud') {
+    for (const [id, value] of Object.entries(config_options ?? {})) {
+      await setSessionAgentConfig(session.id, id, value)
+    }
   }
   telemetry.threadCreated({
     worktree: Boolean(input.worktree),
@@ -55,7 +126,10 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
   return session
 }
 
-export function getSession(id: string, signal?: AbortSignal): Promise<Session> {
+export async function getSession(id: string, signal?: AbortSignal): Promise<Session> {
+  if (isCloudApiSession()) {
+    return cloudThreadToSession(await getCloudThread(id, signal))
+  }
   return get<Session>(`/v1/sessions/${id}`, { signal })
 }
 
@@ -113,21 +187,84 @@ export async function createSessionFile(sessionId: string, path: string, content
   if (!response.ok) throw new ApiError(response.status, `could not create ${path}`)
 }
 
+export function sessionCloudRunId(session?: Pick<Session, 'id' | 'backend' | 'run_id'>): string | undefined {
+  if (!session) return undefined
+  if (session.backend === 'cloud' || isCloudApiSession()) {
+    return session.run_id || session.id
+  }
+  return undefined
+}
+
+export function effectiveCloudRunId(sessionId: string, cloudRunId?: string): string | undefined {
+  if (cloudRunId) return cloudRunId
+  return isCloudApiSession() ? sessionId : undefined
+}
+
 // sessionFileBytes reads a file with the connection's own credentials. A
 // reader that fetches uses it; sessionFileRawUrl is for an element that loads
 // its own address and so needs the short-lived ticket in it.
-export async function sessionFileBytes(sessionId: string, path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+export async function sessionFileBytes(
+  sessionId: string,
+  path: string,
+  signal?: AbortSignal,
+  cloudRunId?: string,
+): Promise<ArrayBuffer> {
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
+  if (runId) {
+    return cloudRunFileBytes(runId, path, signal)
+  }
   const response = await apiFetch(sessionFilePath(sessionId, path), { signal })
   if (!response.ok) await readAPIResponse(response)
   return response.arrayBuffer()
 }
 
-export function sessionFileRawUrl(sessionId: string, path: string): string {
+export function sessionFileRawUrl(sessionId: string, path: string, cloudRunId?: string): string {
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
+  if (runId) {
+    return cloudRunFileUrl(runId, path)
+  }
   return apiEmbeddedGetUrl(sessionFilePath(sessionId, path))
 }
 
-export function sessionFileDownloadUrl(sessionId: string, path: string): string {
+export function sessionFileDownloadUrl(sessionId: string, path: string, cloudRunId?: string): string {
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
+  if (runId) {
+    return cloudRunFileDownloadUrl(runId, path)
+  }
   return apiEmbeddedGetUrl(sessionFilePath(sessionId, path) + '&download=1')
+}
+
+export function activePluginAssetOrigin(cloudRunId?: string): string {
+  if (cloudRunId) {
+    const configured = import.meta.env?.VITE_JAZ_CLOUD_ASSET_ORIGIN?.trim()
+    return sanitizeAssetOrigin(configured || 'https://storage.googleapis.com')
+  }
+  return sanitizeAssetOrigin(backendTransportUrl(`${apiBaseUrl()}/`))
+}
+
+export async function grantSessionAsset(
+  sessionId: string,
+  relpath: string,
+  signal?: AbortSignal,
+  cloudRunId?: string,
+): Promise<ResolvedAsset> {
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
+  if (runId) {
+    return grantCloudRunAsset(runId, relpath, signal)
+  }
+  const wire = await post<AssetGrantWire>(
+    `/v1/sessions/${encodeURIComponent(sessionId)}/assets/grant`,
+    { path: relpath },
+    signal,
+  )
+  const rawUrl = wire.url?.trim() ?? ''
+  const resolved = rawUrl.startsWith('/')
+    ? resolveBackendUrl(rawUrl, apiBaseUrl(), 'grantSessionAsset')
+    : rawUrl
+  if (!resolved || !secureBackendConnection(resolved)) {
+    throw new Error('Asset grant URL must use HTTPS or loopback')
+  }
+  return normalizeAssetGrant(wire, backendTransportUrl(resolved))
 }
 
 export function sessionAttachmentUrl(sessionId: string, attachmentId: string): string {
@@ -322,15 +459,26 @@ export const sessionRepoFileDiffQuery = (id: string, file: RepoFileChange, base?
     staleTime: 30_000,
   })
 
-export const sessionFileQuery = (id: string, path: string) =>
-  queryOptions({
-    queryKey: keys.sessionFile(id, path),
-    queryFn: () => readSessionFile(id, path),
+export const sessionFileQuery = (id: string, path: string, cloudRunId?: string) => {
+  const runId = effectiveCloudRunId(id, cloudRunId)
+  return queryOptions({
+    queryKey: runId ? [...keys.sessionFile(id, path), 'cloud', runId] : keys.sessionFile(id, path),
+    queryFn: ({ signal }) => readSessionFile(id, path, signal, runId),
     staleTime: 15_000,
   })
+}
 
-export function readSessionFile(id: string, path: string): Promise<SessionFileRead> {
-  return get<SessionFileRead>(`/v1/sessions/${id}/file?path=${encodeURIComponent(path)}`)
+export function readSessionFile(
+  id: string,
+  path: string,
+  signal?: AbortSignal,
+  cloudRunId?: string,
+): Promise<SessionFileRead> {
+  const runId = effectiveCloudRunId(id, cloudRunId)
+  if (runId) {
+    return readCloudRunFile(runId, path, signal)
+  }
+  return get<SessionFileRead>(`/v1/sessions/${id}/file?path=${encodeURIComponent(path)}`, { signal })
 }
 
 // Publishes the session's current branch to its remote (git push -u) and
@@ -365,20 +513,44 @@ export function restoreSessionWorktree(id: string): Promise<RepoInfo> {
   return post<RepoInfo>(`/v1/sessions/${id}/repo/restore-worktree`)
 }
 
-export function setSessionArchived(id: string, archived: boolean): Promise<Session> {
+export async function setSessionArchived(id: string, archived: boolean): Promise<Session> {
+  if (isCloudApiSession()) {
+    await updateThreadUserState(id, { archived })
+    const session = await getSession(id)
+    return { ...session, archived }
+  }
   return post<Session>(`/v1/sessions/${id}/${archived ? 'archive' : 'unarchive'}`)
 }
 
-export function setSessionPinned(id: string, pinned: boolean): Promise<Session> {
+export async function setSessionPinned(id: string, pinned: boolean): Promise<Session> {
+  if (isCloudApiSession()) {
+    await updateThreadUserState(id, { pinned })
+    const session = await getSession(id)
+    return { ...session, pinned }
+  }
   return post<Session>(`/v1/sessions/${id}/${pinned ? 'pin' : 'unpin'}`)
 }
 
-export function setSessionTitle(id: string, title: string): Promise<Session> {
+export async function setSessionTitle(id: string, title: string, isCloud = false): Promise<Session> {
+  if (isCloud || isCloudApiSession()) {
+    return cloudThreadToSession(await patchCloudThread(id, { title }))
+  }
   return post<Session>(`/v1/sessions/${id}/rename`, { title })
 }
 
+export async function moveSessionToSpace(id: string, spaceId: string): Promise<Session> {
+  return cloudThreadToSession(await patchCloudThread(id, { space_id: spaceId }))
+}
+
+export async function deleteSession(id: string): Promise<{ deleted: boolean; id: string }> {
+  return deleteCloudThread(id)
+}
+
 // Stops the in-flight turn server-side (turns survive closed streams).
-export function cancelSession(id: string): Promise<{ ok: boolean }> {
+export function cancelSession(id: string, isCloud = false): Promise<{ ok: boolean }> {
+  if (isCloud || isCloudApiSession()) {
+    return cancelCloudThread(id)
+  }
   return post<{ ok: boolean }>(`/v1/sessions/${id}/cancel`)
 }
 
@@ -397,7 +569,14 @@ export type QueueMutation =
   | { op: 'reorder'; ids: string[] }
   | { op: 'steer'; id: string }
 
-export function mutateSessionQueue(id: string, mutation: QueueMutation): Promise<Session> {
+export async function mutateSessionQueue(id: string, mutation: QueueMutation, isCloud = false): Promise<Session> {
+  if (isCloud || isCloudApiSession()) {
+    if (mutation.op === 'append') {
+      await steerCloudThread(id, mutation.message.text, 'queue')
+      return getSession(id)
+    }
+    throw new Error('Cloud threads only support queueing new messages while running')
+  }
   return post<Session>(`/v1/sessions/${id}/queue`, mutation)
 }
 
@@ -417,8 +596,13 @@ export function answerSessionInteractiveResponse(
 
 export const sidebarSessionsQuery = queryOptions({
   queryKey: keys.sidebarSessions,
-  queryFn: async () => {
-    const { sessions } = await get<{ sessions: Session[] | null }>('/v1/sessions?include_children=true')
+  queryFn: async ({ signal }) => {
+    if (isCloudApiSession()) {
+      return (await listCloudThreads(undefined, signal))
+        .map(cloudThreadToSession)
+        .filter((session) => !session.archived)
+    }
+    const { sessions } = await get<{ sessions: Session[] | null }>('/v1/sessions?include_children=true', { signal })
     return sessions ?? []
   },
   // Tighten the poll while a thread is running so status dots stay live.
@@ -472,6 +656,9 @@ export async function getSessionMessagesPage(
   page: SessionMessagesPageRequest = {},
   signal?: AbortSignal,
 ): Promise<SessionMessages> {
+  if (isCloudApiSession()) {
+    return fetchCloudThreadMessages(id, signal)
+  }
   const params = new URLSearchParams()
   if (page.beforeMessageSeq) params.set('before_message_seq', String(page.beforeMessageSeq))
   if (page.beforeEventSeq) params.set('before_event_seq', String(page.beforeEventSeq))

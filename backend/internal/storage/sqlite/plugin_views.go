@@ -20,7 +20,7 @@ func (s *Store) ListSessionPluginViews() ([]storage.SessionPluginView, error) {
 		if event.Artifact == nil || event.Artifact.Kind != sessionevents.PresentationPluginView {
 			continue
 		}
-		views = append(views, storage.SessionPluginView{ID: row.ID, Title: row.Title.String, Status: row.Status, UpdatedAt: msToTime(row.UpdatedAtMs), Folder: row.Cwd.String, Seq: row.Seq, Reference: event.Artifact.View.Reference, File: event.Artifact.View.File})
+		views = append(views, storage.SessionPluginView{ID: row.ID, WorkspaceID: firstNonEmpty(row.WorkspaceID, storage.LocalWorkspaceID), Title: row.Title.String, Status: row.Status, UpdatedAt: msToTime(row.UpdatedAtMs), Folder: row.Cwd.String, Seq: row.Seq, Reference: event.Artifact.View.Reference, File: event.Artifact.View.File})
 	}
 	return views, nil
 }

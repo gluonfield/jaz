@@ -1,14 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, linkOptions, useRouterState } from '@tanstack/react-router'
-import { LayoutDashboard, MessageSquare, Settings } from 'lucide-react'
+import { AppWindow, MessageSquare, Settings } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { PluginIcon } from '@/components/plugins/PluginIcon'
+import { SidebarWorkspaceSwitcher } from '@/components/sidebar/SidebarWorkspaceSwitcher'
 import { BotsGlyph } from '@/components/bots/BotAvatar'
 import type { SettingsSection } from '@/components/settings/sections'
 import { botsQuery } from '@/lib/api/bots'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { pluginsQuery } from '@/lib/api/plugins'
+import { useCloudSession } from '@/lib/cloudSession'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
@@ -18,7 +20,7 @@ export const RAIL_WIDTH = 48
 // the rest take the whole content card.
 export const SECTIONS = [
   { to: '/bots', label: 'Bots', Icon: BotsGlyph },
-  { to: '/boards', label: 'Boards', Icon: LayoutDashboard },
+  { to: '/apps', label: 'Apps', Icon: AppWindow },
 ] as const
 
 export type RailTab = 'chat' | 'settings' | (typeof SECTIONS)[number]['to'] | `/apps/${string}/${string}` | `/plugins/${string}`
@@ -26,13 +28,13 @@ export type RailTab = 'chat' | 'settings' | (typeof SECTIONS)[number]['to'] | `/
 // Settings rides in the URL search over any page, so it outranks the path.
 export function railTab(pathname: string, settingsOpen: boolean): RailTab {
   if (settingsOpen) return 'settings'
-  const app = /^\/apps\/([^/]+\/[^/]+)/.exec(pathname)?.[1]
-  if (app) return `/apps/${app}` as RailTab
+  const mcpApp = /^\/apps\/([^/]+\/[^/]+)/.exec(pathname)?.[1]
+  if (mcpApp) return `/apps/${mcpApp}` as RailTab
   const plugin = /^\/plugins\/([^/]+)$/.exec(pathname)?.[1]
   if (plugin) return `/plugins/${plugin}`
   // Loops open from the Bots panel, so they keep it.
   const section = pathname.startsWith('/loops') ? '/bots' : pathname
-  return SECTIONS.find(({ to }) => section.startsWith(to))?.to ?? 'chat'
+  return SECTIONS.find(({ to }) => section === to || section.startsWith(`${to}/`))?.to ?? 'chat'
 }
 
 // Everything beside Chat takes the whole content card: the built-in sections,
@@ -81,6 +83,7 @@ export function NavRail({
 }) {
   const rail = useRef<HTMLElement>(null)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const { activeWorkspaceId } = useCloudSession()
   const sections = useRailSections()
   const botsUnread = useQuery({
     ...botsQuery,
@@ -88,11 +91,17 @@ export function NavRail({
   }).data
 
   // The Chat tab returns to the thread the user left, the way switching apps
-  // does; a fresh /new clears it so the tab lands back on the composer.
-  const [lastSession, setLastSession] = useState<string>()
+  // does; a fresh /new or workspace switch clears it so the tab lands back on
+  // the composer instead of a previous workspace's thread.
+  const [lastSession, setLastSession] = useState<{ workspaceId: string; id?: string }>({
+    workspaceId: activeWorkspaceId,
+  })
   const session = /^\/sessions\/([^/]+)/.exec(pathname)?.[1]
-  const current = session ?? (pathname === '/new' ? undefined : lastSession)
-  if (current !== lastSession) setLastSession(current)
+  const activeLastSession = lastSession.workspaceId === activeWorkspaceId ? lastSession.id : undefined
+  const current = session ?? (pathname === '/new' ? undefined : activeLastSession)
+  if (lastSession.workspaceId !== activeWorkspaceId || current !== lastSession.id) {
+    setLastSession({ workspaceId: activeWorkspaceId, id: current })
+  }
 
   useWindowEvent('keydown', (event) => {
     if (!event.metaKey || event.defaultPrevented || event.altKey || event.ctrlKey || event.shiftKey || event.repeat) return
@@ -123,9 +132,10 @@ export function NavRail({
 
   return (
     <nav ref={rail} aria-label="Sections" style={{ width: RAIL_WIDTH }} className="flex shrink-0 flex-col items-center gap-2 pb-2 pt-[5px] max-sm:hidden">
+      <SidebarWorkspaceSwitcher rail />
       <Link
-        to={lastSession ? '/sessions/$sessionId' : '/new'}
-        params={lastSession ? { sessionId: lastSession } : {}}
+        to={current ? '/sessions/$sessionId' : '/new'}
+        params={current ? { sessionId: current } : {}}
         data-rail-tab=""
         aria-label="Chat"
         onClick={onOpenSidebar}

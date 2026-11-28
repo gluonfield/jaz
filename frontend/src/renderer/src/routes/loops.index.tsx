@@ -11,6 +11,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton'
 import { agentLabel } from '@/lib/agentLabel'
 import { loopTone, loopsQuery, TONE_DOT, type LoopTone } from '@/lib/api/loops'
 import type { Loop } from '@/lib/api/types'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { hasTime, relativeTime, shortDate } from '@/lib/format/time'
 
 export const Route = createFileRoute('/loops/')({
@@ -19,6 +20,7 @@ export const Route = createFileRoute('/loops/')({
 
 function LoopsPage() {
   const loops = useQuery(loopsQuery)
+  const isViewer = useIsCloudViewer()
   const [creating, setCreating] = useState(false)
 
   return (
@@ -28,10 +30,12 @@ function LoopsPage() {
           <h1 className="text-[22px] font-semibold tracking-[-0.01em] text-ink">Loops</h1>
           <p className="mt-1 text-[13px] text-ink-3">Prompts that run on a schedule.</p>
         </div>
-        <Button variant="primary" size="lg" onClick={() => setCreating(true)}>
-          <Plus size={15} />
-          New loop
-        </Button>
+        {!isViewer ? (
+          <Button variant="primary" size="lg" onClick={() => setCreating(true)}>
+            <Plus size={15} />
+            New loop
+          </Button>
+        ) : null}
       </header>
 
       {loops.isPending ? (
@@ -41,11 +45,17 @@ function LoopsPage() {
           <p>{loops.error.message}</p>
         </EmptyState>
       ) : loops.data.length === 0 ? (
-        <DashedCta
-          onClick={() => setCreating(true)}
-          title="Create your first loop"
-          subtitle="Run a prompt on a schedule — each run gets its own thread you can open later."
-        />
+        isViewer ? (
+          <EmptyState title="No loops yet">
+            <p>Viewers have read-only access and cannot create loops.</p>
+          </EmptyState>
+        ) : (
+          <DashedCta
+            onClick={() => setCreating(true)}
+            title="Create your first loop"
+            subtitle="Run a prompt on a schedule — each run gets its own thread you can open later."
+          />
+        )
       ) : (
         <div className="-mx-2">
           {loops.data.map((loop) => (

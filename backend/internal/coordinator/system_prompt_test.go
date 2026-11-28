@@ -15,7 +15,6 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	root := t.TempDir()
 	memoryRoot := t.TempDir()
 	write(t, root, "AGENTS.md", "always cite sources")
-	write(t, root, "SOUL.md", "be direct")
 	write(t, root, "INTERNAL.md", "collapse stale layers")
 	write(t, memoryRoot, "LONG_TERM.md", "- Goal: $5m through agent products.")
 	write(t, memoryRoot, "SHORT_TERM.md", "- Focus: jaz memory system.")
@@ -37,13 +36,12 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"You are Jaz",
 		"## Jaz platform",
 		"## AGENTS.md\n\nalways cite sources",
-		"## SOUL.md\n\nbe direct",
 		"## Jaz threads",
 		"one of: `codex`, `claude`",
 		"Omit model overrides unless the user asks for a specific model",
 		"## Browser tools",
 		"Jaz has an integrated browser exposed through the Jaztools `browser_*` tools.",
-		"## Artifacts and visualisation",
+		"## Artifacts, apps and documents",
 		"## Skills",
 		"<name>deploy</name>",
 		"<description>ship &amp; verify</description>",
@@ -65,7 +63,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"Weekday: ":             1,
 		"Now: ":                 1,
 		"## AGENTS.md":          1,
-		"## SOUL.md":            1,
+		"## SOUL.md":            0,
 		"INTERNAL.md":           0,
 		"collapse stale layers": 0,
 		"Capture as you go":     1,
@@ -104,21 +102,15 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 			t.Fatalf("acp extension missing delegation guidance %q:\n%s", want, acp)
 		}
 	}
-	if !strings.Contains(acp, "Always call `visualise_read_me` before the first artifact") ||
-		!strings.Contains(acp, "visualise_show_widget") {
+	if !strings.Contains(acp, "Always call `artifact_guide` before the first artifact") ||
+		!strings.Contains(acp, "show_artifact") {
 		t.Fatalf("acp extension must carry the artifact policy:\n%s", acp)
 	}
-	for _, reject := range []string{"`visualize:", "visualize_", "`create_file`", "file-artifact tool", "coding-agent surface provides", "Claude-compatible"} {
+	for _, reject := range []string{"`visualize:", "visualize_", "visualise_", "prepare_app_draft", "`create_file`", "file-artifact tool", "coding-agent surface provides", "Claude-compatible"} {
 		if strings.Contains(acp, reject) {
 			t.Fatalf("artifact policy must use direct Jaz visualise tools only; found %q:\n%s", reject, acp)
 		}
 	}
-	for _, reject := range []string{"visualise:show_widget", "visualise:read_me"} {
-		if strings.Contains(acp, reject) {
-			t.Fatalf("artifact policy must use identifier-safe tool names; found %q:\n%s", reject, acp)
-		}
-	}
-
 	widgetACP, err := builder.ACPPromptForArtifactSurface(acpCwd, "widget")
 	if err != nil {
 		t.Fatal(err)
@@ -127,9 +119,9 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"## AGENTS.md\n\nalways cite sources",
 		"## Jaz threads",
 		"create_thread",
-		"## Artifacts and visualisation",
-		"visualise_read_me",
-		"Deliver with `visualise_publish_widget`",
+		"## Board app",
+		"artifact_guide",
+		"deliver it with `publish_app`",
 		"## memory/LONG_TERM.md",
 		"<name>deploy</name>",
 	} {
@@ -137,7 +129,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 			t.Fatalf("widget ACP extension missing shared section %q:\n%s", want, widgetACP)
 		}
 	}
-	for _, reject := range []string{"visualise_show_widget", "## Board Widget Runtime"} {
+	for _, reject := range []string{"show_artifact", "## Board App Runtime"} {
 		if strings.Contains(widgetACP, reject) {
 			t.Fatalf("widget ACP base extension must leave output details to the loop widget extension; found %q:\n%s", reject, widgetACP)
 		}

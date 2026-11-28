@@ -32,10 +32,20 @@ import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI, DictationEvent } from '../shared/dictation'
 import type { VoiceCommand, VoiceOverlayAPI, VoiceOverlayState } from '@shared/voice'
 import { CONNECTION_SESSION_CHANNEL, LOCAL_SESSION_CHANNEL, type ConnectionSessionAPI, type SessionDocument, type SessionSnapshot } from '@shared/connectionSession'
+import { readNodeCloudConfig } from '@shared/cloudConfig'
 import { LOCAL_BACKEND_TRANSPORT_URL, LOCAL_BACKEND_URL } from '@shared/localBackend'
 import { FILE_ACTIONS_CHANNEL, type FileActionsAPI } from '@shared/fileActions'
+import { DESKTOP_APPS_CHANNEL, type DesktopAppsAPI } from '@shared/desktopApps'
+import {
+  ASSISTANT_CHANNEL,
+  type AssistantAPI,
+  type AssistantAction,
+  type QuickDictateCommand,
+  type QuickDictateState,
+} from '@shared/assistant'
 
-const apiBaseUrl = process.env['JAZ_API_URL'] ?? LOCAL_BACKEND_URL
+const cloudConfig = readNodeCloudConfig(process.env)
+const apiBaseUrl = process.env['JAZ_API_URL'] ?? (cloudConfig.localEnabled ? LOCAL_BACKEND_URL : cloudConfig.cloudUrl || LOCAL_BACKEND_URL)
 
 const windowKind = SECONDARY_WINDOW_KINDS.find((kind) => process.argv.includes(`--jaz-${kind}-window`)) ?? 'main'
 let previewURLTargetSubscriptions = 0
@@ -51,8 +61,8 @@ function sessionRequest<T>(request: unknown): T {
 
 const connectionSession: ConnectionSessionAPI = {
   read: () => {
-    const result = sessionRequest<SessionDocument>({ operation: 'read' })
-    sessionDocument = result.document
+    const result = sessionRequest<SessionDocument | null>({ operation: 'read' })
+    sessionDocument = result?.document
     return result
   },
   update: (request) => sessionRequest<SessionSnapshot>(request),
@@ -83,6 +93,34 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
       canReveal: (backendUrl, sessionId) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'canReveal', backendUrl, sessionId),
       reveal: (backendUrl, sessionId, path) => ipcRenderer.invoke(FILE_ACTIONS_CHANNEL, 'reveal', backendUrl, sessionId, path),
     } satisfies FileActionsAPI,
+    desktopApps: {
+      list: () => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}list`),
+      get: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}get`, appId),
+      install: (input) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}install`, input),
+      uninstall: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}uninstall`, appId),
+      open: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}open`, appId),
+      reveal: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}reveal`, appId),
+      setPermissions: (appId, bundleSha256, permissions, scopedFolders, allowDesktopFullAccess) =>
+        ipcRenderer.invoke(
+          `${DESKTOP_APPS_CHANNEL}setPermissions`,
+          appId,
+          bundleSha256,
+          permissions,
+          scopedFolders,
+          allowDesktopFullAccess,
+        ),
+      syncVersion: (appId, version, bundleSha256, declaredCapabilities) =>
+        ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}syncVersion`, appId, version, bundleSha256, declaredCapabilities),
+      setAlwaysOnTop: (appId, enabled) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}setAlwaysOnTop`, appId, enabled),
+      showNotification: (appId, title, body) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}showNotification`, appId, title, body),
+      registerShortcut: (appId, accelerator) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}registerShortcut`, appId, accelerator),
+      setTray: (appId, enabled, title) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}setTray`, appId, enabled, title),
+      pickScopedFolder: (appId) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}pickScopedFolder`, appId),
+      fsList: (appId, folderPath, relPath) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}fsList`, appId, folderPath, relPath),
+      fsRead: (appId, folderPath, relPath) => ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}fsRead`, appId, folderPath, relPath),
+      fsWrite: (appId, folderPath, relPath, content) =>
+        ipcRenderer.invoke(`${DESKTOP_APPS_CHANNEL}fsWrite`, appId, folderPath, relPath, content),
+    } satisfies DesktopAppsAPI,
     computer: {
       status: () => ipcRenderer.invoke(COMPUTER_CHANNEL + 'status'),
       begin: (id, session) => ipcRenderer.invoke(COMPUTER_CHANNEL + 'begin', id, session),
@@ -124,6 +162,29 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
       },
       command: (command) => ipcRenderer.send(`${ISLAND_CHANNEL}command`, command),
     } satisfies IslandAPI,
+    assistant: {
+      onTrigger: (handler) => {
+        const listener = (_event: unknown, action: AssistantAction) => handler(action)
+        ipcRenderer.on(`${ASSISTANT_CHANNEL}trigger`, listener)
+        ipcRenderer.send(`${ASSISTANT_CHANNEL}ready`)
+        return () => ipcRenderer.removeListener(`${ASSISTANT_CHANNEL}trigger`, listener)
+      },
+      trigger: (action) => ipcRenderer.send(`${ASSISTANT_CHANNEL}trigger`, action),
+      focusMain: () => ipcRenderer.send(`${ASSISTANT_CHANNEL}focus-main`),
+      publishQuickDictate: (state) => ipcRenderer.send(`${ASSISTANT_CHANNEL}publish`, state),
+      onQuickDictateCommand: (handler) => {
+        const listener = (_event: unknown, command: QuickDictateCommand) => handler(command)
+        ipcRenderer.on(`${ASSISTANT_CHANNEL}pill-command`, listener)
+        return () => ipcRenderer.removeListener(`${ASSISTANT_CHANNEL}pill-command`, listener)
+      },
+      subscribeQuickDictate: (handler) => {
+        const listener = (_event: unknown, state: QuickDictateState | null) => handler(state)
+        ipcRenderer.on(`${ASSISTANT_CHANNEL}pill-state`, listener)
+        ipcRenderer.send(`${ASSISTANT_CHANNEL}pill-ready`)
+        return () => ipcRenderer.removeListener(`${ASSISTANT_CHANNEL}pill-state`, listener)
+      },
+      sendQuickDictateCommand: (command) => ipcRenderer.send(`${ASSISTANT_CHANNEL}pill-command`, command),
+    } satisfies AssistantAPI,
     dictation: {
       availability: () => ipcRenderer.invoke('jaz:dictation:availability'),
       start: (id) => ipcRenderer.invoke('jaz:dictation:start', id),
@@ -148,14 +209,16 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
       }
       return result.value
     },
-    decryptCredential: (value: string): string => {
-      const result = ipcRenderer.sendSync('jaz:credential-encryption', 'decrypt', value) as { value?: string; error?: string }
+    decryptCredential: (value: string, allowLegacy?: boolean): string => {
+      const result = ipcRenderer.sendSync('jaz:credential-encryption', 'decrypt', value, allowLegacy === true) as { value?: string; error?: string }
       if (result.error || result.value === undefined) {
         throw new Error(result.error || 'Credential decryption failed')
       }
       return result.value
     },
     apiBaseUrl,
+    cloudUrl: cloudConfig.cloudUrl,
+    localEnabled: cloudConfig.localEnabled,
     localBackendTransport: LOCAL_BACKEND_TRANSPORT_URL,
     windowKind,
     inspectDroppedFile,
@@ -164,15 +227,15 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
     setWindowButtonsVisible: (visible: boolean) => ipcRenderer.send('jaz:set-window-buttons-visible', visible),
     startLocalBackend: (): Promise<{ ok: boolean; url?: string; key?: string; error?: string }> =>
       ipcRenderer.invoke('jaz:start-local-backend'),
-    getDeviceIdentity: (): Promise<{ device_id: string; public_key: string }> =>
-      ipcRenderer.invoke('jaz:get-device-identity'),
-    getDeviceMetadata: (): Promise<{
-      name: string
-      platform: string
-      device_family: string
-      model_identifier: string
-      app_version: string
-    }> => ipcRenderer.invoke('jaz:get-device-metadata'),
+    beginOidcSignIn: (): Promise<{ redirectUri?: string } | void> => ipcRenderer.invoke('jaz:oidc-begin'),
+    onOidcCallback: (handler: (url: string) => void): (() => void) => {
+      const listener = (_event: unknown, url: unknown): void => {
+        if (typeof url === 'string') handler(url)
+      }
+      ipcRenderer.on('jaz:oidc-callback', listener)
+      return () => ipcRenderer.removeListener('jaz:oidc-callback', listener)
+    },
+    pickDirectory: (): Promise<string | null> => ipcRenderer.invoke('jaz:pick-directory'),
     configureNotifications: (config: NotificationConfig): Promise<boolean> =>
       ipcRenderer.invoke('jaz:configure-notifications', config),
     notchAccess: (): Promise<NotchAccess> => ipcRenderer.invoke('jaz:notifications:notch-access'),

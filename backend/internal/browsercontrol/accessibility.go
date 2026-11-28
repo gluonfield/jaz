@@ -88,7 +88,7 @@ func (p *browserPage) accessibilityState(ctx context.Context, full bool) (Action
 		trees[frame.ParentID].Children[frame.OwnerID] = trees[frame.ID]
 	}
 	next := axState{next: p.ax.next, indices: map[string]int{}, targets: map[string]axTarget{}}
-	next.appendTree(trees[frames[0].ID], p.ax.indices, 0, -1)
+	next.appendTree(trees[frames[0].ID], p.ax.indices, p.redactedNodes, 0, -1)
 	info, err := p.info(ctx)
 	if err != nil {
 		return ActionOutput{}, err
@@ -99,7 +99,7 @@ func (p *browserPage) accessibilityState(ctx context.Context, full bool) (Action
 	return ActionOutput{Status: "ok", Text: text, Data: data}, err
 }
 
-func (s *axState) appendTree(tree *axTree, previous map[string]int, depth, parentIndex int) {
+func (s *axState) appendTree(tree *axTree, previous map[string]int, redacted map[string]map[int64]bool, depth, parentIndex int) {
 	frame := tree.Frame
 	byID := make(map[string]axNode, len(tree.Nodes))
 	for _, node := range tree.Nodes {
@@ -127,11 +127,12 @@ func (s *axState) appendTree(tree *axTree, previous map[string]int, depth, paren
 			if node.BackendID != 0 {
 				s.targets["ax:"+strconv.Itoa(index)] = axTarget{Frame: frame, BackendID: node.BackendID}
 			}
-			s.lines = append(s.lines, axLine{Index: index, Parent: parent, Text: strings.Repeat("\t", depth) + formatAXNode(index, node)})
+			isRedacted := (node.BackendID != 0 && redacted[frame.ID][node.BackendID]) || isSensitiveAXNode(node)
+			s.lines = append(s.lines, axLine{Index: index, Parent: parent, Text: strings.Repeat("\t", depth) + formatAXNode(index, node, isRedacted)})
 			parent = index
 			depth++
 			if child := tree.Children[node.BackendID]; child != nil {
-				s.appendTree(child, previous, depth, parent)
+				s.appendTree(child, previous, redacted, depth, parent)
 			}
 		}
 		for _, child := range node.ChildIDs {
@@ -145,7 +146,36 @@ func (s *axState) appendTree(tree *axTree, previous map[string]int, depth, paren
 	}
 }
 
-func formatAXNode(index int, node axNode) string {
+func isSensitiveAXNode(node axNode) bool {
+	for _, prop := range node.Properties {
+		switch strings.ToLower(prop.Name) {
+		case "protected":
+			if b, ok := prop.Value.Value.(bool); ok && b {
+				return true
+			}
+		case "autocomplete":
+			val := strings.ToLower(axText(prop.Value.Value))
+			for _, token := range strings.Fields(val) {
+				switch token {
+				case "cc-number", "cc-csc", "cc-exp", "cc-exp-month", "cc-exp-year", "current-password", "new-password", "one-time-code":
+					return true
+				}
+			}
+		}
+	}
+	role := strings.ToLower(axText(node.Role.Value))
+	if role == "textbox" || role == "textfield" || role == "searchbox" || role == "combobox" {
+		name := strings.ToLower(axText(node.Name.Value))
+		for _, needle := range []string{"password", "passcode", "card number", "cardnumber", "cvv", "cvc", "csc", "security code"} {
+			if strings.Contains(name, needle) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func formatAXNode(index int, node axNode, redacted bool) string {
 	line := strconv.Itoa(index) + " " + axText(node.Role.Value)
 	if name := axText(node.Name.Value); name != "" {
 		line += " " + strconv.Quote(name)
@@ -154,12 +184,20 @@ func formatAXNode(index int, node axNode) string {
 		line += ", Description: " + strconv.Quote(description)
 	}
 	if value := axText(node.Value.Value); value != "" {
-		line += ", Value: " + strconv.Quote(value)
+		if redacted {
+			line += `, Value: "[REDACTED]"`
+		} else {
+			line += ", Value: " + strconv.Quote(value)
+		}
 	}
 	for _, property := range node.Properties {
 		switch property.Name {
 		case "checked", "disabled", "expanded", "focused", "selected", "pressed", "required", "readonly", "level", "valuemin", "valuemax", "valuetext", "invalid", "hasPopup", "multiselectable", "multiline", "orientation", "keyshortcuts", "url", "busy", "live":
-			line += ", " + property.Name + ": " + axText(property.Value.Value)
+			val := axText(property.Value.Value)
+			if redacted && property.Name == "valuetext" && val != "" {
+				val = "[REDACTED]"
+			}
+			line += ", " + property.Name + ": " + val
 		}
 	}
 	return line

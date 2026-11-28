@@ -8,7 +8,7 @@ test('Markdown documents reuse sandboxed Jaz artifacts only for explicit live fe
       worker.onerror = reject
     })
     const decode = (text) => text.replaceAll('&quot;', '"').replaceAll('&#x27;', "'").replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&')
-    for (const html of [...result.live, result.full, result.svg]) {
+    for (const html of [...result.live, result.full, result.svg, result.published]) {
       expect(html).toContain('<iframe')
       expect(html).toContain('title="Counter"')
       expect(html).toContain('sandbox="allow-scripts allow-forms"')
@@ -21,7 +21,7 @@ test('Markdown documents reuse sandboxed Jaz artifacts only for explicit live fe
       if (html !== result.svg) expect(document).toContain(result.code)
     }
     for (const html of result.live) expect(html).toContain('class="katex"')
-    for (const html of [...result.plain, result.outside, result.contextless, result.preview, result.card, result.hidden]) expect(html).not.toContain('<iframe')
+    for (const html of [...result.plain, result.outside, result.preview, result.card, result.hidden]) expect(html).not.toContain('<iframe')
     for (const html of [result.preview, result.card, result.hidden]) {
       expect(html).toContain('Counter · Interactive artifact')
       expect(html).not.toContain('const pattern')

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/connections"
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	"github.com/wins/jaz/backend/internal/m365copilot"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
@@ -75,7 +75,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	var publicRoutes server.PublicRoutes
 	app := fx.New(
 		fx.NopLogger,
-		fx.Supply(mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil), Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager, acp.AgentCatalog{}, runtimefiles.New(store.RootDir())),
+		fx.Supply(mcpruntime.NewManager(store, nil, tools.NewRegistry(), nil), cloudsync.New(store, nil), Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager, acp.AgentCatalog{}, runtimefiles.New(store.RootDir())),
 		fx.Provide(NewOAuthBroker, NewMicrosoftCopilotAuth, NewProviderSource, sessionevents.New, fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus)))),
 		fx.Provide(func() storage.Store { return store }),
 		fx.Provide(func() storage.PluginStore { return store }),
@@ -114,6 +114,15 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "PUT /v1/settings/voice")
 	requireRoute(t, routes, "POST /v1/voice/connect")
 	requireRoute(t, routes, "POST /v1/sessions/{session}/voice/transcript")
+	requireRoute(t, routes, "GET /v1/cloud/status")
+	requireRoute(t, routes, "POST /v1/cloud/connect")
+	requireRoute(t, routes, "POST /v1/cloud/switch")
+	requireRoute(t, routes, "POST /v1/cloud/disconnect")
+	requireRoute(t, routes, "POST /v1/cloud/sync")
+	requireRoute(t, routes, "GET /v1/spaces")
+	requireRoute(t, routes, "GET /v1/models")
+	requireRoute(t, routes, "GET /v1/machines")
+	requireRoute(t, routes, "GET /v1/instructions/{scope}/{scope_id}/{kind}")
 	requireRoute(t, routes, "/v1/preview/")
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/v1/sessions?archived=true&limit=1", nil)
@@ -173,74 +182,6 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 		publicRoutes[0].Match == nil ||
 		publicRoutes[0].Handler == nil {
 		t.Fatalf("publicRoutes = %#v", publicRoutes)
-	}
-}
-
-func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-
-	routes := NewRoutes(routeDeps{
-		Usage:   usagecore.NewService(fakeUsageStore{}),
-		Devices: deviceauth.New(store),
-		Store:   store,
-		Preview: testPreviewHandler(t),
-	})
-	var foundRevoke bool
-	connectionMethods := map[string]bool{}
-	for _, route := range routes {
-		if route.Pattern == "/v1/devices/" {
-			t.Fatalf("mounted generic device item route")
-		}
-		if route.Pattern == "DELETE /v1/devices/{id}" && route.Handler != nil {
-			foundRevoke = true
-		}
-		if (route.Pattern == "GET /v1/devices/connection-link" || route.Pattern == "PUT /v1/devices/connection-link") && route.Handler != nil {
-			connectionMethods[route.Pattern] = true
-		}
-	}
-	if !foundRevoke {
-		t.Fatalf("missing DELETE device revoke route: %#v", routes)
-	}
-	if len(connectionMethods) != 2 {
-		t.Fatalf("device connection link methods = %#v", connectionMethods)
-	}
-}
-
-func TestNewRoutesDisablePairingGatesPairingRoutes(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-
-	mounted := func(disable bool) (pairing, register bool) {
-		routes := NewRoutes(routeDeps{
-			Usage:   usagecore.NewService(fakeUsageStore{}),
-			Jaz:     Config{Devices: DevicesConfig{DisablePairing: disable}},
-			Devices: deviceauth.New(store),
-			Store:   store,
-			Preview: testPreviewHandler(t),
-		})
-		for _, route := range routes {
-			switch route.Pattern {
-			case "POST /v1/devices/pairing-requests", "/v1/devices/pairing-requests/":
-				pairing = true
-			case "POST /v1/devices/register":
-				register = register || route.Handler != nil
-			}
-		}
-		return
-	}
-
-	if pairing, register := mounted(false); !pairing || !register {
-		t.Fatalf("default: pairing=%v register=%v, want both mounted", pairing, register)
-	}
-	if pairing, register := mounted(true); pairing || !register {
-		t.Fatalf("disabled: pairing=%v register=%v, want only register", pairing, register)
 	}
 }
 

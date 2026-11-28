@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { FileText, LoaderCircle, X } from 'lucide-react'
+import { FileText, LoaderCircle, Share2, X } from 'lucide-react'
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { useSaveApp } from '@/components/apps/useSaveApp'
 import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/session/HighlightedCode'
 import { DocumentEditor, DocumentHeader, isEditableDocument } from '@/components/document/DocumentEditor'
 import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { ApiError } from '@/lib/api/client'
-import { healthQuery, sessionFileBytes, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sessions'
+import { effectiveCloudRunId, grantSessionAsset, healthQuery, sessionFileBytes, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sessions'
 import { useFileLocation } from '@/lib/hooks/useFileLocation'
 import { useRefetchAfterWork } from '@/lib/hooks/useRefetchAfterWork'
 import type { HealthResponse } from '@/lib/api/types'
@@ -21,6 +22,7 @@ const WordFileView = lazy(() => import('@/components/session/WordFileView'))
 
 export const FileReaderPanel = memo(function FileReaderPanel({
   sessionId,
+  cloudRunId,
   fileRef,
   visible,
   working = false,
@@ -28,6 +30,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   onClose,
 }: {
   sessionId: string
+  cloudRunId?: string
   fileRef: FileReference | null
   visible: boolean
   working?: boolean
@@ -35,20 +38,49 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   onClose: () => void
 }) {
   const filePath = fileRef?.path ?? ''
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
   const pdf = isPDFPath(filePath)
-  const PagedFileView = pdf ? PDFFileView : isWordPath(filePath) ? WordFileView : null
-  const loadBytes = useCallback((signal: AbortSignal) => sessionFileBytes(sessionId, filePath, signal), [sessionId, filePath])
+  const word = isWordPath(filePath)
+  const loadBytes = useCallback((signal: AbortSignal) => sessionFileBytes(sessionId, filePath, signal, runId), [sessionId, filePath, runId])
+  const resolvePdfUrl = useCallback(async (signal: AbortSignal) => {
+    const trimmed = filePath.trim()
+    if (!trimmed) return null
+    if (!runId && (trimmed.startsWith('/') || trimmed.includes('\\') || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed))) {
+      return null
+    }
+    try {
+      const asset = await grantSessionAsset(sessionId, trimmed, signal, runId)
+      return asset.url || null
+    } catch {
+      return null
+    }
+  }, [sessionId, filePath, runId])
   const spreadsheet = isSpreadsheetPath(filePath)
-  const scrollsInternally = Boolean(PagedFileView || spreadsheet)
+  const scrollsInternally = Boolean(pdf || word || spreadsheet)
   const markdown = isMarkdownPath(filePath)
   const image = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico)(?:[?#].*)?$/i.test(filePath)
   // A document or a spreadsheet follows the agent while it writes, and once more when it stops.
   const follows = (markdown || spreadsheet) && working
-  const file = useQuery({ ...sessionFileQuery(sessionId, filePath), enabled: visible && Boolean(filePath) && !PagedFileView && !image, refetchInterval: follows ? 2000 : false })
+  const file = useQuery({ ...sessionFileQuery(sessionId, filePath, runId), enabled: visible && Boolean(filePath) && !pdf && !word && !image, refetchInterval: follows ? 2000 : false })
   useRefetchAfterWork(follows, file.refetch)
-  const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) })
+  const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) && !runId })
   const [draft, setDraft] = useState(filePath)
   const [inputError, setInputError] = useState('')
+  const saveApp = useSaveApp()
+  const isHtmlOrSvg = /\.(html?|svg)$/i.test(filePath)
+  const content = file.data?.binary ? undefined : file.data?.content
+  const canPublish = (markdown || isHtmlOrSvg) && content !== undefined && !saveApp.isPending
+  const publish = () => {
+    if (content === undefined) return
+    saveApp.mutate({
+      title: markdown ? markdownDocumentTitle(content, filePath) : (filePath.split(/[\\/]/).at(-1) ?? 'App'),
+      kind: markdown ? 'document' : 'artifact',
+      entry: markdown ? 'index.md' : filePath.toLowerCase().endsWith('.svg') ? 'index.svg' : 'index.html',
+      markdown: markdown ? content : undefined,
+      html: markdown ? undefined : content,
+      source_thread_id: sessionId,
+    })
+  }
 
   useEffect(() => {
     setDraft(filePath)
@@ -66,13 +98,19 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   }
 
   if (markdown && file.data && isEditableDocument(file.data)) {
-    return <DocumentEditor key={`${sessionId}:${filePath}`} sessionId={sessionId} path={filePath} file={file.data} location={fileRef?.location} active={visible} onOpenFile={onOpenFile} onClose={onClose} />
+    return <DocumentEditor key={`${sessionId}:${filePath}`} sessionId={sessionId} cloudRunId={runId} path={filePath} file={file.data} location={fileRef?.location} active={visible} onOpenFile={onOpenFile} onClose={onClose} />
   }
   return (
     <div className="flex h-full min-h-0 flex-col">
       {markdown ? (
         <DocumentHeader title={markdownDocumentTitle(file.data?.content ?? '', filePath)} onClose={onClose}>
-          <FileActions sessionId={sessionId} path={filePath} />
+          {canPublish ? (
+            <Button size="sm" variant="ghost" onClick={publish} title="Save to Apps">
+              <Share2 size={12} />
+              Publish
+            </Button>
+          ) : null}
+          <FileActions sessionId={sessionId} cloudRunId={runId} path={filePath} />
         </DocumentHeader>
       ) : <form
         onSubmit={(event) => {
@@ -89,7 +127,13 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
         />
-        {filePath ? <FileActions sessionId={sessionId} path={filePath} /> : null}
+        {canPublish ? (
+          <Button size="sm" variant="ghost" type="button" onClick={publish} title="Save to Apps">
+            <Share2 size={12} />
+            Publish
+          </Button>
+        ) : null}
+        {filePath ? <FileActions sessionId={sessionId} cloudRunId={runId} path={filePath} /> : null}
         <IconButton size="sm" aria-label="Close file" onClick={onClose}><X size={16} /></IconButton>
       </form>}
       {inputError ? (
@@ -103,14 +147,18 @@ export const FileReaderPanel = memo(function FileReaderPanel({
             No file selected.
           </div>
         ) : image ? (
-          <ImageFileView key={`${sessionId}:${filePath}`} url={sessionFileRawUrl(sessionId, filePath)} name={filePath.split(/[\\/]/).at(-1) ?? 'Image'} />
-        ) : PagedFileView ? (
-          <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading {pdf ? 'PDF' : 'Word document'}…</p>}>
-            <PagedFileView key={`${sessionId}:${filePath}`} load={loadBytes} location={fileRef?.location} visible={visible} />
+          <ImageFileView key={`${sessionId}:${runId ?? ''}:${filePath}`} url={sessionFileRawUrl(sessionId, filePath, runId)} name={filePath.split(/[\\/]/).at(-1) ?? 'Image'} />
+        ) : pdf ? (
+          <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading PDF…</p>}>
+            <PDFFileView key={`${sessionId}:${runId ?? ''}:${filePath}`} load={loadBytes} resolveUrl={resolvePdfUrl} location={fileRef?.location} visible={visible} />
+          </Suspense>
+        ) : word ? (
+          <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading Word document…</p>}>
+            <WordFileView key={`${sessionId}:${runId ?? ''}:${filePath}`} load={loadBytes} location={fileRef?.location} visible={visible} />
           </Suspense>
         ) : spreadsheet && !file.isPending ? (
           <Suspense fallback={<p className="p-3 text-[12px] text-ink-3">Loading spreadsheet…</p>}>
-            <SpreadsheetFileView key={`${filePath}:${fileRef?.location?.sheet ?? ''}:${fileRef?.location?.range ?? ''}`} sessionId={sessionId} path={filePath} version={file.data?.version} visible={visible} initialSheet={fileRef?.location?.sheet} initialSelection={fileRef?.location?.range} />
+            <SpreadsheetFileView key={`${filePath}:${runId ?? ''}:${fileRef?.location?.sheet ?? ''}:${fileRef?.location?.range ?? ''}`} sessionId={sessionId} cloudRunId={runId} path={filePath} version={file.data?.version} visible={visible} initialSheet={fileRef?.location?.sheet} initialSelection={fileRef?.location?.range} />
           </Suspense>
         ) : file.isPending ? (
           <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
@@ -118,12 +166,12 @@ export const FileReaderPanel = memo(function FileReaderPanel({
             Loading file…
           </div>
         ) : file.isError ? (
-          health.isPending ? (
+          !runId && health.isPending ? (
             <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
               <LoaderCircle size={13} className="animate-spin" aria-hidden />
               Checking backend…
             </div>
-          ) : unsupportedFileReader(file.error, health.data) ? (
+          ) : !runId && unsupportedFileReader(file.error, health.data) ? (
             <p className="px-3 py-4 text-[12px] text-danger">
               This backend does not expose server-side file reading. Restart or update the Jaz server, then try again.
             </p>
@@ -137,6 +185,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
         ) : (
           <FilePreview
             sessionId={sessionId}
+            cloudRunId={runId}
             path={file.data.path}
             content={file.data.content ?? ''}
             location={fileRef?.location}
@@ -151,6 +200,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
 
 function FilePreview({
   sessionId,
+  cloudRunId,
   path,
   content,
   location,
@@ -158,6 +208,7 @@ function FilePreview({
   active,
 }: {
   sessionId: string
+  cloudRunId?: string
   path: string
   content: string
   location?: FileLocation
@@ -168,7 +219,7 @@ function FilePreview({
   useFileLocation(root, location, content, active)
   if (isMarkdownPath(path)) {
     return (
-      <FileReaderLinkProvider sessionId={sessionId} documentPath={path} onOpen={onOpenFile}>
+      <FileReaderLinkProvider sessionId={sessionId} cloudRunId={cloudRunId} documentPath={path} onOpen={onOpenFile}>
         <div ref={setRoot}><RenderedMarkdown text={content} className="file-prose" artifactPreview={!active} /></div>
       </FileReaderLinkProvider>
     )

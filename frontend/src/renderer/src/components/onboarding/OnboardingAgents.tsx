@@ -269,15 +269,17 @@ function AgentCard({
 
                 {(method === 'login' && canLogin) || !canKey ? (
                   <div className="flex flex-col items-start gap-2.5">
-                    <Button
-                      variant="primary"
-                      size="md"
-                      disabled={!probe.auth_command_available || running}
-                      onClick={onStartLogin}
-                    >
-                      {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-                      {running ? 'Waiting for sign-in…' : `Sign in with ${authProviderLabel(probe.agent)}`}
-                    </Button>
+                    {running ? null : (
+                      <Button
+                        variant="primary"
+                        size="md"
+                        disabled={!probe.auth_command_available}
+                        onClick={onStartLogin}
+                      >
+                        <LogIn size={14} />
+                        {`Sign in with ${authProviderLabel(probe.agent)}`}
+                      </Button>
+                    )}
                     {!probe.auth_command_available && probe.auth_command_reason ? (
                       <p className="text-[12px] text-danger">{probe.auth_command_reason}</p>
                     ) : null}

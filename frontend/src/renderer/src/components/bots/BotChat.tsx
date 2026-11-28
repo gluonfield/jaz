@@ -4,6 +4,7 @@ import type { ThreadChatView } from '@/components/session/ThreadView'
 import { mcpEntrypointsQuery } from '@/lib/api/mcp'
 import type { Bot, MCPEntrypoint } from '@/lib/api/types'
 import { botChat, subtasksDoing, type ChatEntry } from '@/lib/bots'
+import { useIsCloudOnly } from '@/lib/cloudSession'
 import { BotStarters } from './BotStarters'
 import { ChatLog } from './ChatLog'
 
@@ -14,7 +15,8 @@ const TYPING_MS = 900
 // than on every render of the thread view around it. The chat opens with the
 // bot's hello, as old as the bot; a bot you just created types it first.
 export const BotChat = memo(function BotChat({ bot, bots, newBot, empty, messages, events, scrollRef, paging, working, threads, send, showDetails, revealSeq }: ThreadChatView & { bot: Bot; bots: Bot[]; newBot: boolean }) {
-  const entrypoints = useQuery(mcpEntrypointsQuery).data ?? NO_ENTRYPOINTS
+  const isCloudOnly = useIsCloudOnly()
+  const entrypoints = useQuery({ ...mcpEntrypointsQuery, enabled: !isCloudOnly }).data ?? NO_ENTRYPOINTS
   const chat = useMemo(() => botChat(messages, events, bot, entrypoints), [messages, events, bot, entrypoints])
   const [helloAt, setHelloAt] = useState(newBot ? '' : bot.created_at ?? bot.updated_at)
   useEffect(() => {

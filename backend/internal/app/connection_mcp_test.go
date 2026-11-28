@@ -11,6 +11,7 @@ import (
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/tools"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
@@ -150,5 +151,36 @@ func TestConnectionMCPServerReaderSkipsDisabledPlugin(t *testing.T) {
 	}
 	if len(servers) != 0 {
 		t.Fatalf("disabled plugin emitted servers = %#v", servers)
+	}
+}
+
+func TestConnectionMCPServerReaderIsolatesCloudWorkspaceFromLocalMCP(t *testing.T) {
+	store := fakeConnectionTokenStore{
+		servers: []mcpconfig.Server{
+			{ID: "local-mcp", Name: "local-mcp", URL: "https://local.example/mcp", Enabled: true},
+		},
+		connections: map[string][]integrations.Connection{
+			"slack": {{ID: "slack:personal", Provider: "slack", Alias: "personal"}},
+		},
+		tokens: map[string]integrationoauth.Token{"slack:personal": {AccessToken: "xoxp-personal"}},
+	}
+	workspace := "cloud-workspace"
+	reader := connectionReader(store)
+	reader.workspace = func() string { return workspace }
+	cloudServers, err := reader.ListMCPServers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cloudServers) != 0 {
+		t.Fatalf("cloud workspace exposed local MCP servers: %#v", cloudServers)
+	}
+
+	workspace = storage.LocalWorkspaceID
+	localServers, err := reader.ListMCPServers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(localServers) != 2 {
+		t.Fatalf("local workspace MCP servers = %#v, want local-mcp + slack:personal", localServers)
 	}
 }

@@ -103,3 +103,41 @@ func TestViewStatePersistsInSQLiteWithOptimisticRevision(t *testing.T) {
 		t.Fatalf("second save = %d, %v", rev2, err)
 	}
 }
+
+func TestViewServiceSupportsCleanWorkspaceSubpaths(t *testing.T) {
+	layout := runtimefiles.New(t.TempDir())
+	packages := New(layout)
+	if _, err := installFiles(t, packages, map[string]string{
+		"example/plugin.json":       `{"name":"example"}`,
+		"example/views/status.html": "<p>Status</p>",
+		"example/views/detail.html": "<p>Detail</p>",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store, err := sqlite.New(layout.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	thread, err := store.CreateSession(storage.CreateSession{Slug: "subpath-view"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	presenter := &visualize.Service{Store: store, Sessions: store, Events: sessionevents.New()}
+	caller := sessionevents.PluginView{Reference: "example/status", File: "runs/scene.json", Title: "Scene", WidgetCode: "<p>Status</p>"}
+	if _, err := presenter.Present(thread.ID, &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &caller}); err != nil {
+		t.Fatal(err)
+	}
+	service := NewViewService(store, presenter, packages, layout)
+	opened, err := service.Open(t.Context(), thread.ID, ViewRequest{Reference: caller.Reference, File: caller.File, Name: "detail", Title: "Detail"})
+	if err != nil || opened.File != "runs/scene.json" || opened.Reference != "example/detail" {
+		t.Fatalf("Open subpath = %+v, %v", opened, err)
+	}
+	if err := service.SaveState(t.Context(), thread.ID, caller.Reference, caller.File, []byte(`{"camera":[1,2,3]}`)); err != nil {
+		t.Fatalf("SaveState subpath = %v", err)
+	}
+	got, err := service.State(t.Context(), thread.ID, caller.Reference, caller.File)
+	if err != nil || string(got) != `{"camera":[1,2,3]}` {
+		t.Fatalf("State subpath = %s, %v", got, err)
+	}
+}

@@ -54,7 +54,7 @@ func TestABotsLoopToolsSeeOnlyItsOwnRoutines(t *testing.T) {
 		return loop.ID
 	}
 	own, theirs, unowned := routine(gimli), routine(legolas), routine("")
-	tools := loops.NewMCPTools(routines, loops.WithScope(NewService(store, "", nil, nil, nil, routines, nil, log.New(nil)).BotOf))
+	tools := loops.NewMCPTools(routines, loops.WithScope(NewService(store, "", nil, nil, nil, nil, routines, nil, log.New(nil)).BotOf))
 	from := func(threadID string) *mcp.CallToolRequest {
 		return &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(threadID)}}
 	}

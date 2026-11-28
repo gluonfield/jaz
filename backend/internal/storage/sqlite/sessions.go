@@ -33,6 +33,7 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		ReasoningEffort: input.ReasoningEffort,
 		SourceType:      input.SourceType,
 		SourceID:        input.SourceID,
+		WorkspaceID:     firstNonEmpty(input.WorkspaceID, storage.LocalWorkspaceID),
 		CreatedAt:       now,
 		UpdatedAt:       now,
 		LastAttentionAt: now,
@@ -295,11 +296,11 @@ func (s *Store) CompleteSession(id string, completedAt time.Time) error {
 }
 
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
-	return s.listSessions(context.Background(), filter)
+	return listSessions(context.Background(), s.db, filter)
 }
 
-func (s *Store) listSessions(ctx context.Context, filter storage.SessionFilter) ([]storage.Session, error) {
-	q := threaddb.New(s.db)
+func listSessions(ctx context.Context, db *sql.DB, filter storage.SessionFilter) ([]storage.Session, error) {
+	q := threaddb.New(db)
 	params := sessionListParams(filter)
 	var (
 		rows []threaddb.Thread
@@ -309,6 +310,7 @@ func (s *Store) listSessions(ctx context.Context, filter storage.SessionFilter) 
 		rows, err = q.ListChildSessions(ctx, threaddb.ListChildSessionsParams{
 			FilterParentID:         params.FilterParentID,
 			FilterArchived:         params.FilterArchived,
+			FilterWorkspaceID:      params.FilterWorkspaceID,
 			FilterRuntime:          params.FilterRuntime,
 			FilterSourceType:       params.FilterSourceType,
 			FilterSourceID:         params.FilterSourceID,
@@ -375,6 +377,7 @@ func sessionListParams(filter storage.SessionFilter) threaddb.ListSessionsParams
 	}
 	params := threaddb.ListSessionsParams{
 		FilterQuery:            filter.Query,
+		FilterWorkspaceID:      filter.WorkspaceID,
 		FilterAfterAttentionMs: math.MaxInt64,
 		FilterArchived:         boolInt(filter.Archived),
 		FilterIncludeChildren:  boolInt(filter.IncludeChildren),
@@ -473,45 +476,47 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		return err
 	}
 	return threaddb.New(db).UpsertSession(context.Background(), threaddb.UpsertSessionParams{
-		ID:                    session.ID,
-		Slug:                  session.Slug,
-		Title:                 nullDBString(session.Title),
-		ManualTitle:           boolInt(session.ManualTitle),
-		TitleLocked:           boolInt(session.TitleLocked),
-		ParentID:              nullDBString(session.ParentID),
-		Status:                session.Status,
-		Runtime:               session.Runtime,
-		AcpAgent:              nullDBString(runtimeRef.Agent),
-		AcpSessionID:          nullDBString(runtimeRef.SessionID),
-		Cwd:                   nullDBString(runtimeRef.Cwd),
-		ArtifactSurface:       nullDBString(runtimeRef.ArtifactSurface),
-		McpServerPolicy:       nullDBString(runtimeRef.MCPServerPolicy),
-		DeferredMcpTools:      mcpDiscoveryColumn(runtimeRef.DeferredMCPTools),
-		ProjectPath:           nullDBString(runtimeRef.ProjectPath),
-		Error:                 nullDBString(session.Error),
-		ModelProvider:         nullDBString(session.ModelProvider),
-		Model:                 nullDBString(session.Model),
-		ReasoningEffort:       nullDBString(session.ReasoningEffort),
-		InputTokens:           session.Usage.InputTokens,
-		CachedInputTokens:     session.Usage.CachedInputTokens,
-		CachedWriteTokens:     session.Usage.CachedWriteTokens,
-		OutputTokens:          session.Usage.OutputTokens,
-		ReasoningOutputTokens: session.Usage.ReasoningOutputTokens,
-		TotalTokens:           session.Usage.TotalTokens,
-		ContextTokens:         session.Usage.ContextTokens,
-		ContextWindowTokens:   session.Usage.ContextWindowTokens,
-		QueuedMessages:        queuedMessages,
-		SourceType:            nullDBString(session.SourceType),
-		SourceID:              nullDBString(session.SourceID),
-		Archived:              boolInt(session.Archived),
-		Pinned:                boolInt(session.Pinned),
-		CreatedAtMs:           timeToMs(session.CreatedAt),
-		UpdatedAtMs:           timeToMs(session.UpdatedAt),
-		LastAttentionAtMs:     timeToMs(session.LastAttentionAt),
-		Unread:                boolInt(session.Unread),
-		PendingSteerMessage:   pendingSteerMessage,
-		Goal:                  goalState,
-		Turn:                  sessionTurnJSON(session.Turn),
+		ID:                       session.ID,
+		Slug:                     session.Slug,
+		Title:                    nullDBString(session.Title),
+		ManualTitle:              boolInt(session.ManualTitle),
+		TitleLocked:              boolInt(session.TitleLocked),
+		ParentID:                 nullDBString(session.ParentID),
+		Status:                   session.Status,
+		Runtime:                  session.Runtime,
+		AcpAgent:                 nullDBString(runtimeRef.Agent),
+		AcpSessionID:             nullDBString(runtimeRef.SessionID),
+		Cwd:                      nullDBString(runtimeRef.Cwd),
+		ArtifactSurface:          nullDBString(runtimeRef.ArtifactSurface),
+		McpServerPolicy:          nullDBString(runtimeRef.MCPServerPolicy),
+		CloudCredentialProfileID: nullDBString(runtimeRef.CloudCredentialProfileID),
+		DeferredMcpTools:         mcpDiscoveryColumn(runtimeRef.DeferredMCPTools),
+		ProjectPath:              nullDBString(runtimeRef.ProjectPath),
+		Error:                    nullDBString(session.Error),
+		ModelProvider:            nullDBString(session.ModelProvider),
+		Model:                    nullDBString(session.Model),
+		ReasoningEffort:          nullDBString(session.ReasoningEffort),
+		InputTokens:              session.Usage.InputTokens,
+		CachedInputTokens:        session.Usage.CachedInputTokens,
+		CachedWriteTokens:        session.Usage.CachedWriteTokens,
+		OutputTokens:             session.Usage.OutputTokens,
+		ReasoningOutputTokens:    session.Usage.ReasoningOutputTokens,
+		TotalTokens:              session.Usage.TotalTokens,
+		ContextTokens:            session.Usage.ContextTokens,
+		ContextWindowTokens:      session.Usage.ContextWindowTokens,
+		QueuedMessages:           queuedMessages,
+		SourceType:               nullDBString(session.SourceType),
+		SourceID:                 nullDBString(session.SourceID),
+		Archived:                 boolInt(session.Archived),
+		Pinned:                   boolInt(session.Pinned),
+		CreatedAtMs:              timeToMs(session.CreatedAt),
+		UpdatedAtMs:              timeToMs(session.UpdatedAt),
+		LastAttentionAtMs:        timeToMs(session.LastAttentionAt),
+		Unread:                   boolInt(session.Unread),
+		PendingSteerMessage:      pendingSteerMessage,
+		Goal:                     goalState,
+		Turn:                     sessionTurnJSON(session.Turn),
+		WorkspaceID:              firstNonEmpty(session.WorkspaceID, storage.LocalWorkspaceID),
 	})
 }
 
@@ -561,6 +566,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		PendingSteer:           pendingSteerMessage,
 		SourceType:             row.SourceType.String,
 		SourceID:               row.SourceID.String,
+		WorkspaceID:            firstNonEmpty(row.WorkspaceID, storage.LocalWorkspaceID),
 		Archived:               row.Archived != 0,
 		Pinned:                 row.Pinned != 0,
 		CreatedAt:              msToTime(row.CreatedAtMs),
@@ -582,14 +588,15 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 	}
 	if row.AcpAgent.Valid || row.AcpSessionID.Valid || row.Cwd.Valid || row.ArtifactSurface.Valid || row.McpServerPolicy.Valid || row.DeferredMcpTools != 0 || row.ProjectPath.Valid {
 		session.RuntimeRef = &storage.RuntimeRef{
-			Type:             session.Runtime,
-			Agent:            row.AcpAgent.String,
-			SessionID:        row.AcpSessionID.String,
-			Cwd:              row.Cwd.String,
-			ProjectPath:      row.ProjectPath.String,
-			ArtifactSurface:  row.ArtifactSurface.String,
-			MCPServerPolicy:  row.McpServerPolicy.String,
-			DeferredMCPTools: mcpDiscoveryOverride(row.DeferredMcpTools),
+			Type:                     session.Runtime,
+			Agent:                    row.AcpAgent.String,
+			SessionID:                row.AcpSessionID.String,
+			Cwd:                      row.Cwd.String,
+			ProjectPath:              row.ProjectPath.String,
+			ArtifactSurface:          row.ArtifactSurface.String,
+			MCPServerPolicy:          row.McpServerPolicy.String,
+			CloudCredentialProfileID: row.CloudCredentialProfileID.String,
+			DeferredMCPTools:         mcpDiscoveryOverride(row.DeferredMcpTools),
 		}
 	}
 	return session, nil
@@ -684,13 +691,14 @@ func (s *Store) uniqueSlugLocked(value, currentID string) (string, error) {
 }
 
 type runtimeRefColumnsRow struct {
-	Agent            string
-	SessionID        string
-	Cwd              string
-	ArtifactSurface  string
-	MCPServerPolicy  string
-	DeferredMCPTools *bool
-	ProjectPath      string
+	CloudCredentialProfileID string
+	Agent                    string
+	SessionID                string
+	Cwd                      string
+	ArtifactSurface          string
+	MCPServerPolicy          string
+	DeferredMCPTools         *bool
+	ProjectPath              string
 }
 
 func runtimeRefColumns(session storage.Session) runtimeRefColumnsRow {
@@ -698,13 +706,14 @@ func runtimeRefColumns(session storage.Session) runtimeRefColumnsRow {
 		return runtimeRefColumnsRow{}
 	}
 	return runtimeRefColumnsRow{
-		Agent:            session.RuntimeRef.Agent,
-		SessionID:        session.RuntimeRef.SessionID,
-		Cwd:              session.RuntimeRef.Cwd,
-		ArtifactSurface:  session.RuntimeRef.ArtifactSurface,
-		MCPServerPolicy:  session.RuntimeRef.MCPServerPolicy,
-		DeferredMCPTools: session.RuntimeRef.DeferredMCPTools,
-		ProjectPath:      session.RuntimeRef.ProjectPath,
+		Agent:                    session.RuntimeRef.Agent,
+		SessionID:                session.RuntimeRef.SessionID,
+		Cwd:                      session.RuntimeRef.Cwd,
+		ArtifactSurface:          session.RuntimeRef.ArtifactSurface,
+		MCPServerPolicy:          session.RuntimeRef.MCPServerPolicy,
+		CloudCredentialProfileID: session.RuntimeRef.CloudCredentialProfileID,
+		DeferredMCPTools:         session.RuntimeRef.DeferredMCPTools,
+		ProjectPath:              session.RuntimeRef.ProjectPath,
 	}
 }
 

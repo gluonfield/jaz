@@ -11,7 +11,7 @@ import (
 )
 
 func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
-	m := &Manager{cfg: Config{MCPStore: staticMCPServerStore{servers: []mcpconfig.Server{{
+	m := &Manager{cfg: Config{MCPServers: staticMCPServerStore{servers: []mcpconfig.Server{{
 		ID:        "jaztools",
 		Name:      "jaztools",
 		Transport: mcpconfig.TransportStreamableHTTP,
@@ -61,7 +61,7 @@ func TestMCPServersForAgentUsesConfiguredStore(t *testing.T) {
 
 func TestMCPServersForJaztoolsOnlyPolicyOnlyExposesJaztools(t *testing.T) {
 	m := &Manager{
-		cfg: Config{MCPStore: staticMCPServerStore{servers: []mcpconfig.Server{
+		cfg: Config{MCPServers: staticMCPServerStore{servers: []mcpconfig.Server{
 			{
 				ID:        "docs",
 				Name:      "Docs",

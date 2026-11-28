@@ -69,7 +69,7 @@ func TestCodexConfigFileProcessLifecycle(t *testing.T) {
 		prompt := strings.Repeat(label+" Привет 🌍\n\"quoted\" \\path\n", 20000)
 		receipt := filepath.Join(t.TempDir(), "receipt")
 		env := map[string]string{"CODEX_HOME": home, "CODEX_CONFIG": `{"custom":"preserved"}`, "JAZ_CODEX_CONFIG_PROBE": "1", "JAZ_CODEX_PROMPT_SHA": fmt.Sprintf("%x", sha256.Sum256([]byte(prompt))), "JAZ_CODEX_CONFIG_RECEIPT": receipt}
-		conn, stderr, err := manager.openConn(ctx, AgentCodex, AgentConfig{Command: executable, Args: []string{"-test.run=^TestCodexConfigProcessHelper$"}}, env, t.TempDir(), prompt)
+		conn, stderr, err := manager.openConn(ctx, AgentCodex, AgentConfig{Command: executable, Args: []string{"-test.run=^TestCodexConfigProcessHelper$"}}, env, t.TempDir(), prompt, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,7 +127,7 @@ func TestCodexConfigFileProcessLifecycle(t *testing.T) {
 func TestCodexConfigFileRemovedOnStartFailure(t *testing.T) {
 	manager := NewManager(nil, Config{Root: t.TempDir()}, nil)
 	env := map[string]string{}
-	_, _, err := manager.openConn(context.Background(), AgentCodex, AgentConfig{Command: filepath.Join(t.TempDir(), "missing-executable")}, env, t.TempDir(), "instructions")
+	_, _, err := manager.openConn(context.Background(), AgentCodex, AgentConfig{Command: filepath.Join(t.TempDir(), "missing-executable")}, env, t.TempDir(), "instructions", nil)
 	if err == nil {
 		t.Fatal("missing executable started")
 	}

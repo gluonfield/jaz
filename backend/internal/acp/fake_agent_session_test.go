@@ -187,3 +187,8 @@ func restoreFakeSession(id string) bool {
 	_, err := os.Stat(filepath.Join(root, id))
 	return err == nil
 }
+
+func rejectFakeMissingSession(conn jsonrpc.MessageConn, req *jsonrpc.Message, sessionID string) {
+	resp, _ := jsonrpc.NewErrorResponse(*req.ID, jsonrpc.InvalidParams("Session not found: "+sessionID, nil))
+	_ = conn.Send(context.Background(), resp)
+}

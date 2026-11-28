@@ -41,7 +41,7 @@ export function BoardIllustration() {
         <motion.div {...tileIn(0.4)} className="h-[96px]">
           <div className="flex h-full items-center justify-center gap-1.5 rounded-card border border-dashed border-border/70 text-[11px] text-ink-3">
             <Plus size={12} />
-            New widget
+            Add tile
           </div>
         </motion.div>
       </div>

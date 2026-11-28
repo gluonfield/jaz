@@ -3,9 +3,10 @@ package mobilepush
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/mobilepush"
 )
@@ -19,22 +20,18 @@ func (h Handler) Status(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) Register(w http.ResponseWriter, r *http.Request) {
-	deviceID, ok := authenticatedDevice(w, r)
-	if !ok {
-		return
-	}
 	var input mobilepush.Registration
 	if !decode(w, r, &input) {
 		return
 	}
-	writeResult(w, h.Service.Register(deviceID, input))
-}
-
-func (h Handler) RegisterActivity(w http.ResponseWriter, r *http.Request) {
-	deviceID, ok := authenticatedDevice(w, r)
+	id, ok := requireInstallationID(w, input.InstallationID)
 	if !ok {
 		return
 	}
+	writeResult(w, h.Service.Register(id, input))
+}
+
+func (h Handler) RegisterActivity(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		mobilepush.Registration
 		SessionID string `json:"session_id"`
@@ -42,7 +39,11 @@ func (h Handler) RegisterActivity(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	writeResult(w, h.Service.RegisterActivity(deviceID, mobilepush.Activity{
+	id, ok := requireInstallationID(w, input.InstallationID)
+	if !ok {
+		return
+	}
+	writeResult(w, h.Service.RegisterActivity(id, mobilepush.Activity{
 		Registration: input.Registration,
 		SessionID:    input.SessionID,
 		ID:           r.PathValue("activity"),
@@ -50,20 +51,20 @@ func (h Handler) RegisterActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) Unregister(w http.ResponseWriter, r *http.Request) {
-	deviceID, ok := authenticatedDevice(w, r)
+	id, ok := requireInstallationID(w, r.URL.Query().Get("installation_id"))
 	if !ok {
 		return
 	}
-	writeResult(w, h.Service.Unregister(deviceID, r.PathValue("activity")))
+	writeResult(w, h.Service.Unregister(id, r.PathValue("activity")))
 }
 
-func authenticatedDevice(w http.ResponseWriter, r *http.Request) (string, bool) {
-	principal, ok := deviceauth.PrincipalFromContext(r.Context())
-	if !ok || principal.Kind != deviceauth.PrincipalDevice || principal.DeviceID == "" {
-		httpapi.WriteError(w, http.StatusForbidden, errors.New("pair this device before enabling notifications"))
+func requireInstallationID(w http.ResponseWriter, raw string) (string, bool) {
+	id := strings.TrimSpace(raw)
+	if id == "" || len(id) > 128 {
+		httpapi.WriteError(w, http.StatusBadRequest, fmt.Errorf("%w: installation_id is required", mobilepush.ErrInvalidRegistration))
 		return "", false
 	}
-	return principal.DeviceID, true
+	return id, true
 }
 
 func decode(w http.ResponseWriter, r *http.Request, target any) bool {

@@ -18,16 +18,20 @@ import (
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/app"
+	appscore "github.com/wins/jaz/backend/internal/apps"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	configloader "github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/connections"
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/coordinator"
-	"github.com/wins/jaz/backend/internal/deviceauth"
+	boardsapi "github.com/wins/jaz/backend/internal/httpapi/boards"
 	botsapi "github.com/wins/jaz/backend/internal/httpapi/bots"
 	hooksapi "github.com/wins/jaz/backend/internal/httpapi/hooks"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
@@ -37,6 +41,7 @@ import (
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
+	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeauth"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
@@ -50,7 +55,6 @@ import (
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/voice"
-	"github.com/wins/jaz/backend/internal/widgets"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 )
@@ -85,10 +89,10 @@ func serveOptions(args []string) []fx.Option {
 			app.NewACPAgentCatalog,
 			app.NewRuntimeLayout,
 			app.NewStore,
+			cloudsync.New,
 			app.NewRuntimeAuthKey,
 			app.NewWorkspace,
 			app.NewMemory,
-			app.NewDeviceAuth,
 			connections.NewCatalog,
 			app.NewConnectionMCPConnector,
 			app.NewConnectionService,
@@ -113,8 +117,9 @@ func serveOptions(args []string) []fx.Option {
 			fx.Annotate(visualize.NewService, fx.From(new(*sqlitestore.Store), new(*sqlitestore.Store), new(*sessionevents.Bus))),
 			jaztools.New,
 			terminal.New,
-			app.NewACPMCPServerReader,
+			app.NewACPMCPServers,
 			exectool.NewCommandManager,
+			app.NewInstructionsStore,
 			app.NewPromptBuilder,
 			app.NewACPAgentConfigSource,
 			app.NewACPAdapterManager,
@@ -125,8 +130,8 @@ func serveOptions(args []string) []fx.Option {
 			sessionlock.New,
 			sessionevents.New,
 			app.NewThreadService,
-			app.NewWidgetService,
-			app.NewWidgetSessionPublisher,
+			app.NewBoardService,
+			app.NewBoardSessionPublisher,
 			app.NewToolRegistry,
 			computercontrol.NewDesktopBackend,
 			app.NewComputerSettingsHandler,
@@ -149,6 +154,7 @@ func serveOptions(args []string) []fx.Option {
 			app.ConfigureComputerTools,
 			app.CloseComputerBackend,
 			app.ConfigureBrowserTools,
+			app.ConfigureVaultTools,
 			app.CloseBrowserBackend,
 			app.StartMemoryScheduler,
 			app.StartSourceProjectionWorker,
@@ -156,6 +162,7 @@ func serveOptions(args []string) []fx.Option {
 			app.StartGmailSync,
 			app.StartModelCatalogWarmup,
 			app.DeclareMCPServers,
+			app.StartCloudSync,
 			startServer,
 		),
 	}
@@ -244,13 +251,16 @@ func startServer(
 	a *agent.Agent,
 	layout runtimefiles.Layout,
 	store *sqlitestore.Store,
+	cloud *cloudsync.Service,
 	manager *acp.Manager,
 	adapters *acpadapter.Manager,
 	managedTools *managedtool.Manager,
 	msCopilot *m365copilot.AuthService,
 	locks *sessionlock.Locks,
 	events *sessionevents.Bus,
+	inst instructions.Store,
 	prompts *coordinator.Builder,
+	installed *plugins.Store,
 	mcpManager *mcpruntime.Manager,
 	workspace app.Workspace,
 	stt voice.STT,
@@ -262,15 +272,15 @@ func startServer(
 	cfg app.Config,
 	catalog acp.AgentCatalog,
 	serverConfig serverconfig.Config,
-	widgetService *widgets.Service,
-	widgetPublisher *widgets.SessionPublisher,
+	boardService *boards.Service,
+	boardPublisher *boards.SessionPublisher,
 	memory *memoryservice.Service,
 	sourceProjectionQueue app.SourceProjectionQueue,
 	memorySourceQueue app.MemorySourceQueue,
 	jazTools *jaztools.Service,
+	appsService *appscore.Service,
 	terminals *terminal.Manager,
 	threadService *threads.Service,
-	deviceAuth *deviceauth.Service,
 	runtimeAuthKey app.RuntimeAuthKey,
 	routes server.Routes,
 	publicRoutes server.PublicRoutes,
@@ -281,6 +291,7 @@ func startServer(
 	handler := &server.Server{
 		Agent:                 a,
 		Store:                 store,
+		Cloud:                 cloud,
 		Routes:                routes,
 		PublicRoutes:          publicRoutes,
 		ACP:                   manager,
@@ -299,7 +310,9 @@ func startServer(
 		AgentCatalog:          catalog,
 		AuthKey:               authKey,
 		ServerConfig:          serverConfig,
+		Instructions:          inst,
 		Prompts:               prompts,
+		PluginsDir:            installed.ActivePluginsDir,
 		Root:                  store.RootDir(),
 		Workspace:             string(workspace),
 		Log:                   logger.WithPrefix("server"),
@@ -308,7 +321,6 @@ func startServer(
 		SourceProjectionQueue: sourceProjectionQueue.Queue,
 		MemorySourceQueue:     memorySourceQueue.Queue,
 		Terminal:              terminals,
-		Devices:               deviceAuth,
 	}
 	app.ConnectACPCompletion(manager, a, store, locks, events, prompts, logger)
 	lc.Append(fx.Hook{
@@ -321,33 +333,37 @@ func startServer(
 	loopMemoryPaths := loops.NewMemoryPaths(loops.AutomationsDir(store.RootDir()))
 	loopService := loops.NewService(store, loopRunner, logger,
 		loops.WithMemoryPaths(loopMemoryPaths),
-		// Board assignment is the widget enablement: no boards, no section.
-		loops.WithPromptExtras(bots.RoutineInstructions(store), widgetService.LoopPromptExtra),
-		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
-		loops.WithRunCheck(widgetService.RequireRunPublished),
+		// Board assignment is what gives a loop its board app: no boards, no section.
+		loops.WithPromptExtras(bots.RoutineInstructions(store), boardService.LoopPromptExtra),
+		loops.WithArtifactSurface(boardService.LoopArtifactSurface),
+		loops.WithRunCheck(boardService.RequireRunPublished),
 		loops.WithModelCheck(loopRunner.CheckModel),
+		loops.WithWorkspace(cloud.ActiveWorkspaceID),
 	)
-	botService := bots.NewService(store, layout.Bots, manager, handler, handler, loopService, events, logger)
+	botService := bots.NewService(store, layout.Bots, inst, manager, handler, handler, loopService, events, logger).WithWorkspace(cloud.ActiveWorkspaceID)
 	loopService.Notice = botService.Notice
 	mcpManager.AppVisible = botService.AppVisible
 	jazTools.SetLoops(loopService,
-		loops.WithBoards(widgetService.LoopBoards()),
+		loops.WithBoards(boardService.LoopBoards()),
 		loops.WithAgentNames(manager.Agents),
 		loops.WithEvents(store, events),
 		loops.WithOwner(botService.RoutineOwner),
 		loops.WithScope(botService.BotOf),
 	)
 	jazTools.SetBots(bots.NewMCPTools(botService))
-	handler.Routes = append(handler.Routes, app.BotRoutes(botsapi.NewHandler(botService, events))...)
+	jazTools.SetApps(appsService)
+	boardService.WithApps(appsService)
+	handler.Routes = append(handler.Routes, app.BoardRoutes(boardsapi.NewHandler(boardService, loopService, cloud))...)
+	handler.Routes = append(handler.Routes, app.BotRoutes(botsapi.NewHandler(botService, events).WithCloud(cloud))...)
 	handler.PublicRoutes = append(handler.PublicRoutes, app.HookRoute(hooksapi.NewHandler(loopService)))
 	handler.RoutineOwner = botService.RoutineOwner
 	recordObservers.Add(loopService.HandleIncoming)
 	jazTools.SetThreads(threadService)
 	jazTools.SetAgents(manager)
 	handler.Loops = loopService
-	handler.Widgets = widgetService
+	handler.Boards = boardService
 	manager.PublishWidget = func(req acp.WidgetPublishRequest) (acp.WidgetPublishResult, error) {
-		widget, warnings, err := widgetPublisher.PublishForSession(req.SessionID, widgets.PublishInput{
+		published, err := boardPublisher.PublishForSession(context.Background(), req.SessionID, boards.PublishInput{
 			Title:    req.Title,
 			SizeHint: req.SizeHint,
 			HTML:     req.HTML,
@@ -356,11 +372,11 @@ func startServer(
 			return acp.WidgetPublishResult{}, err
 		}
 		return acp.WidgetPublishResult{
-			WidgetID: widget.ID,
-			Title:    widget.Title,
-			Version:  widget.CurrentVersion,
-			SizeHint: widget.SizeHint,
-			Warnings: warnings,
+			WidgetID: published.App.ID,
+			Title:    published.App.Title,
+			Version:  published.App.CurrentVersion,
+			SizeHint: published.SizeHint,
+			Warnings: published.Warnings,
 		}, nil
 	}
 	manager.TurnEnding = botService.TurnEnding
@@ -395,6 +411,9 @@ func startServer(
 			if err := loopService.EnsureMemoryPaths(); err != nil {
 				return err
 			}
+			if err := boardService.AdoptLegacyHTML(ctx); err != nil {
+				logger.WithPrefix("boards").Warn("converting board tiles to apps failed", "error", err)
+			}
 			// Events and webhooks can arrive before the scheduler's first tick.
 			if err := loopService.GuardAway(); err != nil {
 				logger.WithPrefix("loops").Error("away guard failed", "error", err)
@@ -408,6 +427,7 @@ func startServer(
 					fmt.Fprintln(os.Stderr, "serve:", err)
 				}
 			}()
+			handler.WarmSlowACPAuth()
 			if err := botService.Declare(ctx, cfg.Bots); err != nil {
 				_ = listener.Close()
 				_ = srv.Close()

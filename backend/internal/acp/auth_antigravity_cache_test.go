@@ -64,3 +64,39 @@ func TestAntigravityCLIAuthenticatedDoesNotCacheFailure(t *testing.T) {
 		t.Fatalf("agy ran %d times, want 2 (failures must stay fresh)", got)
 	}
 }
+
+func TestAntigravityCLIAuthenticatedSharesCatalogWithModelDiscovery(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake shell executable unsupported on windows")
+	}
+	dir := t.TempDir()
+	counter := filepath.Join(dir, "runs")
+	agy := filepath.Join(dir, "agy")
+	body := "#!/bin/sh\nprintf x >> " + counter + "\nprintf 'gemini-4-neon-high\\tGemini 4 Neon (High)\\n'\nexit 0\n"
+	if err := os.WriteFile(agy, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	invalidateAntigravityAuthCache()
+	t.Cleanup(invalidateAntigravityAuthCache)
+	env := map[string]string{"PATH": dir, "HOME": dir}
+	if !antigravityCLIAuthenticated(env) {
+		t.Fatal("expected authenticated")
+	}
+	catalog, err := antigravityModels(t.Context(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Models) != 1 || catalog.Models[0].Value != "gemini-4-neon" {
+		t.Fatalf("unexpected catalog: %+v", catalog)
+	}
+	if got := agyRuns(t, counter); got != 1 {
+		t.Fatalf("agy ran %d times, want 1 (model discovery should reuse auth probe catalog)", got)
+	}
+	invalidateAntigravityAuthCache()
+	if _, err := antigravityModels(t.Context(), env); err != nil {
+		t.Fatal(err)
+	}
+	if got := agyRuns(t, counter); got != 2 {
+		t.Fatalf("agy ran %d times after invalidate, want 2", got)
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -86,7 +87,8 @@ func TestBotPreservesConfiguredModelAndExplicitSelection(t *testing.T) {
 	bus := sessionevents.New()
 	logger := log.New(io.Discard)
 	handler := &server.Server{Store: store, ACP: manager, Locks: sessionlock.New(), Events: bus}
-	service := bots.NewService(store, root, manager, handler, handler, loops.NewService(store, nil, logger), bus, logger)
+	inst := instructions.NewLocalFSStore(root, instructions.WithBotHomeResolver(bots.HomeResolver(store)))
+	service := bots.NewService(store, root, inst, manager, handler, handler, loops.NewService(store, nil, logger), bus, logger)
 	for _, model := range []string{"", "explicit-model"} {
 		bot, err := service.Create(t.Context(), bots.CreateBot{Name: "Bot " + model, Agent: acp.AgentCodex, Model: model})
 		if err != nil {

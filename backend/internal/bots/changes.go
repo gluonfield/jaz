@@ -12,7 +12,8 @@ func (s *Service) ChangedBots(event sessionevents.Event) []string {
 		return nil
 	}
 	id := thread.Owner()
-	if _, err := s.store.LoadBot(id); err != nil {
+	record, err := s.store.LoadBot(id)
+	if err != nil || normalizeWorkspaceID(record.WorkspaceID) != s.ActiveWorkspaceID() {
 		return nil
 	}
 	ids := []string{id}

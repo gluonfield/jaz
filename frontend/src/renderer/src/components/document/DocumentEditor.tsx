@@ -2,15 +2,16 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import type { EditorView } from '@tiptap/pm/view'
 import { EditorContent, ReactNodeViewRenderer, useEditor } from '@tiptap/react'
-import { FileText, X } from 'lucide-react'
+import { FileText, Share2, X } from 'lucide-react'
 import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useSaveApp } from '@/components/apps/useSaveApp'
 import { FileReaderLinkProvider, usePreviewLink } from '@/components/session/MessageMarkdown'
 import { SidePanelCloseGuard } from '@/components/session/SidePanelState'
 import { FileActions } from '@/components/session/FileActions'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { useToast } from '@/components/ui/toast'
-import { createSessionFile, saveSessionFile, sessionFileQuery } from '@/lib/api/sessions'
+import { createSessionFile, effectiveCloudRunId, saveSessionFile, sessionFileQuery } from '@/lib/api/sessions'
 import type { SessionFileRead } from '@/lib/api/types'
 import { SAVE_LABEL, useDocumentSave, type DocumentVersion } from '@/lib/hooks/useDocumentSave'
 import { headingAnchors, markdownDocumentTitle } from '@/lib/markdownDocuments'
@@ -28,7 +29,7 @@ export type EditableDocument = SessionFileRead & { version: string }
 
 // A document can be edited when all of it was read along with its version.
 export function isEditableDocument(file: SessionFileRead): file is EditableDocument {
-  return Boolean(file.version) && !file.truncated && !file.binary
+  return Boolean(file.version) && !file.truncated && !file.binary && !file.read_only
 }
 
 const versionOf = (file: EditableDocument): DocumentVersion => ({ content: file.content ?? '', version: file.version })
@@ -48,6 +49,7 @@ export function DocumentHeader({ title, onClose, children }: { title: string; on
 // one the reader asked for, which names the cached read; file is that read.
 export function DocumentEditor({
   sessionId,
+  cloudRunId,
   path,
   file,
   location,
@@ -56,6 +58,7 @@ export function DocumentEditor({
   onClose,
 }: {
   sessionId: string
+  cloudRunId?: string
   path: string
   file: EditableDocument
   location?: FileLocation
@@ -67,11 +70,15 @@ export function DocumentEditor({
   const navigate = useNavigate()
   const openPreview = usePreviewLink()
   const toast = useToast()
-  const query = sessionFileQuery(sessionId, path)
+  const saveApp = useSaveApp()
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
+  const readOnly = Boolean(runId) || Boolean(file.read_only)
+  const query = sessionFileQuery(sessionId, path, runId)
   const { state, save, unsaved, touch, follow, takeTheirs, keepMine } = useDocumentSave(versionOf(file), {
     read: async () => versionOf((await queryClient.fetchQuery({ ...query, staleTime: 0 })) as EditableDocument),
     // A read begun before the save would put the older text back in the cache.
     write: async (content, version) => {
+      if (readOnly) return { content, version }
       const saved = { content, version: await saveSessionFile(sessionId, file.path, content, version) }
       await queryClient.cancelQueries(query)
       queryClient.setQueryData(query.queryKey, (current) => current && { ...current, ...saved })
@@ -100,6 +107,7 @@ export function DocumentEditor({
     }
   }
   const saveImage = async (beside: string, image: File) => {
+    if (readOnly) return false
     try {
       await createSessionFile(sessionId, file.path.replace(/[^/\\]*$/, beside), image)
       return true
@@ -111,6 +119,7 @@ export function DocumentEditor({
   const [extensions] = useState(() => documentKit({ sourceView: () => ReactNodeViewRenderer(SourceView), saveImage }))
   const editor = useEditor({
     extensions,
+    editable: !readOnly,
     content: file.content,
     contentType: 'markdown',
     editorProps: {
@@ -127,8 +136,12 @@ export function DocumentEditor({
         },
       },
     },
-    onUpdate: ({ editor }) => touch(editor),
-    onBlur: () => void save(),
+    onUpdate: ({ editor }) => {
+      if (!readOnly) touch(editor)
+    },
+    onBlur: () => {
+      if (!readOnly) void save()
+    },
   })
   useEffect(() => {
     if (editor) follow(editor, versionOf(file))
@@ -145,9 +158,31 @@ export function DocumentEditor({
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       <DocumentHeader title={markdownDocumentTitle(file.content ?? '', path)} onClose={() => void close()}>
-        <span role="status" className={`shrink-0 text-[12px] ${state === 'saving' ? 'text-ink-3' : 'text-danger'}`}>{SAVE_LABEL[state]}</span>
-        {state === 'failed' ? <Button size="sm" variant="ghost" onClick={() => void save()}>Retry</Button> : null}
-        <FileActions sessionId={sessionId} path={file.path} beforeDownload={async () => !(await unsaved())} />
+        {readOnly ? (
+          <span className="shrink-0 text-[12px] text-ink-3">Read only</span>
+        ) : (
+          <>
+            <span role="status" className={`shrink-0 text-[12px] ${state === 'saving' ? 'text-ink-3' : 'text-danger'}`}>{SAVE_LABEL[state]}</span>
+            {state === 'failed' ? <Button size="sm" variant="ghost" onClick={() => void save()}>Retry</Button> : null}
+          </>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={saveApp.isPending}
+          onClick={() => saveApp.mutate({
+            title: markdownDocumentTitle(file.content ?? '', path),
+            kind: 'document',
+            entry: 'index.md',
+            markdown: file.content ?? '',
+            source_thread_id: sessionId,
+          })}
+          title="Save document to Apps"
+        >
+          <Share2 size={12} />
+          Publish
+        </Button>
+        <FileActions sessionId={sessionId} cloudRunId={runId} path={file.path} beforeDownload={readOnly ? undefined : async () => !(await unsaved())} />
       </DocumentHeader>
       {state === 'conflict' ? (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-3 py-2">
@@ -158,12 +193,12 @@ export function DocumentEditor({
           </span>
         </div>
       ) : null}
-      <FileReaderLinkProvider sessionId={sessionId} documentPath={file.path} onOpen={onOpenFile}>
+      <FileReaderLinkProvider sessionId={sessionId} cloudRunId={runId} documentPath={file.path} onOpen={onOpenFile}>
         <ArtifactPreviewContext value={!active}>
           <EditorContent editor={editor} className="document-editor scrollbar-quiet min-h-0 flex-1 overflow-auto bg-bg" />
         </ArtifactPreviewContext>
       </FileReaderLinkProvider>
-      {editor ? (
+      {editor && !readOnly ? (
         <>
           <SlashMenu editor={editor} />
           <SelectionMenu editor={editor} />

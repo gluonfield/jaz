@@ -38,6 +38,7 @@ import type {
   MCPServer,
 } from '@/lib/api/types'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { useCloudSession } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import { mcpStatusText, mcpToolCountLabel } from '@/components/settings/MCPSettingsFormatting'
 import { MCPToolsModal } from '@/components/settings/MCPToolsModal'
@@ -83,6 +84,7 @@ function closeAuthWindow(authWindow: Window | null): void {
 export function MCPSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const cloud = useCloudSession()
   const [pendingAuthServerID, setPendingAuthServerID] = useState<string | null>(null)
   const authWindowRef = useRef<Window | null>(null)
   // Saving or enabling a server checks it in the background, so keep reading
@@ -125,6 +127,8 @@ export function MCPSettings() {
     onSuccess: (status) => {
       if (status.status === 'connected') {
         toast(`Connected, ${mcpToolCountLabel(status.tool_count)}`)
+      } else if (status.status === 'needs_auth') {
+        toast('Sign in required')
       } else {
         toast(status.error ? `Connection failed: ${status.error}` : 'Connection failed', 'danger')
       }
@@ -134,11 +138,18 @@ export function MCPSettings() {
   })
   const authorize = useMutation({
     mutationFn: ({ id }: AuthorizeVariables) => authorizeMCPServer(id),
-    onSuccess: (status, variables) => {
+    onSuccess: async (status, variables) => {
       if (status.status === 'connected') {
         closeAuthWindow(variables.authWindow)
         toast(`Connected, ${mcpToolCountLabel(status.tool_count)}`)
       } else if (status.auth_url) {
+        await queryClient.cancelQueries({ queryKey: mcpServersQuery.queryKey })
+        queryClient.setQueryData(mcpServersQuery.queryKey, (data) => data && {
+          ...data,
+          servers: data.servers.map<MCPServer>((server) => server.id === variables.id
+            ? { ...server, status: 'needs_auth', error: undefined }
+            : server),
+        })
         openAuthURL(status.auth_url, variables.authWindow)
         authWindowRef.current = variables.authWindow
         setPendingAuthServerID(variables.id)
@@ -177,21 +188,13 @@ export function MCPSettings() {
   useEffect(() => {
     if (!pendingAuthServerID) return
     const server = sortedServers.find((item) => item.id === pendingAuthServerID)
-    if (!server) {
-      closeAuthWindow(authWindowRef.current)
-      authWindowRef.current = null
-      setPendingAuthServerID(null)
-      return
-    }
-    if (server.status === 'connected') {
-      closeAuthWindow(authWindowRef.current)
-      authWindowRef.current = null
-      setPendingAuthServerID(null)
+    if (server && server.status !== 'connected' && server.status !== 'error' && server.status !== 'auth_error') return
+    closeAuthWindow(authWindowRef.current)
+    authWindowRef.current = null
+    setPendingAuthServerID(null)
+    if (server?.status === 'connected') {
       toast(`Connected, ${mcpToolCountLabel(server.tool_count)}`)
-    } else if (server.status === 'error') {
-      closeAuthWindow(authWindowRef.current)
-      authWindowRef.current = null
-      setPendingAuthServerID(null)
+    } else if (server) {
       toast(server.error ? `Sign-in failed: ${server.error}` : 'Sign-in failed', 'danger')
     }
   }, [pendingAuthServerID, sortedServers, toast])
@@ -244,7 +247,11 @@ export function MCPSettings() {
         ) : sortedServers.length === 0 ? (
           <DashedCta
             title="No MCP servers yet"
-            subtitle="Connect an HTTP endpoint or a local stdio server to make its tools available to agents."
+            subtitle={
+              cloud.active
+                ? 'Connect a remote HTTPS Streamable HTTP or SSE endpoint to make its tools available to Cloud agents.'
+                : 'Connect an HTTP endpoint or a local stdio server to make its tools available to agents.'
+            }
             onClick={openAdd}
           />
         ) : (
@@ -255,6 +262,7 @@ export function MCPSettings() {
                   <MCPServerRow
                     server={server}
                     busy={busy}
+                    canMutate={!server.source && !(cloud.active && server.scope === 'org' && cloud.user?.role !== 'admin')}
                     authorizing={
                       pendingAuthServerID === server.id ||
                       (authorize.isPending && authorize.variables?.id === server.id)
@@ -285,7 +293,9 @@ export function MCPSettings() {
         description={
           isEdit
             ? 'Update the connection details for this server.'
-            : 'Connect a remote endpoint or a local executable.'
+            : cloud.active
+              ? 'Connect a remote HTTPS MCP endpoint with a bearer token or per-user OAuth.'
+              : 'Connect a remote endpoint or a local executable.'
         }
         footer={
           <>
@@ -308,7 +318,14 @@ export function MCPSettings() {
           </>
         }
       >
-        {draft ? <MCPServerForm draft={draft} onChange={setDraft} oauthRedirectURL={servers.data?.oauth_redirect_url} /> : null}
+        {draft ? (
+          <MCPServerForm
+            draft={draft}
+            onChange={setDraft}
+            oauthRedirectURL={servers.data?.oauth_redirect_url}
+            cloudActive={cloud.active}
+          />
+        ) : null}
       </Modal>
 
       <MCPToolsModal server={toolsServer} onClose={() => setToolsServerID(null)} />
@@ -319,6 +336,7 @@ export function MCPSettings() {
 function MCPServerRow({
   server,
   busy,
+  canMutate,
   authorizing,
   onEdit,
   onToggle,
@@ -329,6 +347,7 @@ function MCPServerRow({
 }: {
   server: MCPServer
   busy: boolean
+  canMutate: boolean
   authorizing: boolean
   onEdit: () => void
   onToggle: () => void
@@ -337,10 +356,9 @@ function MCPServerRow({
   onAuthorize: () => void
   onTools: () => void
 }) {
-  const needsAuth = server.status === 'needs_auth'
+  const needsAuth = server.status === 'needs_auth' || server.status === 'auth_error'
   const oauthConfigured = Boolean(server.oauth?.client_id || server.oauth?.issuer)
   const canAuthorize = needsAuth || (oauthConfigured && server.status !== 'connected')
-  const showTools = server.status === 'connected' || server.tool_count > 0
   const statusText = authorizing ? 'Waiting for sign-in…' : mcpStatusText(server)
   return (
     <div className="flex items-center gap-3 rounded-card px-3 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface">
@@ -359,7 +377,7 @@ function MCPServerRow({
         </p>
       </div>
       <div className="hidden min-w-0 max-w-[40%] sm:block">
-        {showTools && !authorizing ? (
+        {server.status === 'connected' && !authorizing ? (
           <button
             type="button"
             className="flex h-7 cursor-pointer items-center rounded-full px-2 text-[12px] text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
@@ -399,7 +417,7 @@ function MCPServerRow({
           <RefreshCcw size={14} />
         </IconButton>
       )}
-      {!server.source ? (
+      {canMutate ? (
         <>
           <IconButton
             variant="ghost"
@@ -442,7 +460,7 @@ function StatusIcon({ server, authorizing }: { server: MCPServer; authorizing: b
   if (!server.enabled) return <span className="size-2 rounded-full bg-ink-3/45" />
   if (server.status === 'connected') return <CheckCircle2 size={15} className="text-ok" />
   if (server.status === 'needs_auth') return <KeyRound size={14} className="text-accent" />
-  if (server.status === 'error') return <CircleAlert size={15} className="text-danger" />
+  if (server.status === 'error' || server.status === 'auth_error') return <CircleAlert size={15} className="text-danger" />
   return <span className="size-2 rounded-full bg-running" />
 }
 
@@ -450,17 +468,28 @@ function MCPServerForm({
   draft,
   onChange,
   oauthRedirectURL,
+  cloudActive,
 }: {
   draft: Draft
   onChange: (draft: Draft) => void
   oauthRedirectURL?: string
+  cloudActive: boolean
 }) {
   const headerCount = draft.headers?.length ?? 0
   const oauthSet = Boolean(
     draft.oauth?.client_id || draft.oauth?.client_secret_env_var || draft.oauth?.issuer,
   )
-  const advancedCount = headerCount + [oauthSet, draft.bearer_token_env_var].filter(Boolean).length
+  const advancedCount = headerCount + [oauthSet, !cloudActive && draft.bearer_token_env_var].filter(Boolean).length
   const [advanced, setAdvanced] = useState(advancedCount > 0)
+  const transportOptions = cloudActive
+    ? [
+        { value: 'streamable_http', label: 'Remote HTTP' },
+        { value: 'sse', label: 'Remote SSE' },
+      ]
+    : [
+        { value: 'streamable_http', label: 'Remote HTTP' },
+        { value: 'stdio', label: 'Local stdio' },
+      ]
 
   return (
     <div className="space-y-4">
@@ -476,25 +505,22 @@ function MCPServerForm({
         <Select
           aria-label="Connection"
           value={draft.transport ?? 'streamable_http'}
-          options={[
-            { value: 'streamable_http', label: 'Remote HTTP' },
-            { value: 'stdio', label: 'Local stdio' },
-          ]}
+          options={transportOptions}
           onChange={(transport) => onChange({
             ...emptyDraft(),
             id: draft.id,
             name: draft.name,
             enabled: draft.enabled,
-            transport: transport === 'stdio' ? 'stdio' : 'streamable_http',
+            transport: transport === 'stdio' ? 'stdio' : transport === 'sse' ? 'sse' : 'streamable_http',
           })}
         />
       </Field>
 
-      {draft.transport === 'stdio' ? (
+      {draft.transport === 'stdio' && !cloudActive ? (
         <MCPStdioFields draft={draft} onChange={onChange} />
       ) : (
         <>
-          <Field label="Server URL" hint="The remote Streamable HTTP endpoint.">
+          <Field label="Server URL" hint={cloudActive ? 'The remote HTTPS MCP endpoint.' : 'The remote Streamable HTTP endpoint.'}>
             <Input
               placeholder="https://mcp.example.com/mcp"
               value={draft.url}
@@ -531,13 +557,15 @@ function MCPServerForm({
               ) : null}
             </button>
             <Collapse open={advanced} className="space-y-4 pb-1">
-              <Field label="Bearer token variable" hint="Or read the token from this environment variable on the Jaz server.">
-                <Input
-                  placeholder="MCP_TOKEN"
-                  value={draft.bearer_token_env_var ?? ''}
-                  onChange={(event) => onChange({ ...draft, bearer_token_env_var: event.target.value })}
-                />
-              </Field>
+              {!cloudActive ? (
+                <Field label="Bearer token variable" hint="Or read the token from this environment variable on the Jaz server.">
+                  <Input
+                    placeholder="MCP_TOKEN"
+                    value={draft.bearer_token_env_var ?? ''}
+                    onChange={(event) => onChange({ ...draft, bearer_token_env_var: event.target.value })}
+                  />
+                </Field>
+              ) : null}
               <OAuthEditor value={draft.oauth ?? {}} onChange={(oauth) => onChange({ ...draft, oauth })} redirectURL={oauthRedirectURL} />
               <HeaderEditor
                 headers={draft.headers ?? []}

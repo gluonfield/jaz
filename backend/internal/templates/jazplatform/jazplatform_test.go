@@ -38,14 +38,11 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		Cwd:        "/tmp/jaz/workspaces/default/.worktrees/task",
 		RuntimePaths: RuntimePaths{
 			Root:             "/tmp/jaz",
-			AgentsPath:       "/tmp/jaz/AGENTS.md",
-			SoulPath:         "/tmp/jaz/SOUL.md",
 			SkillsPath:       "/tmp/jaz/skills",
 			SessionsPath:     "/tmp/jaz/sessions",
 			DefaultWorkspace: "/tmp/jaz/workspaces/default",
 			WorktreesPath:    "/tmp/jaz/workspaces/default/.worktrees",
 		},
-		Soul:           "soul",
 		BrowserEnabled: true,
 		Memory: &MemoryData{
 			LongTerm:            "- Goal: $5m.",
@@ -79,11 +76,9 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Do not batch status changes at the end.",
 		"## Runtime paths",
 		"/tmp/jaz: runtime state",
-		"/tmp/jaz/AGENTS.md, /tmp/jaz/SOUL.md: prompt files rendered below when present.",
 		"/tmp/jaz/workspaces/default/.worktrees: ACP worktrees.",
-		"`AGENTS.md` and `SOUL.md` are persistent files you may edit",
+		"Standing instructions (`AGENTS.md`) are stored in Jaz's database",
 		"## AGENTS.md\n\nagents",
-		"## SOUL.md\n\nsoul",
 		"## connections",
 		"Connected accounts and their agent-relevant memory paths",
 		"Telegram: personal (42)",
@@ -97,9 +92,12 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Do not locate or launch Chrome/Chromium binaries",
 		"unless the user explicitly requests it or an existing repository test requires it",
 		"check `browser_status` and report the blocker",
-		"## Artifacts and visualisation",
-		"Always call `visualise_read_me` before the first artifact",
-		"Deliver with `visualise_show_widget`",
+		"## Artifacts, apps and documents",
+		"Show it with `show_artifact`",
+		"Publish it with `publish_app`",
+		"Always call `artifact_guide` before the first artifact",
+		"call `publish_app` with the same HTML or Markdown. It is saved at once",
+		"its card holds it until the user approves them",
 		"skills-block",
 		"## memory",
 		"broad context from the user's past behavior",
@@ -118,15 +116,13 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"these govern behavior on the Jaz platform",
 		"Launching background work is not delivery",
 		"Requests to build or change Jaz, a project, a generated document or its prompts belong in that project's files",
-		"revise an existing entry in place instead of appending a near-duplicate",
-		"`AGENTS.md` contains the user's standing rules. Write when the user states a durable instruction",
-		"`SOUL.md` is the assistant's identity file; Jaz has no separate `IDENTITY.md`",
+		"`AGENTS.md` contains the user's standing rules for durable instructions",
 		"Use `create_thread` only when",
 		"Merely discussing or reviewing one of these agent harnesses does not authorize a separate session",
 		"Omit model overrides unless the user asks for a specific model",
 		"Generic requests to use subagents, parallelize, or spawn child agents stay with the active agent's native collaboration tools",
 		"a Markdown file path on its own paragraph renders as a document preview card",
-		"Make one whenever a picture explains the answer better than text",
+		"Make an artifact whenever a picture explains the answer better than text",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("artifact policy missing %q:\n%s", want, prompt)
@@ -140,24 +136,22 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"the output tool",
 		"`visualize:",
 		"visualize_",
+		"visualise_",
+		"prepare_app_draft",
 		"`create_file`",
 		"file-artifact tool",
 		"coding-agent surface provides",
 		"Claude-compatible",
+		"SOUL.md",
 	} {
 		if strings.Contains(prompt, reject) {
 			t.Fatalf("artifact policy must use direct Jaz visualise tools only; found %q:\n%s", reject, prompt)
 		}
 	}
-	for _, reject := range []string{"visualise:show_widget", "visualise:read_me"} {
-		if strings.Contains(prompt, reject) {
-			t.Fatalf("artifact policy must use identifier-safe tool names; found %q:\n%s", reject, prompt)
-		}
-	}
 }
 
 func TestRenderOmitsBrowserPolicyWhenDisabled(t *testing.T) {
-	prompt, err := RenderThread(testData("agents", "soul"))
+	prompt, err := RenderThread(testData("agents"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +163,7 @@ func TestRenderOmitsBrowserPolicyWhenDisabled(t *testing.T) {
 }
 
 func TestRenderMemoryStates(t *testing.T) {
-	disabled, err := RenderThread(testData("agents", "(empty)"))
+	disabled, err := RenderThread(testData("agents"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,11 +171,11 @@ func TestRenderMemoryStates(t *testing.T) {
 	if strings.Contains(disabled, "## memory") || strings.Contains(disabled, "Capture as you go") {
 		t.Fatalf("nil memory must omit the memory block:\n%s", disabled)
 	}
-	if !strings.Contains(disabled, "## AGENTS.md") || !strings.Contains(disabled, "## SOUL.md") {
-		t.Fatalf("prompt files must render regardless of memory:\n%s", disabled)
+	if !strings.Contains(disabled, "## AGENTS.md") || strings.Contains(disabled, "## SOUL.md") {
+		t.Fatalf("AGENTS.md must render and SOUL.md must be omitted:\n%s", disabled)
 	}
 
-	freshData := testData("(empty)", "(empty)")
+	freshData := testData("(empty)")
 	freshData.Memory = &MemoryData{LongTerm: "(empty)", ShortTerm: "(empty)"}
 	fresh, err := RenderThread(freshData)
 	if err != nil {
@@ -230,8 +224,8 @@ func TestRenderStandaloneModules(t *testing.T) {
 	}
 }
 
-func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
-	data := testData("agents", "soul")
+func TestRenderWidgetSurfaceNamesOnlyBoardWidgetTools(t *testing.T) {
+	data := testData("agents")
 	data.ArtifactSurface = "widget"
 	prompt, err := RenderThread(data)
 	if err != nil {
@@ -240,13 +234,12 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 	prompt = normalizeNewlines(prompt)
 	for _, want := range []string{
 		"## AGENTS.md\n\nagents",
-		"## SOUL.md\n\nsoul",
 		"## Jaz threads",
 		"create_thread",
 		"list_agent_options",
-		"## Artifacts and visualisation",
-		"Always call `visualise_read_me` before the first artifact",
-		"Deliver with `visualise_publish_widget`",
+		"## Board app",
+		"Call `artifact_guide` for the design rules",
+		"deliver it with `publish_app`",
 		"Launching background work is not delivery",
 	} {
 		if !strings.Contains(prompt, want) {
@@ -254,8 +247,8 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 		}
 	}
 	for _, reject := range []string{
-		"visualise_show_widget",
-		"## Board Widget Runtime",
+		"show_artifact",
+		"## Board App Runtime",
 	} {
 		if strings.Contains(prompt, reject) {
 			t.Fatalf("widget surface base prompt must leave output details to the loop extension; found %q:\n%s", reject, prompt)
@@ -263,7 +256,55 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 	}
 }
 
-func testData(agents, soul string) Data {
+func TestRenderCloudPromptModeUsesMCPInstructions(t *testing.T) {
+	data := Data{
+		Agents: "User standing rule",
+		Cloud: &CloudInstructions{
+			HasOrg:      true,
+			OrgAgents:   "Org compliance rule",
+			HasSpace:    true,
+			SpaceAgents: "Space tender rule",
+		},
+		Date:     "June 16, 2026",
+		Time:     "12:34:56 BST",
+		Timezone: "BST (UTC+01:00)",
+		Weekday:  "Tuesday",
+		Human:    "Tuesday, June 16, 2026 at 12:34:56 BST",
+		Cwd:      "/workspace",
+	}
+	prompt, err := RenderThread(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, prompt,
+		"## Instructions",
+		"`instruction_get`",
+		"`instruction_update`",
+		"`instruction_propose`",
+		"## Org AGENTS.md\n\nOrg compliance rule",
+		"## Space AGENTS.md\n\nSpace tender rule",
+		"## AGENTS.md\n\nUser standing rule",
+	)
+	if strings.Contains(prompt, "## Runtime paths") || strings.Contains(prompt, "SOUL.md") {
+		t.Fatalf("cloud prompt must omit local Runtime paths and SOUL.md:\n%s", prompt)
+	}
+
+	botPrompt, err := RenderBot(BotData{Data: data, Instructions: "Bot cloud rules"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, botPrompt,
+		"## BOTS.md",
+		"`instruction_get`",
+		"`instruction_update`",
+		"Bot cloud rules",
+	)
+	if strings.Contains(botPrompt, "/BOTS.md") {
+		t.Fatalf("cloud bot prompt must omit local BOTS.md path:\n%s", botPrompt)
+	}
+}
+
+func testData(agents string) Data {
 	return Data{
 		Agents:     agents,
 		AgentNames: []string{"codex"},
@@ -275,14 +316,11 @@ func testData(agents, soul string) Data {
 		Cwd:        "/tmp/jaz/workspaces/default",
 		RuntimePaths: RuntimePaths{
 			Root:             "/tmp/jaz",
-			AgentsPath:       "/tmp/jaz/AGENTS.md",
-			SoulPath:         "/tmp/jaz/SOUL.md",
 			SkillsPath:       "/tmp/jaz/skills",
 			SessionsPath:     "/tmp/jaz/sessions",
 			DefaultWorkspace: "/tmp/jaz/workspaces/default",
 			WorktreesPath:    "/tmp/jaz/workspaces/default/.worktrees",
 		},
-		Soul: soul,
 	}
 }
 

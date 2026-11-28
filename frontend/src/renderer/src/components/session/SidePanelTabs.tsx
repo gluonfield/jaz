@@ -1,17 +1,24 @@
-import { Copy, PencilRuler, FileSpreadsheet, FileText, FileType, FolderGit2, Globe, LayoutDashboard, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
+import { AppWindow, Copy, PencilRuler, FileSpreadsheet, FileText, FileType, FolderGit2, Globe, LayoutDashboard, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, Reorder } from 'motion/react'
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { CopyPathMenuRow } from '@/components/session/FileActions'
 import { IconButton } from '@/components/ui/IconButton'
 import { ContextMenu, MenuRow, Popover } from '@/components/ui/Popover'
 import { Favicon } from '@/components/ui/Favicon'
-import { isMarkdownPath, isSpreadsheetPath, isWordPath } from '@shared/fileReader'
+import { isMarkdownPath, isSpreadsheetPath, isWordPath, type FileReference } from '@shared/fileReader'
+import { appsQuery } from '@/lib/api/apps'
+import { sessionCanvasQuery } from '@/lib/api/canvas'
+import type { ChatMessage, Session, SessionEvent } from '@/lib/api/types'
+import { publishedAppTab } from '@/lib/sidePanelTabs'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { useBrowserSessions } from '@/lib/browserSessions'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
+import { useRefetchAfterWork } from '@/lib/hooks/useRefetchAfterWork'
 import type { NewSidePanelTab, SidePanelTab } from '@/lib/sidePanelTabs'
+import type { LiveExchange } from '@/components/session/liveTranscript'
+import { threadPanelItems } from '@/components/session/threadPanelItems'
 
 const MENU_TYPES = {
   file: { label: 'Files', icon: FileText },
@@ -21,7 +28,8 @@ const MENU_TYPES = {
   diff: { label: 'Code diff', icon: FolderGit2 },
 }
 
-const TAB_TYPES = { ...MENU_TYPES, canvas: { label: 'Canvas', icon: PencilRuler } }
+const TAB_TYPES = { ...MENU_TYPES, canvas: { label: 'Canvas', icon: PencilRuler }, artifact: { label: 'Artifact', icon: AppWindow }, 'published-app': { label: 'App', icon: AppWindow } }
+const RECENT_APPS = 5
 
 function KindIcon({ kind, path = '' }: { kind: keyof typeof TAB_TYPES; path?: string }) {
   const spreadsheet = isSpreadsheetPath(path)
@@ -29,34 +37,61 @@ function KindIcon({ kind, path = '' }: { kind: keyof typeof TAB_TYPES; path?: st
   return <Icon size={14} className={`shrink-0 ${spreadsheet ? 'text-emerald-600 dark:text-emerald-400' : 'text-ink-3'}`} aria-hidden />
 }
 
-// The new-tab menu lists the built-in tabs, then the thread apps of connected
-// MCP servers.
-export function SidePanelTabMenu({ sideChatAvailable, onAdd, empty = false }: {
+function PanelRow({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
+  return <button type="button" className="flex h-7 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink pointer-coarse:h-10" onClick={onClick}>
+    <span className="grid size-3.5 shrink-0 place-items-center text-ink-3">{icon}</span>
+    <span className="max-w-56 truncate">{label}</span>
+  </button>
+}
+
+function BuiltInRows({ sideChatAvailable, onAdd }: {
   sideChatAvailable: boolean
   onAdd: (tab: NewSidePanelTab) => void
-  empty?: boolean
+}) {
+  return (Object.keys(MENU_TYPES) as (keyof typeof MENU_TYPES)[])
+    .filter((kind) => kind !== 'side-chat' || sideChatAvailable)
+    .map((kind) => {
+      const { label, icon: Icon } = MENU_TYPES[kind]
+      return <PanelRow key={kind} label={label} icon={<Icon size={14} />} onClick={() => onAdd(kind)} />
+    })
+}
+
+export function SidePanelLauncher({ session, messages, events, live, readCanvas, working, sideChatAvailable, onAdd, onOpenFile }: {
+  session: Session
+  messages: ChatMessage[]
+  events: SessionEvent[]
+  live: LiveExchange | null
+  readCanvas: boolean
+  working: boolean
+  sideChatAvailable: boolean
+  onAdd: (tab: NewSidePanelTab) => void
+  onOpenFile: (file: FileReference) => void
+}) {
+  const { data: apps } = useQuery(appsQuery({ scope: 'mine', sourceThreadId: session.id }))
+  const { data: canvas, refetch } = useQuery({ ...sessionCanvasQuery(session.id), enabled: readCanvas })
+  useRefetchAfterWork(working && readCanvas, refetch)
+  const items = useMemo(() => threadPanelItems({ session, messages, events, live, apps, canvas }), [session, messages, events, live, apps, canvas])
+  return <div className="m-auto max-h-full w-52 overflow-y-auto p-2">
+    <BuiltInRows sideChatAvailable={sideChatAvailable} onAdd={onAdd} />
+    {items.map(({ id, label, tab }) => <PanelRow key={id} label={label}
+      icon={<KindIcon kind={tab.kind} path={tab.kind === 'file' ? tab.file.path : undefined} />}
+      onClick={() => tab.kind === 'file' ? onOpenFile(tab.file) : onAdd(tab)}
+    />)}
+  </div>
+}
+
+function SidePanelTabMenu({ sideChatAvailable, onAdd }: {
+  sideChatAvailable: boolean
+  onAdd: (tab: NewSidePanelTab) => void
 }) {
   const [open, setOpen] = useState(false)
-  const apps = (useQuery(mcpEntrypointsQuery).data ?? []).filter((entry) => entry.type === 'thread')
-  const options = (Object.keys(MENU_TYPES) as (keyof typeof MENU_TYPES)[]).filter((kind) => kind !== 'side-chat' || sideChatAvailable)
-  const row = (key: string, tab: NewSidePanelTab, icon: ReactNode, label: string) => (
-    <button type="button" className="flex h-7 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink pointer-coarse:h-10" key={key} onClick={() => {
-      onAdd(tab)
-      setOpen(false)
-    }}>
-      <span className="grid size-3.5 shrink-0 place-items-center text-ink-3">{icon}</span>
-      {label}
-    </button>
-  )
-  const rows = [
-    ...options.map((kind) => {
-      const { label, icon: Icon } = TAB_TYPES[kind]
-      return row(kind, kind, <Icon size={14} />, label)
-    }),
-    ...apps.map((app) => row(entrypointKey(app), app, <AppIcon app={app} size={14} />, app.title)),
-  ]
-  if (empty) {
-    return <div className="m-auto w-52 p-2">{rows}</div>
+  const apps = (useQuery({ ...mcpEntrypointsQuery, enabled: open }).data ?? []).filter((entry) => entry.type === 'thread')
+  const published = (useQuery({ ...appsQuery({ scope: 'all' }), enabled: open }).data ?? [])
+    .toSorted((a, b) => b.updated_at.localeCompare(a.updated_at))
+    .slice(0, RECENT_APPS)
+  const add = (tab: NewSidePanelTab) => {
+    onAdd(tab)
+    setOpen(false)
   }
   return (
     <Popover open={open} onClose={() => setOpen(false)} placement="below" align="end" trigger={
@@ -64,7 +99,9 @@ export function SidePanelTabMenu({ sideChatAvailable, onAdd, empty = false }: {
         <Plus size={15} />
       </IconButton>
     }>
-      {rows}
+      <BuiltInRows sideChatAvailable={sideChatAvailable} onAdd={add} />
+      {apps.map((app) => <PanelRow key={entrypointKey(app)} label={app.title} icon={<AppIcon app={app} size={14} />} onClick={() => add(app)} />)}
+      {published.map((app) => <PanelRow key={app.id} label={app.title} icon={<AppWindow size={14} />} onClick={() => add(publishedAppTab(app))} />)}
     </Popover>
   )
 }
@@ -117,7 +154,11 @@ export function SidePanelTabs({ tabs, activeId, sideChatAvailable, onSelect, onR
     <div className="flex h-9 min-w-0 flex-1 items-center gap-1 px-1 pointer-coarse:h-11">
       <Reorder.Group as="div" axis="x" values={tabs.map((tab) => tab.id)} onReorder={onReorder} layoutScroll ref={list} role="tablist" aria-label="Side panel tabs" className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [-webkit-app-region:no-drag]">
         {tabs.map((tab, index) => {
-          const label = tab.kind === 'app' ? tab.file?.name ?? tab.app.title : tab.kind === 'view' ? tab.view.title : TAB_TYPES[tab.kind].label
+          const label = tab.kind === 'app' ? tab.file?.name ?? tab.app.title
+            : tab.kind === 'view' ? tab.view.title
+              : tab.kind === 'artifact' ? tab.artifact.title
+                : tab.kind === 'published-app' ? tab.app.title
+                  : TAB_TYPES[tab.kind].label
           const target = browsers.find((browser) => browser.id === tab.id)?.target
           const title = tab.kind === 'file' ? tab.file?.path.split(/[\\/]/).pop() || label : target?.title || target?.displayUrl || label
           const active = activeId === tab.id

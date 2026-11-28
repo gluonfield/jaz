@@ -34,6 +34,7 @@ import {
 } from './composerTokens'
 import { fuzzyMatch } from './fuzzy'
 import { decodeMentions, encodeMention, mentionLabelText } from './mentionCodec'
+import { useBackspaceFallback } from './useBackspaceFallback'
 import { useComposerDraft, type ComposerDraft, type ComposerDraftStorage } from './useComposerDraft'
 
 // Result cap for the $/@ popups, mirroring Codex's file-search page size.
@@ -334,6 +335,7 @@ export function useMentionInput({
       if (!target) return
       target.style.height = 'auto'
       target.style.height = `${Math.min(target.scrollHeight, maxHeight)}px`
+      if (mirrorRef.current) mirrorRef.current.scrollTop = target.scrollTop
     },
     [maxHeight],
   )
@@ -382,7 +384,28 @@ export function useMentionInput({
     placeCaret(pos)
   }
 
+  const applyFallbackDelete = useCallback(
+    (next: string, nextCaret: number) => {
+      setDraft({ text: next, tokens: currentDraft().tokens })
+      setCaret(nextCaret)
+      setDismissedAt((dismissed) => {
+        if (dismissed === null) return null
+        const active = findActiveTrigger(next, nextCaret)
+        return active && active.start === dismissed ? dismissed : null
+      })
+      placeCaret(nextCaret)
+    },
+    [currentDraft, placeCaret, setDraft],
+  )
+  const backspaceFallback = useBackspaceFallback({
+    textareaRef,
+    composingRef,
+    onFallbackDelete: applyFallbackDelete,
+  })
+  const cancelBackspaceFallback = backspaceFallback.cancel
+
   const reset = useCallback(() => {
+    cancelBackspaceFallback()
     clearDraft()
     setCaret(0)
     setDismissedAt(null)
@@ -391,9 +414,10 @@ export function useMentionInput({
       el.style.height = 'auto'
       el.focus()
     }
-  }, [clearDraft])
+  }, [cancelBackspaceFallback, clearDraft])
 
   const restore = (draft: ComposerDraft) => {
+    cancelBackspaceFallback()
     setDraft(draft)
     setCaret(draft.text.length)
     setDismissedAt(null)
@@ -425,6 +449,7 @@ export function useMentionInput({
   }
 
   const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    backspaceFallback.markNativeEdit()
     const next = e.target.value
     // setDraft prunes tokens whose display no longer occurs in the text.
     setDraft({ text: next, tokens })
@@ -450,6 +475,7 @@ export function useMentionInput({
 
   const onCompositionStart = () => {
     composingRef.current = true
+    backspaceFallback.cancel()
   }
 
   const onCompositionEnd = () => {
@@ -484,19 +510,23 @@ export function useMentionInput({
         return true
       }
     }
-    if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (e.key === 'Backspace') {
       const el = e.currentTarget
-      if (el.selectionStart === el.selectionEnd) {
-        const hit = tokenEndingAt(text, el.selectionStart, tokens)
+      const start = el.selectionStart
+      const end = el.selectionEnd
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && start !== null && start === end) {
+        const hit = tokenEndingAt(text, start, tokens)
         if (hit) {
           e.preventDefault()
-          const next = text.slice(0, hit.start) + text.slice(el.selectionStart)
+          backspaceFallback.cancel()
+          const next = text.slice(0, hit.start) + text.slice(start)
           setDraft({ text: next, tokens })
           setCaret(hit.start)
           placeCaret(hit.start)
           return true
         }
       }
+      backspaceFallback.schedule(e)
     }
     return false
   }
@@ -526,7 +556,11 @@ export function useMentionInput({
     reset,
     restore,
     onFocus: () => setFocused(true),
-    onBlur: () => setFocused(false),
+    onBlur: () => {
+      composingRef.current = false
+      backspaceFallback.cancel()
+      setFocused(false)
+    },
     onChange,
     onSelect,
     onScroll,

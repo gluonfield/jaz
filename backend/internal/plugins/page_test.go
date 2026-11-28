@@ -111,7 +111,7 @@ func TestPageFollowsStoredShowViewPresentations(t *testing.T) {
 		t.Fatal(err)
 	}
 	show(create("Escaping symlink", folder), "tenders/status", "escape.json")
-	for _, file := range []string{"../status.json", `nested\status.json`, "/status.json", "nested/status.json", `C:\status.json`, "..", "status.json\x00", " status.json"} {
+	for _, file := range []string{"../status.json", `nested\status.json`, "/status.json", "nested/../status.json", "nested//status.json", `C:\status.json`, "..", "status.json\x00", " status.json"} {
 		thread := create("Unsafe stored filename", folder)
 		show(thread, "tenders/status", "status.json")
 		if err := sessions.AppendSessionEvents(thread.ID, sessionevents.Event{Type: sessionevents.TypeArtifact, Artifact: &sessionevents.PresentationEvent{Kind: sessionevents.PresentationPluginView, View: &sessionevents.PluginView{Reference: "tenders/status", Title: "Unsafe", WidgetCode: "<p></p>", File: file}}}); err != nil {

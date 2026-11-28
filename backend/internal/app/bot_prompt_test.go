@@ -9,6 +9,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
@@ -63,7 +64,8 @@ func TestBotDelegationPromptsAndIdentityRefresh(t *testing.T) {
 	}
 	threads := []storage.Session{bot, seat, create("Ordinary", "", "", ""), create("Implementation", storage.SourceBotWorker, bot.ID, seat.ID), create("Routine", storage.SourceLoopRun, "", bot.ID)}
 	builder := coordinator.NewBuilder(root, "", "", nil)
-	cfg, err := NewACPConfig(Config{}, store, "", builder, nil, nil, nil, nil, nil, nil, nil, plugins.New(runtimefiles.New(root)), nil)
+	inst := NewInstructionsStore(runtimefiles.New(root), store, cloudsync.New(store, nil))
+	cfg, err := NewACPConfig(Config{}, store, inst, "", builder, nil, nil, nil, nil, nil, nil, nil, plugins.New(runtimefiles.New(root)), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,11 +110,13 @@ func TestBotDelegationPromptsAndIdentityRefresh(t *testing.T) {
 				for _, want := range []string{
 					"You are " + name + ", a Jaz bot",
 					"quick answers, decisions, quick coordination plans, task and memory coordination",
-					"read-only audits of returned reports, diffs, receipts and rendered results",
-					"All engineering, including substantive engineering planning and substantive product design, source investigation and diagnosis however brief, goes to implementation threads.",
+					"checking returned reports, receipts and rendered results",
+					"All engineering, including substantive engineering planning and substantive product design, source investigation, code diff review and diagnosis however brief, goes to implementation threads.",
 					"A new problem found during an audit goes back to an implementation thread for investigation.",
 					"create_thread for each independent task",
 					"continue existing work with send_message_to_thread",
+					"Start design or investigation threads that may lead to code with worktree: true",
+					"Open an extra thread on the same task only when work runs in parallel, needs a different agent or model, or the existing thread's context is full",
 					"Start implementation threads as part of your coordinator role",
 					"The thread receives platform instructions and memory and chooses its own approach",
 					"Follow robotics research.",

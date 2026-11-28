@@ -34,7 +34,7 @@ do
     sleep 0.02
 done
 exit 7`, "agent", dir},
-	}, map[string]string{"PATH": os.Getenv("PATH")}, dir, "")
+	}, map[string]string{"PATH": os.Getenv("PATH")}, dir, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

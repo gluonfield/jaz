@@ -5,6 +5,7 @@ import "github.com/wins/jaz/backend/internal/acp"
 type acpAuthStatusResponse struct {
 	Authenticated         bool                      `json:"authenticated"`
 	Ready                 bool                      `json:"ready"`
+	Checking              bool                      `json:"checking,omitempty"`
 	Reason                string                    `json:"reason,omitempty"`
 	StoragePath           string                    `json:"storage_path,omitempty"`
 	AuthMode              string                    `json:"auth_mode,omitempty"`

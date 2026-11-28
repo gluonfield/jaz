@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/acpcredentials"
 	"github.com/wins/jaz/backend/internal/m365copilot"
-	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/promptmodule"
@@ -107,13 +107,14 @@ func systemPromptMeta(agent, prompt string, fresh bool) map[string]any {
 }
 
 type Config struct {
-	Budget      *BudgetPolicy
-	Agents      map[string]AgentConfig
-	AgentSource AgentConfigSource
-	Adapters    AdapterResolver
-	Root        string
-	Workspace   string
-	Env         map[string]string
+	ResolveCloudProfile acpcredentials.Resolver `mapstructure:"-"`
+	Budget              *BudgetPolicy
+	Agents              map[string]AgentConfig
+	AgentSource         AgentConfigSource
+	Adapters            AdapterResolver
+	Root                string
+	Workspace           string
+	Env                 map[string]string
 	// Providers is a static snapshot used by the read-time auth/readiness probes
 	// (and tests). ProviderSource, when set, is the live merged registry the
 	// manager reads per spawn so runtime provider changes reach new agents.
@@ -122,7 +123,7 @@ type Config struct {
 	ModelCatalog     ModelCatalog
 	SystemPrompt     SystemPromptSource
 	ClaudePlugins    func() ([]plugins.NativePlugin, error)
-	MCPStore         mcpconfig.ServerReader
+	MCPServers       SessionMCPServers
 	MicrosoftCopilot *m365copilot.AuthService
 	ResumePrompt     SessionPromptExtensionResolver
 	// TurnNote is text a thread's next turn opens with for its agent alone,
@@ -136,24 +137,25 @@ type Config struct {
 }
 
 type AgentConfig struct {
-	Command                 string
-	Args                    []string
-	ManagedAdapter          string
-	ManagedAdapterArgs      []string
-	ManagedTool             string
-	Local                   bool
-	BuiltinBridge           bool
-	ProviderMode            string
-	ModelProviderCapability string
-	ModelProvider           string
-	AuthProviderID          string
-	Model                   string
-	ReasoningEffort         string
-	URL                     string
-	Token                   string
-	Auth                    AgentAuthConfig
-	Env                     map[string]string
-	Cwd                     string
+	cloudCredentialProfileID string
+	Command                  string
+	Args                     []string
+	ManagedAdapter           string
+	ManagedAdapterArgs       []string
+	ManagedTool              string
+	Local                    bool
+	BuiltinBridge            bool
+	ProviderMode             string
+	ModelProviderCapability  string
+	ModelProvider            string
+	AuthProviderID           string
+	Model                    string
+	ReasoningEffort          string
+	URL                      string
+	Token                    string
+	Auth                     AgentAuthConfig
+	Env                      map[string]string
+	Cwd                      string
 	// AdapterBinDir is the managed-adapter bundle dir. LoginBinDir is searched
 	// before PATH for companion CLIs. Runtime-only, never persisted.
 	AdapterBinDir string

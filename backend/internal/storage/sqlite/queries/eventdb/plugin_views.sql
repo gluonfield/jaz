@@ -1,5 +1,5 @@
 -- name: ListSessionPluginViews :many
-SELECT t.id, t.title, t.status, t.updated_at_ms, t.cwd, e.seq, e.content
+SELECT t.id, t.title, t.status, t.updated_at_ms, t.cwd, t.workspace_id, e.seq, e.content
 FROM session_events AS e
 JOIN threads AS t ON t.id = e.thread_id
 WHERE e.type = 'artifact'

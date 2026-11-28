@@ -74,7 +74,7 @@ func TestLiveACPProbe(t *testing.T) {
 		},
 	})
 	t.Logf("initialize result: %s", init.Result)
-	if methodID, missing := autoAuthMethod(agent, init.Result, env); methodID != "" {
+	if methodID, missing := autoAuthMethod(agent, init.Result, env, false); methodID != "" {
 		auth := probeCall(t, ctx, conn, "2", acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID})
 		t.Logf("authenticate result: %s", auth.Result)
 	} else if len(missing) > 0 {

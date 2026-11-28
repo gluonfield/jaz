@@ -109,14 +109,13 @@ func TestProxyStripsJazAndBrowserCredentials(t *testing.T) {
 	req.Header.Set("Origin", "https://jaz.example.test")
 	req.Header.Set("Referer", "https://jaz.example.test/thread")
 	req.Header.Set("X-Jaz-Client-Platform", "mobile")
-	req.Header.Set("X-Jaz-Device-ID", "device-secret")
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
 
 	if res.Code != http.StatusOK || res.Body.String() != "ok" {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
-	for _, name := range []string{"Authorization", "Proxy-Authorization", "Cookie", "Origin", "Referer", "X-Jaz-Client-Platform", "X-Jaz-Device-ID"} {
+	for _, name := range []string{"Authorization", "Proxy-Authorization", "Cookie", "Origin", "Referer", "X-Jaz-Client-Platform"} {
 		if got := gotHeaders.Get(name); got != "" {
 			t.Fatalf("forwarded %s = %q", name, got)
 		}
@@ -135,6 +134,7 @@ func TestHostProxyRewritesLoopbackRedirect(t *testing.T) {
 	addProxy(handler, testCapabilityID, testCapabilityID+".preview.example.test", mustParseURL(t, upstream.URL), time.Now().Add(time.Hour))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "127.0.0.1:4321"
 	req.Host = testCapabilityID + ".preview.example.test"
 	req.Header.Set("X-Forwarded-Proto", "https")
 	res := httptest.NewRecorder()

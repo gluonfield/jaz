@@ -4,6 +4,7 @@ import type { VoiceLine } from '@shared/voice'
 // sessionevents, server). Field names must match exactly.
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { MessageContextInput } from '@/lib/messageContext'
+import type { PlaceMap } from '@/lib/maps'
 
 export interface RuntimeRef {
   type: string
@@ -89,6 +90,17 @@ export interface Session {
   usage?: Usage
   queued_messages?: QueuedMessage[]
   pending_steer_message?: QueuedMessage
+  space_id?: string
+  visibility?: 'private' | 'space'
+  run_id?: string
+  owner_user_id?: string
+  git_repo?: string
+  git_base_branch?: string
+  git_branch?: string
+  git_pr_number?: number
+  git_pr_url?: string
+  personal_sources_enabled?: boolean
+  backend?: 'local' | 'cloud'
   created_at: string
   updated_at: string
   last_attention_at: string
@@ -258,6 +270,7 @@ export interface SessionFileRead {
   binary?: boolean
   truncated?: boolean
   version?: string
+  read_only?: boolean
 }
 
 export interface HealthResponse {
@@ -308,63 +321,6 @@ export interface ConnectionQRStatus {
   expires_at: string
   account_id?: string
   error?: string
-}
-
-export type DeviceStatus = 'pending' | 'approved' | 'revoked'
-export type DeviceKind = 'desktop' | 'mobile' | 'browser' | 'cli'
-export type PairingStatus = 'pending' | 'approved' | 'rejected' | 'expired'
-
-export interface Device {
-  id: string
-  name: string
-  kind: DeviceKind
-  status: DeviceStatus
-  platform?: string
-  device_family?: string
-  model_identifier?: string
-  created_at: string
-  approved_at?: string
-  revoked_at?: string
-  last_seen_at?: string
-  last_seen_ip?: string
-  user_agent?: string
-  app_version?: string
-}
-
-export interface DevicePairing {
-  id: string
-  device_id: string
-  status: PairingStatus
-  created_at: string
-  expires_at: string
-  approved_at?: string
-  rejected_at?: string
-  device: Device
-}
-
-export interface DeviceList {
-  devices: Device[]
-  pairings: DevicePairing[]
-  current_device_id?: string
-  can_manage?: boolean
-}
-
-export interface DeviceConnectionLink {
-  url: string
-  base_url: string
-  public_url: string
-}
-
-export interface DeviceRegisterResult {
-  device: Device
-  token?: string
-  pairing?: DevicePairing
-  pairing_secret?: string
-}
-
-export interface PairingPoll {
-  pairing: DevicePairing
-  token?: string
 }
 
 export interface LoopSchedule {
@@ -427,51 +383,6 @@ export interface LoopRun {
   created_at: string
 }
 
-export interface Board {
-  id: string
-  name: string
-  grid_cols: number
-  row_height: number
-  // Zooms every widget document on the board (big-screen comfort).
-  font_scale: number
-  window_bounds?: string
-  is_default: boolean
-  created_at: string
-  updated_at: string
-}
-
-// board_widgets joined with the widget and its loop (backend/internal/widgets).
-export interface BoardItem {
-  board_id: string
-  widget_id: string
-  x: number
-  y: number
-  w: number
-  h: number
-  placed_by: 'llm' | 'user'
-  loop_id: string
-  loop_name: string
-  loop_status: Loop['status']
-  loop_last_run_status?: LoopRunStatus
-  loop_last_run_at?: string
-  title: string
-  current_version: number
-  size_hint?: string
-  last_error?: string
-  widget_updated_at: string
-}
-
-export interface WidgetSummary {
-  id: string
-  loop_id: string
-  title: string
-  current_version: number
-  size_hint?: string
-  last_error?: string
-  created_at: string
-  updated_at: string
-}
-
 export interface ToolCallJSON {
   id: string
   type: 'function'
@@ -502,8 +413,19 @@ export interface Attachment {
   uri?: string
 }
 
+// Set by the client on a message the server has not accepted.
+export interface MessageDelivery {
+  id: string
+  state: 'sending' | 'failed'
+  error?: string
+}
+
 export interface ChatMessage {
+  delivery?: MessageDelivery
   from_user?: boolean
+  actor_user_id?: string
+  actor_display_name?: string
+  actor_email?: string
   seq: number
   role: 'system' | 'developer' | 'user' | 'assistant'
   content: string
@@ -659,6 +581,7 @@ export type PresentationEvent = { presented?: boolean } & (
   | { kind: 'artifact'; artifact: ArtifactEvent }
   | { kind: 'plugin-view'; view: PluginView }
   | { kind: 'canvas' }
+  | { kind: 'map'; map: PlaceMap }
 )
 
 // MCPAppEvent is an agent's call to a tool its MCP server links to an MCP
@@ -679,7 +602,6 @@ export interface Bot {
   id: string
   kind: 'bot' | 'group'
   name: string
-  prompt?: string
   // Server paths of linked projects; the bot's own home remains separate.
   workspaces?: string[]
   avatar: BotAvatar
@@ -745,18 +667,24 @@ export interface BotOwed {
   id: number
   name?: string
   request: string
+  for?: string
+  next?: string
   status: 'pending' | 'in_progress' | 'waiting_for_user' | 'stopped' | 'completed' | 'cancelled'
+  check_at?: string
   question_seq?: number
   opening_seq?: number
+  depends_on?: number[]
   blocked?: boolean
   moving?: boolean
   stalled?: boolean
-  // Threads in linking order, oldest first.
+  opened_at?: string
+  // Connected threads (direct links and worker descendants), oldest first.
   threads?: BotOwedThread[]
 }
 
 export interface BotOwedThread {
   id: string
+  parent_id?: string
   title: string
   state: 'working' | 'background' | 'finished' | 'failed' | 'idle' | 'gone'
 }
@@ -969,6 +897,25 @@ export interface ACPQuestion {
   options?: ACPQuestionOption[]
 }
 
+export interface VaultApprovalSpec {
+  item_id: string
+  kind: 'login' | 'card' | 'identity' | string
+  label: string
+  card_brand?: string
+  card_last4?: string
+  card_exp_month?: number
+  card_exp_year?: number
+  merchant_origin: string
+  checkout_summary?: string
+}
+
+export interface VaultRequestSpec {
+  kind: 'login' | 'card' | 'identity' | string
+  domain?: string
+  label?: string
+  reason?: string
+}
+
 export interface ACPPermission {
   after_message_seq?: number
   origin?: string
@@ -982,6 +929,8 @@ export interface ACPPermission {
   locations?: ACPPermissionLocation[]
   questions?: ACPQuestion[]
   answers?: Record<string, string[]>
+  vault_approval?: VaultApprovalSpec
+  vault_request?: VaultRequestSpec
   status?: string
   selected_option_id?: string
 }
@@ -1120,6 +1069,7 @@ export interface MCPOAuthConfig {
 
 export interface MCPServer {
   source?: 'plugin' | 'connection'
+  scope?: 'user' | 'org'
   id: string
   name: string
   transport: 'streamable_http' | 'stdio' | 'sse'
@@ -1133,7 +1083,7 @@ export interface MCPServer {
   bearer_token_set?: boolean
   headers?: MCPHeader[]
   oauth?: MCPOAuthConfig
-  status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'
+  status: MCPServerStatus['status']
   tool_count: number
   tools?: MCPTool[]
   error?: string
@@ -1174,7 +1124,7 @@ export interface MCPEntrypoint {
 }
 
 export interface MCPServerStatus {
-  status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'
+  status: 'connected' | 'disabled' | 'error' | 'auth_error' | 'needs_auth' | 'unknown'
   tool_count: number
   tools?: MCPTool[]
   error?: string
@@ -1278,6 +1228,7 @@ export interface ACPAgentAPIKey {
 export interface ACPAgentAuthStatus {
   authenticated: boolean
   ready: boolean
+  checking?: boolean
   reason?: string
   storage_path?: string
   auth_mode?: 'auto' | 'existing_cli' | 'jaz_profile'
@@ -1297,7 +1248,7 @@ export interface ACPAgentAuthStatus {
   managed_tool?: ACPManagedToolStatus
 }
 
-export interface ACPAuthLogin {
+export interface ACPAuthLoginChallenge {
   id: string
   agent: string
   status: 'running' | 'succeeded' | 'failed'
@@ -1305,6 +1256,16 @@ export interface ACPAuthLogin {
   auth_url?: string
   auth_code?: string
   error?: string
+  opens_browser?: boolean
+}
+
+export interface ACPGoogleCloudLogin {
+  project: string
+  location: string
+  pay_as_you_go: boolean
+}
+
+export interface ACPAuthLogin extends ACPAuthLoginChallenge {
   started_at: string
   finished_at?: string
 }

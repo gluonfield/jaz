@@ -1,10 +1,12 @@
 import type { Element, ElementContent } from 'hast'
-import { Fragment, useContext, type ComponentProps } from 'react'
+import { Fragment, useContext, useMemo, type ComponentProps } from 'react'
 import type { ExtraProps } from 'react-markdown'
 import { CopyToggleIcon } from '@/components/ui/CopyToggleIcon'
 import { useCopyAction } from '@/lib/useCopyAction'
 import { MermaidDiagram } from '@/components/session/MermaidDiagram'
 import { MarkdownArtifact, MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
+import { MapBlock } from '@/components/maps/MapBlock'
+import { parseMapFence } from '@/lib/maps'
 import { HighlightedCodeLine, type HighlightedCodeTokens, useHighlightedCode } from './HighlightedCode'
 
 const LANGUAGE_LABELS: Record<string, string> = {
@@ -105,12 +107,15 @@ export function CodeBlock({ node, children }: ComponentProps<'pre'> & ExtraProps
   const code = codeChild(node)
   const language = languageFromClass(code?.properties?.className)
   const text = nodeText(code).replace(/\n$/, '')
-  const isMermaid = language.toLowerCase() === 'mermaid'
+  const fence = language.toLowerCase()
+  const isMermaid = fence === 'mermaid'
   const artifacts = useContext(MarkdownArtifactContext)
-  const isArtifact = language.toLowerCase() === 'jaz-artifact' && artifacts.mode !== 'source'
-  const highlighted = useHighlightedCode(isMermaid || isArtifact ? '' : language, text)
+  const isArtifact = fence === 'jaz-artifact' && artifacts.mode !== 'source'
+  const map = useMemo(() => (fence === 'jaz-map' ? parseMapFence(text) : undefined), [fence, text])
+  const highlighted = useHighlightedCode(isMermaid || isArtifact || map ? '' : language, text)
 
   if (!code) return <pre>{children}</pre>
+  if (map) return artifacts.mode === 'preview' ? <p className="text-sm text-ink-3">{map.title} · Map</p> : <MapBlock map={map} />
   if (isArtifact) return <MarkdownArtifact {...artifacts} code={text} title={typeof code.data?.meta === 'string' ? code.data.meta.trim() || 'Interactive artifact' : 'Interactive artifact'} />
 
   const lines = text.split('\n')
@@ -127,7 +132,7 @@ export function CodeBlock({ node, children }: ComponentProps<'pre'> & ExtraProps
     </pre>
   )
   return (
-    <div className="my-3 overflow-hidden rounded-card bg-surface ring-1 ring-border/60">
+    <div className="prose-card overflow-hidden">
       <div className="flex items-center justify-between gap-2 bg-surface-2/60 py-1 pl-3.5 pr-1.5">
         <span className="select-none text-[11px] font-medium text-ink-3">{displayLanguage(language)}</span>
         <CodeCopyButton text={text} />

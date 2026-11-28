@@ -23,6 +23,8 @@ func (r *testMCPRevision) Revision() uint64 {
 	return r.value.Load()
 }
 
+func (*testMCPRevision) ListedRevision(string) (uint64, bool) { return 0, false }
+
 func TestMCPRefreshRequiresAdvertisedCapabilityAndPolicy(t *testing.T) {
 	for _, test := range []struct{ name, raw, policy, want string }{
 		{"native", `{"agentCapabilities":{"mcpCapabilities":{"http":true},"_meta":{"mcpRefresh":{"method":"_session/mcp/refresh"}}}}`, MCPServerPolicyAll, mcpRefreshMethod},
@@ -144,7 +146,7 @@ func TestMCPRefreshBeforeTurnCoalescesAndRetries(t *testing.T) {
 }
 
 func TestGrokRefreshVersionsOnlyTheProxyConnection(t *testing.T) {
-	manager := NewManager(nil, Config{MCPStore: staticMCPServerStore{servers: []mcpconfig.Server{
+	manager := NewManager(nil, Config{MCPServers: staticMCPServerStore{servers: []mcpconfig.Server{
 		{ID: "jaz_mcp", Name: "jaz_mcp", URL: "http://example.test/proxy", Transport: mcpconfig.TransportStreamableHTTP, Enabled: true, Headers: []mcpconfig.Header{{Name: mcpsession.HeaderName, Value: mcpsession.HeaderPlaceholder}}},
 		{ID: "jaztools", Name: "jaztools", URL: "http://example.test/jaztools", Transport: mcpconfig.TransportStreamableHTTP, Enabled: true},
 	}}}, nil)
@@ -171,7 +173,7 @@ func TestGrokRefreshVersionsOnlyTheProxyConnection(t *testing.T) {
 func TestGrokRefreshRequiresNativeAcknowledgement(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	manager := NewManager(nil, Config{MCPStore: staticMCPServerStore{servers: []mcpconfig.Server{
+	manager := NewManager(nil, Config{MCPServers: staticMCPServerStore{servers: []mcpconfig.Server{
 		{ID: "jaz_mcp", Name: "jaz_mcp", URL: "http://example.test/proxy", Transport: mcpconfig.TransportStreamableHTTP, Enabled: true},
 	}}}, nil)
 	revision := &testMCPRevision{}

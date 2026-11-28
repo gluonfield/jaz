@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { IpcMainEvent, IpcMainInvokeEvent, Session, WebContents } from 'electron'
 
 interface PermissionDetails {
@@ -5,13 +7,23 @@ interface PermissionDetails {
   requestingUrl?: string
 }
 
-export function isTrustedRendererURL(value: string | undefined): boolean {
+let trustedRendererPath = resolve(__dirname, '../renderer/index.html')
+
+export function setTrustedRendererPath(path: string): void {
+  trustedRendererPath = resolve(path)
+}
+
+export function getTrustedRendererPath(): string {
+  return trustedRendererPath
+}
+
+export function isTrustedRendererURL(value: string | undefined, expectedPath = trustedRendererPath): boolean {
   if (!value) return false
   try {
     const url = new URL(value)
     const devURL = process.env['ELECTRON_RENDERER_URL']
     if (devURL) return url.origin === new URL(devURL).origin
-    return url.protocol === 'file:' && url.pathname.endsWith('/renderer/index.html')
+    return url.protocol === 'file:' && resolve(fileURLToPath(url)) === resolve(expectedPath)
   } catch {
     return false
   }

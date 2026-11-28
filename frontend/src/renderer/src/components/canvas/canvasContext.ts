@@ -4,6 +4,7 @@ import type { Rect } from './board'
 
 export interface CanvasBoard {
   sessionId: string
+  cloudRunId?: string
   view: CanvasView
   theme: string
   focused: string | null

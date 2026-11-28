@@ -8,6 +8,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/apps"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/computercontrol"
@@ -17,6 +19,7 @@ import (
 	"github.com/wins/jaz/backend/internal/mcpdeferred"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/places"
 	"github.com/wins/jaz/backend/internal/plugins"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -24,8 +27,8 @@ import (
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/threads"
+	"github.com/wins/jaz/backend/internal/vault"
 	"github.com/wins/jaz/backend/internal/visualize"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 const (
@@ -61,30 +64,36 @@ type Service struct {
 	Memory           *memoryservice.Service
 	browserSettings  storage.SettingsStorage
 	browserBackend   browsercontrol.Backend
+	vaultService     *vault.Service
+	vaultBrowser     vault.BrowserFiller
+	vaultBroker      vault.InteractionBroker
 	computerSettings storage.SettingsStorage
 	computerBackend  computercontrol.Backend
 
-	loopTools       *loops.MCPTools
-	botTools        *bots.MCPTools
-	agentTools      *acp.MCPTools
-	threadTools     *threads.Service
-	titleTools      *threads.TitleTools
-	goalTools       *sessiongoal.MCPTools
-	calendarTools   *connections.CalendarMCPTools
-	gmailTools      *connections.GmailMCPTools
-	whatsAppTools   *connections.WhatsAppMCPTools
-	telegramTools   *connections.TelegramMCPTools
-	connections     *connections.Service
-	pluginStore     *plugins.Store
-	visualizeTools  *visualize.Service
-	pluginTools     *plugins.MCPTools
-	widgetPublisher *widgets.SessionPublisher
-	sessions        sessionSource
+	loopTools      *loops.MCPTools
+	botTools       *bots.MCPTools
+	agentTools     *acp.MCPTools
+	threadTools    *threads.Service
+	titleTools     *threads.TitleTools
+	goalTools      *sessiongoal.MCPTools
+	calendarTools  *connections.CalendarMCPTools
+	gmailTools     *connections.GmailMCPTools
+	whatsAppTools  *connections.WhatsAppMCPTools
+	telegramTools  *connections.TelegramMCPTools
+	connections    *connections.Service
+	pluginStore    *plugins.Store
+	visualizeTools *visualize.Service
+	pluginTools    *plugins.MCPTools
+	mapTools       *places.MCPTools
+	boardPublisher *boards.SessionPublisher
+	appsService    *apps.Service
+	sessions       sessionSource
 
 	url string
 
 	mu          sync.Mutex
 	thread      serverSlot
+	cloudThread serverSlot
 	widget      serverSlot
 	bot         serverSlot
 	search      serverSlot
@@ -99,6 +108,7 @@ type toolSurface int
 
 const (
 	threadSurface toolSurface = iota
+	cloudThreadSurface
 	widgetSurface
 	botSurface
 	searchWorkerSurface
@@ -118,8 +128,10 @@ type serverSlot struct {
 	memoryTools   bool
 	agentTools    bool
 	browserTools  bool
+	vaultTools    bool
 	computerTools bool
 	threadTools   bool
+	appsTools     bool
 }
 
 type sessionSource interface {
@@ -137,7 +149,7 @@ func New(
 	events *sessionevents.Bus,
 	sessions storage.SessionStore,
 	usage storage.UsageEventStore,
-	widgetPublisher *widgets.SessionPublisher,
+	boardPublisher *boards.SessionPublisher,
 	calendarTools *connections.CalendarMCPTools,
 	gmailTools *connections.GmailMCPTools,
 	whatsAppTools *connections.WhatsAppMCPTools,
@@ -147,20 +159,21 @@ func New(
 	visualizeTools *visualize.Service,
 ) *Service {
 	return &Service{
-		Memory:          memory,
-		calendarTools:   calendarTools,
-		gmailTools:      gmailTools,
-		whatsAppTools:   whatsAppTools,
-		telegramTools:   telegramTools,
-		connections:     connectionService,
-		pluginStore:     installed,
-		visualizeTools:  visualizeTools,
-		pluginTools:     &plugins.MCPTools{Plugins: installed, Presenter: visualizeTools},
-		goalTools:       newGoalTools(events, sessions, usage),
-		titleTools:      &threads.TitleTools{Store: sessions, Events: events},
-		widgetPublisher: widgetPublisher,
-		sessions:        sessions,
-		url:             strings.TrimSpace(urls.JazToolsMCP),
+		Memory:         memory,
+		calendarTools:  calendarTools,
+		gmailTools:     gmailTools,
+		whatsAppTools:  whatsAppTools,
+		telegramTools:  telegramTools,
+		connections:    connectionService,
+		pluginStore:    installed,
+		visualizeTools: visualizeTools,
+		pluginTools:    &plugins.MCPTools{Plugins: installed, Presenter: visualizeTools},
+		mapTools:       &places.MCPTools{Presenter: visualizeTools, Geocoder: places.NewPhoton()},
+		goalTools:      newGoalTools(events, sessions, usage),
+		titleTools:     &threads.TitleTools{Store: sessions, Events: events},
+		boardPublisher: boardPublisher,
+		sessions:       sessions,
+		url:            strings.TrimSpace(urls.JazToolsMCP),
 	}
 }
 
@@ -184,6 +197,13 @@ func (s *Service) SetBots(tools *bots.MCPTools) {
 	s.botTools = tools
 }
 
+func (s *Service) SetApps(service *apps.Service) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.appsService = service
+	s.syncAppsTools()
+}
+
 func (s *Service) SetAgents(service acp.MCPService) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -205,6 +225,21 @@ func (s *Service) SetBrowser(store storage.SettingsStorage, backend browsercontr
 	s.syncBrowserTools()
 }
 
+func (s *Service) SetVault(service *vault.Service, browser vault.BrowserFiller, broker vault.InteractionBroker) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.vaultService = service
+	s.vaultBrowser = browser
+	s.vaultBroker = broker
+	for _, current := range s.slots() {
+		if current.slot.server != nil && current.slot.vaultTools {
+			vault.RemoveMCPTools(current.slot.server)
+			current.slot.vaultTools = false
+		}
+	}
+	s.syncVaultTools()
+}
+
 func (s *Service) SetThreads(service *threads.Service) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -224,8 +259,10 @@ func (s *Service) server(surface toolSurface) *mcp.Server {
 		slot.server = server
 		s.syncAgentToolsFor(slot, surface)
 		s.syncThreadToolsFor(slot, surface)
+		s.syncAppsToolsFor(slot, surface)
 		s.syncMemoryToolsFor(slot, surface)
 		s.syncBrowserToolsFor(slot, surface)
+		s.syncVaultToolsFor(slot, surface)
 		s.syncComputerToolsFor(slot, surface)
 		s.mu.Unlock()
 	})
@@ -235,6 +272,7 @@ func (s *Service) server(surface toolSurface) *mcp.Server {
 func (s *Service) slots() []surfaceSlot {
 	return []surfaceSlot{
 		{surface: threadSurface, slot: &s.thread},
+		{surface: cloudThreadSurface, slot: &s.cloudThread},
 		{surface: widgetSurface, slot: &s.widget},
 		{surface: botSurface, slot: &s.bot},
 		{surface: searchWorkerSurface, slot: &s.search},
@@ -246,6 +284,8 @@ func (s *Service) slots() []surfaceSlot {
 
 func (s *Service) slot(surface toolSurface) *serverSlot {
 	switch surface {
+	case cloudThreadSurface:
+		return &s.cloudThread
 	case searchWorkerSurface:
 		return &s.search
 	case sourceWorkerSurface:
@@ -273,34 +313,41 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 		return server
 	}
 	s.titleTools.AddTo(server)
-	s.loopTools.AddTo(server)
-	if s.botTools != nil {
-		s.botTools.AddTo(server)
-		if surface == botSurface {
-			s.botTools.AddBotTo(server)
+	if surface != cloudThreadSurface {
+		s.loopTools.AddTo(server)
+		if s.botTools != nil {
+			s.botTools.AddTo(server)
+			if surface == botSurface {
+				s.botTools.AddBotTo(server)
+			}
 		}
 	}
-	if (surface == threadSurface || surface == botSurface || surface == canvasSurface) && s.goalTools != nil {
+	if (surface == threadSurface || surface == cloudThreadSurface || surface == botSurface || surface == canvasSurface) && s.goalTools != nil {
 		s.goalTools.AddTo(server)
 	}
-	s.calendarTools.AddTo(server)
-	s.gmailTools.AddTo(server)
-	s.whatsAppTools.AddTo(server)
-	s.telegramTools.AddTo(server)
-	plugins.AddSearchTools(server, s.pluginStore, s.connections)
+	if surface != cloudThreadSurface {
+		s.calendarTools.AddTo(server)
+		s.gmailTools.AddTo(server)
+		s.whatsAppTools.AddTo(server)
+		s.telegramTools.AddTo(server)
+		plugins.AddSearchTools(server, s.pluginStore, s.connections)
+	}
 	switch surface {
 	case widgetSurface:
-		s.visualizeTools.AddReadMeTo(server)
-		widgets.AddMCPTools(server, s.widgetPublisher)
+		s.visualizeTools.AddGuideTo(server)
+		boards.AddMCPTools(server, s.boardPublisher)
 	case canvasSurface:
 		// A canvas thread's visuals belong on its board, not in the narrow chat
 		// beside it.
 		s.visualizeTools.AddCanvasTo(server)
 	default:
-		s.visualizeTools.AddReadMeTo(server)
-		s.visualizeTools.AddShowWidgetTo(server)
+		s.visualizeTools.AddGuideTo(server)
+		s.visualizeTools.AddShowArtifactTo(server)
 		s.visualizeTools.AddCanvasTo(server)
-		s.pluginTools.AddTo(server)
+		s.mapTools.AddTo(server)
+		if surface != cloudThreadSurface {
+			s.pluginTools.AddTo(server)
+		}
 	}
 	return server
 }
@@ -310,8 +357,10 @@ func (s *Service) Sync() {
 	defer s.mu.Unlock()
 	s.syncThreadTools()
 	s.syncAgentTools()
+	s.syncAppsTools()
 	s.syncMemoryTools()
 	s.syncBrowserTools()
+	s.syncVaultTools()
 	for _, current := range s.slots() {
 		s.syncComputerToolsFor(current.slot, current.surface)
 	}
@@ -357,6 +406,9 @@ func (s *Service) surface(r *http.Request) toolSurface {
 		if session.SourceType == storage.SourceLoopRun && session.ParentID != "" && !s.widgetSession(r) {
 			return botSurface
 		}
+		if session.WorkspaceID != "" && session.WorkspaceID != storage.LocalWorkspaceID {
+			return cloudThreadSurface
+		}
 	}
 	if s.widgetSession(r) {
 		return widgetSurface
@@ -378,8 +430,8 @@ var surfaceBySourceType = map[string]toolSurface{
 func (s *Service) widgetSession(r *http.Request) bool {
 	session, ok := s.sessionFromRequest(r)
 	return ok &&
-		s.widgetPublisher != nil &&
-		s.widgetPublisher.WidgetSurfaceForSession(session.ID)
+		s.boardPublisher != nil &&
+		s.boardPublisher.WidgetSurfaceForSession(session.ID)
 }
 
 func (s *Service) sessionFromRequest(r *http.Request) (storage.Session, bool) {
@@ -412,10 +464,30 @@ func (s *Service) syncBrowserTools() {
 	}
 }
 
+func (s *Service) syncVaultTools() {
+	for _, current := range s.slots() {
+		s.syncVaultToolsFor(current.slot, current.surface)
+	}
+}
+
 func (s *Service) syncThreadTools() {
 	s.syncThreadToolsFor(&s.thread, threadSurface)
+	s.syncThreadToolsFor(&s.cloudThread, cloudThreadSurface)
 	s.syncThreadToolsFor(&s.widget, widgetSurface)
 	s.syncThreadToolsFor(&s.canvas, canvasSurface)
+}
+
+func (s *Service) syncAppsTools() {
+	s.syncAppsToolsFor(&s.thread, threadSurface)
+	s.syncAppsToolsFor(&s.bot, botSurface)
+}
+
+func (s *Service) syncAppsToolsFor(slot *serverSlot, surface toolSurface) {
+	if (surface != threadSurface && surface != botSurface) || slot.server == nil || slot.appsTools || s.appsService == nil {
+		return
+	}
+	apps.AddMCPTools(slot.server, s.appsService, s.sessions)
+	slot.appsTools = true
 }
 
 func (s *Service) syncAgentToolsFor(slot *serverSlot, surface toolSurface) {
@@ -465,6 +537,16 @@ func (s *Service) syncBrowserToolsFor(slot *serverSlot, surface toolSurface) {
 	if slot.browserTools {
 		browsercontrol.RemoveMCPTools(slot.server)
 		slot.browserTools = false
+	}
+}
+
+func (s *Service) syncVaultToolsFor(slot *serverSlot, surface toolSurface) {
+	if surface.workerOnly() || slot.server == nil || s.vaultService == nil {
+		return
+	}
+	if !slot.vaultTools {
+		vault.AddMCPTools(slot.server, s.vaultService, s.vaultBrowser, s.vaultBroker)
+		slot.vaultTools = true
 	}
 }
 

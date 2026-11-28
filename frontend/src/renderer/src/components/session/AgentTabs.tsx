@@ -1,6 +1,8 @@
+import { Cloud, Laptop } from 'lucide-react'
 import { useState, type WheelEvent } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { agentLabel } from '@/lib/agentLabel'
+import type { PickerAgentOption } from '@/lib/modelPicker'
 import { createSwipe } from '@/lib/swipe'
 
 const TAB = 28
@@ -10,6 +12,7 @@ const NAMED = 96
 export interface AgentChoice {
   value: string
   options: string[]
+  items?: PickerAgentOption[]
   onChange: (agent: string) => void
 }
 
@@ -18,6 +21,9 @@ export function agentTabsWidth(count: number): number {
 }
 
 function selectTab(agent: AgentChoice, index: number, within: HTMLElement) {
+  if (!agent.options[index]) {
+    return
+  }
   agent.onChange(agent.options[index])
   within.querySelectorAll<HTMLButtonElement>('[role="tab"]')[index]?.focus()
 }
@@ -38,21 +44,21 @@ export function useAgentSwipe(agent?: AgentChoice) {
 }
 
 // One logo per agent; the selected one widens to show its name.
-export function AgentTabs({ value, options, onChange, disabled }: AgentChoice & { disabled?: boolean }) {
+export function AgentTabs({ value, options, items, onChange, disabled }: AgentChoice & { disabled?: boolean }) {
   const index = options.indexOf(value)
-  const named = `calc(100% - ${(options.length - 1) * STEP}px)`
+  const named = `max(${NAMED}px, 100% - ${(options.length - 1) * STEP}px)`
   return (
     <div
       role="tablist"
       aria-label="Agent"
-      className="relative mb-1.5 flex gap-0.5 border-b border-border pb-1.5"
+      className="relative mb-1.5 flex gap-0.5 overflow-x-auto border-b border-border pb-1.5"
       onKeyDown={(event) => {
         if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') {
           return
         }
         event.preventDefault()
         const next = (index + (event.key === 'ArrowRight' ? 1 : options.length - 1)) % options.length
-        selectTab({ value, options, onChange }, next, event.currentTarget)
+        selectTab({ value, options, items, onChange }, next, event.currentTarget)
       }}
     >
       <span
@@ -62,7 +68,10 @@ export function AgentTabs({ value, options, onChange, disabled }: AgentChoice & 
       />
       {options.map((agent, i) => {
         const on = i === index
-        const label = agentLabel(agent)
+        const item = items?.find((entry) => entry.id === agent)
+        const label = item?.label || agentLabel(agent)
+        const logoId = item?.logoAgent || agent
+        const SourceIcon = item?.source === 'cloud' ? Cloud : item?.source === 'local' ? Laptop : null
         return (
           <button
             key={agent}
@@ -77,8 +86,9 @@ export function AgentTabs({ value, options, onChange, disabled }: AgentChoice & 
             className={`group relative flex h-7 shrink-0 items-center overflow-hidden rounded-control px-[7px] text-[12px] font-medium transition-[width,color,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] active:scale-[0.92] motion-reduce:transition-none ${on ? 'text-ink' : 'text-ink-3 hover:text-ink focus-visible:text-ink'}`}
             style={{ width: on ? named : TAB }}
           >
-            <span className="grid size-3.5 shrink-0 place-items-center transition-transform duration-200 group-hover:scale-110">
-              {hasAgentLogo(agent) ? <AgentLogo agent={agent} size={14} /> : label.slice(0, 1)}
+            <span className="relative grid size-3.5 shrink-0 place-items-center transition-transform duration-200 group-hover:scale-110">
+              {hasAgentLogo(logoId) ? <AgentLogo agent={logoId} size={14} /> : label.slice(0, 1)}
+              {SourceIcon && <SourceIcon aria-hidden size={9} className="absolute -bottom-1 -right-1 bg-surface-1" />}
             </span>
             <span className={`ml-1.5 truncate transition-[opacity,translate] duration-200 motion-reduce:transition-none ${on ? 'delay-75' : '-translate-x-1 opacity-0'}`}>
               {label}

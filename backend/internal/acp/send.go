@@ -10,9 +10,10 @@ import (
 	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/sessiongoal"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/turnrunner"
 )
 
-var ErrSteeringUnsupported = errors.New("acp steering unsupported")
+var ErrSteeringUnsupported = fmt.Errorf("acp %w", turnrunner.ErrSteeringUnsupported)
 
 var errTurnEnded = fmt.Errorf("%w: agent turn ended before steering", ErrSteeringUnsupported)
 
@@ -30,6 +31,12 @@ type turnInProgressError struct {
 
 func (e *turnInProgressError) Error() string {
 	return "session is already running"
+}
+
+type retryTurnSession string
+
+func (retryTurnSession) Error() string {
+	return "the agent lost its ACP session while preparing the turn"
 }
 
 // sendConflict refuses a turn while another runs or ends, and while a new
@@ -119,11 +126,21 @@ func (m *Manager) Compact(ctx context.Context, req CompactRequest) (Job, error) 
 }
 
 func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (Job, error) {
-	for {
+	for retriedSession := false; ; {
 		if err := ctx.Err(); err != nil {
 			return Job{}, err
 		}
 		job, err := m.sendOnce(ctx, req, opts)
+		if ref, replaced := errors.AsType[retryTurnSession](err); replaced || isMissingACPSession(err) {
+			if retriedSession {
+				return Job{}, retryTurnSession(req.Session)
+			}
+			if replaced {
+				req.Session = string(ref)
+			}
+			retriedSession = true
+			continue
+		}
 		var active *turnInProgressError
 		if !errors.As(err, &active) || !active.finishing {
 			return job, err
@@ -172,11 +189,14 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		}
 		defer job.release()
 	}
+	job.sendMu.Lock()
+	defer job.sendMu.Unlock()
+	if local == nil && m.sessionPeer(job) == nil {
+		return Job{}, retryTurnSession(job.ID)
+	}
 	if opts.requireCompactSupport && !m.supportsSessionCommand(job, "compact") {
 		return Job{}, fmt.Errorf("compact is not available for acp agent %q", job.ACPAgent)
 	}
-	job.sendMu.Lock()
-	defer job.sendMu.Unlock()
 	if err := job.sendConflict(opts.claimed); err != nil {
 		return Job{}, fmt.Errorf("%s: %w", job.Slug, err)
 	}
@@ -189,10 +209,17 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 			return Job{}, sessiongoal.ErrNoActiveGoal
 		}
 	}
-	if err := m.refreshMCPBeforeTurn(ctx, job); err != nil {
-		return Job{}, err
+	err = m.refreshMCPBeforeTurn(ctx, job)
+	if err == nil {
+		err = m.prepareModeForTurn(ctx, job, req.PlanRequested)
 	}
-	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
+	if isMissingACPSession(err) {
+		job.mu.Lock()
+		job.retired = true
+		job.mu.Unlock()
+		return Job{}, retryTurnSession(job.ID)
+	}
+	if err != nil {
 		return Job{}, err
 	}
 	release, err := m.admit()

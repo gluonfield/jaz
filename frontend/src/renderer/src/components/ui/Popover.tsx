@@ -60,7 +60,7 @@ export function Popover({
   })
 
   useLayoutEffect(() => {
-    if (open && menuRef.current) setMenuWidth(layoutRect(menuRef.current).width)
+    if (open && menuRef.current) setMenuWidth(menuRef.current.offsetWidth)
   }, [open, rect, children])
 
   useEffect(() => {
@@ -74,7 +74,8 @@ export function Popover({
     })
   }, [followAnchor, onClose, open, updateRect])
 
-  const slide = reducedMotion ? 0 : placement === 'above' ? 6 : -6
+  const slide = reducedMotion ? 0 : placement === 'above' ? 4 : -4
+  const scale = reducedMotion ? 1 : 0.97
   let style: CSSProperties = {}
   if (rect) {
     const vp = layoutViewport()
@@ -82,6 +83,7 @@ export function Popover({
     style = {
       position: 'fixed',
       zIndex: 'calc(var(--z-modal) + 1)',
+      transformOrigin: `${placement === 'below' ? 'top' : 'bottom'} ${align === 'end' ? 'right' : 'left'}`,
       ...(placement === 'below' ? { top: rect.bottom + GAP } : { bottom: vp.height - rect.top + GAP }),
       left: Math.max(8, Math.min(left, vp.width - menuWidth - 8)),
     }
@@ -97,10 +99,10 @@ export function Popover({
               <motion.div
                 ref={menuRef}
                 data-escape-surface=""
-                initial={{ opacity: 0, y: slide }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: slide }}
-                transition={{ duration: 0.15, ease: 'easeOut' }}
+                initial={{ opacity: 0, y: slide, scale }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: slide, scale }}
+                transition={{ duration: 0.14, ease: [0.23, 1, 0.32, 1] }}
                 style={style}
                 className={menuPanelClass}
               >
@@ -189,16 +191,19 @@ export function MenuRow({
   active,
   disabled,
   trailing,
+  large = false,
   onClick,
   children,
 }: {
   autoFocus?: boolean
-  role?: 'menuitem'
+  role?: 'menuitem' | 'menuitemradio'
   selected?: boolean
   // The row the keyboard is on, in a menu driven from somewhere else.
   active?: boolean
   disabled?: boolean
   trailing?: ReactNode
+  // A taller row for menus whose rows lead with a mark, such as workspaces.
+  large?: boolean
   onClick: () => void
   children: ReactNode
 }) {
@@ -207,15 +212,16 @@ export function MenuRow({
       type="button"
       autoFocus={autoFocus}
       role={role}
+      aria-checked={role === 'menuitemradio' ? Boolean(selected) : undefined}
       disabled={disabled}
       onClick={onClick}
-      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
+      className={`flex w-full cursor-pointer items-center gap-2 text-left transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
         selected ? 'text-ink' : 'text-ink-2'
-      } ${active ? 'bg-surface-2' : ''}`}
+      } ${active ? 'bg-surface-2' : ''} ${large ? 'h-10 rounded-[10px] px-2 text-[14px]' : 'h-7 rounded-full px-2.5 text-[13px]'}`}
     >
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {trailing}
-      {selected ? <Check size={13} className="shrink-0 text-primary" /> : null}
+      {selected ? <Check size={large ? 15 : 13} className="shrink-0 text-primary" /> : null}
     </button>
   )
 }

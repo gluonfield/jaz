@@ -367,3 +367,65 @@ func TestElicitationQuestionsReadCodexUserInputForm(t *testing.T) {
 		t.Fatalf("elicitation response = %s", raw)
 	}
 }
+
+func TestElicitationQuestionsPairCompanionOtherFields(t *testing.T) {
+	const message = "Please answer the following questions."
+	var schema acpschema.ElicitationSchema
+	if err := json.Unmarshal([]byte(`{"type":"object","properties":{
+		"q1":{"type":"string","title":"Where did the bug happen?",
+			"oneOf":[{"const":"1","title":"1 — Browser"},{"const":"2","title":"2 — Desktop"}]},
+		"q1_other":{"type":"string","title":"Other","description":"Optional free-form answer to: Where did the bug happen?"},
+		"q2":{"type":"array","title":"Which conditions applied?",
+			"items":{"type":"string","anyOf":[{"const":"1","title":"1 — Normal chat"},{"const":"2","title":"2 — Side panel"}]}},
+		"q2_other":{"type":"string","title":"Other","description":"Optional free-form answer to: Which conditions applied?"}
+	}}`), &schema); err != nil {
+		t.Fatal(err)
+	}
+
+	questions, fields := elicitationQuestions(message, &schema)
+	if len(questions) != 2 {
+		t.Fatalf("questions = %#v", questions)
+	}
+	if questions[0].ID != "q1" || questions[0].Question != "Where did the bug happen?" || !questions[0].IsOther || questions[0].MultiSelect || len(questions[0].Options) != 2 {
+		t.Fatalf("q1 = %#v", questions[0])
+	}
+	if questions[1].ID != "q2" || questions[1].Question != "Which conditions applied?" || !questions[1].IsOther || !questions[1].MultiSelect || len(questions[1].Options) != 2 {
+		t.Fatalf("q2 = %#v", questions[1])
+	}
+
+	// Single-question form with companion _other must keep the question title rather than the generic banner message.
+	single := acpschema.ElicitationSchema{Properties: map[string]acpschema.ElicitationPropertySchema{
+		"q1":       schema.Properties["q1"],
+		"q1_other": schema.Properties["q1_other"],
+	}}
+	singleQuestions, _ := elicitationQuestions(message, &single)
+	if len(singleQuestions) != 1 || singleQuestions[0].Question != "Where did the bug happen?" || !singleQuestions[0].IsOther {
+		t.Fatalf("single question = %#v", singleQuestions)
+	}
+
+	// Standalone _other field without a choice parent stays a normal question.
+	standalone := acpschema.ElicitationSchema{Properties: map[string]acpschema.ElicitationPropertySchema{
+		"notes_other": {Type: "string", Title: "Extra notes"},
+	}}
+	if got, _ := elicitationQuestions("", &standalone); len(got) != 1 || got[0].ID != "notes_other" || !got[0].IsOther {
+		t.Fatalf("standalone _other = %#v", got)
+	}
+
+	raw, err := encodeElicitationResponse(fields, map[string]InteractiveAnswerValue{
+		"q1": {Answers: []string{"Custom environment"}},
+		"q2": {Answers: []string{"1", "With mention"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got acpschema.CreateElicitationResponse
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatal(err)
+	}
+	if string(got.Content["q1_other"]) != `"Custom environment"` ||
+		string(got.Content["q1"]) != "" ||
+		string(got.Content["q2"]) != `["1"]` ||
+		string(got.Content["q2_other"]) != `"With mention"` {
+		t.Fatalf("elicitation response = %s", raw)
+	}
+}

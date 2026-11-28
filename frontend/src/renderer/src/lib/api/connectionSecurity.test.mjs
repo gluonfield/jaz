@@ -12,7 +12,7 @@ const bundle = await build({
       builder.onResolve({ filter: /^connection-security-fixture$/ }, () => ({ path: 'fixture', namespace: 'security' }))
       builder.onResolve({ filter: /^\//, namespace: 'security' }, (args) => ({ path: args.path, namespace: 'file' }))
       builder.onLoad({ filter: /.*/, namespace: 'security' }, () => ({
-        contents: `export * from ${JSON.stringify(new URL('./client.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./eventStream.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./devices.ts', import.meta.url).pathname)}`,
+        contents: `export * from ${JSON.stringify(new URL('./client.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./eventStream.ts', import.meta.url).pathname)}`,
         loader: 'ts',
       }))
     },
@@ -65,11 +65,11 @@ function fixture(base = 'https://jaz.example', jaz) {
   evaluate(module, module.exports)
   const api = module.exports
   api.setApiBaseUrl(base)
-  api.setApiAuthToken(base, 'device-credential')
+  api.setApiAuthToken(base, 'bearer-credential')
   return { api, sockets }
 }
 
-test('browser transports keep device credentials in headers and bound URLs to read tickets', async () => {
+test('browser transports keep credentials in headers and bound URLs to read tickets', async () => {
   const { api, sockets } = fixture()
   let request
   replace('fetch', async (url, init) => {
@@ -77,44 +77,15 @@ test('browser transports keep device credentials in headers and bound URLs to re
     return Response.json({ ok: true })
   })
   await api.apiFetch('/v1/auth/check')
-  expect(request.init.headers.get('Authorization')).toBe('Bearer device-credential')
+  expect(request.init.headers.get('Authorization')).toBe('Bearer bearer-credential')
   api.setResourceTicket(api.apiBaseUrl(), { token: 'read-ticket', expires_at: new Date(Date.now() + 60_000).toISOString() })
   const embedded = new URL(api.apiEmbeddedGetUrl('/v1/sessions/thread/file?raw=1'))
   expect(embedded.searchParams.get('ticket')).toBe('read-ticket')
-  expect(embedded.toString()).not.toContain('device-credential')
+  expect(embedded.toString()).not.toContain('bearer-credential')
   api.apiWebSocket('/v1/sessions/thread/terminal')
-  expect(sockets).toEqual([{ url: 'wss://jaz.example/v1/sessions/thread/terminal', protocols: ['jaz', 'jaz-auth.device-credential'] }])
+  expect(sockets).toEqual([{ url: 'wss://jaz.example/v1/sessions/thread/terminal', protocols: ['jaz', 'jaz-auth.bearer-credential'] }])
   api.setApiAuthToken(api.apiBaseUrl(), null)
   expect(api.apiEmbeddedGetUrl('/v1/sessions/thread/file?raw=1')).not.toContain('ticket=')
-})
-
-test('host management credentials stay bound to the local backend during a connection change', async () => {
-  let release
-  let starts = 0
-  const local = 'http://127.0.0.1:5299'
-  const bridge = new Promise((resolve) => {
-    release = resolve
-  })
-  const { api } = fixture(local, { apiBaseUrl: local, startLocalBackend: () => {
-    starts += 1
-    return bridge
-  } })
-  const requests = []
-  replace('fetch', async (url, init) => {
-    requests.push({ url, authorization: init.headers.get('Authorization') })
-    return Response.json({ devices: [], pairings: [], can_manage: false })
-  })
-  const pending = api.devicesQuery.queryFn()
-  api.setApiBaseUrl('https://remote.example')
-  api.setApiAuthToken('https://remote.example', 'remote-device')
-  release({ ok: true, url: local, key: 'host-credential' })
-  await pending
-  await api.devicesQuery.queryFn()
-  expect(starts).toBe(1)
-  expect(requests).toEqual([
-    { url: `${local}/v1/devices`, authorization: 'Bearer host-credential' },
-    { url: 'https://remote.example/v1/devices', authorization: 'Bearer remote-device' },
-  ])
 })
 
 test('HTTP remote addresses fail before any credential-bearing network call', () => {
@@ -143,7 +114,7 @@ test('event reconnection renews the read ticket and resumes from the last delive
   })
   replace('clearTimeout', () => {})
   replace('fetch', async (_url, init) => {
-    expect(init.headers.get('Authorization')).toBe('Bearer device-credential')
+    expect(init.headers.get('Authorization')).toBe('Bearer bearer-credential')
     requests += 1
     return Response.json({ resource_ticket: { token: `ticket-${requests}`, expires_at: new Date(Date.now() + 60_000).toISOString() } })
   })
@@ -219,4 +190,66 @@ test('write acknowledgements keep their null-body status when Chromium exposes a
   const { api } = fixture()
   replace('fetch', async () => Object.defineProperty(new Response(null, { status: 204 }), 'body', { value: new ReadableStream() }))
   expect(await api.post('/v1/sessions/thread/voice/transcript', [])).toBeUndefined()
+})
+
+test('assertBackendRelativePath and apiFetch reject protocol-relative and backslash paths before attaching Authorization', () => {
+  const { api } = fixture()
+  let hits = 0
+  replace('fetch', async () => {
+    hits += 1
+    return Response.json({ ok: true })
+  })
+  for (const badPath of ['//evil.example/v1/steal', '/\\evil.example/v1/steal', 'https://evil.example/v1/steal', '/v1/a\\b']) {
+    expect(() => api.apiFetch(badPath)).toThrow('backend-relative')
+    expect(() => api.apiUrl(badPath)).toThrow('backend-relative')
+    expect(() => api.apiEmbeddedGetUrl(badPath)).toThrow('backend-relative')
+  }
+  expect(hits).toBe(0)
+})
+
+test('parseBackendConnectUrl reads credentials only from fragment and ignores query params', () => {
+  const { api } = fixture()
+  expect(api.parseBackendConnectUrl('https://jaz.example/?token=leaked-query&key=leaked-key')).toEqual({
+    url: 'https://jaz.example',
+    key: '',
+  })
+  expect(api.parseBackendConnectUrl('https://jaz.example/#key=frag-secret')).toEqual({
+    url: 'https://jaz.example',
+    key: 'frag-secret',
+  })
+})
+
+test('cookie-authenticated Cloud Web sessions attach credentials: include without overriding explicit omit', async () => {
+  const origin = 'https://cloud-staging.example.com'
+  const { api } = fixture(origin)
+  api.setApiServerMode('cloud')
+  api.setApiAuthToken(origin, null)
+  const calls = []
+  let rejections = 0
+  const unsub = api.onApiAuthRejected(() => {
+    rejections += 1
+  })
+  replace('fetch', async (url, init) => {
+    calls.push({
+      url: String(url),
+      credentials: init.credentials,
+      auth: init.headers.get('Authorization'),
+    })
+    if (String(url).endsWith('/v1/expired')) {
+      return Response.json({ error: 'invalid session token', code: 'unauthorized' }, { status: 401 })
+    }
+    return Response.json({ ok: true })
+  })
+
+  await api.apiFetch('/v1/threads')
+  await api.apiFetch('/v1/public', { credentials: 'omit' })
+  await api.apiFetch('/v1/expired')
+  unsub()
+
+  expect(calls).toEqual([
+    { url: `${origin}/v1/threads`, credentials: 'include', auth: null },
+    { url: `${origin}/v1/public`, credentials: 'omit', auth: null },
+    { url: `${origin}/v1/expired`, credentials: 'include', auth: null },
+  ])
+  expect(rejections).toBe(1)
 })

@@ -138,23 +138,12 @@ func progress(session storage.Session, event sessionevents.Event) (contentState,
 }
 
 func (s *Service) deliver(ctx context.Context, session storage.Session, state contentState, relevant bool, alert *Alert) error {
-	devices, err := s.store.ListDevices()
-	if err != nil {
-		return err
-	}
-	approved := make(map[string]bool, len(devices))
-	for _, device := range devices {
-		approved[device.ID] = device.Status == storage.DeviceStatusApproved
-	}
 	registrations, err := s.store.ListSettings(namespace)
 	if err != nil {
 		return err
 	}
 	var failures []error
 	for _, setting := range registrations {
-		if !approved[setting.Key] {
-			continue
-		}
 		var device deviceRegistration
 		if err := json.Unmarshal(setting.Value, &device); err != nil {
 			failures = append(failures, err)

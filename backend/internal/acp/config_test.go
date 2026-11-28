@@ -208,7 +208,7 @@ func TestSessionMetaSendsGrokModelWithRules(t *testing.T) {
 
 func TestSessionPromptMetaSendsGrokExtensionsAsRules(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("jaz platform prompt")}}
-	got, err := manager.sessionPromptMeta(context.Background(), AgentGrok, "", "widget", "", []string{"Scheduled Jaz loop run.\n\n## Board Widget Runtime\n\nPublish with visualise_publish_widget."})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentGrok, "", "widget", "", []string{"Scheduled Jaz loop run.\n\n## Board App Runtime\n\nPublish with publish_app."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestSessionPromptMetaSendsGrokExtensionsAsRules(t *testing.T) {
 	if !ok {
 		t.Fatalf("grok rules missing: %#v", got)
 	}
-	for _, want := range []string{"jaz platform prompt", "Scheduled Jaz loop run.", "## Board Widget Runtime", "visualise_publish_widget"} {
+	for _, want := range []string{"jaz platform prompt", "Scheduled Jaz loop run.", "## Board App Runtime", "publish_app"} {
 		if !strings.Contains(rules, want) {
 			t.Fatalf("grok rules missing %q:\n%s", want, rules)
 		}
@@ -1101,7 +1101,7 @@ func TestProbeReadinessRequiresGrokAuth(t *testing.T) {
 
 func TestAutoAuthMethodSelectsConfiguredEnvVarForGenericAgent(t *testing.T) {
 	raw := []byte(`{"authMethods": [{"type": "env_var", "id": "openai-api-key", "vars": [{"name": "OPENAI_API_KEY"}]}]}`)
-	method, missing := autoAuthMethod("fake", raw, map[string]string{"OPENAI_API_KEY": "key"})
+	method, missing := autoAuthMethod("fake", raw, map[string]string{"OPENAI_API_KEY": "key"}, false)
 
 	if method != "openai-api-key" || len(missing) != 0 {
 		t.Fatalf("method=%q missing=%v", method, missing)
@@ -1110,7 +1110,7 @@ func TestAutoAuthMethodSelectsConfiguredEnvVarForGenericAgent(t *testing.T) {
 
 func TestAutoAuthMethodReportsMissingEnvVars(t *testing.T) {
 	raw := []byte(`{"authMethods": [{"type": "env_var", "id": "openrouter", "vars": [{"name": "OPENROUTER_API_KEY"}]}]}`)
-	method, missing := autoAuthMethod(AgentOpenCode, raw, nil)
+	method, missing := autoAuthMethod(AgentOpenCode, raw, nil, false)
 
 	if method != "" || strings.Join(missing, ",") != "JAZ_ACP_OPENCODE_API_KEY" {
 		t.Fatalf("method=%q missing=%v", method, missing)
@@ -1119,7 +1119,7 @@ func TestAutoAuthMethodReportsMissingEnvVars(t *testing.T) {
 
 func TestAutoAuthMethodPrefersGrokAPIKeyWhenAdvertised(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{"XAI_API_KEY": "key"})
+	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{"XAI_API_KEY": "key"}, false)
 
 	if method != "xai.api_key" || len(missing) != 0 {
 		t.Fatalf("method=%q missing=%v", method, missing)
@@ -1137,7 +1137,7 @@ func TestAutoAuthMethodPrefersGrokCachedTokenOverAPIKey(t *testing.T) {
 	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{
 		"HOME":        home,
 		"XAI_API_KEY": "key",
-	})
+	}, false)
 
 	if method != "cached_token" || len(missing) != 0 {
 		t.Fatalf("method=%q missing=%v", method, missing)
@@ -1146,7 +1146,7 @@ func TestAutoAuthMethodPrefersGrokCachedTokenOverAPIKey(t *testing.T) {
 	method, missing = autoAuthMethod("grok", grokInitializeEnvAuthMethods(), map[string]string{
 		"HOME":        home,
 		"XAI_API_KEY": "key",
-	})
+	}, false)
 	if method != "cached_token" || len(missing) != 0 {
 		t.Fatalf("env auth method=%q missing=%v", method, missing)
 	}
@@ -1161,7 +1161,7 @@ func TestAutoAuthMethodUsesGrokCachedToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{"HOME": home})
+	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{"HOME": home}, false)
 
 	if method != "cached_token" || len(missing) != 0 {
 		t.Fatalf("method=%q missing=%v", method, missing)
@@ -1170,7 +1170,7 @@ func TestAutoAuthMethodUsesGrokCachedToken(t *testing.T) {
 
 func TestAutoAuthMethodReportsMissingGrokAuth(t *testing.T) {
 	home := t.TempDir()
-	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{"HOME": home})
+	method, missing := autoAuthMethod("grok", grokInitializeAuthMethods(), map[string]string{"HOME": home}, false)
 
 	if method != "" || strings.Join(missing, ",") != "Grok login at "+filepath.Join(home, ".grok", "auth.json")+" or JAZ_ACP_GROK_API_KEY" {
 		t.Fatalf("method=%q missing=%v", method, missing)
@@ -1182,7 +1182,7 @@ func TestAutoAuthMethodLeavesCodexLoginToTheAdapter(t *testing.T) {
 	writeCodexOAuth(t, signedIn)
 	raw := []byte(`{"authMethods": [{"id": "api-key"}, {"id": "chat-gpt"}]}`)
 	for _, codexHome := range []string{signedIn, t.TempDir()} {
-		method, missing := autoAuthMethod(AgentCodex, raw, map[string]string{"CODEX_HOME": codexHome})
+		method, missing := autoAuthMethod(AgentCodex, raw, map[string]string{"CODEX_HOME": codexHome}, false)
 		if method != "" || len(missing) != 0 {
 			t.Fatalf("method=%q missing=%v", method, missing)
 		}
@@ -1196,7 +1196,7 @@ func TestAutoAuthMethodSupportsOfficialCodexAuthIDs(t *testing.T) {
 			{"id": "chat-gpt", "name": "Login with ChatGPT"}
 		]
 	}`)
-	method, missing := autoAuthMethod(AgentCodex, raw, map[string]string{"CODEX_API_KEY": "key"})
+	method, missing := autoAuthMethod(AgentCodex, raw, map[string]string{"CODEX_API_KEY": "key"}, false)
 	if method != "api-key" || len(missing) != 0 {
 		t.Fatalf("method=%q missing=%v", method, missing)
 	}

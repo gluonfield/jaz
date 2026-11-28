@@ -7,10 +7,12 @@ import { BoardsStep, PromptStep, ScheduleStep } from '@/components/loops/LoopFor
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { boardsQuery } from '@/lib/api/boards'
+import { useCloudModelProfilesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import { createLoop, runLoopNow, updateLoop } from '@/lib/api/loops'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import type { Loop } from '@/lib/api/types'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import {
   type LoopDraft,
@@ -25,7 +27,7 @@ import {
 const STEPS = [
   { label: 'Prompt', description: 'What should this loop do on each run?' },
   { label: 'Schedule', description: 'How often should it run?' },
-  { label: 'Boards', description: 'Show its latest run as a live widget on your boards.' },
+  { label: 'Boards', description: 'Show its latest run as a live app on your boards.' },
 ]
 const LAST_STEP = STEPS.length - 1
 
@@ -51,7 +53,11 @@ export function LoopModal({
   const isEdit = !!loop
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const settingsQuery = useQuery(agentSettingsQuery)
+  const cloud = useCloudSession()
+  const cloudOnly = useIsCloudOnly()
+  const usingCloudProfiles = cloudOnly || cloud.active
+  const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles })
+  const cloudProfilesQuery = useQuery({ ...useCloudModelProfilesQuery(), enabled: usingCloudProfiles && cloud.active })
   const boards = useQuery({ ...boardsQuery, enabled: open && !isEdit })
   const [draft, setDraft] = useState<LoopDraft | null>(null)
   const [step, setStep] = useState(0)
@@ -61,14 +67,18 @@ export function LoopModal({
   const set = (patch: Partial<LoopDraft>) => setDraft({ ...current, ...patch })
 
   const save = useMutation<Loop, Error, { run: boolean }>({
-    mutationFn: ({ run: _run }: { run: boolean }) =>
-      isEdit
-        ? updateLoop(loop.id, loopDraftToInput(current, settingsQuery.data))
-        : createLoop(loopDraftToInput(current, settingsQuery.data), { runAfterCreate: _run }),
+    mutationFn: ({ run: _run }: { run: boolean }) => {
+      const input = loopDraftToInput(
+        current,
+        settingsQuery.data,
+        usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : undefined,
+      )
+      return isEdit ? updateLoop(loop.id, input) : createLoop(input, { runAfterCreate: _run })
+    },
     onSuccess: (saved, { run }) => {
       if (!isEdit && run) void runLoopNow(saved.id).catch(() => {})
       queryClient.invalidateQueries({ queryKey: keys.loops })
-      queryClient.invalidateQueries({ queryKey: keys.boards })
+      queryClient.invalidateQueries({ queryKey: keys.appBoards })
       if (isEdit) queryClient.invalidateQueries({ queryKey: keys.loopDetail(loop.id) })
       close()
       if (!isEdit) {

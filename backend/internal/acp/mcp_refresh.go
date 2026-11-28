@@ -18,6 +18,8 @@ const grokMCPUpdateMethod = "_x.ai/session/update_mcp_servers"
 
 type MCPRevisionSource interface {
 	Revision() uint64
+	// ListedRevision reports no revision for a session whose MCP client never read the catalog.
+	ListedRevision(session string) (uint64, bool)
 }
 
 func (m *Manager) SetMCPRevisionSource(source MCPRevisionSource) {
@@ -26,10 +28,14 @@ func (m *Manager) SetMCPRevisionSource(source MCPRevisionSource) {
 	m.mcpRevisionSource = source
 }
 
-func (m *Manager) mcpRevision() uint64 {
+func (m *Manager) mcpSource() MCPRevisionSource {
 	m.mu.RLock()
-	source := m.mcpRevisionSource
-	m.mu.RUnlock()
+	defer m.mu.RUnlock()
+	return m.mcpRevisionSource
+}
+
+func (m *Manager) mcpRevision() uint64 {
+	source := m.mcpSource()
 	if source == nil {
 		return 0
 	}
@@ -58,10 +64,16 @@ func supportedMCPRefresh(raw json.RawMessage, policy string) string {
 	return ""
 }
 
-// Codex keeps a loaded thread's tool catalog through reloads and tool-list
-// notifications, so only a relaunch that resumes the thread reads the new one.
-func (m *Manager) retireStaleCodexCatalog(job *jobState, process *agentProcess) {
-	if job.ACPAgent != AgentCodex || process.mcpRefresh != "" || !fullMCPPolicy(process.mcpPolicy) || process.mcpRevision == m.mcpRevision() {
+// An agent has the changed catalog only once its MCP client rereads it. Codex
+// never does and other clients can miss tools/list_changed, so a relaunch that
+// resumes the thread reads it instead. An agent that never read the catalog
+// does not use it.
+func (m *Manager) retireStaleCatalog(job *jobState, process *agentProcess) {
+	source := m.mcpSource()
+	if source == nil || process.mcpRefresh != "" || process.mcpRevision == source.Revision() {
+		return
+	}
+	if listed, ok := source.ListedRevision(job.ID); !ok || listed == source.Revision() {
 		return
 	}
 	if !m.subagentsRunning(job) && !m.hasLivePermissionWaiter(job.ID) {
@@ -109,7 +121,7 @@ func (m *Manager) refreshMCPBeforeTurn(ctx context.Context, job *jobState) error
 }
 
 func (m *Manager) grokMCPServers(ctx context.Context, job *jobState, policy string, revision uint64) ([]json.RawMessage, error) {
-	servers, err := enabledHTTPMCPServers(mcpsession.With(ctx, job.ID), m.cfg.MCPStore, policy)
+	servers, err := enabledHTTPMCPServers(mcpsession.With(ctx, job.ID), m.cfg.MCPServers, policy)
 	if err != nil {
 		return nil, err
 	}

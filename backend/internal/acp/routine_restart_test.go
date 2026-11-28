@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -56,8 +57,9 @@ func startJazAgent(t *testing.T, ctx context.Context, store *sqlitestore.Store, 
 	env["JAZ_FAKE_ACP_REQUEST_LOG"] = filepath.Join(root, "requests.jsonl")
 	env["JAZ_FAKE_ACP_TURN_LOG"] = filepath.Join(root, "turns.log")
 	// Turns open with the note Jaz gives bots, as in production.
+	inst := instructions.NewLocalFSStore(root, instructions.WithBotHomeResolver(bots.HomeResolver(store)))
 	manager := newFakeNamedAgentManagerWithOptions(t, store, root, agent, env, "", "", func(cfg *acp.Config) {
-		cfg.TurnNote = bots.TurnNote(store)
+		cfg.TurnNote = bots.TurnNote(store, inst)
 		cfg.SteerNote = bots.SteerNote(store)
 	})
 	t.Cleanup(manager.Close)
@@ -68,7 +70,7 @@ func startJazAgent(t *testing.T, ctx context.Context, store *sqlitestore.Store, 
 	runner := server.NewLoopRunner(handler)
 	service := loops.NewService(store, runner, log.New(io.Discard), loops.WithPromptExtras(bots.RoutineInstructions(store)), loops.WithModelCheck(runner.CheckModel))
 	handler.Loops = service
-	botService := bots.NewService(store, root, manager, handler, handler, service, events, log.New(io.Discard))
+	botService := bots.NewService(store, root, inst, manager, handler, handler, service, events, log.New(io.Discard))
 	finishing := &atomic.Int64{}
 	manager.TurnEnding = botService.TurnEnding
 	manager.TurnFinished = func(ctx context.Context, job acp.Job) {

@@ -11,6 +11,7 @@ const (
 	PresentationArtifact   PresentationKind = "artifact"
 	PresentationPluginView PresentationKind = "plugin-view"
 	PresentationCanvas     PresentationKind = "canvas"
+	PresentationMap        PresentationKind = "map"
 )
 
 type PresentationEvent struct {
@@ -19,6 +20,27 @@ type PresentationEvent struct {
 	Presented bool           `json:"presented,omitempty"`
 	Artifact  *ArtifactEvent `json:"artifact,omitempty"`
 	View      *PluginView    `json:"view,omitempty"`
+	Map       *PlaceMap      `json:"map,omitempty"`
+}
+
+// PlaceMap is a set of places drawn on an inline map. Every place has
+// coordinates; the tool that presents it resolves the ones given only by address.
+type PlaceMap struct {
+	Title  string  `json:"title"`
+	Places []Place `json:"places"`
+}
+
+type Place struct {
+	Name      string  `json:"name"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	Address   string  `json:"address,omitempty"`
+	Category  string  `json:"category,omitempty"`
+	Note      string  `json:"note,omitempty"`
+	Rating    float64 `json:"rating,omitempty"`
+	Reviews   int     `json:"reviews,omitempty"`
+	Price     string  `json:"price,omitempty"`
+	URL       string  `json:"url,omitempty"`
 }
 
 type PluginView struct {
@@ -52,19 +74,25 @@ func (p *PresentationEvent) UnmarshalJSON(data []byte) error {
 			p.Artifact = &old.ArtifactEvent
 		}
 	}
+	// A presentation keeps only the payload its kind names.
+	artifact, view, placeMap := p.Artifact, p.View, p.Map
+	p.Artifact, p.View, p.Map = nil, nil, nil
 	switch p.Kind {
 	case PresentationCanvas:
-		p.Artifact = nil
-		p.View = nil
 		return nil
 	case PresentationArtifact:
-		if p.Artifact != nil && p.Artifact.Title != "" && p.Artifact.WidgetCode != "" {
-			p.View = nil
+		if artifact != nil && artifact.Title != "" && artifact.WidgetCode != "" {
+			p.Artifact = artifact
 			return nil
 		}
 	case PresentationPluginView:
-		if p.View != nil && p.View.Title != "" && p.View.WidgetCode != "" && p.View.File != "" {
-			p.Artifact = nil
+		if view != nil && view.Title != "" && view.WidgetCode != "" && view.File != "" {
+			p.View = view
+			return nil
+		}
+	case PresentationMap:
+		if placeMap != nil && len(placeMap.Places) > 0 {
+			p.Map = placeMap
 			return nil
 		}
 	}

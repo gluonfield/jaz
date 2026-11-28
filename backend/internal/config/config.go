@@ -71,7 +71,6 @@ func Init() error {
 	_ = viper.BindEnv("openai.apikey", "OPENAI_API_KEY")
 	_ = viper.BindEnv("openrouter.apikey", "OPENROUTER_API_KEY")
 	_ = viper.BindEnv("jaz.skills.disablesync", "JAZ_SKILLS_DISABLE_SYNC")
-	_ = viper.BindEnv("jaz.devices.disablepairing", "JAZ_DISABLE_PAIRING")
 	_ = viper.BindEnv("jaz.push.keyid", "JAZ_APNS_KEY_ID")
 	_ = viper.BindEnv("jaz.push.teamid", "JAZ_APNS_TEAM_ID")
 	_ = viper.BindEnv("jaz.push.keyfile", "JAZ_APNS_KEY_FILE")

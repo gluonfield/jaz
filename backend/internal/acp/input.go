@@ -6,26 +6,29 @@ import (
 	"fmt"
 
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/turnrunner"
 )
 
 func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
-	return m.input(ctx, req, false)
+	job, _, err := m.inputOutcome(ctx, req, false)
+	return job, err
 }
 
 func (m *Manager) SendNow(ctx context.Context, req SendRequest) (Job, error) {
-	return m.input(ctx, req, true)
+	job, _, err := m.inputOutcome(ctx, req, true)
+	return job, err
 }
 
-func (m *Manager) input(ctx context.Context, req SendRequest, interrupt bool) (Job, error) {
+func (m *Manager) inputOutcome(ctx context.Context, req SendRequest, interrupt bool) (Job, turnrunner.Disposition, error) {
 	req.Completion = CompletionAsync
 	if req.Commitment != 0 {
 		if err := m.store.LinkCommitmentThread(req.From, req.Session, req.Commitment); err != nil {
-			return Job{}, err
+			return Job{}, "", err
 		}
 	}
 	session, err := m.store.LoadSession(req.Session)
 	if err != nil {
-		return Job{}, err
+		return Job{}, "", err
 	}
 	req.Session = session.ID
 	// Card answers already hold the request lock through admission.
@@ -36,18 +39,19 @@ func (m *Manager) input(ctx context.Context, req SendRequest, interrupt bool) (J
 	if receipt.Type != "" {
 		reader, ok := m.store.(storage.MessageRecordReader)
 		if !ok {
-			return Job{}, fmt.Errorf("identified input requires durable message records")
+			return Job{}, "", fmt.Errorf("identified input requires durable message records")
 		}
 		records, err := reader.LoadMessageRecords(session.ID)
 		if err != nil {
-			return Job{}, err
+			return Job{}, "", err
 		}
 		for _, record := range records {
 			for _, block := range record.Blocks {
 				if record.Role == "user" && block.Type == receipt.Type && block.ID == receipt.ID && block.RequestID == receipt.RequestID {
 					// Persistence acknowledges admission, even when a crash left
 					// provider dispatch uncertain. A retry must not dispatch again.
-					return m.Status(session.ID)
+					status, statusErr := m.Status(session.ID)
+					return status, turnrunner.DispositionStarted, statusErr
 				}
 			}
 		}
@@ -55,17 +59,24 @@ func (m *Manager) input(ctx context.Context, req SendRequest, interrupt bool) (J
 	if m.ThreadStarted != nil {
 		m.ThreadStarted(session, req.Message)
 	}
+	interrupted := false
 	for {
 		if err := ctx.Err(); err != nil {
-			return Job{}, err
+			return Job{}, "", err
 		}
 		job, err := m.Send(ctx, req)
 		var active *turnInProgressError
 		if !errors.As(err, &active) {
-			return job, err
+			disposition := turnrunner.DispositionStarted
+			if interrupted {
+				disposition = turnrunner.DispositionInterrupted
+			}
+			return job, disposition, err
 		}
 		job, err = m.Steer(ctx, req)
 		switch {
+		case err == nil:
+			return job, turnrunner.DispositionSteered, nil
 		case errors.Is(err, errTurnEnded):
 		case errors.Is(err, errPromptPending):
 			// The message joins the turn once its next prompt reaches the
@@ -73,16 +84,17 @@ func (m *Manager) input(ctx context.Context, req SendRequest, interrupt bool) (J
 			// caller, such as a voice call, has gone by then.
 			ctx = context.WithoutCancel(ctx)
 			if err := m.waitPromptSent(ctx, req.Session); err != nil {
-				return Job{}, err
+				return Job{}, "", err
 			}
 		case interrupt && (errors.Is(err, ErrSteeringUnsupported) || errors.Is(err, errPlanChange)):
 			if active.done != nil {
 				if _, err := m.cancel(ctx, req.Session, "user_input", active.done); err != nil {
-					return Job{}, err
+					return Job{}, "", err
 				}
+				interrupted = true
 			}
 		default:
-			return job, err
+			return job, "", err
 		}
 	}
 }

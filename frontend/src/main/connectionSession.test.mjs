@@ -22,7 +22,7 @@ afterEach(() => {
   }
 })
 
-function fixture({ start, registration, principal = 'device', deviceId = 'identity' } = {}) {
+function fixture({ start, authCheck, deviceRegister, authKind = 'bearer', localEnabled = true } = {}) {
   delete process.env.ELECTRON_RENDERER_URL
   const rendererPath = '/fixture/app/out/renderer/index.html'
   const url = pathToFileURL(rendererPath).toString()
@@ -32,15 +32,16 @@ function fixture({ start, registration, principal = 'device', deviceId = 'identi
   const module = { exports: {} }
   evaluate((name) => name === 'electron' ? electron : require(name), module, module.exports)
   let starts = 0
-  let registrations = 0
+  let checks = 0
+  let registers = 0
   let stopped = 0
   const service = module.exports.createConnectionSession({
     rendererPath,
+    localEnabled,
     startLocal: async () => {
       starts += 1
-      return start ? start() : { ok: true, url: 'http://127.0.0.1:5299', key: 'root-grant' }
+      return start ? start() : { ok: true, url: 'http://127.0.0.1:5299', key: 'local-bearer-key' }
     },
-    profile: () => ({ device_id: 'identity', public_key: 'public', name: 'Fixture Mac', platform: 'macOS', device_family: 'Mac', model_identifier: '', app_version: 'fixture' }),
     stopConsumers: () => {
       stopped += 1
     },
@@ -51,13 +52,13 @@ function fixture({ start, registration, principal = 'device', deviceId = 'identi
     if (target.endsWith('/health')) {
       return Response.json({ ok: true, auth_required: true })
     }
-    if (target.endsWith('/register')) {
-      registrations += 1
-      expect(init.headers.Authorization).toBe('Bearer root-grant')
-      return registration ? registration() : Response.json({ token: 'jaz_device-bearer' })
+    if (target.endsWith('/v1/devices/register')) {
+      registers += 1
+      return deviceRegister ? deviceRegister(init) : Response.json({ token: 'jaz_legacy_device_token' })
     }
-    expect(init.headers.Authorization).toBe('Bearer jaz_device-bearer')
-    return Response.json({ ok: true, auth_kind: principal, device_id: deviceId })
+    checks += 1
+    expect(target.endsWith('/v1/auth/check')).toBe(true)
+    return authCheck ? authCheck(init) : Response.json({ ok: true, auth_kind: authKind })
   }
   let nextId = 0
   function window(owner = false, type = 'window') {
@@ -88,7 +89,7 @@ function fixture({ start, registration, principal = 'device', deviceId = 'identi
     value.local = (document, revision) => invocations.get('jaz:local-session')(value.event(), document, revision)
     return value
   }
-  return { service, window, url, counts: () => ({ starts, registrations, stopped }) }
+  return { service, window, url, counts: () => ({ starts, checks, registers, stopped }) }
 }
 
 test('handoff accepts actual app windows and exact documents, with owner-only publication', () => {
@@ -101,13 +102,13 @@ test('handoff accepts actual app windows and exact documents, with owner-only pu
   expect(() => board.call({ operation: 'begin', document: secondary.document, url: 'https://remote.example' })).toThrow('owner')
   const pending = owner.call({ operation: 'begin', document, url: 'https://remote.example' })
   owner.call({ operation: 'commit', document, revision: pending.revision,
-    session: { url: 'https://remote.example', token: 'jaz_authorized', deviceId: 'identity', remembered: false, rootGrant: 'must-stay-private' } })
-  expect(board.messages.at(-1).snapshot.session.token).toBe('jaz_authorized')
-  expect(Object.keys(board.read().snapshot.session).sort()).toEqual(['deviceId', 'remembered', 'token', 'url'])
+    session: { url: 'https://remote.example', token: 'bearer-authorized', remembered: false, rootGrant: 'must-stay-private' } })
+  expect(board.messages.at(-1).snapshot.session.token).toBe('bearer-authorized')
+  expect(Object.keys(board.read().snapshot.session).sort()).toEqual(['remembered', 'token', 'url'])
   expect(() => owner.call({ operation: 'commit', document, revision: pending.revision,
-    session: { url: 'https://other.example', token: 'jaz_other', deviceId: 'identity' } })).toThrow('replaced')
+    session: { url: 'https://other.example', token: 'bearer-other', remembered: false } })).toThrow('replaced')
   board.navigate('file:///wrong/renderer/index.html')
-  expect(() => board.read()).toThrow('document')
+  expect(() => board.read()).toThrow('trusted')
   const count = board.messages.length
   owner.call({ operation: 'clear', document, error: null })
   expect(board.messages).toHaveLength(count)
@@ -115,10 +116,10 @@ test('handoff accepts actual app windows and exact documents, with owner-only pu
   const guest = f.window(false, 'webview')
   expect(() => guest.read()).toThrow('trusted')
   const outsider = { ...owner.event(), sender: { id: 999, getType: () => 'window', mainFrame: owner.webContents.mainFrame } }
-  expect(() => owner.call({ operation: 'read' }, outsider)).toThrow('document')
+  expect(owner.call({ operation: 'read' }, outsider)).toBeNull()
 })
 
-test('owner reload during local registration resumes one flight and rejects the old document', async () => {
+test('owner reload during local startup resumes one flight and rejects the old document', async () => {
   let release
   const started = new Promise((resolve) => {
     release = resolve
@@ -133,22 +134,22 @@ test('owner reload during local registration resumes one flight and rejects the 
   expect(next.snapshot.localPending).toBe(true)
   const resumed = owner.call({ operation: 'begin', document: next.document, url: 'http://127.0.0.1:5299' })
   const result = owner.local(next.document, resumed.revision)
-  release({ ok: true, url: 'http://127.0.0.1:5299', key: 'root-grant' })
+  release({ ok: true, url: 'http://127.0.0.1:5299', key: 'local-bearer-key' })
   expect(await old).toBeInstanceOf(Error)
   const session = await result
-  expect(session.token).toBe('jaz_device-bearer')
+  expect(session.token).toBe('local-bearer-key')
   expect(f.counts().starts).toBe(1)
-  expect(f.counts().registrations).toBe(1)
+  expect(f.counts().checks).toBe(1)
   owner.call({ operation: 'commit', document: next.document, revision: resumed.revision, session })
   owner.navigate()
   expect(owner.read().snapshot.phase).toBe('connected')
   expect(() => owner.call({ operation: 'clear', document: first.document, error: null })).toThrow('document')
   owner.emit('closed')
   const recreated = f.window(true)
-  expect(recreated.read().snapshot.session.token).toBe('jaz_device-bearer')
+  expect(recreated.read().snapshot.session.token).toBe('local-bearer-key')
 })
 
-test('disconnect before startup completes skips registration and stays blocked after reload', async () => {
+test('disconnect before startup completes skips auth check and stays blocked after reload', async () => {
   let release
   const started = new Promise((resolve) => {
     release = resolve
@@ -159,34 +160,33 @@ test('disconnect before startup completes skips registration and stays blocked a
   const pending = owner.call({ operation: 'begin', document, url: 'http://127.0.0.1:5299' })
   const result = owner.local(document, pending.revision).catch((error) => error)
   owner.call({ operation: 'clear', document, error: null })
-  release({ ok: true, url: 'http://127.0.0.1:5299', key: 'root-grant' })
+  release({ ok: true, url: 'http://127.0.0.1:5299', key: 'local-bearer-key' })
   expect(await result).toBeInstanceOf(Error)
-  expect(f.counts().registrations).toBe(0)
+  expect(f.counts().checks).toBe(0)
   owner.navigate()
   expect(owner.read().snapshot.phase).toBe('blocked')
   expect(owner.read().snapshot.session).toBeNull()
   expect(f.counts().starts).toBe(1)
 })
 
-test.each([{ principal: 'root' }, { deviceId: 'another-device' }])('local activation rejects the wrong principal or identity: %j', async (options) => {
-  const f = fixture(options)
+test('local activation rejects an invalid auth check payload', async () => {
+  const f = fixture({ authCheck: () => Response.json({ ok: true, auth_kind: 'unknown' }) })
   const owner = f.window(true)
   const document = owner.read().document
   const pending = owner.call({ operation: 'begin', document, url: 'http://127.0.0.1:5299' })
-  await expect(owner.local(document, pending.revision)).rejects.toThrow('expected device')
+  await expect(owner.local(document, pending.revision)).rejects.toThrow('verify')
   expect(owner.read().snapshot.phase).toBe('blocked')
   expect(owner.read().snapshot.session).toBeNull()
 })
 
 test('local root grant never follows an alternate loopback origin', async () => {
-  const f = fixture({ start: async () => ({ ok: true, url: 'http://localhost:5299', key: 'root-grant' }) })
+  const f = fixture({ start: async () => ({ ok: true, url: 'http://localhost:5299', key: 'local-bearer-key' }) })
   const owner = f.window(true)
   const document = owner.read().document
   const pending = owner.call({ operation: 'begin', document, url: 'http://127.0.0.1:5299' })
   await expect(owner.local(document, pending.revision)).rejects.toThrow('wrong backend')
-  expect(f.counts().registrations).toBe(0)
+  expect(f.counts().checks).toBe(0)
 })
-
 
 test('local to remote to local waits for outstanding issuance and discards its late result', async () => {
   let release
@@ -198,13 +198,13 @@ test('local to remote to local waits for outstanding issuance and discards its l
     issued = resolve
   })
   let calls = 0
-  const f = fixture({ registration: () => {
+  const f = fixture({ authCheck: () => {
     calls += 1
     if (calls === 1) {
       issued()
       return response
     }
-    return Response.json({ token: 'jaz_device-bearer' })
+    return Response.json({ ok: true, auth_kind: 'bearer' })
   } })
   const owner = f.window(true)
   const document = owner.read().document
@@ -212,16 +212,59 @@ test('local to remote to local waits for outstanding issuance and discards its l
   const old = owner.local(document, first.revision).catch((error) => error)
   await started
   const remote = owner.call({ operation: 'begin', document, url: 'https://remote.example' })
-  owner.call({ operation: 'commit', document, revision: remote.revision, session: { url: remote.url, token: 'jaz_remote', deviceId: 'identity', remembered: false } })
+  owner.call({ operation: 'commit', document, revision: remote.revision, session: { url: remote.url, token: 'remote-bearer', remembered: false } })
   const next = owner.call({ operation: 'begin', document, url: 'http://127.0.0.1:5299' })
   const resumed = owner.local(document, next.revision)
   expect(f.counts().starts).toBe(1)
-  expect(f.counts().registrations).toBe(1)
-  release(Response.json({ token: 'jaz_device-bearer' }))
+  expect(f.counts().checks).toBe(1)
+  release(Response.json({ ok: true, auth_kind: 'bearer' }))
   expect(await old).toBeInstanceOf(Error)
   const session = await resumed
-  expect(f.counts().registrations).toBe(2)
+  expect(f.counts().checks).toBe(2)
   expect(owner.read().snapshot.phase).toBe('pending')
   owner.call({ operation: 'commit', document, revision: next.revision, session })
-  expect(owner.read().snapshot.session.token).toBe('jaz_device-bearer')
+  expect(owner.read().snapshot.session.token).toBe('local-bearer-key')
+})
+
+test('disabling local backend rejects loopback session start and local IPC', async () => {
+  const f = fixture({ localEnabled: false })
+  const owner = f.window(true)
+  const document = owner.read().document
+  expect(() => owner.call({ operation: 'begin', document, url: 'http://127.0.0.1:5299' })).toThrow('disabled')
+  await expect(owner.local(document, 0)).rejects.toThrow('disabled')
+  expect(f.counts().starts).toBe(0)
+  const remote = owner.call({ operation: 'begin', document, url: 'https://cloud.example' })
+  expect(remote.url).toBe('https://cloud.example')
+})
+
+test('adopted legacy local backend returning device_approval_required registers a desktop device token', async () => {
+  let registeredBody = null
+  const f = fixture({
+    authCheck: (init) => {
+      if (init.headers.Authorization === 'Bearer local-bearer-key') {
+        return Response.json({ code: 'device_approval_required', error: 'device approval required' }, { status: 403 })
+      }
+      expect(init.headers.Authorization).toBe('Bearer jaz_legacy_device_token')
+      return Response.json({
+        ok: true,
+        auth_kind: 'device',
+        resource_ticket: { token: 'tk_legacy', expires_at: '2099-01-01T00:00:00Z' },
+      })
+    },
+    deviceRegister: (init) => {
+      expect(init.headers.Authorization).toBe('Bearer local-bearer-key')
+      registeredBody = JSON.parse(init.body)
+      return Response.json({ token: 'jaz_legacy_device_token' })
+    },
+  })
+  const owner = f.window(true)
+  const document = owner.read().document
+  const pending = owner.call({ operation: 'begin', document, url: 'http://127.0.0.1:5299' })
+  const session = await owner.local(document, pending.revision)
+  expect(session.token).toBe('jaz_legacy_device_token')
+  expect(session.ticket?.token).toBe('tk_legacy')
+  expect(registeredBody.kind).toBe('desktop')
+  expect(registeredBody.device_id).toMatch(/^[0-9a-f]{64}$/)
+  expect(f.counts().registers).toBe(1)
+  expect(f.counts().checks).toBe(2)
 })

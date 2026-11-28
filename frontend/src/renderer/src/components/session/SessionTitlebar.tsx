@@ -5,6 +5,7 @@ import { SidePanelControl } from '@/components/session/SidePanelControl'
 import type { useSidePanelState } from '@/components/session/SidePanelState'
 import { SidePanelTabs } from '@/components/session/SidePanelTabs'
 import { TokenStats } from '@/components/session/TokenStats'
+import { CloudThreadControls } from '@/components/session/CloudThreadControls'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import type { PluginView, Session } from '@/lib/api/types'
 import { useTitlebarActions, useTitlebarSlot } from '@/lib/titlebar'
@@ -18,13 +19,20 @@ export function SessionTitlebar({ session, isMobile, panel, sideChatAvailable, h
   overviewLabel?: string
   pluginViews?: PluginView[]
 }) {
-  const { open, mode, tabs, activeTab, selectTab, reorderTabs, closeTab, addTab, duplicateTab, toggleMode } = panel
+  const { open, mode, tabs, activeTab, selectTab, reorderTabs, closeTab, addTab, openDiff, duplicateTab, toggleMode } = panel
   const activeId = activeTab?.id
   const [viewsOpen, setViewsOpen] = useState(false)
+  const openOverview = useMemo(
+    () => () => {
+      if (!open || mode !== 'overview') toggleMode('overview')
+    },
+    [mode, open, toggleMode],
+  )
   const slot = useMemo(() => header ?? <>
     <RuntimeBadge session={session} truncate />
     <TokenStats session={session} />
-  </>, [header, session])
+    <CloudThreadControls session={session} onOpenDiff={openDiff} onOpenOverview={openOverview} />
+  </>, [header, openDiff, openOverview, session])
   useTitlebarSlot(slot)
   // On desktop the open panel's own header carries its tabs and controls.
   const actions = useMemo(() => {

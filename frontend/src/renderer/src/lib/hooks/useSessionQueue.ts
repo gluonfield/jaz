@@ -31,10 +31,11 @@ export function useSessionQueue({
     mutationChain.current = Promise.resolve()
   }, [sessionId])
 
+  const isCloud = session?.backend === 'cloud'
   const mutateQueue = useCallback((mutation: QueueMutation) => {
     const run = async () => {
       try {
-        const updated = await mutateSessionQueue(sessionId, mutation)
+        const updated = await mutateSessionQueue(sessionId, mutation, isCloud)
         queryClient.setQueryData<SessionMessages>(keys.sessionMessages(sessionId), (prev) =>
           prev ? { ...prev, session: { ...prev.session, ...updated } } : prev,
         )
@@ -47,7 +48,7 @@ export function useSessionQueue({
     const next = mutationChain.current.then(run, run)
     mutationChain.current = next.catch(() => undefined)
     return next
-  }, [queryClient, sessionId])
+  }, [isCloud, queryClient, sessionId])
 
   const showQueueError = useCallback((error: unknown) => {
     toast(`Queue update failed: ${(error as Error).message}`, 'danger')

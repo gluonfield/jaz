@@ -154,6 +154,10 @@ export function savePluginConfig(id: string, values: Record<string, string>): Pr
   return put<Plugin>(`/v1/plugins/${encodeURIComponent(id)}/config`, { values })
 }
 
+export function setPluginEnabled(id: string, enabled: boolean): Promise<Plugin> {
+  return put<Plugin>(`/v1/plugins/${encodeURIComponent(id)}/enabled`, { enabled })
+}
+
 export function connectPlugin(id: string): Promise<ConnectionStart> {
   return post<ConnectionStart>(`/v1/plugins/${encodeURIComponent(id)}/connect`)
 }

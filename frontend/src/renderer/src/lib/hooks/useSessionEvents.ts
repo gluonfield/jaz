@@ -1,7 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
+import { isCloudApiSession } from '@/lib/api/client'
 import { openSessionEvents } from '@/lib/api/sse'
-import type { SessionEvent } from '@/lib/api/types'
+import type { SessionEvent, SessionMessages } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { mergeSessionEvent } from '@/lib/sessionEvents'
 
@@ -27,8 +28,17 @@ export function useSessionEvents(
   useEffect(() => {
     if (afterSeq === undefined) return
     const refetchMessages = () => {
-      queryClient.invalidateQueries({ queryKey: keys.usage })
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+      const isCloud =
+        isCloudApiSession() ||
+        queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))?.session.backend === 'cloud'
+      if (isCloud) {
+        queryClient.invalidateQueries({ queryKey: keys.cloudUsageSummary })
+        queryClient.invalidateQueries({ queryKey: keys.usage })
+        queryClient.invalidateQueries({ queryKey: keys.cloudThreadRepo(sessionId) })
+        return
+      }
+      queryClient.invalidateQueries({ queryKey: keys.usage })
       queryClient.invalidateQueries({ queryKey: keys.sessionOverview(sessionId) })
       // Turn boundaries are when the working tree changes — refresh repo
       // state and the changes summary here instead of polling for them.
@@ -66,9 +76,19 @@ export function useSessionEvents(
       } else {
         pending.push(event)
         flushTimer ??= setTimeout(flush, 50)
-        // turn finished: new rows were persisted
+        // turn finished: settle running state immediately and refetch persisted rows
         const state = (event.acp?.state ?? '').toLowerCase()
         if (event.type === 'acp' && ['idle', 'failed', 'cancelled'].includes(state)) {
+          const nextStatus = state === 'failed' ? 'error' : state === 'cancelled' ? 'interrupted' : 'idle'
+          queryClient.setQueryData<SessionMessages>(keys.sessionMessages(sessionId), (prev) =>
+            prev
+              ? {
+                  ...prev,
+                  acp_state: state,
+                  session: prev.session.status === 'running' ? { ...prev.session, status: nextStatus } : prev.session,
+                }
+              : prev,
+          )
           refetchMessages()
         }
       }

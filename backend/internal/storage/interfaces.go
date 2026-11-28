@@ -88,8 +88,16 @@ type UsageEventStore interface {
 	UsageEvents(since, until time.Time) ([]UsageEvent, error)
 }
 
+type WorkspaceUsageEventStore interface {
+	UsageEventsForWorkspace(workspaceID string, since, until time.Time) ([]UsageEvent, error)
+}
+
 type FeedStore interface {
 	LoadFeed() ([]FeedItem, error)
+}
+
+type WorkspaceFeedStore interface {
+	LoadFeedForWorkspace(workspaceID string) ([]FeedItem, error)
 }
 
 type Store interface {

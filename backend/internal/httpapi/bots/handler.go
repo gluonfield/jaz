@@ -11,13 +11,32 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
+type CloudProxy interface {
+	ProxyActiveWorkspace(http.ResponseWriter, *http.Request) bool
+	ProxyActiveWorkspaceSSE(http.ResponseWriter, *http.Request) bool
+}
+
 type Handler struct {
 	bots   *botcore.Service
 	events *sessionevents.Bus
+	cloud  CloudProxy
 }
 
 func NewHandler(bots *botcore.Service, events *sessionevents.Bus) *Handler {
 	return &Handler{bots: bots, events: events}
+}
+
+func (h *Handler) WithCloud(cloud CloudProxy) *Handler {
+	h.cloud = cloud
+	return h
+}
+
+func (h *Handler) proxyCloud(w http.ResponseWriter, r *http.Request) bool {
+	return h.cloud != nil && h.cloud.ProxyActiveWorkspace(w, r)
+}
+
+func (h *Handler) proxyCloudSSE(w http.ResponseWriter, r *http.Request) bool {
+	return h.cloud != nil && h.cloud.ProxyActiveWorkspaceSSE(w, r)
 }
 
 type listResponse struct {
@@ -38,7 +57,10 @@ type messageRequest struct {
 	AttachmentIDs []string `json:"attachment_ids"`
 }
 
-func (h *Handler) List(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	bots, err := h.bots.List()
 	if err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, err)
@@ -48,11 +70,17 @@ func (h *Handler) List(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	bot, err := h.bots.Load(r.PathValue("bot"))
+	if h.proxyCloud(w, r) {
+		return
+	}
+	bot, err := h.bots.LoadForActiveWorkspace(r.PathValue("bot"))
 	writeBot(w, bot, err)
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	var input botcore.CreateBot
 	if !decode(w, r, &input) {
 		return
@@ -62,6 +90,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	var input groupRequest
 	if !decode(w, r, &input) {
 		return
@@ -71,15 +102,26 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	var input botcore.UpdateBot
 	if !decode(w, r, &input) {
 		return
 	}
-	bot, err := h.bots.Update(r.Context(), r.PathValue("bot"), input)
+	id := r.PathValue("bot")
+	if _, err := h.bots.LoadForActiveWorkspace(id); err != nil {
+		httpapi.WriteError(w, errorStatus(err), err)
+		return
+	}
+	bot, err := h.bots.Update(r.Context(), id, input)
 	writeBot(w, bot, err)
 }
 
 func (h *Handler) Pin(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	var input pinsRequest
 	if !decode(w, r, &input) {
 		return
@@ -92,7 +134,15 @@ func (h *Handler) Pin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.bots.Delete(r.PathValue("bot")); err != nil {
+	if h.proxyCloud(w, r) {
+		return
+	}
+	id := r.PathValue("bot")
+	if _, err := h.bots.LoadForActiveWorkspace(id); err != nil {
+		httpapi.WriteError(w, errorStatus(err), err)
+		return
+	}
+	if err := h.bots.Delete(id); err != nil {
 		httpapi.WriteError(w, errorStatus(err), err)
 		return
 	}
@@ -100,11 +150,19 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
+	if h.proxyCloud(w, r) {
+		return
+	}
 	var input messageRequest
 	if !decode(w, r, &input) {
 		return
 	}
-	if err := h.bots.Post(r.PathValue("bot"), input.Text, input.AttachmentIDs); err != nil {
+	id := r.PathValue("bot")
+	if _, err := h.bots.LoadForActiveWorkspace(id); err != nil {
+		httpapi.WriteError(w, errorStatus(err), err)
+		return
+	}
+	if err := h.bots.Post(id, input.Text, input.AttachmentIDs); err != nil {
 		httpapi.WriteError(w, errorStatus(err), err)
 		return
 	}

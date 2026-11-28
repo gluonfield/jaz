@@ -8,9 +8,13 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func lock(file *os.File) error {
+func lock(file *os.File, wait bool) error {
+	flags := uint32(windows.LOCKFILE_EXCLUSIVE_LOCK)
+	if !wait {
+		flags |= windows.LOCKFILE_FAIL_IMMEDIATELY
+	}
 	var overlapped windows.Overlapped
-	return windows.LockFileEx(windows.Handle(file.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, &overlapped)
+	return windows.LockFileEx(windows.Handle(file.Fd()), flags, 0, 1, 0, &overlapped)
 }
 
 func unlock(file *os.File) error {

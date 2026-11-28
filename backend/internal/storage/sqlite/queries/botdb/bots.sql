@@ -1,6 +1,6 @@
 -- name: UpsertBot :exec
-INSERT INTO bots (thread_id, kind, prompt, shape, color, members, main, workspaces, plugins)
-VALUES (sqlc.arg(thread_id), sqlc.arg(kind), sqlc.arg(prompt), sqlc.arg(shape), sqlc.arg(color), sqlc.arg(members), sqlc.arg(main), sqlc.arg(workspaces), sqlc.arg(plugins))
+INSERT INTO bots (thread_id, kind, prompt, shape, color, members, main, workspaces, plugins, workspace_id)
+VALUES (sqlc.arg(thread_id), sqlc.arg(kind), sqlc.arg(prompt), sqlc.arg(shape), sqlc.arg(color), sqlc.arg(members), sqlc.arg(main), sqlc.arg(workspaces), sqlc.arg(plugins), sqlc.arg(workspace_id))
 ON CONFLICT(thread_id) DO UPDATE SET
   kind = excluded.kind,
   main = excluded.main,
@@ -9,23 +9,25 @@ ON CONFLICT(thread_id) DO UPDATE SET
   color = excluded.color,
   members = excluded.members,
   workspaces = excluded.workspaces,
-  plugins = excluded.plugins;
+  plugins = excluded.plugins,
+  workspace_id = excluded.workspace_id;
 
 -- name: GetBot :one
-SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins
+SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins, workspace_id
 FROM bots
 WHERE thread_id = sqlc.arg(thread_id)
 LIMIT 1;
 
 -- name: ListBots :many
-SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins
-FROM bots;
+SELECT thread_id, kind, shape, color, members, pinned, prompt, main, workspaces, plugins, workspace_id
+FROM bots
+WHERE (CAST(sqlc.arg(filter_workspace_id) AS TEXT) = '' OR workspace_id = sqlc.arg(filter_workspace_id));
 
 -- name: UnpinBots :exec
-UPDATE bots SET pinned = 0;
+UPDATE bots SET pinned = 0 WHERE workspace_id = sqlc.arg(workspace_id);
 
 -- name: PinBot :exec
-UPDATE bots SET pinned = sqlc.arg(pinned) WHERE thread_id = sqlc.arg(thread_id);
+UPDATE bots SET pinned = sqlc.arg(pinned) WHERE thread_id = sqlc.arg(thread_id) AND workspace_id = sqlc.arg(workspace_id);
 
 -- name: SaveMembership :exec
 INSERT INTO bot_memberships (group_id, bot_id, thread_id, seen)

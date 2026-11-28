@@ -9,8 +9,10 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/connections"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/visualize"
 )
 
@@ -22,12 +24,12 @@ func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "## SOUL.md\n\n(empty)") {
-		t.Fatalf("empty root should render SOUL.md as (empty):\n%s", prompt)
+	if !strings.Contains(prompt, "## AGENTS.md\n\n(empty)") {
+		t.Fatalf("empty root should render AGENTS.md as (empty):\n%s", prompt)
 	}
 
 	// Files created after the builder exists must appear on the next call.
-	write(t, root, "SOUL.md", "be kind")
+	write(t, root, "AGENTS.md", "be kind")
 	skillDir := filepath.Join(root, "skills", "deploy")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -44,7 +46,7 @@ func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(prompt, "be kind") {
-		t.Fatalf("SOUL.md edit not picked up:\n%s", prompt)
+		t.Fatalf("AGENTS.md edit not picked up:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, "<name>deploy</name>") {
 		t.Fatalf("new skill not picked up:\n%s", prompt)
@@ -61,13 +63,13 @@ func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 	}
 
 	// And edits to existing files replace the old content.
-	write(t, root, "SOUL.md", "be bold")
+	write(t, root, "AGENTS.md", "be bold")
 	prompt, err = builder.SystemPrompt()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(prompt, "be bold") || strings.Contains(prompt, "be kind") {
-		t.Fatalf("SOUL.md rewrite not picked up:\n%s", prompt)
+		t.Fatalf("AGENTS.md rewrite not picked up:\n%s", prompt)
 	}
 }
 
@@ -90,7 +92,6 @@ func TestBuilderACPPrompt(t *testing.T) {
 	root := t.TempDir()
 	memoryRoot := t.TempDir()
 	write(t, root, "AGENTS.md", "save durable facts with jazmem")
-	write(t, root, "SOUL.md", "be kind")
 	write(t, memoryRoot, "LONG_TERM.md", "- Goal: $5m.")
 	skillDir := filepath.Join(root, "skills", "deploy")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
@@ -120,8 +121,6 @@ func TestBuilderACPPrompt(t *testing.T) {
 		filepath.Join(root, "workspaces", "default", ".worktrees"),
 		"## AGENTS.md",
 		"save durable facts with jazmem",
-		"## SOUL.md",
-		"be kind",
 		"separate Jaz agent session using one of: `codex`",
 		"## memory/LONG_TERM.md",
 		"- Goal: $5m.",
@@ -160,8 +159,8 @@ func TestBuilderACPPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(empty, "## AGENTS.md\n\n(empty)") || !strings.Contains(empty, "## SOUL.md\n\n(empty)") {
-		t.Fatalf("empty root must still render the platform with (empty) files:\n%s", empty)
+	if !strings.Contains(empty, "## AGENTS.md\n\n(empty)") || strings.Contains(empty, "## SOUL.md") {
+		t.Fatalf("empty root must still render the platform with (empty) AGENTS.md and no SOUL.md:\n%s", empty)
 	}
 }
 
@@ -299,10 +298,89 @@ func TestBuilderCanvasPromptNamesTheThreadsBoard(t *testing.T) {
 	if !strings.Contains(prompt, "## Canvas") || !strings.Contains(prompt, board) {
 		t.Fatalf("canvas prompt should name %s:\n%s", board, prompt)
 	}
-	if strings.Contains(prompt, "visualise_show_widget") {
+	if strings.Contains(prompt, "show_artifact") {
 		t.Fatal("a canvas thread has no transcript for inline artifacts")
 	}
 	if _, err := builder.ACPPromptForContext(context.Background(), root, string(visualize.SurfaceCanvas)); err == nil {
 		t.Fatal("a canvas prompt without a session id must fail rather than name a shared board")
+	}
+}
+
+type memoryInstructionStore struct {
+	docs map[instructions.Key]instructions.Document
+}
+
+func (m *memoryInstructionStore) Get(_ context.Context, key instructions.Key) (instructions.Document, error) {
+	if doc, ok := m.docs[key]; ok {
+		return doc, nil
+	}
+	return instructions.Document{Key: key}, nil
+}
+
+func (m *memoryInstructionStore) Save(_ context.Context, key instructions.Key, content, expectedVersion string) (instructions.Document, error) {
+	cur := m.docs[key]
+	if cur.Version != expectedVersion {
+		return cur, instructions.ErrConflict
+	}
+	doc := instructions.Document{Key: key, Content: content, Version: instructions.Digest([]byte(content))}
+	m.docs[key] = doc
+	return doc, nil
+}
+
+func TestBuilderWithInstructionsAndCloudPromptMode(t *testing.T) {
+	store := &memoryInstructionStore{
+		docs: map[instructions.Key]instructions.Document{
+			{OrgID: "org-1", Scope: instructions.ScopeOrg, ScopeID: "org-1", Kind: instructions.KindAgents}:     {Content: "Org rule: never leak customer data."},
+			{OrgID: "org-1", Scope: instructions.ScopeSpace, ScopeID: "space-9", Kind: instructions.KindAgents}: {Content: "Space rule: cite tender clauses."},
+			{OrgID: "org-1", Scope: instructions.ScopeUser, ScopeID: "user-42", Kind: instructions.KindAgents}:  {Content: "User rule: keep replies concise."},
+			{OrgID: "org-1", Scope: instructions.ScopeBot, ScopeID: "bot-7", Kind: instructions.KindBots}:       {Content: "Coordinate specialist workers."},
+		},
+	}
+
+	builder := NewBuilder("", "/workspace", "", nil).
+		WithInstructions(store).
+		WithCloud(CloudScope{OrgID: "org-1", SpaceID: "space-9", UserID: "user-42"})
+
+	prompt, err := builder.ACPPromptForContext(context.Background(), "/workspace", string(visualize.SurfaceChat))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, prompt,
+		"## Instructions",
+		"`instruction_get`",
+		"`instruction_update`",
+		"`instruction_propose`",
+		"## Org AGENTS.md\n\nOrg rule: never leak customer data.",
+		"## Space AGENTS.md\n\nSpace rule: cite tender clauses.",
+		"## AGENTS.md\n\nUser rule: keep replies concise.",
+		"Current working directory: /workspace",
+	)
+	for _, reject := range []string{"## Runtime paths", "~/.jaz/workspaces/default", "## SOUL.md"} {
+		if strings.Contains(prompt, reject) {
+			t.Fatalf("cloud prompt must not contain %q:\n%s", reject, prompt)
+		}
+	}
+
+	botCtx := sessioncontext.WithSourceType(WithCloudScope(context.Background(), CloudScope{BotID: "bot-7"}), storage.SourceBot)
+	botPrompt, err := builder.ACPPromptForContext(botCtx, "/workspace", string(visualize.SurfaceChat))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"## Org AGENTS.md\n\nOrg rule: never leak customer data.",
+		"## BOTS.md",
+		"Read with `instruction_get` and save lasting bot coordination policy with `instruction_update`",
+		"Coordinate specialist workers.",
+	} {
+		if !strings.Contains(botPrompt, want) {
+			t.Fatalf("cloud bot prompt missing %q:\n%s", want, botPrompt)
+		}
+	}
+	if strings.Contains(botPrompt, "/BOTS.md") {
+		t.Fatalf("cloud bot prompt must not reference local disk BOTS.md path:\n%s", botPrompt)
+	}
+
+	if _, err := NewBuilder("", "/workspace", "", nil).WithCloud(CloudScope{OrgID: "org-1"}).ACPPrompt("/workspace"); err == nil {
+		t.Fatal("cloud mode without an instructions store must fail fast")
 	}
 }

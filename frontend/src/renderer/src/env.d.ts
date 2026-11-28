@@ -22,6 +22,9 @@ interface ImportMetaEnv {
   readonly BASE_URL: string
   readonly DEV: boolean
   readonly VITE_JAZ_API_URL?: string
+  readonly VITE_JAZ_CLOUD_URL?: string
+  readonly VITE_JAZ_CLOUD_ASSET_ORIGIN?: string
+  readonly VITE_JAZ_LOCAL_ENABLED?: string
   readonly VITE_POSTHOG_TOKEN?: string
 }
 

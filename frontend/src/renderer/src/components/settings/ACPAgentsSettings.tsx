@@ -35,6 +35,7 @@ import { disconnectACPAuth, prepareACPAgent, startACPAuthLogin } from '@/lib/api
 import type {
   ACPAgentAuthStatus,
   ACPAuthLogin,
+  ACPGoogleCloudLogin,
   AgentSettings as AgentSettingsData,
   ModelProviderOption,
 } from '@/lib/api/types'
@@ -97,6 +98,7 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
     }
     queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+    queryClient.invalidateQueries({ queryKey: keys.acpAgentModels(agent) })
   }
 
   // A finished sign-in connects the agent: turn it on and persist so it works
@@ -112,8 +114,11 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
   })
 
   const login = useMutation({
-    mutationFn: ({ agent, auth }: { agent: string; auth?: ACPAuthDraft }) =>
-      startACPAuthLogin(agent, auth),
+    mutationFn: ({ agent, auth, googleCloud }: {
+      agent: string
+      auth?: ACPAuthDraft
+      googleCloud?: ACPGoogleCloudLogin
+    }) => startACPAuthLogin(agent, auth, googleCloud),
     onSuccess: (job) => {
       trackLoginJob(job)
       toast(`Started ${authProviderLabel(job.agent)} sign-in`)
@@ -128,9 +133,10 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
       await applyDisconnect(agent, result)
       toast(`Disconnected ${authProviderLabel(agent)}`)
     },
-    onSettled: () => {
+    onSettled: (_, __, agent) => {
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
       queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+      queryClient.invalidateQueries({ queryKey: keys.acpAgentModels(agent) })
     },
     onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
   })
@@ -185,10 +191,9 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
               disconnecting={disconnect.isPending && disconnect.variables === agent}
               installing={prepare.isPending && prepare.variables === agent}
               onInstall={() => prepare.mutate(agent)}
-              onStartLogin={(auth) =>
-                login.mutate({ agent, auth: loginAuth(agent, auth) })
+              onStartLogin={(auth, googleCloud) =>
+                login.mutate({ agent, auth: loginAuth(agent, auth), googleCloud })
               }
-              onConnected={() => connectAgent(agent)}
               onDisconnect={() => disconnect.mutate(agent)}
               onOpenProviders={onOpenProviders}
               onChange={setDraft}
@@ -211,7 +216,6 @@ function ACPAgentRow({
   installing,
   onInstall,
   onStartLogin,
-  onConnected,
   onDisconnect,
   onOpenProviders,
   onChange,
@@ -225,8 +229,7 @@ function ACPAgentRow({
   disconnecting: boolean
   installing: boolean
   onInstall: () => void
-  onStartLogin: (auth: ACPAuthDraft) => void
-  onConnected: () => void
+  onStartLogin: (auth: ACPAuthDraft, googleCloud?: ACPGoogleCloudLogin) => void
   onDisconnect: () => void
   onOpenProviders: () => void
   onChange: (settings: AgentSettingsData) => void
@@ -245,7 +248,9 @@ function ACPAgentRow({
   const checked = acpAgentEnabled(settings, agent)
   const enableDescription = providerReady
     ? 'Show this ACP client in agent pickers.'
-    : installation
+    : authStatus?.checking
+      ? 'Checking connection…'
+      : installation
       ? installation.message || 'Installation required.'
       : authStatus?.authenticated && authStatus.ready === false
       ? (authStatus.reason ?? `Sign in with ${authProviderLabel(agent)} again.`)
@@ -315,7 +320,9 @@ function ACPAgentRow({
                 actionable hint when it can't be enabled yet. */}
             {providerReady ? null : (
               <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[12px] text-ink-3">
-                <CircleAlert size={12} className="shrink-0 text-accent" />
+                {authStatus?.checking
+                  ? <LoaderCircle size={12} className="shrink-0 animate-spin" />
+                  : <CircleAlert size={12} className="shrink-0 text-accent" />}
                 <span className="truncate">{enableDescription}</span>
               </span>
             )}
@@ -353,15 +360,13 @@ function ACPAgentRow({
                 Provider, so they show a read-only connection status instead. */}
             <AgentAuthPanel
               agent={agent}
-              active={expanded}
               disabled={disabled}
               status={authStatus}
               apiKeyValue={settings.acp_keys?.[agent] ?? ''}
               loginJob={loginJob}
               loginPending={loginPending}
               disconnecting={disconnecting}
-              onStartLogin={() => onStartLogin(current.auth)}
-              onConnected={onConnected}
+              onStartLogin={(googleCloud) => onStartLogin(current.auth, googleCloud)}
               onDisconnect={onDisconnect}
               onAPIKeyChange={(value) =>
                 onChange({
@@ -452,7 +457,6 @@ function ACPAgentRow({
 
 function AgentAuthPanel({
   agent,
-  active,
   disabled,
   status,
   apiKeyValue,
@@ -460,20 +464,17 @@ function AgentAuthPanel({
   loginPending,
   disconnecting,
   onStartLogin,
-  onConnected,
   onDisconnect,
   onAPIKeyChange,
 }: {
   agent: string
-  active: boolean
   disabled: boolean
   status?: ACPAgentAuthStatus
   apiKeyValue: string
   loginJob?: ACPAuthLogin
   loginPending: boolean
   disconnecting: boolean
-  onStartLogin: () => void
-  onConnected: () => void
+  onStartLogin: (googleCloud?: ACPGoogleCloudLogin) => void
   onDisconnect: () => void
   onAPIKeyChange: (value: string) => void
 }) {
@@ -503,10 +504,10 @@ function AgentAuthPanel({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {canLogin ? (
-            <Button variant="primary" size="md" disabled={disabled || running} onClick={onStartLogin}>
-              {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-              {running ? 'Waiting for sign-in…' : 'Sign in again'}
+          {canLogin && !running ? (
+            <Button variant="primary" size="md" disabled={disabled} onClick={() => onStartLogin()}>
+              <LogIn size={14} />
+              Sign in again
             </Button>
           ) : null}
           {!status.manual_disconnect ? (
@@ -535,10 +536,9 @@ function AgentAuthPanel({
               ? keyCopy.connected
               : `Connected with your ${authProviderLabel(agent)} account`}
         </span>
-        {status.manual_disconnect && canLogin ? (
-          <Button variant="ghost" size="sm" disabled={disabled || running} onClick={onStartLogin}>
-            {running ? <LoaderCircle size={13} className="animate-spin" /> : null}
-            {running ? 'Waiting for sign-in…' : 'Sign in again'}
+        {status.manual_disconnect && canLogin && !running ? (
+          <Button variant="ghost" size="sm" disabled={disabled} onClick={() => onStartLogin()}>
+            Sign in again
           </Button>
         ) : null}
         {noKey || status.manual_disconnect ? null : (
@@ -554,19 +554,6 @@ function AgentAuthPanel({
           </div>
         ) : null}
       </div>
-    )
-  }
-
-  if (agent === 'antigravity' && canLogin) {
-    return (
-      <AntigravitySignIn
-        active={active}
-        disabled={disabled || disconnecting}
-        running={running}
-        loginJob={loginJob}
-        onPersonal={onStartLogin}
-        onConnected={onConnected}
-      />
     )
   }
 
@@ -589,10 +576,14 @@ function AgentAuthPanel({
 
       {(method === 'login' && canLogin) || !canKey ? (
         <div className="flex flex-col items-start gap-2">
-          <Button variant="primary" size="md" disabled={disabled || running || !canLogin} onClick={onStartLogin}>
-            {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-            {running ? 'Waiting for sign-in…' : `Sign in with ${authProviderLabel(agent)}`}
-          </Button>
+          {agent === 'antigravity' && (!running || loginJob?.opens_browser) ? (
+            <AntigravitySignIn disabled={disabled || !canLogin || loginPending} onStartLogin={onStartLogin} />
+          ) : running ? null : (
+            <Button variant="primary" size="md" disabled={disabled || !canLogin} onClick={() => onStartLogin()}>
+              <LogIn size={14} />
+              {`Sign in with ${authProviderLabel(agent)}`}
+            </Button>
+          )}
           {!canLogin && (status?.login_command_reason || status?.reason) ? (
             <p className="text-[12px] text-ink-3">{status.login_command_reason || status.reason}</p>
           ) : null}

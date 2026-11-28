@@ -1,13 +1,23 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/wins/jaz/backend/internal/codexauthbridge"
 )
 
 func main() {
+	if codexauthbridge.Enabled(os.Args[1:]) {
+		if err := codexauthbridge.Run(context.Background(), os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "Codex workspace authentication:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	args, action := commandArgs(os.Args[1:])
 	switch action {
 	case mainHelp:
@@ -19,15 +29,15 @@ func main() {
 	case mainInvalid:
 		usage(os.Stderr)
 		os.Exit(2)
-	case mainDevices:
-		if err := runDevices(args, os.Stdout); err != nil {
-			fmt.Fprintln(os.Stderr, "devices:", err)
-			os.Exit(1)
-		}
-		return
 	case mainUpdate:
 		if err := runUpdate(args, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "update:", err)
+			os.Exit(1)
+		}
+		return
+	case mainConnectCloud:
+		if err := runConnectCloud(args, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "connect-cloud:", err)
 			os.Exit(1)
 		}
 		return
@@ -51,8 +61,8 @@ const (
 	mainHelp
 	mainVersion
 	mainInvalid
-	mainDevices
 	mainUpdate
+	mainConnectCloud
 	mainWorktree
 )
 
@@ -66,10 +76,10 @@ func commandArgs(args []string) ([]string, mainAction) {
 			return nil, mainHelp
 		}
 		return args[1:], mainRun
-	case "devices":
-		return args[1:], mainDevices
 	case "update":
 		return args[1:], mainUpdate
+	case "connect-cloud":
+		return args[1:], mainConnectCloud
 	case "worktree":
 		return args[1:], mainWorktree
 	case "help":
@@ -92,6 +102,6 @@ func isHelp(arg string) bool {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, "usage: jaz [--addr addr] [--public-url url] [--preview-url-template url]\n       jaz --version\n       jaz update [--latest|--version vX.Y.Z]\n       jaz serve [flags]\n       jaz server [flags]\n       jaz devices [--root path]\n       jaz devices [--root path] approve <pairing-or-device-id>\n\nRun and administer Jaz.")
+	fmt.Fprintln(w, "usage: jaz [--addr addr] [--public-url url] [--preview-url-template url]\n       jaz --version\n       jaz update [--latest|--version vX.Y.Z]\n       jaz serve [flags]\n       jaz server [flags]\n       jaz connect-cloud --url <url> --token <token> --device-id <id> [--name <display>] [--grant <id=mode:path>...] [--allow-exec]\n\nRun and administer Jaz.")
 	fmt.Fprintln(w, "\nManage Git checkouts with jaz worktree list, run, or adopt.")
 }

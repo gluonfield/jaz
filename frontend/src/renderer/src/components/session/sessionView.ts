@@ -26,11 +26,11 @@ import {
 } from '@/lib/sessionPermissions'
 
 export function isCodexACPSession(session: Session | undefined): boolean {
-  return session?.runtime === 'acp' && session.runtime_ref?.agent?.trim().toLowerCase() === 'codex'
+  return session?.backend !== 'cloud' && session?.runtime === 'acp' && session.runtime_ref?.agent?.trim().toLowerCase() === 'codex'
 }
 
 export function sessionSupportsGoal(session: Session | undefined): boolean {
-  return session?.runtime === 'acp'
+  return session?.backend !== 'cloud' && session?.runtime === 'acp'
 }
 
 export function latestGoalEvent(sessionId: string, events: SessionEvent[]): GoalEvent | null | undefined {

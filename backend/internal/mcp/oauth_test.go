@@ -56,6 +56,7 @@ type mockAuthorizationServer struct {
 	registration       oauthex.ClientRegistrationMetadata
 	tokenForm          url.Values
 	refreshToken       string
+	tokenExpiresIn     int
 }
 
 // mockAuthServer serves the OAuth discovery, registration, and token endpoints an
@@ -64,7 +65,7 @@ type mockAuthorizationServer struct {
 func mockAuthServer(t *testing.T, extra map[string]any) *mockAuthorizationServer {
 	t.Helper()
 	mux := http.NewServeMux()
-	srv := &mockAuthorizationServer{Server: httptest.NewServer(mux), refreshToken: "refresh-token-456"}
+	srv := &mockAuthorizationServer{Server: httptest.NewServer(mux), refreshToken: "refresh-token-456", tokenExpiresIn: 3600}
 	t.Cleanup(srv.Close)
 	base := srv.URL
 
@@ -112,7 +113,10 @@ func mockAuthServer(t *testing.T, extra map[string]any) *mockAuthorizationServer
 			http.Error(w, "missing PKCE verifier", http.StatusBadRequest)
 			return
 		}
-		response := map[string]any{"access_token": "access-token-123", "token_type": "Bearer", "expires_in": 3600}
+		response := map[string]any{"access_token": "access-token-123", "token_type": "Bearer"}
+		if srv.tokenExpiresIn > 0 {
+			response["expires_in"] = srv.tokenExpiresIn
+		}
 		if srv.refreshToken != "" {
 			response["refresh_token"] = srv.refreshToken
 		}
@@ -185,7 +189,7 @@ func TestRunAuthorizationCompletesFlow(t *testing.T) {
 
 	server := mcpconfig.Server{ID: "srv-oauth", URL: srv.URL + "/mcp"}
 	handler := newOAuthHandler(server, store, http.DefaultClient, nil)
-	handler.mode = oauthModeInteractive
+	handler.interactive = true
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	// Fake browser: read the state from the authorization URL and return an
 	// authorization code, simulating the user approving access.
@@ -211,9 +215,15 @@ func TestRunAuthorizationCompletesFlow(t *testing.T) {
 		Body: io.NopCloser(strings.NewReader("")),
 	}
 
-	tok, err := handler.runAuthorization(context.Background(), resp)
+	if err := handler.Authorize(t.Context(), nil, resp); err != nil {
+		t.Fatalf("Authorize: %v", err)
+	}
+	tok, ok, err := store.LoadToken(t.Context(), server.TokenID())
 	if err != nil {
-		t.Fatalf("runAuthorization: %v", err)
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("authorization did not save the token")
 	}
 	if tok.AccessToken != "access-token-123" {
 		t.Errorf("access token = %q", tok.AccessToken)
@@ -255,7 +265,7 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 				},
 			}
 			handler := newOAuthHandler(server, store, http.DefaultClient, nil)
-			handler.mode = oauthModeInteractive
+			handler.interactive = true
 			handler.redirectURL = "http://127.0.0.1:5599/callback"
 			handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
 				u, err := url.Parse(authURL)
@@ -277,7 +287,7 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 
 			var err error
 			if test.challenge == "" {
-				err = handler.AuthorizeFromMetadata(context.Background())
+				err = handler.authorize(context.Background(), nil)
 			} else {
 				err = handler.Authorize(context.Background(), nil, &http.Response{StatusCode: http.StatusUnauthorized, Header: http.Header{"Www-Authenticate": {test.challenge}}, Body: io.NopCloser(strings.NewReader(""))})
 			}
@@ -306,14 +316,14 @@ func TestAuthorizeFromMetadataRequiresStaticClientWhenNoDCR(t *testing.T) {
 	srv := mockStaticAuthServer(t)
 	server := mcpconfig.Server{ID: "srv-static", URL: srv.URL + "/mcp"}
 	handler := newOAuthHandler(server, newMemTokenStore(), http.DefaultClient, nil)
-	handler.mode = oauthModeInteractive
+	handler.interactive = true
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	handler.fetch = func(context.Context, string) (mcpconfig.AuthorizationResponse, error) {
 		t.Fatal("fetch should not run without a client")
 		return mcpconfig.AuthorizationResponse{}, nil
 	}
 
-	err := handler.AuthorizeFromMetadata(context.Background())
+	err := handler.authorize(context.Background(), nil)
 	if err == nil || !strings.Contains(err.Error(), "configure an OAuth client ID") {
 		t.Fatalf("err = %v, want configure client id", err)
 	}
@@ -336,7 +346,7 @@ func TestAuthorizeFromMetadataPrefersClientMetadataDocument(t *testing.T) {
 
 	store := newMemTokenStore()
 	handler := newOAuthHandler(mcpconfig.Server{ID: "srv-cimd", URL: srv.URL + "/mcp"}, store, http.DefaultClient, nil)
-	handler.mode = oauthModeInteractive
+	handler.interactive = true
 	handler.redirectURL = "http://127.0.0.1:5599/callback"
 	handler.broker = oauthbroker.Broker{URL: brokerURL}
 	handler.fetch = func(_ context.Context, authURL string) (mcpconfig.AuthorizationResponse, error) {
@@ -348,7 +358,7 @@ func TestAuthorizeFromMetadataPrefersClientMetadataDocument(t *testing.T) {
 		return mcpconfig.AuthorizationResponse{Code: "the-auth-code", State: q.Get("state")}, nil
 	}
 
-	if err := handler.AuthorizeFromMetadata(context.Background()); err != nil {
+	if err := handler.authorize(context.Background(), nil); err != nil {
 		t.Fatalf("AuthorizeFromMetadata: %v", err)
 	}
 	if srv.registrations != 0 || srv.tokenForm.Get("client_id") != clientID || srv.tokenForm.Get("redirect_uri") != brokerURL {
@@ -373,7 +383,7 @@ func TestNonInteractiveAuthorizeReportsNeedsAuth(t *testing.T) {
 	if err != errNeedsAuthorization {
 		t.Fatalf("err = %v, want errNeedsAuthorization", err)
 	}
-	if !handler.needsAuthorization() {
-		t.Fatal("needsAuthorization() = false, want true")
+	if handler.authorizationChallenge() == nil {
+		t.Fatal("authorization challenge was not recorded")
 	}
 }

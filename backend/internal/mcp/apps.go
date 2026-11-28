@@ -204,6 +204,24 @@ func (m *Manager) CallAppTool(ctx context.Context, serverID, name string, argume
 	return session.callTool(ctx, &mcpsdk.CallToolParams{Name: name, Arguments: arguments, Meta: meta})
 }
 
+// CallAppBridgeTool resolves an allowlisted tool across connected MCP servers
+// for a Jaz App's window.jaz.tools.call bridge, respecting app visibility.
+func (m *Manager) CallAppBridgeTool(ctx context.Context, name string, arguments json.RawMessage) (*mcpsdk.CallToolResult, error) {
+	m.mu.RLock()
+	var target *serverSession
+	for _, session := range m.sessions {
+		if session != nil && session.apps.callable[name] {
+			target = session
+			break
+		}
+	}
+	m.mu.RUnlock()
+	if target == nil {
+		return nil, fmt.Errorf("%w: %s", ErrAppToolDenied, name)
+	}
+	return target.callTool(ctx, &mcpsdk.CallToolParams{Name: name, Arguments: arguments})
+}
+
 type sessionEventAppender interface {
 	AppendSessionEvents(id string, events ...sessionevents.Event) error
 }

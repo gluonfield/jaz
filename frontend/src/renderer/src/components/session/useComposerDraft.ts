@@ -24,7 +24,7 @@ function inlineTokenFrom(value: unknown): InlineToken | null {
   const trigger = token.trigger
   const display = token.display
   const expansion = token.expansion
-  if ((trigger !== '$' && trigger !== '@') || typeof display !== 'string' || typeof expansion !== 'string') return null
+  if ((trigger !== '$' && trigger !== '@') || typeof display !== 'string' || !display || typeof expansion !== 'string') return null
   return { trigger, display, expansion }
 }
 

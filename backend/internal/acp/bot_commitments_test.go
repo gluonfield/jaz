@@ -8,6 +8,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -107,7 +108,8 @@ func TestABotsCommitmentLinksItsThreadAndClosesOnlyWhenTheResultReachesTheUserAc
 	if err != nil {
 		t.Fatal(err)
 	}
-	if note, _ := bots.TurnNote(store)(session); strings.Contains(note, fmt.Sprintf("#%d ", id)) {
+	inst := instructions.NewLocalFSStore(root, instructions.WithBotHomeResolver(bots.HomeResolver(store)))
+	if note, _ := bots.TurnNote(store, inst)(session); strings.Contains(note, fmt.Sprintf("#%d ", id)) {
 		t.Fatalf("a closed commitment stayed in the bot's note: %q", note)
 	}
 }

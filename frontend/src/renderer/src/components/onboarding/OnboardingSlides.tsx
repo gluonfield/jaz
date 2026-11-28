@@ -1,38 +1,8 @@
-import { ArrowRight } from 'lucide-react'
-import { motion } from 'motion/react'
 import type { SystemPermission } from '@shared/systemPermissions'
-import { DitherWordmark, type Silhouette } from '@/components/launch/DitherArt'
+import type { Silhouette } from '@/components/launch/DitherArt'
 import { ThemePresets } from '@/components/settings/ColorThemeSettings'
 import { ThemeModePicker } from '@/components/settings/ThemeModePicker'
-import { Button } from '@/components/ui/Button'
-import { type Mark, type SetupStep, onboardingEase, slideExit } from './OnboardingParts'
-
-// The first thing a new user ever sees: the wordmark assembles itself out of
-// dither grain, then one line of copy and the CTA rise in underneath it.
-export function WelcomeStep({ onStart }: { onStart: () => void }) {
-  return (
-    <motion.div exit={slideExit} className="flex w-full max-w-[440px] flex-col items-center text-center">
-      <DitherWordmark delay={0.25} />
-      <motion.p
-        initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
-        animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.5, delay: 1.05, ease: onboardingEase } }}
-        className="mt-9 text-pretty text-[15px] leading-relaxed text-ink-2"
-      >
-        Agents that code, remember you, and keep working while you're away.
-      </motion.p>
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0, transition: { duration: 0.4, delay: 1.3, ease: onboardingEase } }}
-        className="mt-8"
-      >
-        <Button variant="primary" size="lg" onClick={onStart} className="h-11 px-6 text-[14px]">
-          Get started
-          <ArrowRight size={15} />
-        </Button>
-      </motion.div>
-    </motion.div>
-  )
-}
+import type { Mark, SetupStep } from './OnboardingParts'
 
 // A soft radial gradient behind each mark: the dither turns it into a grain
 // halo, which is what gives the slide art its shading depth.

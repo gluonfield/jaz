@@ -1,8 +1,12 @@
 import { useState, type ReactNode } from 'react'
+import { isCloudApiSession } from '@/lib/api/client'
+import { sessionCloudRunId } from '@/lib/api/sessions'
 import type { Attachment, QueuedAction, Session, SessionEvent } from '@/lib/api/types'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import { MCPAppFrame } from '@/components/apps/MCPAppFrame'
+import { PublishedAppPanel } from '@/components/apps/PublishedAppPanel'
+import { ArtifactFrame } from '@/components/artifacts/ArtifactFrame'
 import { ViewPanel } from '@/components/session/ViewPanel'
 import { BrowserPanelSlot } from '@/components/browser/BrowserWorkspace'
 import type { SendMessageHandler, SendMessageOptions } from '@/lib/sendMessage'
@@ -14,7 +18,8 @@ import { OverviewPanel } from '@/components/session/OverviewPanel'
 import { SideChatPanel } from '@/components/session/SideChatPanel'
 import { TerminalPanel } from '@/components/session/TerminalPanel'
 import { SidePanelControl } from '@/components/session/SidePanelControl'
-import { SidePanelTabMenu, SidePanelTabs } from '@/components/session/SidePanelTabs'
+import { SidePanelTabs } from '@/components/session/SidePanelTabs'
+import type { CanvasTarget } from '@/lib/sidePanelTabs'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { SidePanelCloseGuard, type useSidePanelState } from '@/components/session/SidePanelState'
 
@@ -29,10 +34,11 @@ function TabBody({ id, active, visible, children }: { id: string; active: boolea
 export function SidePanel({
   session, panel, progress, subagents, spawnedThreads, working, asking,
   sideChatAvailable, sideChatEvents, onAddBrowserAnnotation, onUploadAttachment,
-  onSend, onQueuePrompt, onQueueAction, onSendSideChat, overview, overviewLabel, canvas,
+  onSend, onQueuePrompt, onQueueAction, onSendSideChat, overview, overviewLabel, canvas, launcher,
 }: {
   session: Session
-  canvas: ReactNode
+  canvas: (target?: CanvasTarget) => ReactNode
+  launcher: ReactNode
   panel: ReturnType<typeof useSidePanelState>
   progress?: TaskSurface
   subagents: ProviderSubagentView[]
@@ -51,6 +57,8 @@ export function SidePanel({
   overviewLabel?: string
 }) {
   const isMobile = useIsMobile()
+  const isCloudSession = session.backend === 'cloud' || isCloudApiSession()
+  const cloudRunId = sessionCloudRunId(session)
   return (
     <div className="flex h-full min-h-0 flex-col" data-thread-find-shortcuts="off">
       {/* Desktop: the open panel's own header carries its tabs and the controls
@@ -82,12 +90,13 @@ export function SidePanel({
               onSend={onSend}
               onQueuePrompt={onQueuePrompt}
               onQueueAction={onQueueAction}
+              onOpenDiff={panel.openDiff}
             />
           )}
         </div>
       ) : null}
       <div hidden={panel.mode !== 'tabs'} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        {!panel.tabs.length ? <SidePanelTabMenu empty sideChatAvailable={sideChatAvailable} onAdd={panel.addTab} /> : null}
+        {panel.open && panel.mode === 'tabs' && !panel.tabs.length ? launcher : null}
         {panel.tabs.map((tab) => {
           const active = panel.activeTab?.id === tab.id
           const visible = panel.open && panel.mode === 'tabs' && active
@@ -106,19 +115,25 @@ export function SidePanel({
                   onUploadAttachment={onUploadAttachment}
                 />
               ) : tab.kind === 'canvas' ? (
-                <div className="canvas-panel relative h-full">{canvas}</div>
+                <div className="canvas-panel relative h-full">{canvas(tab.target)}</div>
               ) : tab.kind === 'terminal' ? (
                 <TerminalPanel session={session} visible={visible} />
               ) : tab.kind === 'file' ? (
                 <SidePanelCloseGuard value={(guard) => panel.registerCloseGuard(tab.id, guard)}>
-                  <FileReaderPanel sessionId={session.id} fileRef={tab.file} visible={visible} working={working} onOpenFile={panel.openFile} onClose={panel.close} />
+                  <FileReaderPanel sessionId={session.id} cloudRunId={cloudRunId} fileRef={tab.file} visible={visible} working={working} onOpenFile={panel.openFile} onClose={panel.close} />
                 </SidePanelCloseGuard>
               ) : tab.kind === 'diff' ? (
-                <CodeDiffPanel sessionId={session.id} visible={visible} />
+                <CodeDiffPanel sessionId={session.id} visible={visible} isCloud={isCloudSession} repo={tab.repo} onSelectRepo={panel.openDiff} />
               ) : tab.kind === 'app' ? (
                 <MCPAppFrame app={tab.app} file={tab.file} call={tab.call} active={visible} />
+              ) : tab.kind === 'artifact' ? (
+                <div className="scrollbar-quiet h-full overflow-auto px-4 pb-4">
+                  <ArtifactFrame input={tab.artifact} onSendPrompt={(text) => void onSend(text)} onOpenLink={panel.openFile} />
+                </div>
+              ) : tab.kind === 'published-app' ? (
+                <PublishedAppPanel appId={tab.app.id} />
               ) : tab.kind === 'view' ? (
-                <ViewPanel sessionId={session.id} view={tab.view} visible={visible} working={working} asking={asking} onOpenFile={panel.openFile} onOpenView={panel.openView} />
+                <ViewPanel sessionId={session.id} cloudRunId={cloudRunId} view={tab.view} visible={visible} working={working} asking={asking} onOpenFile={panel.openFile} onOpenView={panel.openView} />
               ) : (
                 <SideChatPanel
                   sessionId={session.id}

@@ -50,7 +50,7 @@ func (m *Manager) latestAdvertisedModels(agent string, cfg AgentConfig) sessionM
 
 func advertisedModelsKeyFor(agent string, cfg AgentConfig) (advertisedModelsKey, bool) {
 	agent = CanonicalAgentName(agent)
-	if !agentOwnsModelMetadata(agent, cfg.ModelProvider) || agentPolicyForAgent(agent).unadvertisedModel == unadvertisedModelSent {
+	if cfg.cloudCredentialProfileID != "" || !agentOwnsModelMetadata(agent, cfg.ModelProvider) || agentPolicyForAgent(agent).unadvertisedModel == unadvertisedModelSent {
 		return advertisedModelsKey{}, false
 	}
 	return advertisedModelsKey{agent: agent, provider: strings.ToLower(strings.TrimSpace(cfg.ModelProvider))}, true

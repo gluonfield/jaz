@@ -11,7 +11,7 @@ import (
 )
 
 const listSessionPluginViews = `-- name: ListSessionPluginViews :many
-SELECT t.id, t.title, t.status, t.updated_at_ms, t.cwd, e.seq, e.content
+SELECT t.id, t.title, t.status, t.updated_at_ms, t.cwd, t.workspace_id, e.seq, e.content
 FROM session_events AS e
 JOIN threads AS t ON t.id = e.thread_id
 WHERE e.type = 'artifact'
@@ -25,6 +25,7 @@ type ListSessionPluginViewsRow struct {
 	Status      string         `json:"status"`
 	UpdatedAtMs int64          `json:"updated_at_ms"`
 	Cwd         sql.NullString `json:"cwd"`
+	WorkspaceID string         `json:"workspace_id"`
 	Seq         int64          `json:"seq"`
 	Content     string         `json:"content"`
 }
@@ -44,6 +45,7 @@ func (q *Queries) ListSessionPluginViews(ctx context.Context) ([]ListSessionPlug
 			&i.Status,
 			&i.UpdatedAtMs,
 			&i.Cwd,
+			&i.WorkspaceID,
 			&i.Seq,
 			&i.Content,
 		); err != nil {

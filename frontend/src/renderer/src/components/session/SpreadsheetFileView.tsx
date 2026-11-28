@@ -1,12 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import SpreadsheetGrid, { spreadsheetDigitWidth } from '@/components/session/SpreadsheetGrid'
-import { sessionFileBytes } from '@/lib/api/sessions'
+import { effectiveCloudRunId, sessionFileBytes } from '@/lib/api/sessions'
 import { keys } from '@/lib/query/keys'
 import { readSpreadsheet } from '@/lib/spreadsheet'
 
-export default function SpreadsheetFileView({ sessionId, path, version, visible, initialSheet, initialSelection }: {
+export default function SpreadsheetFileView({ sessionId, cloudRunId, path, version, visible, initialSheet, initialSelection }: {
   sessionId: string
+  cloudRunId?: string
   path: string
   version?: string
   visible: boolean
@@ -14,10 +15,11 @@ export default function SpreadsheetFileView({ sessionId, path, version, visible,
   initialSelection?: string
 }) {
   const [selected, setSelected] = useState(initialSheet ?? '')
+  const runId = effectiveCloudRunId(sessionId, cloudRunId)
   const file = useQuery({
     // A new version of the file is read in place: the workbook on screen stays until the new one is ready.
-    queryKey: [...keys.sessionFile(sessionId, path), 'spreadsheet', version],
-    queryFn: async ({ signal }) => readSpreadsheet(await sessionFileBytes(sessionId, path, signal), spreadsheetDigitWidth),
+    queryKey: [...keys.sessionFile(sessionId, path), ...(runId ? ['cloud', runId] : []), 'spreadsheet', version],
+    queryFn: async ({ signal }) => readSpreadsheet(await sessionFileBytes(sessionId, path, signal, runId), spreadsheetDigitWidth),
     enabled: visible,
     staleTime: 15_000,
     placeholderData: keepPreviousData,

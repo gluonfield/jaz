@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"net/url"
 	"path/filepath"
@@ -20,10 +21,9 @@ func ReadWorktreeSessions(root string) ([]storage.Session, error) {
 		return nil, err
 	}
 	defer db.Close()
-	store := &Store{db: db}
 	var all []storage.Session
 	for _, archived := range []bool{false, true} {
-		sessions, err := store.ListSessions(storage.SessionFilter{IncludeChildren: true, IncludeSourced: true, Archived: archived})
+		sessions, err := listSessions(context.Background(), db, storage.SessionFilter{IncludeChildren: true, IncludeSourced: true, Archived: archived})
 		if err != nil {
 			return nil, err
 		}

@@ -39,15 +39,16 @@ func (s *Store) SaveBot(record storage.BotRecord) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return botdb.New(s.db).UpsertBot(context.Background(), botdb.UpsertBotParams{
-		ThreadID:   record.ThreadID,
-		Kind:       record.Kind,
-		Prompt:     record.Prompt,
-		Shape:      record.Shape,
-		Color:      record.Color,
-		Members:    string(members),
-		Main:       boolInt(record.Main),
-		Workspaces: string(workspaces),
-		Plugins:    string(pluginsJSON),
+		ThreadID:    record.ThreadID,
+		Kind:        record.Kind,
+		Prompt:      record.Prompt,
+		Shape:       record.Shape,
+		Color:       record.Color,
+		Members:     string(members),
+		Main:        boolInt(record.Main),
+		Workspaces:  string(workspaces),
+		Plugins:     string(pluginsJSON),
+		WorkspaceID: firstNonEmpty(record.WorkspaceID, storage.LocalWorkspaceID),
 	})
 }
 
@@ -63,7 +64,11 @@ func (s *Store) LoadBot(threadID string) (storage.BotRecord, error) {
 }
 
 func (s *Store) ListBots() ([]storage.BotRecord, error) {
-	rows, err := botdb.New(s.db).ListBots(context.Background())
+	return s.ListBotsForWorkspace("")
+}
+
+func (s *Store) ListBotsForWorkspace(workspaceID string) ([]storage.BotRecord, error) {
+	rows, err := botdb.New(s.db).ListBots(context.Background(), workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +79,13 @@ func (s *Store) ListBots() ([]storage.BotRecord, error) {
 	return records, nil
 }
 
-// PinBots pins exactly ids, in that order, and unpins every other bot.
+// PinBots pins exactly ids, in that order, and unpins every other bot in the local workspace.
 func (s *Store) PinBots(ids []string) error {
+	return s.PinBotsForWorkspace(storage.LocalWorkspaceID, ids)
+}
+
+func (s *Store) PinBotsForWorkspace(workspaceID string, ids []string) error {
+	ws := firstNonEmpty(workspaceID, storage.LocalWorkspaceID)
 	ctx := context.Background()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -85,11 +95,11 @@ func (s *Store) PinBots(ids []string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := botdb.New(tx)
-	if err := q.UnpinBots(ctx); err != nil {
+	if err := q.UnpinBots(ctx, ws); err != nil {
 		return err
 	}
 	for i, id := range ids {
-		if err := q.PinBot(ctx, botdb.PinBotParams{Pinned: int64(i + 1), ThreadID: id}); err != nil {
+		if err := q.PinBot(ctx, botdb.PinBotParams{Pinned: int64(i + 1), ThreadID: id, WorkspaceID: ws}); err != nil {
 			return err
 		}
 	}
@@ -109,7 +119,17 @@ func botFromDB(row botdb.Bot) storage.BotRecord {
 		}
 	}
 	return storage.BotRecord{
-		ThreadID: row.ThreadID, Kind: row.Kind, Prompt: row.Prompt, Workspaces: workspaces, Plugins: plugins, Shape: row.Shape, Color: row.Color, Pinned: int(row.Pinned), Members: members, Main: row.Main != 0,
+		ThreadID:    row.ThreadID,
+		WorkspaceID: firstNonEmpty(row.WorkspaceID, storage.LocalWorkspaceID),
+		Kind:        row.Kind,
+		Prompt:      row.Prompt,
+		Workspaces:  workspaces,
+		Plugins:     plugins,
+		Shape:       row.Shape,
+		Color:       row.Color,
+		Pinned:      int(row.Pinned),
+		Members:     members,
+		Main:        row.Main != 0,
 	}
 }
 

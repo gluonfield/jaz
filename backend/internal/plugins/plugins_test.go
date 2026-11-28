@@ -179,14 +179,24 @@ func TestShowViewPresentsTheViewWithItsData(t *testing.T) {
 	if shown.artifact.Kind != sessionevents.PresentationPluginView || shown.artifact.View.File != "status.json" || shown.artifact.View.Reference != "tenders/status" || shown.artifact.Artifact != nil {
 		t.Fatalf("panel view = %+v", shown.artifact)
 	}
+	if _, _, err := tools.ShowView(context.Background(), nil, ShowViewInput{View: "tenders/status", Title: "Tender status", File: "runs/scene.json"}); err != nil {
+		t.Fatal(err)
+	}
+	if shown.artifact.Kind != sessionevents.PresentationPluginView || shown.artifact.View.File != "runs/scene.json" || shown.artifact.View.Reference != "tenders/status" || shown.artifact.Artifact != nil {
+		t.Fatalf("nested panel view = %+v", shown.artifact)
+	}
 	for label, input := range map[string]ShowViewInput{
-		"data and file": {View: "tenders/status", Title: "x", Data: map[string]any{}, File: "status.json"},
-		"neither":       {View: "tenders/status", Title: "x"},
-		"file nested":   {View: "tenders/status", Title: "x", File: "nested/status.json"},
-		"file windows":  {View: "tenders/status", Title: "x", File: `nested\status.json`},
-		"file outside":  {View: "tenders/status", Title: "x", File: "../status.json"},
-		"unknown view":  {View: "tenders/missing", Title: "x", File: "status.json"},
-		"missing title": {View: "tenders/status", File: "status.json"},
+		"data and file":    {View: "tenders/status", Title: "x", Data: map[string]any{}, File: "status.json"},
+		"neither":          {View: "tenders/status", Title: "x"},
+		"file traverse":    {View: "tenders/status", Title: "x", File: "nested/../status.json"},
+		"file double slsh": {View: "tenders/status", Title: "x", File: "nested//status.json"},
+		"file absolute":    {View: "tenders/status", Title: "x", File: "/nested/status.json"},
+		"file dot segment": {View: "tenders/status", Title: "x", File: "./status.json"},
+		"file hidden dir":  {View: "tenders/status", Title: "x", File: ".git/config"},
+		"file windows":     {View: "tenders/status", Title: "x", File: `nested\status.json`},
+		"file outside":     {View: "tenders/status", Title: "x", File: "../status.json"},
+		"unknown view":     {View: "tenders/missing", Title: "x", File: "status.json"},
+		"missing title":    {View: "tenders/status", File: "status.json"},
 	} {
 		if _, _, err := tools.ShowView(context.Background(), nil, input); err == nil {
 			t.Errorf("%s: accepted", label)

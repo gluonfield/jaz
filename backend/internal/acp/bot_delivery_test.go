@@ -14,6 +14,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/server"
@@ -139,8 +140,9 @@ func TestEarlyPeerReplySurvivesServiceAndProviderRestart(t *testing.T) {
 	logger := log.New(io.Discard)
 	bus := sessionevents.New()
 	handler := &server.Server{Store: store, Locks: sessionlock.New(), Events: bus}
+	inst := instructions.NewLocalFSStore(root, instructions.WithBotHomeResolver(bots.HomeResolver(store)))
 	routines := loops.NewService(store, nil, logger)
-	service := bots.NewService(store, root, first, handler, handler, routines, bus, logger)
+	service := bots.NewService(store, root, inst, first, handler, handler, routines, bus, logger)
 	spoke := make(chan error, 1)
 	handler.ACP = earlyReplyManager{Manager: first, hold: filepath.Join(root, "scripted-turn"), speak: func(req acp.InternalTurnRequest) error {
 		err := service.Say(req.Session, "The complete reply.")
@@ -165,7 +167,7 @@ func TestEarlyPeerReplySurvivesServiceAndProviderRestart(t *testing.T) {
 	t.Cleanup(second.Close)
 	handler.ACP = second
 	second.TurnFinished = handler.HandleACPTurnFinished
-	service = bots.NewService(store, root, second, handler, handler, routines, bus, logger)
+	service = bots.NewService(store, root, inst, second, handler, handler, routines, bus, logger)
 	if service.AppVisible(ids[1]) {
 		t.Fatal("interrupted private reply became publicly visible")
 	}
@@ -444,7 +446,8 @@ func TestAThreadThatCannotResumeAfterARestartTellsItsBot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if note, _ := bots.TurnNote(store)(session); !strings.Contains(note, "thread audit failed") {
+	inst := instructions.NewLocalFSStore(root, instructions.WithBotHomeResolver(bots.HomeResolver(store)))
+	if note, _ := bots.TurnNote(store, inst)(session); !strings.Contains(note, "thread audit failed") {
 		t.Fatalf("the bot's next turn opens with %q, want its thread shown failed", note)
 	}
 }

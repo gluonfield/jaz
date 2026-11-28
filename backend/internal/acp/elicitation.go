@@ -81,6 +81,20 @@ func elicitationQuestions(message string, schema *acpschema.ElicitationSchema) (
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	filtered := keys[:0]
+	for _, key := range keys {
+		if base, ok := companionOtherBase(key, schema.Properties, parsed, customFields); ok {
+			customFields[base] = key
+			if baseField := parsed[base]; baseField.header != "" || baseField.question != "" {
+				baseField.message = ""
+				parsed[base] = baseField
+			}
+			delete(parsed, key)
+			continue
+		}
+		filtered = append(filtered, key)
+	}
+	keys = filtered
 
 	questions := make([]sessionevents.ACPQuestion, 0, len(keys))
 	fields := make(map[string]elicitationAnswerField, len(keys))
@@ -117,6 +131,29 @@ func elicitationQuestions(message string, schema *acpschema.ElicitationSchema) (
 		}
 	}
 	return questions, fields
+}
+
+func companionOtherBase(
+	key string,
+	properties map[string]acpschema.ElicitationPropertySchema,
+	parsed map[string]elicitationField,
+	customFields map[string]string,
+) (string, bool) {
+	base, ok := strings.CutSuffix(key, "_other")
+	if !ok || base == "" || customFields[base] != "" {
+		return "", false
+	}
+	if _, exists := parsed[base]; !exists {
+		return "", false
+	}
+	prop := properties[key]
+	if (prop.Type != "" && prop.Type != "string") || len(elicitationOptions(prop)) > 0 {
+		return "", false
+	}
+	if len(elicitationOptions(properties[base])) == 0 {
+		return "", false
+	}
+	return base, true
 }
 
 type elicitationField struct {

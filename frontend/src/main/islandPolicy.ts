@@ -1,4 +1,10 @@
-import type { Alert, AlertState } from '@shared/notifications'
+import {
+  ISLAND_CAPSULE_WIDTH,
+  ISLAND_EAR_WIDTH,
+  ISLAND_HEIGHT,
+  type Alert,
+  type AlertState,
+} from '@shared/notifications'
 
 const RANK: Record<AlertState, number> = { needs_you: 0, stopped: 1, done: 2, reply: 3 }
 
@@ -25,4 +31,25 @@ export function islandShape(model: string, internal: boolean, notched: boolean):
   if (!internal) return 'capsule'
   if (NOTCHED.has(model)) return notched ? 'notch' : null
   return model.startsWith('MacBook') && !notched ? 'capsule' : null
+}
+
+export function islandBounds(
+  display: { bounds: { x: number; y: number }; workArea: { x: number; y: number; width: number } },
+  notch: { x: number; width: number } | null,
+): { x: number; y: number; width: number; height: number } {
+  if (notch) {
+    return {
+      x: display.bounds.x + notch.x - ISLAND_EAR_WIDTH,
+      y: display.bounds.y,
+      width: notch.width + 2 * ISLAND_EAR_WIDTH,
+      height: ISLAND_HEIGHT,
+    }
+  }
+  const { workArea } = display
+  return {
+    x: Math.round(workArea.x + (workArea.width - ISLAND_CAPSULE_WIDTH) / 2),
+    y: workArea.y + 8,
+    width: ISLAND_CAPSULE_WIDTH,
+    height: ISLAND_HEIGHT,
+  }
 }

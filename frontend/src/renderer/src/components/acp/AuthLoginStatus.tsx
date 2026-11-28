@@ -4,16 +4,18 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/toast'
 import { submitACPAuthLoginInput } from '@/lib/api/settings'
-import type { ACPAuthLogin } from '@/lib/api/types'
+import type { ACPAuthLoginChallenge } from '@/lib/api/types'
 import { openExternal } from '@/lib/clientRuntime'
 import { writeClipboard } from '@/lib/clipboard'
 
 export function AuthLoginStatus({
   job,
   running,
+  submitCode = submitACPAuthLoginInput,
 }: {
-  job?: ACPAuthLogin
+  job?: ACPAuthLoginChallenge
   running: boolean
+  submitCode?: false | ((id: string, code: string) => Promise<unknown>)
 }) {
   const toast = useToast()
   const opened = useRef('')
@@ -22,16 +24,13 @@ export function AuthLoginStatus({
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
 
-  // The remote/headless flow: the browser prints a code the CLI couldn't
-  // capture, so the user hands it back here and the backend relays it to the
-  // login process's stdin. The poll then reflects the result.
   const onSubmitCode = async () => {
     const value = code.trim()
-    if (!job || !value) return
+    if (!job || !submitCode || !value) return
     setSending(true)
     setSendError('')
     try {
-      await submitACPAuthLoginInput(job.id, value)
+      await submitCode(job.id, value)
       setCode('')
     } catch (error) {
       setSendError(error instanceof Error ? error.message : 'Could not send the code')
@@ -57,7 +56,7 @@ export function AuthLoginStatus({
     ? 'Sign-in failed'
     : succeeded
       ? 'Sign-in finished'
-      : details.url || details.code
+      : details.url || details.code || job?.opens_browser
         ? 'Finish sign-in in your browser'
         : 'Starting sign-in...'
   const text = failed
@@ -68,12 +67,14 @@ export function AuthLoginStatus({
         ? 'Enter the one-time code on the auth page.'
         : details.url
           ? 'Approve the browser prompt to continue.'
-          : 'Waiting for the agent CLI to print its browser login link.'
+          : job?.opens_browser
+            ? 'Sign in on the page that opened in your browser.'
+            : 'Requesting a browser sign-in link…'
 
   return (
     <div
       className={`grid gap-2 rounded-[10px] px-3 py-2 text-[12px] ${
-        failed ? 'bg-danger-soft text-danger' : 'bg-surface text-ink-2'
+        failed ? 'bg-danger-soft text-danger' : 'bg-bg text-ink-2'
       }`}
     >
       <div className="flex min-w-0 items-start gap-2">
@@ -115,7 +116,7 @@ export function AuthLoginStatus({
         </div>
       ) : null}
 
-      {job && showAuthDetails ? (
+      {submitCode && job && showAuthDetails ? (
         <form
           onSubmit={(event) => {
             event.preventDefault()
@@ -126,6 +127,7 @@ export function AuthLoginStatus({
           <p className="text-ink-3">Did the browser show a code to paste back? Enter it here to finish.</p>
           <div className="flex items-center gap-1.5">
             <Input
+              aria-label="Authorization code"
               value={code}
               onChange={(event) => setCode(event.target.value)}
               placeholder="Paste the code from the browser"
@@ -138,14 +140,14 @@ export function AuthLoginStatus({
               Submit
             </Button>
           </div>
-          {sendError ? <p className="text-danger">{sendError}</p> : null}
+          {sendError ? <p role="alert" className="text-danger">{sendError}</p> : null}
         </form>
       ) : null}
     </div>
   )
 }
 
-function authDetails(job?: ACPAuthLogin): { url: string; code: string } {
+function authDetails(job?: ACPAuthLoginChallenge): { url: string; code: string } {
   const output = stripANSI(job?.output ?? '')
   return {
     url: job?.auth_url || firstAuthURL(output),

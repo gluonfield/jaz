@@ -1,11 +1,20 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { app, type BrowserWindow } from 'electron'
+import { app, webContents, type BrowserWindow } from 'electron'
+
+export function restoreWindowContentsFocus(win: BrowserWindow | null | undefined): void {
+  if (!win || win.isDestroyed()) return
+  const focused = webContents?.getFocusedWebContents?.()
+  if (!focused || (focused !== win.webContents && focused.hostWebContents !== win.webContents)) {
+    win.webContents.focus()
+  }
+}
 
 const WINDOW_SHOW_FALLBACK_MS = 3_000
 
 type WindowLifecycleOptions = {
   label: string
+  showOnReady?: boolean
   onDidFinishLoad?: () => void
 }
 
@@ -46,11 +55,11 @@ export function installMainDiagnostics(): void {
 }
 
 export function attachWindowLifecycle(win: BrowserWindow, options: WindowLifecycleOptions): void {
-  const { label, onDidFinishLoad } = options
+  const { label, showOnReady = true, onDidFinishLoad } = options
   let shown = false
 
   const show = (reason: string): void => {
-    if (win.isDestroyed()) return
+    if (!showOnReady || win.isDestroyed()) return
     if (!win.isVisible()) win.show()
     if (shown || !win.isVisible()) return
     shown = true
@@ -69,6 +78,7 @@ export function attachWindowLifecycle(win: BrowserWindow, options: WindowLifecyc
   win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     if (level >= 2) logMain(`${label} renderer console ${level}: ${message} (${sourceId}:${line})`)
   })
+  win.on('focus', () => restoreWindowContentsFocus(win))
   win.on('unresponsive', () => logMain(`${label} window became unresponsive`))
   win.once('ready-to-show', () => show('ready-to-show'))
   win.webContents.once('did-finish-load', () => {

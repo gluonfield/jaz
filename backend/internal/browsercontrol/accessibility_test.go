@@ -13,13 +13,13 @@ func TestAXRevisionPreservesIdentityAndHierarchy(t *testing.T) {
 		{ID: "button", ParentID: "ignored", Role: axValue{Value: "button"}, Name: axValue{Value: "Save"}, BackendID: 17},
 	}
 	first := axState{indices: map[string]int{}, targets: map[string]axTarget{}}
-	first.appendTree(&axTree{Frame: frame, Nodes: nodes}, nil, 0, -1)
+	first.appendTree(&axTree{Frame: frame, Nodes: nodes}, nil, nil, 0, -1)
 	if len(first.lines) != 2 || first.lines[1].Parent != first.lines[0].Index || first.lines[1].Text != "\t1 button \"Save\"" {
 		t.Fatalf("ignored ancestor was not flattened correctly: %+v", first.lines)
 	}
 	second := axState{next: first.next, indices: map[string]int{}, targets: map[string]axTarget{}}
 	nodes[2].Name.Value = "Saved"
-	second.appendTree(&axTree{Frame: frame, Nodes: nodes}, first.indices, 0, -1)
+	second.appendTree(&axTree{Frame: frame, Nodes: nodes}, first.indices, nil, 0, -1)
 	if got := renderAXRevision(first.lines, second.lines, false); got != "Changed: \t1 button \"Saved\"" {
 		t.Fatalf("changed name did not preserve index: %s", got)
 	}
@@ -28,7 +28,7 @@ func TestAXRevisionPreservesIdentityAndHierarchy(t *testing.T) {
 	}
 	frame.LoaderID = "replacement-document"
 	third := axState{next: second.next, indices: map[string]int{}, targets: map[string]axTarget{}}
-	third.appendTree(&axTree{Frame: frame, Nodes: nodes}, second.indices, 0, -1)
+	third.appendTree(&axTree{Frame: frame, Nodes: nodes}, second.indices, nil, 0, -1)
 	if _, exists := third.targets["ax:1"]; exists {
 		t.Fatal("an old index was reused for another document")
 	}
@@ -69,7 +69,7 @@ func TestAXChildFrameIsNestedUnderItsOwner(t *testing.T) {
 			20: {Frame: child, Nodes: []axNode{{ID: "root", Role: axValue{Value: "RootWebArea"}}}},
 			30: {Nodes: []axNode{{ID: "hidden", Role: axValue{Value: "button"}, Name: axValue{Value: "Hidden frame action"}}}},
 		},
-	}, nil, 0, -1)
+	}, nil, nil, 0, -1)
 	if len(state.lines) != 4 || state.lines[2].Parent != 1 || state.lines[2].Text != "\t\t2 RootWebArea" || state.lines[3].Text != "\t3 button" {
 		t.Fatalf("child document was not nested under its exposed iframe: %+v", state.lines)
 	}

@@ -45,12 +45,9 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	if req.MCPServerPolicy == "" && visualize.NormalizeSurface(req.ArtifactSurface) == visualize.SurfaceWidget {
 		req.MCPServerPolicy = MCPServerPolicyWidget
 	}
-	cfg, ok, err := m.configuredAgent(req.ACPAgent)
+	cfg, err := m.sessionAgentConfig(req.ACPAgent, req.CloudCredentialProfileID)
 	if err != nil {
 		return SpawnRequest{}, AgentConfig{}, "", err
-	}
-	if !ok {
-		return SpawnRequest{}, AgentConfig{}, "", fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
 	}
 	if err := validateAgentLaunch(req.ACPAgent, cfg); err != nil {
 		return SpawnRequest{}, AgentConfig{}, "", err
@@ -64,7 +61,7 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	if modelOverridden {
 		cfg.Model = model
 	}
-	if providerID := strings.TrimSpace(req.ModelProvider); providerID != "" {
+	if providerID := strings.TrimSpace(req.ModelProvider); providerID != "" && req.CloudCredentialProfileID == "" {
 		if !modelOverridden && providerID != strings.TrimSpace(cfg.ModelProvider) && cfg.UsesProvider() {
 			cfg.Model = agentProviderDefaultModel(req.ACPAgent, providerID, m.providers())
 		}
@@ -208,6 +205,17 @@ func agentProviderDefaultModel(agent, id string, providers map[string]provider.M
 }
 
 func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort string) (storage.Session, error) {
+	workspaceID := strings.TrimSpace(req.WorkspaceID)
+	if workspaceID == "" && req.ParentID != "" {
+		if parent, err := m.store.LoadSession(req.ParentID); err == nil {
+			workspaceID = parent.WorkspaceID
+		}
+	}
+	if workspaceID == "" && req.SourceID != "" {
+		if source, err := m.store.LoadSession(req.SourceID); err == nil {
+			workspaceID = source.WorkspaceID
+		}
+	}
 	return m.store.CreateSession(storage.CreateSession{
 		Slug:            req.Slug,
 		Title:           req.Title,
@@ -218,12 +226,14 @@ func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort 
 		ReasoningEffort: effort,
 		SourceType:      req.SourceType,
 		SourceID:        req.SourceID,
+		WorkspaceID:     workspaceID,
 		Commitment:      req.Commitment,
 		RuntimeRef: &storage.RuntimeRef{
-			Type:            storage.RuntimeACP,
-			Agent:           req.ACPAgent,
-			ArtifactSurface: req.ArtifactSurface,
-			MCPServerPolicy: req.MCPServerPolicy,
+			Type:                     storage.RuntimeACP,
+			Agent:                    req.ACPAgent,
+			ArtifactSurface:          req.ArtifactSurface,
+			MCPServerPolicy:          req.MCPServerPolicy,
+			CloudCredentialProfileID: req.CloudCredentialProfileID,
 		},
 	})
 }

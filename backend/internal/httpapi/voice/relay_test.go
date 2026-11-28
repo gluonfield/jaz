@@ -2,9 +2,6 @@ package voice_test
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/wins/jaz/backend/internal/deviceauth"
 	voiceapi "github.com/wins/jaz/backend/internal/httpapi/voice"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -24,13 +20,10 @@ import (
 )
 
 type relayFixture struct {
-	server       *httptest.Server
-	devices      *deviceauth.Service
-	desktop      deviceauth.RegisterResult
-	otherDesktop deviceauth.RegisterResult
-	phones       []deviceauth.RegisterResult
-	session      string
-	callEnded    chan struct{}
+	server    *httptest.Server
+	token     string
+	session   string
+	callEnded chan struct{}
 }
 
 type hostFrame struct {
@@ -55,22 +48,7 @@ func newRelayFixture(t *testing.T) *relayFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	devices := deviceauth.New(store)
-	register := func(kind string, seed byte) deviceauth.RegisterResult {
-		t.Helper()
-		raw := make([]byte, 32)
-		raw[0] = seed
-		sum := sha256.Sum256(raw)
-		device, err := devices.RegisterApproved(deviceauth.Registration{
-			Identity: deviceauth.DeviceIdentity{DeviceID: hex.EncodeToString(sum[:]), PublicKey: base64.RawURLEncoding.EncodeToString(raw)},
-			Profile:  deviceauth.DeviceProfile{Name: "Voice fixture", Kind: kind},
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return device
-	}
-	fixture := &relayFixture{callEnded: make(chan struct{}, 16), devices: devices, desktop: register("desktop", 1), otherDesktop: register("desktop", 4), phones: []deviceauth.RegisterResult{register("mobile", 2), register("mobile", 3)}}
+	fixture := &relayFixture{callEnded: make(chan struct{}, 16), token: "fixture-owner"}
 	session, err := store.CreateSession(storage.CreateSession{Title: "Voice fixture"})
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +61,7 @@ func newRelayFixture(t *testing.T) *relayFixture {
 		t.Fatal(err)
 	}
 	handler := voiceapi.NewRelayHandler(store, service, live.NewDesktopRelay())
-	fixture.server = httptest.NewServer((&server.Server{Store: store, Devices: devices, AuthKey: "fixture-owner", Routes: server.Routes{
+	fixture.server = httptest.NewServer((&server.Server{Store: store, AuthKey: fixture.token, Routes: server.Routes{
 		{Pattern: "GET /v1/voice/desktop", Handler: http.HandlerFunc(handler.Desktop)},
 		{Pattern: "GET /v1/voice/claude/status", Handler: http.HandlerFunc(handler.Status)},
 		{Pattern: "GET /v1/sessions/{session}/voice/claude", Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -95,11 +73,15 @@ func newRelayFixture(t *testing.T) *relayFixture {
 	return fixture
 }
 
-func (f *relayFixture) dial(t *testing.T, path, token string) *websocket.Conn {
+func (f *relayFixture) dial(t *testing.T, path, platform string) *websocket.Conn {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
+	header := http.Header{"Authorization": {"Bearer " + f.token}}
+	if platform != "" {
+		header.Set("X-Jaz-Client-Platform", platform)
+	}
 	for {
-		connection, response, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(f.server.URL, "http")+path, http.Header{"Authorization": {"Bearer " + token}})
+		connection, response, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(f.server.URL, "http")+path, header)
 		if err != nil {
 			status := 0
 			if response != nil {
@@ -143,7 +125,7 @@ func waitHost(t *testing.T, requests <-chan hostFrame, kind string) hostFrame {
 
 func TestClaudeRelayUsesAuthenticatedDesktopAndIsolatesOwnedCalls(t *testing.T) {
 	f := newRelayFixture(t)
-	host := f.dial(t, "/v1/voice/desktop", f.desktop.Token)
+	host := f.dial(t, "/v1/voice/desktop", "desktop")
 	var writeMu sync.Mutex
 	writeHost := func(value any) {
 		writeMu.Lock()
@@ -172,7 +154,7 @@ func TestClaudeRelayUsesAuthenticatedDesktopAndIsolatesOwnedCalls(t *testing.T) 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, f.server.URL+"/v1/voice/claude/status", nil)
-	request.Header.Set("Authorization", "Bearer "+f.phones[0].Token)
+	request.Header.Set("Authorization", "Bearer "+f.token)
 	for {
 		response, err := http.DefaultClient.Do(request)
 		if err != nil {
@@ -190,8 +172,8 @@ func TestClaudeRelayUsesAuthenticatedDesktopAndIsolatesOwnedCalls(t *testing.T) 
 	}
 	waitHost(t, requests, "status")
 	path := "/v1/sessions/" + f.session + "/voice/claude"
-	a := f.dial(t, path, f.phones[0].Token)
-	b := f.dial(t, path, f.phones[1].Token)
+	a := f.dial(t, path, "mobile")
+	b := f.dial(t, path, "mobile")
 	start := func(connection *websocket.Conn) hostFrame {
 		t.Helper()
 		_ = connection.WriteJSON(map[string]any{"id": "start", "command": map[string]any{"type": "start", "id": "caller-chosen-id", "options": map[string]string{"sdp": "v=0\r\noffer", "context": "Raw mobile chat context", "voice": "untrusted"}}})
@@ -229,50 +211,61 @@ func TestClaudeRelayUsesAuthenticatedDesktopAndIsolatesOwnedCalls(t *testing.T) 
 	if frame := readPhone(t, b); frame.ID != "result" || frame.Error != "" {
 		t.Fatalf("tool result response=%#v", frame)
 	}
-	if _, err := f.devices.RevokeDevice(f.phones[0].Device.ID); err != nil {
-		t.Fatal(err)
-	}
+	a.Close()
 	if frame := waitHost(t, requests, "close"); frame.Params.ID != callA.Params.ID {
-		t.Fatalf("revocation closed another call: %#v", frame)
+		t.Fatalf("closing A closed another call: %#v", frame)
 	}
-	event(callB.Params.ID, `{"type":"message_complete","text":"B survives A revocation"}`)
+	event(callB.Params.ID, `{"type":"message_complete","text":"B survives A close"}`)
 	if frame := readPhone(t, b); !strings.Contains(frame.Data, "B survives") {
 		t.Fatalf("other mobile call was interrupted: %#v", frame)
 	}
-	connection, rejected, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(f.server.URL, "http")+path, http.Header{"Authorization": {"Bearer " + f.phones[0].Token}})
-	if connection != nil {
-		connection.Close()
-	}
-	if err == nil || rejected == nil || rejected.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("revoked phone reconnected: %v %#v", err, rejected)
-	}
-	if _, err := f.devices.RevokeDevice(f.desktop.Device.ID); err != nil {
-		t.Fatal(err)
-	}
+	host.Close()
 	if frame := readPhone(t, b); frame.Type != "event" || !strings.Contains(frame.Data, "jaz_disconnected") {
 		t.Fatalf("host disconnect was not surfaced: %#v", frame)
 	}
 }
 
-func TestClaudeRelayRejectsUnauthenticatedAndMobileHosts(t *testing.T) {
+func TestClaudeRelayRejectsUnauthenticatedAndUntrustedHosts(t *testing.T) {
 	f := newRelayFixture(t)
 	for _, test := range []struct {
-		path, token string
-		status      int
+		name       string
+		path       string
+		token      string
+		platform   string
+		host       string
+		remoteAddr string
+		forwarded  string
+		status     int
 	}{
-		{"/v1/voice/desktop", "", http.StatusUnauthorized},
-		{"/v1/voice/desktop", f.phones[0].Token, http.StatusForbidden},
-		{"/v1/sessions/" + f.session + "/voice/claude", "", http.StatusUnauthorized},
-		{"/v1/sessions/missing/voice/claude", f.phones[0].Token, http.StatusNotFound},
-		{"/v1/sessions/" + f.session + "/voice/claude", f.phones[0].Token, http.StatusServiceUnavailable},
+		{"unauthenticated desktop", "/v1/voice/desktop", "", "desktop", "127.0.0.1:5299", "127.0.0.1:4321", "", http.StatusUnauthorized},
+		{"remote omitted platform", "/v1/voice/desktop", f.token, "", "127.0.0.1:5299", "203.0.113.10:4321", "", http.StatusForbidden},
+		{"remote spoofed desktop header", "/v1/voice/desktop", f.token, "desktop", "127.0.0.1:5299", "203.0.113.10:4321", "", http.StatusForbidden},
+		{"remote mobile header", "/v1/voice/desktop", f.token, "mobile", "127.0.0.1:5299", "203.0.113.10:4321", "", http.StatusForbidden},
+		{"loopback forwarded spoofed desktop", "/v1/voice/desktop", f.token, "desktop", "127.0.0.1:5299", "127.0.0.1:4321", "203.0.113.10", http.StatusForbidden},
+		{"loopback non-local host spoofed desktop", "/v1/voice/desktop", f.token, "desktop", "jaz.example.com", "127.0.0.1:4321", "", http.StatusForbidden},
+		{"unauthenticated mobile call", "/v1/sessions/" + f.session + "/voice/claude", "", "mobile", "jaz.example.com", "203.0.113.10:4321", "", http.StatusUnauthorized},
+		{"missing session mobile call", "/v1/sessions/missing/voice/claude", f.token, "mobile", "jaz.example.com", "203.0.113.10:4321", "", http.StatusNotFound},
+		{"no desktop connected", "/v1/sessions/" + f.session + "/voice/claude", f.token, "mobile", "jaz.example.com", "203.0.113.10:4321", "", http.StatusServiceUnavailable},
 	} {
-		request := httptest.NewRequest(http.MethodGet, test.path, nil)
-		request.Header.Set("Authorization", "Bearer "+test.token)
-		result := httptest.NewRecorder()
-		f.server.Config.Handler.ServeHTTP(result, request)
-		if result.Code != test.status {
-			t.Fatalf("%s status=%d, want %d", test.path, result.Code, test.status)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			request.Host = test.host
+			request.RemoteAddr = test.remoteAddr
+			if test.token != "" {
+				request.Header.Set("Authorization", "Bearer "+test.token)
+			}
+			if test.platform != "" {
+				request.Header.Set("X-Jaz-Client-Platform", test.platform)
+			}
+			if test.forwarded != "" {
+				request.Header.Set("X-Forwarded-For", test.forwarded)
+			}
+			result := httptest.NewRecorder()
+			f.server.Config.Handler.ServeHTTP(result, request)
+			if result.Code != test.status {
+				t.Fatalf("%s status=%d, want %d", test.path, result.Code, test.status)
+			}
+		})
 	}
 }
 
@@ -280,7 +273,7 @@ func TestClaudeRelayDisconnectDuringSetupReleasesOnlyItsCall(t *testing.T) {
 	for _, closed := range []string{"mobile", "desktop", "invalid answer"} {
 		t.Run(closed, func(t *testing.T) {
 			f := newRelayFixture(t)
-			host := f.dial(t, "/v1/voice/desktop", f.desktop.Token)
+			host := f.dial(t, "/v1/voice/desktop", "desktop")
 			requests := make(chan hostFrame, 4)
 			go func() {
 				for {
@@ -296,7 +289,7 @@ func TestClaudeRelayDisconnectDuringSetupReleasesOnlyItsCall(t *testing.T) {
 					}
 				}
 			}()
-			phone := f.dial(t, "/v1/sessions/"+f.session+"/voice/claude", f.phones[0].Token)
+			phone := f.dial(t, "/v1/sessions/"+f.session+"/voice/claude", "mobile")
 			_ = phone.WriteJSON(map[string]any{"id": "start", "command": map[string]any{"type": "start", "options": map[string]string{"sdp": "v=0\r\noffer", "context": "Mobile context"}}})
 			start := waitHost(t, requests, "start")
 			if closed == "mobile" {
@@ -343,18 +336,18 @@ func TestClaudeRelayKeepsFirstDesktopUntilItDisconnects(t *testing.T) {
 	}
 	startPhone := func() *websocket.Conn {
 		t.Helper()
-		phone := f.dial(t, "/v1/sessions/"+f.session+"/voice/claude", f.phones[0].Token)
+		phone := f.dial(t, "/v1/sessions/"+f.session+"/voice/claude", "mobile")
 		_ = phone.WriteJSON(map[string]any{"id": "start", "command": map[string]any{"type": "start", "options": map[string]string{"sdp": "v=0\r\noffer", "context": "Raw mobile context"}}})
 		return phone
 	}
-	first := f.dial(t, "/v1/voice/desktop", f.desktop.Token)
+	first := f.dial(t, "/v1/voice/desktop", "desktop")
 	firstCommands := serveHost(first, "v=0\r\nfirst-desktop")
 	phone := startPhone()
 	waitHost(t, firstCommands, "start")
 	if frame := readPhone(t, phone); string(frame.Value) != `"v=0\r\nfirst-desktop"` {
 		t.Fatalf("first desktop did not own the call: %#v", frame)
 	}
-	second := f.dial(t, "/v1/voice/desktop", f.otherDesktop.Token)
+	second := f.dial(t, "/v1/voice/desktop", "desktop")
 	_ = second.SetReadDeadline(time.Now().Add(2 * time.Second))
 	_, _, err := second.ReadMessage()
 	var rejected *websocket.CloseError
@@ -370,7 +363,7 @@ func TestClaudeRelayKeepsFirstDesktopUntilItDisconnects(t *testing.T) {
 	if frame := readPhone(t, phone); !strings.Contains(frame.Data, "jaz_disconnected") {
 		t.Fatalf("first desktop disconnect did not end its call: %#v", frame)
 	}
-	replacement := f.dial(t, "/v1/voice/desktop", f.otherDesktop.Token)
+	replacement := f.dial(t, "/v1/voice/desktop", "desktop")
 	replacementCommands := serveHost(replacement, "v=0\r\nreplacement-desktop")
 	replacementPhone := startPhone()
 	waitHost(t, replacementCommands, "start")
@@ -381,7 +374,7 @@ func TestClaudeRelayKeepsFirstDesktopUntilItDisconnects(t *testing.T) {
 
 func TestClaudeRelayExplicitEndClosesProviderOnce(t *testing.T) {
 	f := newRelayFixture(t)
-	host := f.dial(t, "/v1/voice/desktop", f.desktop.Token)
+	host := f.dial(t, "/v1/voice/desktop", "desktop")
 	commands := make(chan hostFrame, 8)
 	go func() {
 		for {
@@ -400,7 +393,7 @@ func TestClaudeRelayExplicitEndClosesProviderOnce(t *testing.T) {
 			_ = host.WriteJSON(map[string]any{"id": frame.ID, "result": result})
 		}
 	}()
-	phone := f.dial(t, "/v1/sessions/"+f.session+"/voice/claude", f.phones[0].Token)
+	phone := f.dial(t, "/v1/sessions/"+f.session+"/voice/claude", "mobile")
 	_ = phone.WriteJSON(map[string]any{"id": "start", "command": map[string]any{"type": "start", "options": map[string]string{"sdp": "v=0\r\noffer", "context": "Raw context"}}})
 	start := waitHost(t, commands, "start")
 	if frame := readPhone(t, phone); frame.Error != "" {
@@ -419,7 +412,7 @@ func TestClaudeRelayExplicitEndClosesProviderOnce(t *testing.T) {
 		t.Fatalf("end released the wrong call: %#v", close)
 	}
 	request, _ := http.NewRequest(http.MethodGet, f.server.URL+"/v1/voice/claude/status", nil)
-	request.Header.Set("Authorization", "Bearer "+f.phones[0].Token)
+	request.Header.Set("Authorization", "Bearer "+f.token)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)

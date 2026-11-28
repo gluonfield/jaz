@@ -13,13 +13,18 @@ import (
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/acpadapter"
+	"github.com/wins/jaz/backend/internal/acpcredentials"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/jazagent"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/m365copilot"
+	"github.com/wins/jaz/backend/internal/machinebridge"
 	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
@@ -45,14 +50,13 @@ import (
 	"github.com/wins/jaz/backend/internal/tools"
 	agentspawn "github.com/wins/jaz/backend/internal/tools/agent/spawn"
 	applypatch "github.com/wins/jaz/backend/internal/tools/applypatch"
+	"github.com/wins/jaz/backend/internal/tools/boardapp"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
 	visualizetool "github.com/wins/jaz/backend/internal/tools/visualize"
-	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
 	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
-	"github.com/wins/jaz/backend/internal/widgets"
 	"go.uber.org/fx"
 )
 
@@ -61,12 +65,12 @@ type Config struct {
 	Workspace        string
 	ModelProviders   map[string]provider.ModelProviderConfig
 	Skills           SkillsConfig
+	Cloud            CloudConfig
 	Voice            VoiceConfig
 	ACP              acp.Config
 	MicrosoftCopilot m365copilot.OAuthConfig
 	Memory           MemoryConfig
 	Connections      ConnectionsConfig
-	Devices          DevicesConfig
 	Push             mobilepush.Config
 	Bots             []bots.Config
 	// MCPServers declares MCP servers as a JSON array of server inputs
@@ -74,12 +78,12 @@ type Config struct {
 	MCPServers string
 }
 
-type DevicesConfig struct {
-	DisablePairing bool
-}
-
 type SkillsConfig struct {
 	DisableSync bool
+}
+
+type CloudConfig struct {
+	DisableMachineBridge bool
 }
 
 type VoiceConfig struct {
@@ -138,15 +142,16 @@ type Workspace string
 type Stores struct {
 	fx.Out
 
-	Store           *sqlitestore.Store
-	ACPStore        acp.Store
-	StorageStore    storage.Store
-	SessionStore    storage.SessionStore
-	SessionEvents   storage.SessionEventAppender
-	UsageEventStore storage.UsageEventStore
-	FeedStore       storage.FeedStore
-	PluginStore     storage.PluginStore
-	PluginSessions  plugins.SessionStore
+	Store            *sqlitestore.Store
+	ACPStore         acp.Store
+	StorageStore     storage.Store
+	SessionStore     storage.SessionStore
+	SessionEvents    storage.SessionEventAppender
+	UsageEventStore  storage.UsageEventStore
+	FeedStore        storage.FeedStore
+	PluginStore      storage.PluginStore
+	PluginSessions   plugins.SessionStore
+	CloudMirrorStore storage.CloudMirrorStore
 }
 
 func NewRuntimeLayout(cfg Config) (runtimefiles.Layout, error) {
@@ -176,15 +181,16 @@ func NewStore(layout runtimefiles.Layout, catalog acp.AgentCatalog) (Stores, err
 		return Stores{}, err
 	}
 	return Stores{
-		Store:           store,
-		ACPStore:        store,
-		StorageStore:    store,
-		SessionStore:    store,
-		SessionEvents:   store,
-		UsageEventStore: store,
-		FeedStore:       store,
-		PluginStore:     store,
-		PluginSessions:  store,
+		Store:            store,
+		ACPStore:         store,
+		StorageStore:     store,
+		SessionStore:     store,
+		SessionEvents:    store,
+		UsageEventStore:  store,
+		FeedStore:        store,
+		PluginStore:      store,
+		PluginSessions:   store,
+		CloudMirrorStore: store,
 	}, nil
 }
 
@@ -208,12 +214,94 @@ func NewMemory(cfg Config, layout runtimefiles.Layout) (*jazmem.Memory, error) {
 	return jazmem.Open(jazmem.Config{Root: memoryRoot, DBPath: dbPath, DisableProviderDreams: true})
 }
 
-func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *memoryservice.Service, connections *connections.Service, agents acp.AgentConfigSource, installed *plugins.Store) *coordinator.Builder {
+func NewInstructionsStore(layout runtimefiles.Layout, store *sqlitestore.Store, cloud *cloudsync.Service) instructions.Store {
+	fsStore := instructions.NewLocalFSStore(
+		layout.Root,
+		instructions.WithBotsRoot(layout.Bots),
+		instructions.WithBotHomeResolver(bots.HomeResolver(store)),
+	)
+	local := instructions.NewDBStore(store, layout.Root, fsStore)
+	return cloudsync.NewInstructionsStore(cloud, local)
+}
+
+func NewPromptBuilder(store *sqlitestore.Store, inst instructions.Store, cloud *cloudsync.Service, workspace Workspace, memory *memoryservice.Service, connections *connections.Service, agents acp.AgentConfigSource, installed *plugins.Store) *coordinator.Builder {
 	return coordinator.NewBuilder(store.RootDir(), string(workspace), memory.Root(), memory.Enabled).
+		WithInstructions(inst).
+		WithCloudScopeProvider(cloud.CloudScope).
 		WithConnections(connections).
 		WithAgents(agents).
 		WithBrowserEnabled(func() bool { return agentsettings.BrowserEnabled(store) }).
-		WithPluginFilter(func(id string) bool { return installed.IsEnabled(context.Background(), id) })
+		WithPluginFilter(func(id string) bool { return installed.IsEnabled(context.Background(), id) }).
+		WithPluginsDir(installed.ActivePluginsDir)
+}
+
+type machineBridgeDeps struct {
+	fx.In
+
+	Config    Config
+	Store     *sqlitestore.Store
+	Workspace Workspace          `optional:"true"`
+	Cloud     *cloudsync.Service `optional:"true"`
+	Logger    *log.Logger        `optional:"true"`
+}
+
+type machineBridgeOut struct {
+	fx.Out
+
+	Supervisor        *MachineBridgeSupervisor
+	Controller        machinebridge.Controller
+	ResolveACPProfile acpcredentials.Resolver
+}
+
+func NewMachineBridge(deps machineBridgeDeps) machineBridgeOut {
+	if deps.Config.Cloud.DisableMachineBridge || deps.Cloud == nil {
+		return machineBridgeOut{}
+	}
+	sup := NewMachineBridgeSupervisor(deps.Cloud, deps.Store, string(deps.Workspace), deps.Logger)
+	return machineBridgeOut{
+		Supervisor:        sup,
+		Controller:        sup,
+		ResolveACPProfile: sup.ResolveACPProfile,
+	}
+}
+
+type cloudSyncDeps struct {
+	fx.In
+
+	Lifecycle fx.Lifecycle
+	Cloud     *cloudsync.Service
+	MCP       *mcpruntime.Manager
+	Bridge    *MachineBridgeSupervisor `optional:"true"`
+}
+
+func StartCloudSync(deps cloudSyncDeps) {
+	deps.Cloud.AddOnAccountChanged(func(ctx context.Context) {
+		deps.MCP.Refresh(ctx)
+	})
+	if deps.Bridge != nil {
+		deps.Cloud.AddOnAccountChanged(deps.Bridge.Reconcile)
+	}
+	var cancel context.CancelFunc
+	deps.Lifecycle.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			ctx, stop := context.WithCancel(context.Background())
+			cancel = stop
+			go deps.Cloud.Run(ctx)
+			if deps.Bridge != nil {
+				deps.Bridge.Start(ctx)
+			}
+			return nil
+		},
+		OnStop: func(stopCtx context.Context) error {
+			if cancel != nil {
+				cancel()
+			}
+			if deps.Bridge != nil {
+				deps.Bridge.Stop(stopCtx)
+			}
+			return nil
+		},
+	})
 }
 
 func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
@@ -334,7 +422,7 @@ func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, log
 	})
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers mcpconfig.ServerReader, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service, installed *plugins.Store, msCopilot *m365copilot.AuthService) (acp.Config, error) {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, inst instructions.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers acp.SessionMCPServers, providerSource provider.Source, modelCatalog *modelcatalog.Service, boardService *boards.Service, installed *plugins.Store, msCopilot *m365copilot.AuthService, resolveCloudProfile acpcredentials.Resolver) (acp.Config, error) {
 	if err := bots.MigrateHomes(store); err != nil {
 		return acp.Config{}, err
 	}
@@ -348,13 +436,14 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	cfg.ACP.ModelCatalog = modelCatalog
 	cfg.ACP.SystemPrompt = prompts
 	cfg.ACP.ClaudePlugins = installed.ClaudePlugins
-	cfg.ACP.MCPStore = mcpServers
+	cfg.ACP.MCPServers = mcpServers
 	cfg.ACP.MicrosoftCopilot = msCopilot
+	cfg.ACP.ResolveCloudProfile = resolveCloudProfile
 	promptBuilder := loops.RuntimePromptBuilder{Repo: store, PromptExtras: []func(loops.Loop, loops.Run) string{bots.RoutineInstructions(store)}}
-	if widgetService != nil {
-		promptBuilder.PromptExtras = append(promptBuilder.PromptExtras, widgetService.LoopPromptExtra)
+	if boardService != nil {
+		promptBuilder.PromptExtras = append(promptBuilder.PromptExtras, boardService.LoopPromptExtra)
 	}
-	cfg.ACP.TurnNote = bots.TurnNote(store)
+	cfg.ACP.TurnNote = bots.TurnNote(store, inst)
 	cfg.ACP.SteerNote = bots.SteerNote(store)
 	cfg.ACP.ResumePrompt = func(session storage.Session) (promptmodule.Modules, error) {
 		switch session.SourceType {
@@ -364,7 +453,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 			}
 			return promptBuilder.ForRun(session.SourceID, time.Now().UTC())
 		case storage.SourceBot, storage.SourceBotMember:
-			return bots.Prompt(store, session)
+			return bots.Prompt(store, inst, session)
 		case storage.SourceBotWorker:
 			return bots.WorkerPrompt(store, session)
 		default:
@@ -378,19 +467,19 @@ func agentDefaultsSeed(catalog acp.AgentCatalog) agentsettings.AgentDefaults {
 	return agentsettings.AgentDefaultsFromCatalog(catalog)
 }
 
-func NewWidgetService(store *sqlitestore.Store, logger *log.Logger) *widgets.Service {
-	return widgets.NewService(store, logger)
+func NewBoardService(store *sqlitestore.Store, cloud *cloudsync.Service, logger *log.Logger) *boards.Service {
+	return boards.NewService(store, cloud.ActiveWorkspaceID, logger)
 }
 
-func NewWidgetSessionPublisher(service *widgets.Service, store *sqlitestore.Store) *widgets.SessionPublisher {
-	return &widgets.SessionPublisher{Service: service, Sessions: store, Loops: store}
+func NewBoardSessionPublisher(service *boards.Service, store *sqlitestore.Store) *boards.SessionPublisher {
+	return &boards.SessionPublisher{Service: service, Sessions: store, Loops: store}
 }
 
-func NewThreadService(store *sqlitestore.Store) *threads.Service {
-	return threads.NewService(sqlitestore.NewSearchQueries(store), store)
+func NewThreadService(store *sqlitestore.Store, cloud *cloudsync.Service) *threads.Service {
+	return threads.NewService(sqlitestore.NewSearchQueries(store), store).WithWorkspace(cloud.ActiveWorkspaceID)
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher, visualizations *visualize.Service) *tools.Registry {
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, boardPublisher *boards.SessionPublisher, visualizations *visualize.Service) *tools.Registry {
 	return tools.NewRegistry(
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
 		&exectool.WriteStdinTool{Manager: commandManager},
@@ -399,10 +488,10 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 			ExtraRoots: []string{loops.AutomationsDir(store.RootDir())},
 			PathScope:  applypatch.AbsolutePaths,
 		},
-		&visualizetool.ReadMeTool{Visualize: visualizations},
+		&visualizetool.GuideTool{Visualize: visualizations},
 		&visualizetool.ShowCanvasTool{Visualize: visualizations},
-		&visualizetool.ShowWidgetTool{},
-		&widgettool.PublishTool{Publisher: widgetPublisher},
+		&visualizetool.ShowArtifactTool{},
+		&boardapp.PublishTool{Publisher: boardPublisher},
 		&viewimagetool.Tool{Workspace: string(workspace)},
 		&agentspawn.Tool{Service: manager},
 	)

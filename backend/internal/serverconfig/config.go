@@ -10,6 +10,7 @@ const (
 	JazToolsMCPCompatPath = "/mcp/jaz"
 	JazmemMCPPath         = "/mcp/jazmem"
 	MCPProxyPath          = "/mcp/proxy"
+	CloudMCPPath          = "/mcp/cloud"
 )
 
 type Config struct {
@@ -23,6 +24,7 @@ type URLs struct {
 	JazToolsMCP string
 	JazmemMCP   string
 	MCPProxy    string
+	CloudMCP    string
 }
 
 func New(addr string, publicURL ...string) Config {
@@ -38,6 +40,7 @@ func NewURLs(config Config) URLs {
 		JazToolsMCP: localURL(config.Addr, JazToolsMCPPath),
 		JazmemMCP:   localURL(config.Addr, JazmemMCPPath),
 		MCPProxy:    localURL(config.Addr, MCPProxyPath),
+		CloudMCP:    localURL(config.Addr, CloudMCPPath),
 	}
 }
 

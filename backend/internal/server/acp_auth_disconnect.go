@@ -31,11 +31,7 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusForbidden, fmt.Errorf("disconnecting is only available from the backend host"))
 		return
 	}
-	release, err := s.claimACPAuth(agent)
-	if err != nil {
-		writeError(w, http.StatusConflict, err)
-		return
-	}
+	_, release := s.claimACPAuth(r.Context(), agent)
 	defer release()
 	store, ok := s.Store.(storage.SettingsStorage)
 	if !ok {
@@ -62,6 +58,7 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		writeError(w, status, err)
 		return
 	}
+	s.invalidateACPAuthProbe(agent)
 
 	if current, ok := defaults.ACP[agent]; ok {
 		current.Enabled = false

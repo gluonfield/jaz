@@ -13,9 +13,9 @@ import { useBrowserSessions, useSessionPreview } from '@/lib/browserSessions'
 import { SidebarVisibility } from '@/lib/sidebar'
 import type { PluginView } from '@/lib/api/types'
 import type { MCPAppThread } from '@/lib/mcpAppThread'
-import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, pluginViewTab, refreshPluginTabs, type NewSidePanelTab, type PanelPresentation, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
+import type { ArtifactInput } from '@/lib/artifacts'
+import { OVERVIEW_PANEL_WIDTH, artifactTab, publishedAppTab, sidePanelTabs, pluginViewTab, refreshPluginTabs, type NewSidePanelTab, type PanelPresentation, type PublishedAppRef, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
 
-const PANEL_MAX_WIDTH = 1180
 const PANEL_MIN_THREAD_WIDTH = 360
 
 type SavedPanel = { state: SidePanelTabs; open: boolean; mode: SidePanelMode; widthOverride?: number }
@@ -81,12 +81,12 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
   const availableWidth = containerWidth - PANEL_MIN_THREAD_WIDTH
   const minWidth = Math.min(400, Math.max(240, availableWidth))
   const defaultWidth = Math.max(640, Math.round(containerWidth * 0.6))
-  const maxWidth = Math.max(minWidth, Math.min(PANEL_MAX_WIDTH, availableWidth))
+  const maxWidth = Math.max(minWidth, availableWidth)
   const width = mode === 'overview' ? OVERVIEW_PANEL_WIDTH : clampWidth(widthOverride ?? defaultWidth, minWidth, maxWidth)
   const availableCSS = `calc(100% - ${PANEL_MIN_THREAD_WIDTH}px)`
   const preferredCSS = widthOverride === undefined ? 'max(640px, 60%)' : `${widthOverride}px`
   const widthStyle = mode === 'tabs'
-    ? `clamp(min(400px, max(240px, ${availableCSS})), ${preferredCSS}, max(240px, min(${PANEL_MAX_WIDTH}px, ${availableCSS})))`
+    ? `clamp(min(400px, max(240px, ${availableCSS})), ${preferredCSS}, max(240px, ${availableCSS}))`
     : `${width}px`
 
   useLayoutEffect(() => {
@@ -123,6 +123,9 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
   }, [showTabs])
   const reorderTabs = useCallback((ids: string[]) => dispatch({ type: 'reorder', ids }), [])
   const openTab = useCallback((tab: SidePanelTab, after?: string) => {
+    if (tab.kind === 'canvas' && tab.target) {
+      tab = { ...tab, target: { ...tab.target, navigationKey: crypto.randomUUID() } }
+    }
     dispatch({ type: 'open', tab, after })
     showTabs()
   }, [showTabs])
@@ -135,11 +138,12 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
   useSessionPreview(sessionId, followBrowser ? showPreview : undefined)
 
   const addTab = useCallback((tab: NewSidePanelTab, after?: string) => {
-    openTab(typeof tab === 'object' ? { id: `app:${entrypointKey(tab)}`, kind: 'app', app: tab }
+    openTab(typeof tab === 'object' ? 'kind' in tab ? tab : { id: `app:${entrypointKey(tab)}`, kind: 'app', app: tab }
       : tab === 'preview' ? { id: browsers.openTab(sessionId), kind: tab }
         : tab === 'file' ? { id: 'file', kind: tab, file: null }
           : { id: tab, kind: tab }, after)
   }, [browsers, openTab, sessionId])
+  const openDiff = useCallback((repo: string) => openTab({ id: 'diff', kind: 'diff', repo }), [openTab])
   const duplicateTab = useCallback((id: string) => {
     openTab({ id: browsers.duplicate(sessionId, id), kind: 'preview' }, id)
   }, [browsers, openTab, sessionId])
@@ -187,6 +191,8 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
       openTab(pluginViewTab(presentation.view))
     }
   }, [openTab, canvasAvailable])
+  const openArtifact = useCallback((artifact: ArtifactInput) => openTab(artifactTab(artifact)), [openTab])
+  const openPublishedApp = useCallback((app: PublishedAppRef) => openTab(publishedAppTab(app)), [openTab])
   const openPreview = useCallback((url: string) => {
     const display = previewDisplayUrl(url) ?? url
     if (openFile(display)) {
@@ -251,7 +257,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     containerRef, open, mode, tabs, activeTab,
     resize, resizing, setResizing, width, widthStyle, minWidth, maxWidth,
     resizable: mode === 'tabs',
-    toggleMode, close, selectTab, reorderTabs, addTab, duplicateTab, closeTab, registerCloseGuard, openFile, openPreview, openApp, openView,
+    toggleMode, close, selectTab, reorderTabs, addTab, openDiff, duplicateTab, closeTab, registerCloseGuard, openFile, openPreview, openApp, openView, openArtifact, openPublishedApp,
   }
 }
 

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { pluginViewTab, refreshPluginTabs, sidePanelTabs } from '@/lib/sidePanelTabs'
+import { artifactTab, pluginViewTab, publishedAppTab, refreshPluginTabs, sidePanelTabs } from '@/lib/sidePanelTabs'
 
 const empty = { tabs: [], activeId: null }
 const open = (state, tab) => sidePanelTabs(state, { type: 'open', tab })
@@ -77,4 +77,17 @@ test('refetched plugin HTML updates mounted tabs without disturbing selection, o
   expect(tabs.find((tab) => tab.id === state.activeId)).toBe(terminal)
   expect(tabs[0].view).toBe(current)
   expect(tabs[1]).toBe(openTabs[1])
+})
+
+test('an artifact or published app reopens its own tab and a different one opens beside it', () => {
+  const chart = { title: 'output', code: '<svg>1</svg>', loadingMessages: [] }
+  let state = open(empty, artifactTab(chart))
+  state = open(state, publishedAppTab({ id: 'a1', title: 'Check points', kind: 'artifact' }))
+  state = open(state, artifactTab({ ...chart }))
+  expect(state.tabs.map((tab) => tab.kind)).toEqual(['artifact', 'published-app'])
+  expect(state.activeId).toBe(state.tabs[0].id)
+  state = open(state, artifactTab({ ...chart, code: '<svg>2</svg>' }))
+  state = open(state, publishedAppTab({ id: 'a1', title: 'Check points v2' }))
+  expect(state.tabs.map((tab) => tab.kind)).toEqual(['artifact', 'published-app', 'artifact'])
+  expect(state.tabs[1].app).toEqual({ id: 'a1', title: 'Check points v2' })
 })

@@ -27,7 +27,8 @@ INSERT INTO loops (
   webhook_hash,
   when_missed,
   thread,
-  keep_running
+  keep_running,
+  workspace_id
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(name),
@@ -56,7 +57,8 @@ INSERT INTO loops (
   sqlc.arg(webhook_hash),
   sqlc.arg(when_missed),
   sqlc.arg(thread),
-  sqlc.arg(keep_running)
+  sqlc.arg(keep_running),
+  sqlc.arg(workspace_id)
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -85,7 +87,8 @@ ON CONFLICT(id) DO UPDATE SET
   last_run_status = excluded.last_run_status,
   last_error = excluded.last_error,
   created_at_ms = excluded.created_at_ms,
-  updated_at_ms = excluded.updated_at_ms;
+  updated_at_ms = excluded.updated_at_ms,
+  workspace_id = excluded.workspace_id;
 
 -- name: GetLoop :one
 SELECT
@@ -116,7 +119,8 @@ SELECT
   webhook_hash,
   when_missed,
   thread,
-  keep_running
+  keep_running,
+  workspace_id
 FROM loops
 WHERE id = sqlc.arg(id)
 LIMIT 1;
@@ -150,9 +154,11 @@ SELECT
   webhook_hash,
   when_missed,
   thread,
-  keep_running
+  keep_running,
+  workspace_id
 FROM loops
 WHERE status <> sqlc.arg(deleted_status)
+  AND (CAST(sqlc.arg(filter_workspace_id) AS TEXT) = '' OR workspace_id = sqlc.arg(filter_workspace_id))
 ORDER BY updated_at_ms DESC;
 
 -- name: ListDueLoopIDs :many

@@ -78,12 +78,23 @@ func (s *Service) IsEnabled(ctx context.Context, pluginID string) bool {
 	return s.store.IsEnabled(ctx, pluginID)
 }
 
+func (s *Service) activeWorkspaceID() string {
+	if s.store != nil {
+		return s.store.ActiveWorkspaceID()
+	}
+	return storage.LocalWorkspaceID
+}
+
+func (s *Service) isLocalWorkspace() bool {
+	return s.activeWorkspaceID() == storage.LocalWorkspaceID
+}
+
 func (s *Service) List(ctx context.Context, loopbackAllowed bool) (CatalogResponse, error) {
 	states := s.stateMap(ctx)
 	seen := map[string]bool{}
 	var out []Plugin
 
-	if s.connections != nil {
+	if s.isLocalWorkspace() && s.connections != nil {
 		natives, err := s.connections.ListPlugins(ctx, loopbackAllowed)
 		if err != nil {
 			return CatalogResponse{}, err
@@ -159,13 +170,15 @@ func (s *Service) SetEnabled(ctx context.Context, id string, enabled bool) (Plug
 	if s.state == nil {
 		return Plugin{}, fmt.Errorf("%w: plugin state store unavailable", ErrInvalid)
 	}
-	record, ok, err := s.state.GetPluginState(ctx, id)
+	ws := s.activeWorkspaceID()
+	record, ok, err := s.state.GetPluginState(ctx, ws, id)
 	if err != nil {
 		return Plugin{}, err
 	}
 	if !ok {
-		record = storage.PluginStateRecord{PluginID: id}
+		record = storage.PluginStateRecord{WorkspaceID: ws, PluginID: id}
 	}
+	record.WorkspaceID = ws
 	record.Enabled = enabled
 	if err := s.state.SavePluginState(ctx, record); err != nil {
 		return Plugin{}, err
@@ -184,13 +197,15 @@ func (s *Service) SaveConfig(ctx context.Context, id string, values map[string]s
 	if s.state == nil {
 		return Plugin{}, fmt.Errorf("%w: plugin state store unavailable", ErrInvalid)
 	}
-	record, ok, err := s.state.GetPluginState(ctx, id)
+	ws := s.activeWorkspaceID()
+	record, ok, err := s.state.GetPluginState(ctx, ws, id)
 	if err != nil {
 		return Plugin{}, err
 	}
 	if !ok {
-		record = storage.PluginStateRecord{PluginID: id, Enabled: true}
+		record = storage.PluginStateRecord{WorkspaceID: ws, PluginID: id, Enabled: true}
 	}
+	record.WorkspaceID = ws
 	if record.Config == nil {
 		record.Config = map[string]string{}
 	}
@@ -216,7 +231,7 @@ func (s *Service) Connect(ctx context.Context, id string, opts connections.Start
 	if s.connect == nil {
 		return connections.ConnectResult{}, errors.New("connections are not configured")
 	}
-	if s.connections != nil && s.connections.Catalog().IsNative(id) {
+	if s.isLocalWorkspace() && s.connections != nil && s.connections.Catalog().IsNative(id) {
 		return s.connect.Start(ctx, id, opts)
 	}
 	plugin, err := s.Get(ctx, id, opts.MCP.LoopbackAllowed)
@@ -263,7 +278,7 @@ func (s *Service) Connect(ctx context.Context, id string, opts connections.Start
 }
 
 func (s *Service) DisconnectAccount(ctx context.Context, accountID string) (connections.DisconnectResult, error) {
-	if s.connections == nil {
+	if !s.isLocalWorkspace() || s.connections == nil {
 		return connections.DisconnectResult{}, connections.ErrConnectionNotFound
 	}
 	result, err := s.connections.DisconnectAccount(ctx, accountID)
@@ -377,7 +392,7 @@ func (s *Service) Remove(ctx context.Context, id string) error {
 	if err := s.store.Remove(id); err != nil {
 		return err
 	}
-	if s.connections == nil {
+	if !s.isLocalWorkspace() || s.connections == nil {
 		return nil
 	}
 	var errs []error
@@ -454,7 +469,7 @@ func (s *Service) enrichInstalledAuth(ctx context.Context, plugin Plugin, loopba
 		Kind:   "mcp_oauth",
 		Status: "available",
 	}
-	if s.connections != nil {
+	if s.isLocalWorkspace() && s.connections != nil {
 		if accounts, err := s.connections.ListAccounts(ctx, plugin.ID); err == nil && len(accounts) > 0 {
 			auth.Connected = true
 			auth.Accounts = accounts

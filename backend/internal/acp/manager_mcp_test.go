@@ -15,11 +15,11 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-type staticMCPStore struct {
+type staticMCPServers struct {
 	servers []mcpconfig.Server
 }
 
-func (s staticMCPStore) ListMCPServers() ([]mcpconfig.Server, error) {
+func (s staticMCPServers) ListMCPServersForSession(string) ([]mcpconfig.Server, error) {
 	return append([]mcpconfig.Server(nil), s.servers...), nil
 }
 
@@ -31,7 +31,7 @@ func TestManagerPassesEnabledHTTPMCPServersToCapableACPAgent(t *testing.T) {
 	manager := acp.NewManager(store, acp.Config{
 		Root:      t.TempDir(),
 		Workspace: t.TempDir(),
-		MCPStore: staticMCPStore{servers: []mcpconfig.Server{
+		MCPServers: staticMCPServers{servers: []mcpconfig.Server{
 			mcpruntime.ProxyServerConfig("http://127.0.0.1:5299/mcp/proxy"),
 			jaztools.ServerConfig("http://127.0.0.1:5299/mcp/jaztools"),
 		}},

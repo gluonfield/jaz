@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/loopdb"
 )
 
@@ -28,7 +29,14 @@ func (s *Store) LoadLoop(id string) (loops.Loop, error) {
 }
 
 func (s *Store) ListLoops() ([]loops.Loop, error) {
-	rows, err := loopdb.New(s.db).ListLoops(context.Background(), loops.StatusDeleted)
+	return s.ListLoopsForWorkspace("")
+}
+
+func (s *Store) ListLoopsForWorkspace(workspaceID string) ([]loops.Loop, error) {
+	rows, err := loopdb.New(s.db).ListLoops(context.Background(), loopdb.ListLoopsParams{
+		DeletedStatus:     loops.StatusDeleted,
+		FilterWorkspaceID: workspaceID,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -216,6 +224,7 @@ func upsertLoop(ctx context.Context, q *loopdb.Queries, loop loops.Loop) error {
 		WhenMissed:      loop.WhenMissed,
 		Thread:          loop.Thread,
 		KeepRunning:     boolInt(loop.KeepRunning),
+		WorkspaceID:     firstNonEmpty(loop.WorkspaceID, storage.LocalWorkspaceID),
 	})
 }
 
@@ -238,6 +247,7 @@ func upsertRun(ctx context.Context, q *loopdb.Queries, run loops.Run) error {
 func loopFromDB(row loopdb.Loop) loops.Loop {
 	return loops.Loop{
 		ID:              row.ID,
+		WorkspaceID:     firstNonEmpty(row.WorkspaceID, storage.LocalWorkspaceID),
 		Name:            row.Name,
 		Prompt:          row.Prompt,
 		Schedule:        loops.Schedule{Kind: row.ScheduleKind, Expr: row.ScheduleExpr, Timezone: row.Timezone},

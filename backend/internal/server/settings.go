@@ -81,6 +81,9 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		if len(input.ProviderKeys) > 0 || len(input.ACPKeys) > 0 {
+			s.invalidateAllSlowACPAuthProbes()
+		}
 		writeJSON(w, http.StatusOK, s.agentSettingsResponse(saved))
 	default:
 		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
@@ -99,12 +102,16 @@ func (s *Server) loadAgentSettings(store storage.SettingsStorage) (agentsettings
 }
 
 func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) agentSettingsResponse {
+	return s.agentSettingsResponseWithProbes(defaults, s.probeAllACPAuth(defaults))
+}
+
+func (s *Server) agentSettingsResponseWithProbes(defaults agentsettings.AgentDefaults, probes []acpAgentProbeSnapshot) agentSettingsResponse {
 	agentNames := s.allACPAgentNames()
 	providers := s.settingsModelProviders()
 	return agentSettingsResponse{
 		Providers:  providers,
 		ACP:        acpDefaultsForAgents(defaults.ACP, agentNames),
-		ACPAuth:    s.acpAgentAuthStatuses(defaults),
+		ACPAuth:    s.acpAgentAuthStatusesFromProbes(probes),
 		ACPOptions: s.acpOptions(s.selectableACPAgentCatalog(), agentNames, providers, defaults),
 		Agents:     agentNames,
 	}
@@ -164,18 +171,16 @@ func (s *Server) modelProviderConfigured(id string) bool {
 	return false
 }
 
-func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[string]acpAuthStatusResponse {
-	names := s.allACPAgentNames()
-	providers := s.modelProviders()
-	out := make(map[string]acpAuthStatusResponse, len(names))
-	for _, name := range names {
-		cfg, _, err := s.acpProbeConfig(name, defaults)
-		if err != nil {
-			out[name] = acpAuthStatusResponse{Reason: err.Error()}
+func (s *Server) acpAgentAuthStatusesFromProbes(probes []acpAgentProbeSnapshot) map[string]acpAuthStatusResponse {
+	out := make(map[string]acpAuthStatusResponse, len(probes))
+	for _, probe := range probes {
+		if probe.err != nil {
+			out[probe.name] = acpAuthStatusResponse{Reason: probe.err.Error()}
 			continue
 		}
-		auth, readiness := acp.ProbeAuthAndReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, providers)
-		out[name] = s.acpAuthStatus(cfg, auth, readiness)
+		status := s.acpAuthStatus(probe.cfg, probe.auth, probe.readiness)
+		status.Checking = probe.checking
+		out[probe.name] = status
 	}
 	return out
 }

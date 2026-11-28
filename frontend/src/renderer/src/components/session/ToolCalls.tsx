@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ACPToolCall } from '@/lib/api/types'
+import { AppDeliverableCard } from './AppDeliverableCard'
+import { isAppToolCall } from './appTool'
 import { ArtifactBlock } from './ArtifactBlock'
 import { ToolDisclosure } from './ToolDisclosure'
 import { isArtifactToolName } from './toolVisibility'
@@ -50,6 +52,18 @@ export function ToolCalls({
   }
 
   for (const call of calls) {
+    const acpCall: ACPToolCall = {
+      id: call.key,
+      tool_name: call.name,
+      status: call.pending ? 'running' : 'completed',
+      raw_input: inputValue(call.args),
+      raw_output: call.result,
+    }
+    if (isAppToolCall(acpCall)) {
+      flush()
+      rows.push(<AppDeliverableCard key={call.key} call={acpCall} />)
+      continue
+    }
     if (!isArtifactToolName(call.name)) {
       run.push(call)
       continue

@@ -137,10 +137,27 @@ SELECT commitment_id, prerequisite_id FROM bot_commitment_dependencies
 WHERE commitment_id IN (sqlc.slice(ids)) ORDER BY prerequisite_id;
 
 -- name: ListCommitmentThreads :many
-SELECT s.commitment_id, s.thread_id, s.slug, s.title, s.state FROM bot_commitment_thread_states s
-JOIN bot_commitment_threads l ON l.id = s.linked AND l.thread_id = s.thread_id
+SELECT
+  s.commitment_id,
+  s.thread_id,
+  s.slug,
+  s.title,
+  s.state,
+  CAST(COALESCE(t.parent_id, '') AS TEXT) AS parent_id,
+  t.status,
+  t.updated_at_ms,
+  t.last_completed_at_ms
+FROM bot_commitment_thread_states s
+JOIN threads t ON t.id = s.thread_id
+LEFT JOIN bot_commitment_threads l
+  ON l.commitment_id = s.commitment_id AND l.thread_id = s.thread_id
 WHERE s.commitment_id IN (sqlc.slice(ids))
-ORDER BY s.linked;
+GROUP BY s.commitment_id, s.thread_id
+ORDER BY
+  MIN(s.linked),
+  CASE WHEN l.id = MIN(s.linked) THEN 0 ELSE 1 END,
+  t.created_at_ms,
+  s.thread_id;
 
 -- name: ListCommitmentQuestions :many
 SELECT c.id, CAST(coalesce(json_extract(e.content, '$.text'), '') AS TEXT) AS question

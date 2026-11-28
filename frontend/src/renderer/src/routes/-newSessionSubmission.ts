@@ -1,10 +1,10 @@
 import { createSession, type CreateSessionInput } from '@/lib/api/sessions'
 import { userInputMessageBlocks } from '@/lib/messageBlocks'
-import type { OptimisticUserMessage } from '@/lib/optimisticUserMessage'
+import type { PendingUserMessage } from '@/lib/outbox'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { appendSessionPrompt } from '@/lib/sessionPrompt'
 
-export interface InitialSessionPrompt extends OptimisticUserMessage {
+export interface InitialSessionPrompt extends PendingUserMessage {
   sessionId: string
 }
 
@@ -22,7 +22,12 @@ export async function submitNewSession(
 ): Promise<void> {
   const at = new Date().toISOString()
   const session = await createSession(input)
-  const appended = await appendSessionPrompt(session.id, text, options, 'initial')
+  const appended = await appendSessionPrompt(session.id, text, options, 'initial', undefined, {
+    isCloud: session.backend === 'cloud',
+    runId: session.run_id || session.id,
+    modelProfileId: input.model_profile_id,
+    executorTarget: input.executor_target ?? input.machine_id,
+  })
   if (!appended) throw new Error('Cannot start a session without a message')
   open({
     sessionId: session.id,

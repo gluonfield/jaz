@@ -24,14 +24,18 @@ import { NavRail, railTab } from '@/components/sidebar/NavRail'
 import { BotsPanel } from '@/components/bots/BotsPanel'
 import { ChatPanel } from '@/components/sidebar/ChatPanel'
 import { Sidebar } from '@/components/sidebar/Sidebar'
+import { SidebarWorkspaceSwitcher } from '@/components/sidebar/SidebarWorkspaceSwitcher'
 import { TitlebarNavigation } from '@/components/sidebar/TitlebarNavigation'
 import { ToastProvider } from '@/components/ui/toast'
 import { clientRuntime, isMacDesktop } from '@/lib/clientRuntime'
+import { onWorkspaceChange } from '@/lib/cloudAccount'
 import { SidebarVisibility } from '@/lib/sidebar'
 import { SidePanelSlot } from '@/lib/sidePanelSlot'
+import { workspaceSwitchNavigation } from '@/lib/workspaceNavigation'
 import { VoiceProvider } from '@/lib/voice/VoiceProvider'
 import { GlobalVoice } from '@/components/session/FloatingVoice'
 import { VoiceDesktopBridge } from '@/lib/voice/VoiceDesktopBridge'
+import { AssistantBridge } from '@/lib/assistant/AssistantBridge'
 import { drawerSlide } from '@/lib/dom/drawer'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { isMobileViewport, useIsMobile } from '@/lib/hooks/useIsMobile'
@@ -39,14 +43,21 @@ import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { TitlebarActionsOutlet, TitlebarProvider, TitlebarSlotOutlet } from '@/lib/titlebar'
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
 
-type RootSearch = { settings?: SettingsSection }
+type RootSearch = { settings?: SettingsSection; plugin?: string }
 type SettingsSectionNavigation = { replace?: boolean }
 
 export const Route = createRootRoute({
   // Settings rides in the URL so it's a real history entry that ⌘[ / ⌘] and the
   // browser back/forward step in and out of like any other page.
-  validateSearch: (search): RootSearch =>
-    isSettingsSection(search.settings) ? { settings: search.settings } : {},
+  validateSearch: (search): RootSearch => {
+    const settings = isSettingsSection(search.settings) ? search.settings : undefined
+    const plugin =
+      settings === 'plugins' && typeof search.plugin === 'string' && search.plugin.trim()
+        ? search.plugin.trim()
+        : undefined
+    if (plugin) return { settings, plugin }
+    return settings ? { settings } : {}
+  },
   component: RootComponent,
 })
 
@@ -54,7 +65,7 @@ export const Route = createRootRoute({
 // (they use the native OS titlebar). windowKind is fixed per window, so the
 // branch never changes within a window's lifetime.
 function RootComponent() {
-  if (clientRuntime.windowKind === 'board') {
+  if (clientRuntime.windowKind === 'board' || clientRuntime.windowKind === 'app') {
     return <BoardRoot />
   }
   if (clientRuntime.windowKind === 'launcher') {
@@ -128,11 +139,27 @@ function RootLayout() {
   const [panelSlot, setPanelSlot] = useState<HTMLDivElement | null>(null)
   const sidePanelSlot = useMemo(() => ({ slot: panelSlot, row: panelRow }), [panelSlot, panelRow])
 
+  useEffect(
+    () =>
+      onWorkspaceChange(() => {
+        const location = router.state.location
+        const nextRoute = workspaceSwitchNavigation(location)
+        if (nextRoute) {
+          void navigate(nextRoute)
+          return
+        }
+        if ((location.search as RootSearch | undefined)?.plugin) {
+          void navigate({ to: '.', search: (prev) => ({ ...prev, plugin: undefined }), replace: true })
+        }
+      }),
+    [navigate, router],
+  )
+
   // Settings open-state is derived from the URL, not local state. lastSection
   // lets the sidebar button reopen the pane the user last viewed.
-  const settingsSection = Route.useSearch().settings
+  const { settings: settingsSection, plugin: settingsPlugin } = Route.useSearch()
   const settingsOpen = settingsSection !== undefined
-  const lastSection = useRef<SettingsSection>('general')
+  const lastSection = useRef<SettingsSection>('cloud')
   useEffect(() => {
     if (settingsSection) lastSection.current = settingsSection
   }, [settingsSection])
@@ -141,7 +168,7 @@ function RootLayout() {
     (section?: SettingsSection) =>
       void navigate({
         to: '.',
-        search: (prev) => ({ ...prev, settings: section ?? lastSection.current }),
+        search: (prev) => ({ ...prev, settings: section ?? lastSection.current, plugin: undefined }),
       }),
     [navigate],
   )
@@ -150,16 +177,25 @@ function RootLayout() {
       if (section === settingsSection) return
       void navigate({
         to: '.',
-        search: (prev) => ({ ...prev, settings: section }),
+        search: (prev) => ({ ...prev, settings: section, plugin: section === 'plugins' ? prev.plugin : undefined }),
         replace: options?.replace,
       })
     },
     [navigate, settingsSection],
   )
-  const closeSettings = useCallback(
-    () => void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined }) }),
+  const selectSettingsPlugin = useCallback(
+    (pluginID: string | null) => {
+      void navigate({
+        to: '.',
+        search: (prev) => ({ ...prev, settings: 'plugins', plugin: pluginID || undefined }),
+        replace: true,
+      })
+    },
     [navigate],
   )
+  const closeSettings = useCallback(() => {
+    void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined, plugin: undefined }) })
+  }, [navigate])
 
   // Phone: the sidebar is a full-screen drawer (CSS `max-sm:w-full`) that slides
   // over the thread rather than a resizable column, and auto-dismisses on
@@ -175,9 +211,6 @@ function RootLayout() {
   // Desktop Settings keeps its menu in the column whatever the list toggle says.
   const settingsMenu = settingsOpen && !isMobile
   const columnOpen = settingsMenu || sidebarOpen
-  // A specific board paints itself on bg-surface so its tiles blend; match main
-  // to surface there too so no bg-bg seam shows around the board.
-  const onBoard = /^\/boards\/.+/.test(pathname)
   useEffect(() => {
     if (isMobile) setSidebarOpen(false)
   }, [isMobile, pathname])
@@ -344,19 +377,22 @@ function RootLayout() {
                       onResizeStart={startResize}
                       onResizeReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
                       onOpenSettings={() => openSettings()}
-                      onOpenConnect={() => setConnectOpen(true)}
                     >
                       {settingsMenu ? (
                         <SettingsNav
                           section={settingsSection}
                           onSectionChange={goToSettingsSection}
                           onClose={closeSettings}
-                          onOpenConnect={() => setConnectOpen(true)}
                         />
-                      ) : tab === '/bots' ? (
-                        <BotsPanel mobile={isMobile} />
                       ) : (
-                        <ChatPanel open={panelOpen && tab === 'chat'} mobile={isMobile} onOpenCommandPalette={() => setCommandOpen(true)} />
+                        <>
+                          {isMobile && <SidebarWorkspaceSwitcher />}
+                          {tab === '/bots' ? (
+                            <BotsPanel mobile={isMobile} />
+                          ) : (
+                            <ChatPanel open={panelOpen && tab === 'chat'} mobile={isMobile} onOpenCommandPalette={() => setCommandOpen(true)} />
+                          )}
+                        </>
                       )}
                     </Sidebar>
                   </motion.div>
@@ -371,13 +407,13 @@ function RootLayout() {
                 {!isMobile && (
                   <div
                     // Settings sits below the row, so nothing should show through it there.
-                    className={`titlebar-drag absolute inset-x-0 top-0 z-shell flex h-10 items-center pr-3 pl-2 ${settingsOpen ? 'bg-bg' : `bg-gradient-to-b to-transparent from-60% ${onBoard ? 'from-surface' : 'from-bg'}`}`}
+                    className={`titlebar-drag absolute inset-x-0 top-0 z-shell flex h-10 items-center pr-3 pl-2 ${settingsOpen ? 'bg-bg' : 'bg-gradient-to-b from-bg from-60% to-transparent'}`}
                   >
                     {navigation}
                     {titleRow}
                   </div>
                 )}
-                <main className={`scrollbar-quiet min-w-0 flex-1 overflow-y-auto pt-[var(--titlebar-height,0px)] ${onBoard ? 'bg-surface' : 'bg-bg'}`}>
+                <main className="scrollbar-quiet min-w-0 flex-1 overflow-y-auto bg-bg pt-[var(--titlebar-height,0px)]">
                   <SidebarVisibility.Provider value={setSidebarOpen}>
                     <SidePanelSlot.Provider value={sidePanelSlot}>
                       <Outlet />
@@ -390,9 +426,10 @@ function RootLayout() {
                 <SettingsOverlay
                   open={settingsOpen}
                   section={settingsSection}
+                  selectedPlugin={settingsPlugin}
+                  onSelectPlugin={selectSettingsPlugin}
                   onSectionChange={goToSettingsSection}
                   onClose={closeSettings}
-                  onOpenConnect={() => setConnectOpen(true)}
                 />
               </div>
               {/* A thread's side panel floats here as its own card. */}
@@ -408,6 +445,7 @@ function RootLayout() {
           onOpenConnect={() => setConnectOpen(true)}
         />
         <GlobalVoice />
+        <AssistantBridge />
       </ToastProvider>
     </TitlebarProvider>
   )

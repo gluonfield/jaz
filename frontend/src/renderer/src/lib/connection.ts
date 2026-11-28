@@ -1,38 +1,112 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import {
-  apiBaseUrl, cachedApiAuthToken, clearApiSession, CLIENT_PLATFORM, CLIENT_PLATFORM_HEADER,
-  consumeStartupConnectUrl, isLocalBackendUrl, localBaseUrl, normalizeBaseUrl,
-  parseBackendConnectUrl, rememberApiAuthToken, restoreApiAuthToken, secureBackendConnection,
-  setApiAuthToken, setApiBaseUrl, onApiAuthRejected,
+  beginPendingOidcLogin,
+  consumePendingOidcLogin,
+  exchangeOidcCode,
+  launchOidcBrowserFlow,
+  logoutCloudSession,
+  parseOidcCallbackUrl,
+  peekPendingOidcLogin,
+  validateOidcCallback,
+} from '@/lib/api/cloudAuth'
+import { completeAttachedOidcCallback, refreshCloudAccountStatus, resetCloudAccountState } from '@/lib/cloudAccount'
+import { persistRotatedCredential, runActiveCloudRefresh, tryStartupCloudRefresh } from '@/lib/cloudSessionRefresh'
+import type {
+  CloudUser,
+  ServerAuthMethod,
+  ServerCapabilities,
+  ServerMode,
+} from '@/lib/api/serverTypes'
+import {
+  apiBaseUrl,
+  apiRefreshGeneration,
+  cachedApiAuthToken,
+  cachedApiRefreshToken,
+  clearApiSession,
+  isLocalBackendUrl,
+  localBaseUrl,
+  normalizeBaseUrl,
+  onApiAuthRejected,
+  parseBackendConnectUrl,
+  refreshActiveApiSession,
+  rememberApiAuthToken,
+  restoreApiCredential,
+  secureBackendConnection,
+  setApiAuthToken,
+  setApiBaseUrl,
+  setApiServerMode,
+  setApiSessionRefresher,
+  setResourceTicket,
 } from '@/lib/api/client'
-import { rememberBackend, removeKnownBackend } from '@/lib/backends'
-import { backendFetch, clientRuntime } from '@/lib/clientRuntime'
+import { rememberBackend, removeKnownBackend, updateBackendMetadata } from '@/lib/backends'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { loadBrowserCredential, saveBrowserCredential, forgetBrowserCredential } from '@/lib/browserCredentials'
-import { getDeviceProfile } from '@/lib/deviceIdentity'
 import { queryClient } from '@/lib/query/queryClient'
-import { readAccess, readHealth, readJSON } from '@/lib/connectionProbe'
+import { fetchHostedCloudConfig, fetchServerDiscovery, readAccess, readCloudAccess, type ServerDiscovery } from '@/lib/connectionProbe'
 import type { ResourceTicket, SessionSnapshot, VerifiedSession } from '@shared/connectionSession'
 import { LOCAL_BACKEND_URL as LOCAL_URL } from '@shared/localBackend'
 
 export { isLocalBackendUrl } from '@/lib/api/client'
-export type ConnectionStatus = 'checking' | 'connected' | 'reconnecting' | 'disconnected' | 'pending_approval'
-export type PendingPairing = { url: string; id: string; secret: string; deviceName: string; expiresAt: string }
-export type ConnectionState = { status: ConnectionStatus; url: string; pairing: PendingPairing | null; error: string | null }
+export { fetchServerDiscovery, type ServerDiscovery } from '@/lib/connectionProbe'
+export type ConnectionStatus = 'checking' | 'connected' | 'reconnecting' | 'disconnected'
+export type ConnectionState = {
+  status: ConnectionStatus
+  url: string
+  error: string | null
+  mode: ServerMode
+  auth: ServerAuthMethod
+  oidcLoginUrl: string
+  capabilities: ServerCapabilities
+  user: CloudUser | null
+}
 export type ConnectionMode = 'local' | 'remote'
 type ConnectionPreference = { mode: ConnectionMode; remoteUrl?: string }
 type Attempt = { url: string; revision: number; controller: AbortController }
-type Candidate = VerifiedSession & { ticket?: ResourceTicket }
-type SavedCredential = { token: string; deviceId?: string }
+type ServerMeta = {
+  mode: ServerMode
+  auth: ServerAuthMethod
+  oidcLoginUrl: string
+  capabilities: ServerCapabilities
+}
+type Candidate = VerifiedSession & {
+  refreshToken?: string
+  ticket?: ResourceTicket
+  user?: CloudUser
+  meta?: ServerMeta
+  persistRotated?: boolean
+}
+type SavedCredential = { token: string; refreshToken?: string }
+type DiscoverySuccess = Extract<ServerDiscovery, { ok: true }>
+type ProbeOptions = {
+  explicitToken?: string
+  explicitRefreshToken?: string
+  resolveSaved?: () => Promise<SavedCredential>
+  onSavedError?: () => string
+  remembered: boolean
+  allowWebCookie?: boolean
+  retryOnRecoverable?: boolean
+  useCachedDiscovery?: boolean
+  fallbackMeta?: ServerMeta
+  missingCredentialError?: (meta: ServerMeta) => string
+}
+
+const DEFAULT_META: ServerMeta = { mode: 'local', auth: 'none', oidcLoginUrl: '', capabilities: {} }
+const CLOUD_FALLBACK_META: ServerMeta = { mode: 'cloud', auth: 'oidc', oidcLoginUrl: '/v1/auth/login', capabilities: {} }
 const PREFERENCE_KEY = 'jaz.connection'
-const bridge = ['main', 'board', 'launcher'].includes(clientRuntime.windowKind) ? clientRuntime.connectionSession : undefined
-const desktop = bridge?.read()
+const desktop = clientRuntime.connectionSession?.read() ?? undefined
+const bridge = desktop ? clientRuntime.connectionSession : undefined
 export const ownsConnection = desktop?.owner ?? clientRuntime.windowKind === 'main'
 let authoritative = desktop?.snapshot
 let attempt: Attempt | null = null
 let pollTimer: ReturnType<typeof setTimeout> | undefined
-let pairingTimer: ReturnType<typeof setTimeout> | undefined
-let issuance: Promise<unknown> = Promise.resolve()
-let state: ConnectionState = { status: 'checking', url: apiBaseUrl(), pairing: null, error: null }
+const discoveryCache = new Map<string, DiscoverySuccess>()
+let state: ConnectionState = {
+  status: 'checking',
+  url: apiBaseUrl(),
+  error: null,
+  ...DEFAULT_META,
+  user: null,
+}
 const listeners = new Set<() => void>()
 
 function setState(next: Partial<ConnectionState>): void {
@@ -46,7 +120,19 @@ export function useConnection(): ConnectionState {
   return useSyncExternalStore((listener) => {
     listeners.add(listener)
     return () => listeners.delete(listener)
-  }, () => state)
+  }, () => state, () => state)
+}
+
+export function useIsCloud(): boolean {
+  return useConnection().mode === 'cloud'
+}
+
+export function isCloudConnection(): boolean {
+  return state.mode === 'cloud'
+}
+
+export function currentConnection(): ConnectionState {
+  return state
 }
 
 export function useBackendChange(onChange: (url: string) => void): void {
@@ -97,7 +183,6 @@ function invalidate(): void {
   attempt?.controller.abort()
   attempt = null
   clearTimeout(pollTimer)
-  clearTimeout(pairingTimer)
   clearApiSession()
   void queryClient.cancelQueries()
   queryClient.clear()
@@ -105,6 +190,37 @@ function invalidate(): void {
 
 function current(value: Attempt): boolean {
   return attempt === value && !value.controller.signal.aborted && (!authoritative || authoritative.revision === value.revision)
+}
+
+function discoveryMeta(discovery: DiscoverySuccess): ServerMeta {
+  return {
+    mode: discovery.mode,
+    auth: discovery.auth,
+    oidcLoginUrl: discovery.oidcLoginUrl,
+    capabilities: discovery.capabilities,
+  }
+}
+
+async function discoverServer(
+  url: string,
+  signal?: AbortSignal,
+  options: { useCache?: boolean } = {},
+): Promise<ServerDiscovery> {
+  const origin = normalizeBaseUrl(url)
+  if (options.useCache) {
+    const cached = discoveryCache.get(origin)
+    if (cached) return cached
+  }
+  const result = await fetchServerDiscovery(origin, signal)
+  if (result.ok) {
+    discoveryCache.set(origin, result)
+    updateBackendMetadata(origin, {
+      mode: result.mode,
+      auth: result.auth,
+      oidcLoginUrl: result.oidcLoginUrl,
+    })
+  }
+  return result
 }
 
 function begin(url: string, announce = true): Attempt {
@@ -118,12 +234,13 @@ function begin(url: string, announce = true): Attempt {
   const value = { url, revision: authoritative?.revision ?? 0, controller: new AbortController() }
   attempt = value
   setApiBaseUrl(url)
-  setState({ status: 'checking', url, pairing: null, error: null })
+  setState({ status: 'checking', url, error: null, ...DEFAULT_META, user: null })
   return value
 }
 
-function block(error: string | null, keepPreference = false): void {
+function block(error: string | null, keepPreference = false, meta?: Partial<ServerMeta>): void {
   invalidate()
+  resetCloudAccountState()
   if (ownsConnection) {
     if (!keepPreference) clearConnectionPreference()
     if (bridge && desktop) {
@@ -133,57 +250,249 @@ function block(error: string | null, keepPreference = false): void {
   } else if (bridge && desktop && authoritative?.phase === 'connected') {
     authoritative = bridge.update({ operation: 'reject', document: desktop.document, revision: authoritative.revision })
   }
-  setState({ status: 'disconnected', pairing: null, error })
+  setState({
+    status: 'disconnected',
+    error,
+    ...(meta ? {
+      mode: meta.mode ?? state.mode,
+      auth: meta.auth ?? state.auth,
+      oidcLoginUrl: meta.oidcLoginUrl ?? state.oidcLoginUrl,
+      capabilities: meta.capabilities ?? state.capabilities,
+    } : DEFAULT_META),
+    user: null,
+  })
 }
 
 function activate(value: Attempt, candidate: Candidate): void {
   if (!current(value)) {
     return
   }
+  const meta = candidate.meta ?? DEFAULT_META
   if (ownsConnection && bridge && desktop) {
-    authoritative = bridge.update({ operation: 'commit', document: desktop.document, revision: value.revision,
-      session: { url: candidate.url, token: candidate.token, deviceId: candidate.deviceId, remembered: candidate.remembered } })
+    authoritative = bridge.update({
+      operation: 'commit',
+      document: desktop.document,
+      revision: value.revision,
+      session: { url: candidate.url, token: candidate.token, remembered: candidate.remembered },
+    })
     value.revision = authoritative.revision
   }
-  setApiAuthToken(candidate.url, candidate.token, candidate.ticket)
-  setState({ status: 'connected', url: candidate.url, pairing: null, error: null })
+  setApiServerMode(meta.mode)
+  setApiAuthToken(candidate.url, candidate.token, candidate.ticket, candidate.refreshToken)
+  if (meta.mode === 'local' && clientRuntime.capabilities.localBackend) {
+    void refreshCloudAccountStatus()
+  } else {
+    resetCloudAccountState()
+  }
+  setState({
+    status: 'connected',
+    url: candidate.url,
+    error: null,
+    mode: meta.mode,
+    auth: meta.auth,
+    oidcLoginUrl: meta.oidcLoginUrl,
+    capabilities: meta.capabilities,
+    user: candidate.user ?? null,
+  })
   if (ownsConnection) {
     if (candidate.url === LOCAL_URL && clientRuntime.kind === 'electron') {
       savePreference({ mode: 'local' })
     } else {
       clearConnectionPreference()
-      rememberBackend(candidate.url, new Date().toISOString())
+      rememberBackend(candidate.url, new Date().toISOString(), {
+        mode: meta.mode,
+        auth: meta.auth,
+        oidcLoginUrl: meta.oidcLoginUrl,
+      })
       if (candidate.remembered) {
         savePreference({ mode: 'remote', remoteUrl: candidate.url })
+        if (candidate.persistRotated) {
+          persistRotatedCredential(candidate.url, candidate.token, candidate.refreshToken, true, () => current(value))
+        }
       } else if (clientRuntime.kind === 'web' && candidate.token) {
-        void saveBrowserCredential(candidate.url, candidate.token, candidate.deviceId, () => current(value)).then(() => {
+        void saveBrowserCredential(candidate.url, candidate.token, () => current(value), candidate.refreshToken).then(() => {
           if (current(value)) savePreference({ mode: 'remote', remoteUrl: candidate.url })
         }, () => {
           if (current(value)) setState({ error: 'Connected for this session. Could not save the login in this browser. Check site storage access.' })
         })
       }
     }
-    schedulePoll(value, candidate)
+    schedulePoll(value, { ...candidate, meta })
   }
 }
 
-async function verify(value: Attempt, candidate: Candidate): Promise<string | null> {
-  const access = await readAccess(value.url, candidate.token, value.controller.signal, candidate.deviceId || undefined)
-  if (!current(value)) {
-    return null
+async function verifyCandidate(
+  url: string,
+  token: string,
+  meta: ServerMeta,
+  signal: AbortSignal,
+) {
+  if (meta.auth === 'oidc') {
+    return readCloudAccess(url, token, signal)
   }
-  if (!access.ok || access.kind !== 'device') {
-    const error = access.ok ? 'A device credential is required' : access.error
-    if (!access.ok && access.recoverable) {
-      setState({ status: 'disconnected', error })
-      pollTimer = setTimeout(() => void verify(value, candidate), 5000)
+  return readAccess(url, token, signal)
+}
+
+async function savedCredential(url: string, allowLegacy = false): Promise<SavedCredential> {
+  if (clientRuntime.kind === 'web') {
+    return await loadBrowserCredential(url) || { token: '' }
+  }
+  return restoreApiCredential(url, { allowLegacy })
+}
+
+async function probeAndVerify(value: Attempt, options: ProbeOptions): Promise<string | null> {
+  let cachedSaved: SavedCredential | undefined
+
+  const run = async (useCache: boolean): Promise<string | null> => {
+    const discovery = await discoverServer(value.url, value.controller.signal, { useCache })
+    if (!current(value)) {
+      return null
+    }
+    if (!discovery.ok) {
+      if (options.retryOnRecoverable && discovery.recoverable) {
+        setState({ status: 'disconnected', error: discovery.error })
+        pollTimer = setTimeout(() => void run(false), 5000)
+        return discovery.error
+      }
+      if (!options.fallbackMeta) {
+        block(discovery.error)
+        return discovery.error
+      }
+    }
+
+    const meta = discovery.ok ? discoveryMeta(discovery) : (options.fallbackMeta ?? DEFAULT_META)
+    if (discovery.ok && !discovery.authRequired) {
+      activate(value, { url: value.url, token: '', remembered: false, meta })
+      return null
+    }
+
+    let token = options.explicitToken ?? ''
+    let refreshToken = options.explicitRefreshToken ?? ''
+    let remembered = options.remembered
+    if (!token && options.resolveSaved) {
+      try {
+        if (cachedSaved === undefined) {
+          cachedSaved = await options.resolveSaved()
+        }
+        token = cachedSaved.token
+        refreshToken = cachedSaved.refreshToken ?? ''
+        remembered = remembered || Boolean(token)
+      } catch (error) {
+        if (!current(value)) return null
+        if (options.onSavedError) {
+          const message = options.onSavedError()
+          block(message, false, meta)
+          return message
+        }
+        if (clientRuntime.kind !== 'web') {
+          const message = error instanceof Error ? error.message : 'Could not unlock the saved connection.'
+          block(message, false, meta)
+          return message
+        }
+        cachedSaved = { token: '' }
+        token = ''
+        refreshToken = ''
+      }
+      if (!current(value)) return null
+    }
+
+    if (!token) {
+      if (options.allowWebCookie && meta.auth === 'oidc' && clientRuntime.kind === 'web') {
+        const cookieAccess = await readCloudAccess(value.url, '', value.controller.signal)
+        if (!current(value)) return null
+        if (cookieAccess.ok) {
+          activate(value, {
+            url: value.url,
+            token: '',
+            ticket: cookieAccess.ticket,
+            user: cookieAccess.user,
+            remembered,
+            meta,
+          })
+          return null
+        }
+        if (!cookieAccess.recoverable && cookieAccess.code === 'oidc_required') {
+          const refreshed = await tryStartupCloudRefresh(value.url, { signal: value.controller.signal })
+          if (!current(value)) return null
+          if (refreshed.ok) {
+            activate(value, {
+              url: value.url,
+              token: '',
+              ticket: refreshed.refreshed.ticket,
+              user: refreshed.refreshed.user,
+              remembered,
+              meta,
+            })
+            return null
+          }
+          if (options.retryOnRecoverable && refreshed.recoverable) {
+            setState({ status: 'disconnected', error: refreshed.error })
+            pollTimer = setTimeout(() => void run(false), 5000)
+            return refreshed.error
+          }
+        }
+      }
+      const error = options.missingCredentialError
+        ? options.missingCredentialError(meta)
+        : meta.auth === 'oidc'
+          ? 'Sign in to connect to this server'
+          : 'Authentication required to connect to this server'
+      block(error, false, meta)
       return error
     }
-    block(error)
-    return error
+
+    const access = await verifyCandidate(value.url, token, meta, value.controller.signal)
+    if (!current(value)) {
+      return null
+    }
+    if (!access.ok) {
+      if (!access.recoverable && meta.auth === 'oidc' && access.code === 'oidc_required' && refreshToken) {
+        const refreshed = await tryStartupCloudRefresh(value.url, { refreshToken, signal: value.controller.signal })
+        if (!current(value)) return null
+        if (refreshed.ok) {
+          const nextRefresh = refreshed.refreshed.refreshToken ?? refreshToken
+          cachedSaved = { token: refreshed.refreshed.token, refreshToken: nextRefresh }
+          activate(value, {
+            url: value.url,
+            token: refreshed.refreshed.token,
+            refreshToken: nextRefresh,
+            ticket: refreshed.refreshed.ticket,
+            user: refreshed.refreshed.user,
+            remembered,
+            persistRotated: true,
+            meta,
+          })
+          return null
+        }
+        if (options.retryOnRecoverable && refreshed.recoverable) {
+          setState({ status: 'disconnected', error: refreshed.error })
+          pollTimer = setTimeout(() => void run(false), 5000)
+          return refreshed.error
+        }
+        block(refreshed.error, false, meta)
+        return refreshed.error
+      }
+      if (options.retryOnRecoverable && access.recoverable) {
+        setState({ status: 'disconnected', error: access.error })
+        pollTimer = setTimeout(() => void run(false), 5000)
+        return access.error
+      }
+      block(access.error, false, meta)
+      return access.error
+    }
+    activate(value, {
+      url: value.url,
+      token,
+      refreshToken: refreshToken || undefined,
+      ticket: access.ticket,
+      user: access.user,
+      remembered,
+      meta,
+    })
+    return null
   }
-  activate(value, { ...candidate, deviceId: access.deviceId, ticket: access.ticket })
-  return null
+
+  return run(Boolean(options.useCachedDiscovery))
 }
 
 // A single missed probe is usually a busy client or backend, not an outage.
@@ -193,186 +502,182 @@ function schedulePoll(value: Attempt, candidate: Candidate, missed = false): voi
     if (!current(value)) {
       return
     }
-    const health = await readHealth(value.url, value.controller.signal)
+    const discovery = await discoverServer(value.url, value.controller.signal)
     if (!current(value)) {
       return
     }
-    const access = health.ok && candidate.token ? await readAccess(value.url, candidate.token, value.controller.signal, candidate.deviceId) : health
+    const meta = discovery.ok ? discoveryMeta(discovery) : (candidate.meta ?? DEFAULT_META)
+    const activeToken = cachedApiAuthToken(value.url)
+    const sentRefreshGen = apiRefreshGeneration(value.url)
+    const needsAuthCheck = discovery.ok && (Boolean(activeToken) || meta.auth === 'oidc')
+    const access = needsAuthCheck
+      ? await verifyCandidate(value.url, activeToken, meta, value.controller.signal)
+      : discovery
     if (!current(value)) {
       return
     }
     if (!access.ok) {
+      if (!access.recoverable && meta.auth === 'oidc' && access.code === 'oidc_required') {
+        const outcome = await refreshActiveApiSession(
+          value.url,
+          activeToken,
+          sentRefreshGen,
+          !activeToken && clientRuntime.kind === 'web',
+        )
+        if (!current(value)) {
+          return
+        }
+        if (outcome === 'refreshed') {
+          setState({ status: 'connected', error: null })
+          schedulePoll(value, { ...candidate, token: cachedApiAuthToken(value.url), meta }, false)
+          return
+        }
+        if (outcome === 'error') {
+          if (missed) {
+            setState({ status: 'reconnecting', error: 'Cloud auth refresh temporarily unavailable' })
+          }
+          schedulePoll(value, { ...candidate, token: cachedApiAuthToken(value.url), meta }, true)
+          return
+        }
+        block('Session expired. Sign in again.', false, meta)
+        return
+      }
       if (!access.recoverable) {
-        block(access.error)
+        block(access.error, false, meta)
         return
       }
       if (missed) {
         setState({ status: 'reconnecting', error: access.error })
       }
     } else {
-      setState({ status: 'connected', error: null })
+      if ('ticket' in access && access.ticket) {
+        setResourceTicket(value.url, access.ticket)
+      }
+      const nextUser = 'user' in access && access.user ? access.user : state.user
+      setState({ status: 'connected', error: null, user: nextUser })
     }
-    schedulePoll(value, candidate, !access.ok)
+    schedulePoll(value, { ...candidate, token: cachedApiAuthToken(value.url), meta }, !access.ok)
   }, 5000)
 }
 
-async function serialized<T>(value: Attempt, issue: () => Promise<T>): Promise<T | undefined> {
-  const next = issuance.catch(() => {}).then(() => current(value) ? issue() : undefined)
-  issuance = next
-  return next
+function consumeWebOidcCallback(): string | null {
+  if (clientRuntime.kind !== 'web') return null
+  const hash = window.location.hash
+  if (!hash) return null
+  const parsed = parseOidcCallbackUrl(hash)
+  if (!parsed.code && !parsed.token) return null
+  try {
+    const clean = new URL(window.location.href)
+    clean.hash = ''
+    window.history.replaceState(window.history.state, '', clean.toString())
+  } catch {
+    // Clearing the fragment is best-effort.
+  }
+  return hash
 }
 
-async function savedCredential(url: string): Promise<SavedCredential> {
-  if (clientRuntime.kind === 'web') {
-    return await loadBrowserCredential(url) || { token: '' }
+export async function startCloudSignIn(baseUrl: string, oidcLoginUrl?: string): Promise<string | null> {
+  const origin = normalizeBaseUrl(baseUrl)
+  if (!secureBackendConnection(origin)) {
+    return 'Remote connections require HTTPS'
   }
-  return { token: restoreApiAuthToken(url) }
-}
-
-async function register(value: Attempt, credential: string): Promise<string | null> {
-  const profile = await getDeviceProfile()
-  if (!current(value)) {
-    return null
-  }
-  const response = await serialized(value, () => backendFetch(value.url + '/v1/devices/register', {
-    method: 'POST', redirect: 'error',
-    headers: { Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
-    body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }), signal: AbortSignal.timeout(5000),
-  }))
-  if (!response || !current(value)) {
-    return null
-  }
-  const body = await readJSON<{ token?: string; error?: string; pairing?: { id: string; expires_at: string }; pairing_secret?: string }>(response)
-  if (!current(value)) {
-    return null
-  }
-  if (response.ok && body?.token) {
-    return verify(value, { url: value.url, token: body.token, deviceId: profile.device_id, remembered: false })
-  }
-  if (response.status === 202 && body?.pairing && body.pairing_secret) {
-    pending(value, { url: value.url, id: body.pairing.id, secret: body.pairing_secret, expiresAt: body.pairing.expires_at, deviceName: profile.name }, profile.device_id)
-    return null
-  }
-  const error = body?.error || 'Device registration failed'
-  block(error)
-  return error
-}
-
-function pending(value: Attempt, pairing: PendingPairing, deviceId: string): void {
-  if (!current(value)) {
-    return
-  }
-  setState({ status: 'pending_approval', pairing })
-  const poll = async (): Promise<void> => {
-    if (!current(value)) {
-      return
+  let loginPath = oidcLoginUrl?.trim() ?? ''
+  if (!loginPath) {
+    const discovery = await discoverServer(origin, undefined, { useCache: true })
+    if (!discovery.ok) return discovery.error
+    if (discovery.auth !== 'oidc') {
+      return connectRemote(origin)
     }
-    try {
-      const response = await backendFetch(value.url + '/v1/devices/pairing-requests/' + encodeURIComponent(pairing.id), {
-        headers: { [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM, 'X-Jaz-Pairing-Secret': pairing.secret },
-        signal: AbortSignal.any([value.controller.signal, AbortSignal.timeout(5000)]),
-      })
-      const body = await readJSON<{ token?: string; error?: string; pairing?: { status: string } }>(response)
-      if (!current(value)) {
-        return
-      }
-      if (response.ok && body?.pairing?.status === 'approved' && body.token) {
-        await verify(value, { url: value.url, token: body.token, deviceId, remembered: false })
-        return
-      }
-      if (!response.ok || body?.pairing?.status === 'rejected' || body?.pairing?.status === 'expired') {
-        block(body?.error || 'Device approval is no longer available. Connect again.')
-        return
-      }
-    } catch {
-      if (!current(value)) {
-        return
-      }
-    }
-    pairingTimer = setTimeout(() => void poll(), 2000)
+    loginPath = discovery.oidcLoginUrl || '/v1/auth/login'
   }
-  pairingTimer = setTimeout(() => void poll(), 2000)
-}
-
-async function pair(value: Attempt): Promise<string | null> {
-  const profile = await getDeviceProfile()
-  if (!current(value)) {
-    return null
-  }
-  const response = await backendFetch(value.url + '/v1/devices/pairing-requests', {
-    method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
-    body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }), signal: AbortSignal.any([value.controller.signal, AbortSignal.timeout(5000)]),
-  })
-  const body = await readJSON<{ pairing?: { id: string; expires_at: string }; pairing_secret?: string; error?: string }>(response)
-  if (!current(value)) {
-    return null
-  }
-  if (!response.ok || !body?.pairing || !body.pairing_secret) {
-    const error = body?.error || 'Could not create a device approval request'
-    block(error)
-    return error
-  }
-  pending(value, { url: value.url, id: body.pairing.id, secret: body.pairing_secret, expiresAt: body.pairing.expires_at, deviceName: profile.name }, profile.device_id)
+  const pending = beginPendingOidcLogin(origin, Date.now, 'primary')
+  await launchOidcBrowserFlow(origin, loginPath, pending)
   return null
+}
+
+export async function completeOidcCallback(
+  rawCallbackUrl: string,
+  options: { passive?: boolean } = {},
+): Promise<string | null> {
+  const parsed = parseOidcCallbackUrl(rawCallbackUrl)
+  if (!parsed.code && !parsed.token) {
+    return options.passive ? null : 'Callback did not include an authorization code or session token'
+  }
+  const peeked = peekPendingOidcLogin()
+  if (peeked?.purpose === 'attached') {
+    return completeAttachedOidcCallback(rawCallbackUrl, options)
+  }
+  const pending = consumePendingOidcLogin()
+  if (!pending && options.passive) {
+    return null
+  }
+  const validated = validateOidcCallback(rawCallbackUrl, pending)
+  if (!validated.ok) {
+    if (!options.passive) {
+      block(validated.error)
+    }
+    return validated.error
+  }
+
+  const value = begin(validated.server)
+  clearConnectionPreference()
+  try {
+    if (validated.code) {
+      const exchanged = await exchangeOidcCode(validated.server, validated.code, value.controller.signal, validated.codeVerifier)
+      if (!current(value)) return null
+      const discovery = await discoverServer(validated.server, value.controller.signal, { useCache: true })
+      if (!current(value)) return null
+      const meta = discovery.ok ? discoveryMeta(discovery) : CLOUD_FALLBACK_META
+      activate(value, {
+        url: validated.server,
+        token: exchanged.token,
+        refreshToken: exchanged.refreshToken,
+        ticket: exchanged.ticket,
+        user: exchanged.user,
+        remembered: false,
+        meta,
+      })
+      return null
+    }
+    return await probeAndVerify(value, {
+      explicitToken: validated.token,
+      remembered: false,
+      allowWebCookie: false,
+      retryOnRecoverable: false,
+      useCachedDiscovery: true,
+      fallbackMeta: CLOUD_FALLBACK_META,
+    })
+  } catch (error) {
+    if (!current(value)) return null
+    const message = error instanceof Error ? error.message : 'Cloud sign-in failed'
+    block(message)
+    return message
+  }
 }
 
 export async function connectRemote(input: string): Promise<string | null> {
   const parsed = parseBackendConnectUrl(input)
   const url = normalizeBaseUrl(parsed.url)
+  if (!clientRuntime.capabilities.localBackend && isLocalBackendUrl(url)) {
+    return 'Local backend is disabled for this build'
+  }
   if (!secureBackendConnection(url)) {
     return 'Remote connections require HTTPS'
   }
   const cached = cachedApiAuthToken(url)
-  let remembered = !parsed.key && authoritative?.session?.url === url && authoritative.session.token === cached && authoritative.session.remembered === true
+  const cachedRefresh = !parsed.key ? cachedApiRefreshToken(url) : ''
+  const remembered = !parsed.key && authoritative?.session?.url === url && authoritative.session.token === cached && authoritative.session.remembered === true
   const value = begin(url)
   clearConnectionPreference()
   try {
-    if (parsed.key.startsWith('invite_')) {
-      return await register(value, parsed.key)
-    }
-    const health = await readHealth(url, value.controller.signal)
-    if (!current(value)) {
-      return null
-    }
-    if (!health.ok) {
-      block(health.error)
-      return health.error
-    }
-    if (!health.authRequired) {
-      activate(value, { url, token: '', deviceId: '', remembered: false })
-      return null
-    }
-    let token = parsed.key || cached
-    let deviceId: string | undefined
-    if (!token) {
-      const saved = await savedCredential(url).catch((error): SavedCredential => {
-        if (clientRuntime.kind !== 'web') throw error
-        return { token: '' }
-      })
-      token = saved.token
-      deviceId = saved.deviceId
-      remembered = Boolean(token)
-    }
-    if (!current(value)) return null
-    if (!token) {
-      return await pair(value)
-    }
-    const access = await readAccess(url, token, value.controller.signal, deviceId)
-    if (!current(value)) {
-      return null
-    }
-    if (access.ok && access.kind === 'root') {
-      return await register(value, token)
-    }
-    if (!access.ok) {
-      if (access.code === 'device_approval_required' && parsed.key) {
-        return await register(value, token)
-      }
-      block(access.error)
-      return access.error
-    }
-    activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered })
-    return null
+    return await probeAndVerify(value, {
+      explicitToken: parsed.key || cached,
+      explicitRefreshToken: cachedRefresh || undefined,
+      resolveSaved: () => savedCredential(url, true),
+      remembered,
+      allowWebCookie: true,
+      retryOnRecoverable: false,
+    })
   } catch (error) {
     if (!current(value)) {
       return null
@@ -384,6 +689,9 @@ export async function connectRemote(input: string): Promise<string | null> {
 }
 
 export async function startLocal(): Promise<string | null> {
+  if (!clientRuntime.capabilities.localBackend) {
+    return 'Local backend is disabled for this build'
+  }
   const cached = cachedApiAuthToken(LOCAL_URL)
   const value = begin(LOCAL_URL)
   if (connectionPreference()?.mode !== 'local') clearConnectionPreference()
@@ -396,7 +704,12 @@ export async function startLocal(): Promise<string | null> {
       if (!local?.ok || local.url !== LOCAL_URL) {
         throw new Error('Local backend did not start at its trusted origin')
       }
-      return await verify(value, { url: LOCAL_URL, token: cached, deviceId: '', remembered: false })
+      return await probeAndVerify(value, {
+        explicitToken: cached,
+        remembered: false,
+        retryOnRecoverable: true,
+        fallbackMeta: DEFAULT_META,
+      })
     }
     if (!bridge || !desktop) {
       throw new Error('Local authenticated startup requires the desktop app')
@@ -418,23 +731,24 @@ export async function startLocal(): Promise<string | null> {
 }
 
 export function disconnectBackend(): void {
-  block(null)
-}
-
-export function cancelPendingApproval(): void {
+  if (state.status === 'connected' && state.mode === 'cloud' && state.auth === 'oidc' && state.url) {
+    void logoutCloudSession(state.url, cachedApiAuthToken(state.url), cachedApiRefreshToken(state.url))
+  }
   block(null)
 }
 
 export function forgetBackend(url: string): void {
-  if (normalizeBaseUrl(url) === state.url) {
+  const origin = normalizeBaseUrl(url)
+  discoveryCache.delete(origin)
+  if (origin === state.url) {
     disconnectBackend()
   }
   if (clientRuntime.kind === 'web') {
-    void forgetBrowserCredential(normalizeBaseUrl(url)).catch(() => setState({ error: 'Could not remove the saved browser login. Check site storage access.' }))
+    void forgetBrowserCredential(origin).catch(() => setState({ error: 'Could not remove the saved browser login. Check site storage access.' }))
   }
   removeKnownBackend(url)
   const preference = connectionPreference()
-  if (preference?.mode === 'remote' && preference.remoteUrl === normalizeBaseUrl(url)) {
+  if (preference?.mode === 'remote' && preference.remoteUrl === origin) {
     clearConnectionPreference()
   }
 }
@@ -457,8 +771,12 @@ export function rememberConnection(): string | null {
       return 'Connection changed'
     }
     if (bridge && desktop) {
-      authoritative = bridge.update({ operation: 'commit', document: desktop.document, revision: value.revision,
-        session: { url: state.url, token, deviceId: authoritative?.session?.deviceId || '', remembered: true } })
+      authoritative = bridge.update({
+        operation: 'commit',
+        document: desktop.document,
+        revision: value.revision,
+        session: { url: state.url, token, remembered: true },
+      })
       value.revision = authoritative.revision
     }
     savePreference({ mode: 'remote', remoteUrl: state.url })
@@ -469,7 +787,7 @@ export function rememberConnection(): string | null {
 }
 
 export async function checkHealth(url: string): Promise<boolean> {
-  return (await readHealth(url)).ok
+  return (await discoverServer(url)).ok
 }
 
 async function hydrate(snapshot: SessionSnapshot): Promise<void> {
@@ -488,18 +806,29 @@ async function hydrate(snapshot: SessionSnapshot): Promise<void> {
   if (snapshot.phase === 'connected' && snapshot.session) {
     const value = begin(snapshot.url, false)
     if (snapshot.session.token) {
-      await verify(value, snapshot.session)
+      await probeAndVerify(value, {
+        explicitToken: snapshot.session.token,
+        remembered: snapshot.session.remembered,
+        retryOnRecoverable: true,
+        useCachedDiscovery: true,
+        fallbackMeta: DEFAULT_META,
+      })
     } else {
       activate(value, snapshot.session)
     }
   } else if (ownsConnection && snapshot.phase === 'pending' && snapshot.localPending) {
     await startLocal()
-  }
-  else {
+  } else {
     if (ownsConnection && snapshot.phase === 'blocked' && (wasConnected || snapshot.url !== LOCAL_URL)) {
       clearConnectionPreference()
     }
-    setState({ status: snapshot.phase === 'pending' || snapshot.phase === 'initial' ? 'checking' : 'disconnected', url: snapshot.url || state.url, pairing: null, error: snapshot.error })
+    setState({
+      status: snapshot.phase === 'pending' || snapshot.phase === 'initial' ? 'checking' : 'disconnected',
+      url: snapshot.url || state.url,
+      error: snapshot.error,
+      ...DEFAULT_META,
+      user: null,
+    })
   }
 }
 
@@ -511,98 +840,130 @@ async function init(): Promise<void> {
   if (!ownsConnection) {
     return
   }
-  const startup = consumeStartupConnectUrl()
-  if (startup) {
-    await connectRemote(startup)
+  const webCallback = consumeWebOidcCallback()
+  const pendingOidc = webCallback ? peekPendingOidcLogin() : null
+  const deferredAttachedCallback = webCallback && pendingOidc?.purpose === 'attached' ? webCallback : null
+  if (webCallback && pendingOidc && pendingOidc.purpose !== 'attached') {
+    await completeOidcCallback(webCallback, { passive: true })
     return
   }
   const preference = connectionPreference()
-  if (preference?.mode === 'local') {
-    await startLocal()
-    return
-  }
-  if (preference?.mode === 'remote' && preference.remoteUrl) {
+  if (
+    preference?.mode === 'remote' &&
+    preference.remoteUrl &&
+    (clientRuntime.capabilities.localBackend || !isLocalBackendUrl(preference.remoteUrl))
+  ) {
     await restore(preference.remoteUrl)
-    return
+  } else if (clientRuntime.capabilities.localBackend) {
+    await startLocal()
+  } else {
+    const hostedConfig = clientRuntime.kind === 'web' ? await fetchHostedCloudConfig() : null
+    if (attempt || state.status !== 'checking') {
+      return
+    }
+    const hostedUrl = hostedConfig?.cloudUrl || clientRuntime.cloudUrl
+    if (hostedUrl) {
+      await connectRemote(hostedUrl)
+    } else if (clientRuntime.kind === 'electron') {
+      block(null)
+    } else {
+      const url = normalizeBaseUrl(localBaseUrl())
+      const value = begin(url)
+      const discovery = await discoverServer(url, value.controller.signal)
+      if (!current(value)) {
+        return
+      }
+      if (discovery.ok && !discovery.authRequired) {
+        activate(value, { url, token: '', remembered: false, meta: discoveryMeta(discovery) })
+      } else {
+        block(null, false, discovery.ok ? discoveryMeta(discovery) : undefined)
+      }
+    }
   }
-  const url = normalizeBaseUrl(localBaseUrl())
-  const value = begin(url)
-  const health = await readHealth(url, value.controller.signal)
-  if (!current(value)) {
-    return
-  }
-  if (health.ok && !health.authRequired) {
-    activate(value, { url, token: '', deviceId: '', remembered: false })
-  }
-  else {
-    block(null)
+  if (deferredAttachedCallback && state.status === 'connected' && state.mode === 'local') {
+    void completeAttachedOidcCallback(deferredAttachedCallback, { passive: true })
   }
 }
 
 async function restore(url: string): Promise<void> {
   const value = begin(url)
-  let token: string | undefined
-  let deviceId: string | undefined
-  const retry = async (): Promise<void> => {
-    const health = await readHealth(url, value.controller.signal)
-    if (!current(value)) {
-      return
+  await probeAndVerify(value, {
+    resolveSaved: () => savedCredential(url),
+    onSavedError: () => clientRuntime.kind === 'web'
+      ? 'Could not restore the saved browser login. Check site storage access, then connect again.'
+      : 'Could not unlock the saved connection. Allow Jaz access to your system keychain, then restart Jaz.',
+    remembered: true,
+    allowWebCookie: true,
+    retryOnRecoverable: true,
+    missingCredentialError: (meta) => meta.auth === 'oidc'
+      ? 'Sign in to connect to this server'
+      : 'Connect again with an authorized credential',
+  })
+}
+
+if (clientRuntime.kind === 'web' && ownsConnection) {
+  window.addEventListener('hashchange', () => {
+    const incoming = consumeWebOidcCallback()
+    if (incoming && peekPendingOidcLogin()) {
+      void completeOidcCallback(incoming, { passive: true })
     }
-    if (!health.ok) {
-      if (health.recoverable) {
-        setState({ status: 'disconnected', error: health.error })
-        pollTimer = setTimeout(() => void retry(), 5000)
-      } else {
-        block(health.error)
-      }
-      return
-    }
-    if (!health.authRequired) {
-      activate(value, { url, token: '', deviceId: '', remembered: false })
-      return
-    }
-    try {
-      if (token === undefined) {
-        const saved = await savedCredential(url)
-        token = saved.token
-        deviceId = saved.deviceId
-      }
-    } catch {
-      if (!current(value)) return
-      block(clientRuntime.kind === 'web'
-        ? 'Could not restore the saved browser login. Check site storage access, then connect again.'
-        : 'Could not unlock the saved connection. Allow Jaz access to your system keychain, then restart Jaz.')
-      return
-    }
-    if (!current(value)) return
-    if (!token) {
-      block('Connect again with an authorized link or request approval')
-      return
-    }
-    const access = await readAccess(url, token, value.controller.signal, deviceId)
-    if (!current(value)) {
-      return
-    }
-    if (!access.ok) {
-      if (access.recoverable) {
-        pollTimer = setTimeout(() => void retry(), 5000)
-      }
-      else {
-        block(access.error)
-      }
-      return
-    }
-    if (access.kind !== 'device') {
-      block('A saved device credential is required')
-      return
-    }
-    activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered: true })
-  }
-  await retry()
+  })
+}
+
+if (clientRuntime.kind === 'electron' && ownsConnection && clientRuntime.onOidcCallback) {
+  clientRuntime.onOidcCallback((rawUrl) => {
+    void completeOidcCallback(rawUrl)
+  })
 }
 
 bridge?.subscribe((snapshot) => {
   void hydrate(snapshot)
 })
-onApiAuthRejected(() => block('Backend device access was rejected'))
+setApiSessionRefresher(({ origin, mode, refreshToken, signal }) => {
+  const value = attempt
+  if (!value || !current(value) || state.url !== origin || state.mode !== 'cloud' || state.auth !== 'oidc') {
+    return Promise.resolve('unavailable')
+  }
+  const wasRemembered = Boolean(
+    authoritative?.session?.remembered ||
+    (connectionPreference()?.mode === 'remote' && connectionPreference()?.remoteUrl === origin),
+  )
+  return runActiveCloudRefresh({
+    origin,
+    mode,
+    refreshToken,
+    signal,
+    isCurrent: () => current(value) && state.url === origin,
+    ownsConnection,
+    wasRemembered,
+    onUserUpdated: (user) => setState({ user, error: null }),
+    onBearerRotated: (token) => {
+      if (ownsConnection && bridge && desktop) {
+        try {
+          authoritative = bridge.update({
+            operation: 'commit',
+            document: desktop.document,
+            revision: value.revision,
+            session: { url: origin, token, remembered: wasRemembered },
+          })
+          value.revision = authoritative.revision
+        } catch {
+          // Keep rotated tokens in memory even if secondary-window broadcast fails.
+        }
+      }
+    },
+  })
+})
+onApiAuthRejected(() => {
+  if (state.mode === 'cloud' && state.auth === 'oidc') {
+    block('Session expired. Sign in again.', false, {
+      mode: state.mode,
+      auth: state.auth,
+      oidcLoginUrl: state.oidcLoginUrl,
+      capabilities: state.capabilities,
+    })
+    return
+  }
+  block('Backend authentication was rejected')
+})
 void init().catch((error: unknown) => block(error instanceof Error ? error.message : 'Could not open the connection'))

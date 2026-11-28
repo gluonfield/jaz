@@ -11,6 +11,7 @@ import (
 )
 
 type agentProcess struct {
+	cloudOAuth  cloudOAuthLease
 	mcpPolicy   string
 	mcpRefresh  string
 	mcpRevision uint64
@@ -23,14 +24,22 @@ type agentProcess struct {
 	serveDone   chan struct{}
 }
 
+type cloudOAuthLease struct {
+	workspaceID string
+	profileID   string
+	version     int64
+	expiresAt   time.Time
+}
+
 func newAgentProcess(ac *agentConn) *agentProcess {
 	return &agentProcess{
-		conn:      ac.promptTracker,
-		peer:      ac.peer,
-		cancel:    ac.cancel,
-		closed:    ac.closed,
-		stderr:    ac.stderr,
-		serveDone: make(chan struct{}),
+		cloudOAuth: ac.cloudOAuth,
+		conn:       ac.promptTracker,
+		peer:       ac.peer,
+		cancel:     ac.cancel,
+		closed:     ac.closed,
+		stderr:     ac.stderr,
+		serveDone:  make(chan struct{}),
 	}
 }
 
@@ -126,10 +135,18 @@ func (m *Manager) acquireSessionProcess(ctx context.Context, job *jobState) (*jo
 			job = current
 			continue
 		}
-		if current == job && process != nil && serveErr == nil && !job.claudeAuthFailed() {
-			m.retireStaleCodexCatalog(job, process)
-			if job.lease() {
-				return job, nil
+		if current == job && process != nil {
+			rejected := job.claudeAuthFailed()
+			oauth := process.cloudOAuth
+			if oauth.version > 0 && (rejected || !oauth.expiresAt.IsZero() && !time.Now().Before(oauth.expiresAt)) &&
+				!m.subagentsRunning(job) && !m.hasLivePermissionWaiter(job.ID) {
+				job.retire()
+			}
+			if serveErr == nil && (!rejected || oauth.version > 0) {
+				m.retireStaleCatalog(job, process)
+				if job.lease() {
+					return job, nil
+				}
 			}
 		}
 		if serveErr != nil && job.turnDone() != nil {
@@ -141,6 +158,21 @@ func (m *Manager) acquireSessionProcess(ctx context.Context, job *jobState) (*jo
 			return nil, err
 		}
 	}
+}
+
+func (m *Manager) sessionPeer(job *jobState) *jsonrpc.Peer {
+	job.mu.RLock()
+	retired := job.retired
+	job.mu.RUnlock()
+	if retired {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if process := m.processes[job.ID]; m.jobsByID[job.ID] == job && process != nil {
+		return process.peer
+	}
+	return nil
 }
 
 func (m *Manager) teardown(id string) {

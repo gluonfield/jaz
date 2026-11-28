@@ -206,7 +206,9 @@ func (s *Store) ListMCPServers() ([]mcpconfig.Server, error) {
 func (s *Store) ListMCPServersWithConfig(enabled func(string) bool, configFor func(string) map[string]string) ([]mcpconfig.Server, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	entries, err := os.ReadDir(s.dir)
+	dir, dataDir := s.workspaceDirs()
+	ws := s.ActiveWorkspaceID()
+	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -215,10 +217,10 @@ func (s *Store) ListMCPServersWithConfig(enabled func(string) bool, configFor fu
 	}
 	var servers []mcpconfig.Server
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
-		root := filepath.Join(s.dir, entry.Name())
+		root := filepath.Join(dir, entry.Name())
 		definition, err := manifest.Read(root)
 		if err != nil || definition.Name != entry.Name() {
 			continue
@@ -230,7 +232,10 @@ func (s *Store) ListMCPServersWithConfig(enabled func(string) bool, configFor fu
 		if configFor != nil {
 			values = configFor(definition.Name)
 		}
-		loaded, _, _ := loadMCP(root, s.dataDir, definition, values)
+		loaded, _, _ := loadMCP(root, dataDir, definition, values)
+		for i := range loaded {
+			loaded[i].WorkspaceID = ws
+		}
 		servers = append(servers, loaded...)
 	}
 	return servers, nil

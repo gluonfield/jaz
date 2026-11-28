@@ -69,13 +69,14 @@ type Schedule struct {
 }
 
 type Loop struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Prompt   string   `json:"prompt"`
-	Schedule Schedule `json:"schedule"`
-	Status   string   `json:"status"`
-	Runtime  string   `json:"runtime"`
-	ACPAgent string   `json:"acp_agent,omitempty"`
+	ID          string   `json:"id"`
+	WorkspaceID string   `json:"workspace_id,omitempty"`
+	Name        string   `json:"name"`
+	Prompt      string   `json:"prompt"`
+	Schedule    Schedule `json:"schedule"`
+	Status      string   `json:"status"`
+	Runtime     string   `json:"runtime"`
+	ACPAgent    string   `json:"acp_agent,omitempty"`
 	// ModelProvider/Model override the Settings > Agents defaults for runs.
 	// Empty ReasoningEffort follows settings; "none" explicitly clears it.
 	ModelProvider   string    `json:"model_provider,omitempty"`
@@ -132,6 +133,7 @@ type SeenEvent struct {
 }
 
 type CreateLoop struct {
+	WorkspaceID     string
 	Name            string
 	Prompt          string
 	Schedule        Schedule
@@ -169,17 +171,16 @@ type UpdateLoop struct {
 	RescheduleAt    time.Time
 }
 
-// BoardSummary identifies a Jaz board a loop's widget can be assigned to.
+// BoardSummary identifies a Jaz board a loop's app can be a tile on.
 type BoardSummary struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	IsDefault bool   `json:"is_default"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
-// BoardService assigns a loop's widget to Jaz boards. Assignment is the widget
-// enablement: a loop with no board has no widget. The widgets service
-// implements it; loops only needs these loop-facing operations, which keeps
-// widget types from leaking across the package boundary.
+// BoardService puts a loop's app on Jaz boards. A loop publishes an app only
+// while it is on a board. The boards service implements it; loops only needs
+// these loop-facing operations, which keeps board types from leaking across
+// the package boundary.
 type BoardService interface {
 	ListBoards() ([]BoardSummary, error)
 	ValidateBoardIDs(boardIDs []string) error

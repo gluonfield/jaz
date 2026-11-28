@@ -10,6 +10,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
@@ -39,11 +40,12 @@ func TestABotWhoseAgentKeepsItsStartPromptIsShownAChangedIdentityUntilATurnSucce
 			t.Cleanup(func() { _ = store.Close() })
 			root := t.TempDir()
 			requestLog := filepath.Join(root, "requests.jsonl")
+			inst := instructions.NewLocalFSStore(root, instructions.WithBotHomeResolver(bots.HomeResolver(store)))
 			start := func() *acp.Manager {
 				manager := newFakeNamedAgentManagerWithOptions(t, store, root, tc.agent, map[string]string{
 					"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_REQUEST_LOG": requestLog,
 					"JAZ_FAKE_ACP_EXPECT_PROMPT_TRIGGER": "refused", "JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": "never sent",
-				}, "", "", func(cfg *acp.Config) { cfg.TurnNote = bots.TurnNote(store) })
+				}, "", "", func(cfg *acp.Config) { cfg.TurnNote = bots.TurnNote(store, inst) })
 				t.Cleanup(manager.Close)
 				manager.TurnFinished = (&server.Server{Store: store, ACP: manager, Locks: sessionlock.New(), Events: sessionevents.New()}).HandleACPTurnFinished
 				return manager

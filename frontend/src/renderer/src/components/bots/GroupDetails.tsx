@@ -6,11 +6,13 @@ import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import type { Bot } from '@/lib/api/types'
 import { botAvatars } from '@/lib/bots'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { BotAvatar, BotIcon } from './BotAvatar'
 import { BotNameInput } from './BotNameInput'
 import { useUpdateBot } from './useUpdateBot'
 
 export function GroupDetails({ group, bots }: { group: Bot; bots: Bot[] }) {
+  const isViewer = useIsCloudViewer()
   const update = useUpdateBot(group.id)
   const [adding, setAdding] = useState(false)
   const ids = group.members ?? []
@@ -33,19 +35,21 @@ export function GroupDetails({ group, bots }: { group: Bot; bots: Bot[] }) {
           <div key={bot.id} className="flex h-9 items-center gap-2.5">
             <BotAvatar avatar={bot.avatar} size={24} />
             <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{bot.name}</span>
-            <IconButton
-              size="xs"
-              variant="danger"
-              aria-label={`Remove ${bot.name}`}
-              title={members.length > 2 ? `Remove ${bot.name}` : 'A group needs two bots'}
-              disabled={members.length <= 2}
-              onClick={() => update.mutate({ members: ids.filter((id) => id !== bot.id) })}
-            >
-              <X size={13} />
-            </IconButton>
+            {!isViewer ? (
+              <IconButton
+                size="xs"
+                variant="danger"
+                aria-label={`Remove ${bot.name}`}
+                title={members.length > 2 ? `Remove ${bot.name}` : 'A group needs two bots'}
+                disabled={members.length <= 2}
+                onClick={() => update.mutate({ members: ids.filter((id) => id !== bot.id) })}
+              >
+                <X size={13} />
+              </IconButton>
+            ) : null}
           </div>
         ))}
-        {candidates.length ? (
+        {!isViewer && candidates.length ? (
           <Popover
             open={adding}
             onClose={() => setAdding(false)}

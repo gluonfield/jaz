@@ -3,10 +3,12 @@ package acp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"os/exec"
-	"runtime"
-	"slices"
+	"path/filepath"
 	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
@@ -16,46 +18,100 @@ import (
 	"github.com/wins/jaz/backend/internal/subprocess"
 )
 
-const (
-	AntigravityGoogleAccount = "oauth-personal"
-	AntigravityCloudProject  = "oauth-business"
-	antigravityAccountGrace  = 250 * time.Millisecond
-)
+const antigravityAccountGrace = 250 * time.Millisecond
 
-func AntigravityLoginMethods(ctx context.Context, cfg AgentConfig, root string) ([]string, error) {
-	if runtime.GOOS == "windows" {
-		return nil, nil
+// AntigravityCloudLogin is a Google Cloud sign-in: a Gemini Enterprise
+// license, found from the account or from the project it is assigned in, or
+// pay-as-you-go usage billed to a project.
+type AntigravityCloudLogin struct {
+	Project    string `json:"project"`
+	Location   string `json:"location"`
+	PayAsYouGo bool   `json:"pay_as_you_go"`
+}
+
+// AntigravityBrowser connects a sign-in to the user's browser: Page receives
+// the sign-in page once agy shows it, and Codes carries a code that page told
+// the user to paste back.
+type AntigravityBrowser struct {
+	Page  func(url string)
+	Codes <-chan string
+}
+
+// LoginAntigravityCloud returns once the user has finished signing in. agy
+// opens the browser itself on the host it runs on; only the pay-as-you-go
+// wizard also reports its page and takes a code, so only it works from another
+// machine.
+func LoginAntigravityCloud(ctx context.Context, cfg AgentConfig, root string, login AntigravityCloudLogin, browser AntigravityBrowser) error {
+	if login.Project != "" && login.Location == "" {
+		return errors.New("a Google Cloud project needs a location")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	invocation := AgentLoginInvocationFor(AgentAntigravity, root, cfg.Auth, loginBinDirs(cfg), cfg.Env)
-	if !invocation.Available {
-		return nil, nil
-	}
-	if err := PrepareAgentLoginInvocation(AgentAntigravity, cfg.Auth, root, invocation); err != nil {
-		return nil, err
-	}
-	cfg.useCommandLaunch(invocation.Executable, []string{"acp", "--disable-telemetry"})
-	var methods []string
-	err := withAntigravityAccountPeer(ctx, cfg, root, invocation.Cwd, func(_ *jsonrpc.Peer, init acpschema.InitializeResponse) error {
-		var advertised []agentAuthMethod
-		for _, raw := range init.AuthMethods {
-			var method agentAuthMethod
-			if err := json.Unmarshal(raw, &method); err != nil {
-				return err
-			}
-			advertised = append(advertised, method)
+	if login.PayAsYouGo {
+		if login.Project == "" {
+			return errors.New("pay-as-you-go needs a Google Cloud project")
 		}
-		for _, id := range []string{AntigravityGoogleAccount, AntigravityCloudProject} {
-			if slices.ContainsFunc(advertised, func(method agentAuthMethod) bool {
-				return string(method.ID) == id && method.Type != "terminal"
-			}) {
-				methods = append(methods, id)
-			}
+		return runAntigravityWizard(ctx, cfg, root, antigravityPayAsYouGoSteps(login), browser)
+	}
+	if login.Project != "" {
+		if err := saveAntigravityCloudProject(login); err != nil {
+			return err
 		}
-		return nil
+	}
+	return withAntigravityAccountPeer(ctx, cfg, root, "", func(peer *jsonrpc.Peer, _ acpschema.InitializeResponse) error {
+		_, err := peer.Call(ctx, acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: "oauth-business"})
+		return err
 	})
-	return methods, err
+}
+
+func saveAntigravityCloudProject(login AntigravityCloudLogin) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(home, ".gemini", "antigravity-cli")
+	settings := map[string]json.RawMessage{}
+	gcp := map[string]any{}
+	raw, err := os.ReadFile(filepath.Join(dir, "settings.json"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &settings); err != nil {
+			return fmt.Errorf("read Antigravity settings: %w", err)
+		}
+	}
+	if settings["gcp"] != nil {
+		if err := json.Unmarshal(settings["gcp"], &gcp); err != nil {
+			return fmt.Errorf("read Antigravity settings: %w", err)
+		}
+	}
+	gcp["project"], gcp["location"] = login.Project, login.Location
+	if settings["gcp"], err = json.Marshal(gcp); err != nil {
+		return err
+	}
+	if raw, err = json.MarshalIndent(settings, "", "  "); err != nil {
+		return err
+	}
+	return writeAntigravitySettings(dir, raw)
+}
+
+func writeAntigravitySettings(dir string, settings []byte) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(dir, ".settings-*.json")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	_, writeErr := file.Write(settings)
+	if err := errors.Join(writeErr, file.Close()); err != nil {
+		return err
+	}
+	return os.Rename(file.Name(), filepath.Join(dir, "settings.json"))
+}
+
+func antigravityLoginWorkspace(root string) string {
+	return filepath.Join(root, "acp", "agy-login-workspace")
 }
 
 func disconnectAntigravityAuth(ctx context.Context, cfg AgentConfig, root string) error {
@@ -90,7 +146,7 @@ func withAntigravityAccountPeer(ctx context.Context, cfg AgentConfig, root, cwd 
 	}
 	var conn jsonrpc.MessageConn
 	if cfg.URL != "" {
-		remote, _, err := manager.openConn(ctx, AgentAntigravity, cfg, env, cwd, "")
+		remote, _, err := manager.openConn(ctx, AgentAntigravity, cfg, env, cwd, "", nil)
 		if err != nil {
 			return err
 		}

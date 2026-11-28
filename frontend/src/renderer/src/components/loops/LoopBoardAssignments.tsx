@@ -3,11 +3,13 @@ import { useToast } from '@/components/ui/toast'
 import { boardsQuery } from '@/lib/api/boards'
 import { type LoopDetail, updateLoop } from '@/lib/api/loops'
 import type { Loop } from '@/lib/api/types'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 import { BoardAssignmentPicker } from './BoardAssignmentPicker'
 
 export function LoopBoardAssignments({ loop, boardIds }: { loop: Loop; boardIds: string[] }) {
   const boards = useQuery(boardsQuery)
+  const isViewer = useIsCloudViewer()
   const queryClient = useQueryClient()
   const toast = useToast()
 
@@ -19,7 +21,7 @@ export function LoopBoardAssignments({ loop, boardIds }: { loop: Loop; boardIds:
       )
       queryClient.invalidateQueries({ queryKey: keys.loopDetail(loop.id) })
       queryClient.invalidateQueries({ queryKey: keys.loops })
-      queryClient.invalidateQueries({ queryKey: keys.boards })
+      queryClient.invalidateQueries({ queryKey: keys.appBoards })
     },
     onError: (error) => toast(`Couldn't update boards: ${error.message}`, 'danger'),
   })
@@ -32,7 +34,7 @@ export function LoopBoardAssignments({ loop, boardIds }: { loop: Loop; boardIds:
   return (
     <section className="mt-8">
       <div className="flex items-baseline justify-between border-b border-border pb-2">
-        <h2 className="text-[13px] font-semibold text-ink">Widget boards</h2>
+        <h2 className="text-[13px] font-semibold text-ink">Boards</h2>
         {allBoards.length > 0 ? (
           <span className="text-[12px] tabular-nums text-ink-3">
             {activeCount} of {allBoards.length} active
@@ -47,14 +49,16 @@ export function LoopBoardAssignments({ loop, boardIds }: { loop: Loop; boardIds:
             Couldn’t load boards: {boards.error.message}
           </p>
         ) : allBoards.length === 0 ? (
-          <p className="text-[13px] text-ink-3">No boards yet. Create a board to show this widget.</p>
+          <p className="text-[13px] text-ink-3">No boards yet. Create a board to show this loop's app.</p>
         ) : (
           <BoardAssignmentPicker
             boards={allBoards}
             selected={selected}
-            disabled={assign.isPending}
-            onChange={(next) => assign.mutate(next)}
-            hint="Checked boards show this loop's widget and receive updates on every run."
+            disabled={assign.isPending || isViewer}
+            onChange={(next) => {
+              if (!isViewer) assign.mutate(next)
+            }}
+            hint="Checked boards show this loop's app and receive updates on every run."
           />
         )}
         {assign.isError ? (

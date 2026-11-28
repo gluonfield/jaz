@@ -8,19 +8,26 @@ import type { ACPAuthLogin } from '@/lib/api/types'
 // is the only thing that differs between the onboarding and settings screens).
 // `onResolved` is read through a ref, so it always sees the caller's latest
 // closure without re-arming the interval.
-export function useACPLoginPolling(onResolved: (job: ACPAuthLogin) => void) {
+export function useACPLoginPolling(
+  onResolved: (job: ACPAuthLogin) => void,
+  pollJob: (job: ACPAuthLogin) => Promise<ACPAuthLogin> = (job) => getACPAuthLogin(job.id),
+) {
   const [loginJobs, setLoginJobs] = useState<Record<string, ACPAuthLogin>>({})
   const onResolvedRef = useRef(onResolved)
   onResolvedRef.current = onResolved
+  const pollJobRef = useRef(pollJob)
+  pollJobRef.current = pollJob
 
   useEffect(() => {
     const running = Object.values(loginJobs).filter((job) => job.status === 'running')
     if (running.length === 0) return
     const timer = window.setInterval(() => {
       for (const job of running) {
-        void getACPAuthLogin(job.id).then((next) => {
-          setLoginJobs((current) => ({ ...current, [next.agent]: next }))
+        void pollJobRef.current(job).then((next) => {
+          setLoginJobs((current) => (current[next.agent]?.id === next.id ? { ...current, [next.agent]: next } : current))
           if (next.status !== 'running') onResolvedRef.current(next)
+        }).catch(() => {
+          // Transient poll error; retry on next interval tick.
         })
       }
     }, 1000)

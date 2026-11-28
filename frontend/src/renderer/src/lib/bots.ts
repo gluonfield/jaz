@@ -1,4 +1,4 @@
-import type { ACPPermission, Attachment, Bot, BotActivityEvent, BotAvatar, BotColor, BotFileName, BotOwed, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
+import type { ACPPermission, Attachment, Bot, BotActivityEvent, BotAvatar, BotColor, BotFileName, BotOwed, BotOwedThread, BotShape, BotThreadActivity, ChatMessage, MCPAppEvent, MCPEntrypoint, MessageDelivery, SessionEvent } from '@/lib/api/types'
 import { messageText } from '@/lib/messageText'
 import { isPresentedApp } from '@/lib/mcpApps'
 import { hasPermissionSurface } from '@/lib/sessionPermissions'
@@ -39,20 +39,127 @@ export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'thinking' | 'work
   return bot.away ? 'away' : 'idle'
 }
 
-export function taskStateLabel(task: Pick<BotOwed, 'status' | 'moving' | 'blocked' | 'stalled' | 'threads'>): string {
-  if (task.status === 'completed') return 'Done'
-  if (task.status === 'cancelled') return 'Dropped'
-  if (task.status === 'stopped') return 'Stopped'
-  if (task.status === 'waiting_for_user') return 'Waiting for you'
-  if (task.blocked) return 'Waiting on another task'
-  if (task.moving) return 'Working'
-  if (task.threads?.some((thread) => thread.state === 'finished' || thread.state === 'failed')) return 'Not delivered yet'
-  if (task.stalled) return 'Needs follow-up'
-  return task.status === 'pending' ? 'Not started' : 'In progress'
+// The groups a bot's tasks are listed under, in the order they show.
+export const TASK_GROUPS = ['Waiting for you', 'In progress', 'Queued', 'Done', 'Stopped'] as const
+
+// A task's state in a few words and the group it is listed under; `detail`
+// marks a state that says more than its group's name does.
+export type TaskState = [label: string, group: (typeof TASK_GROUPS)[number], detail?: true]
+
+export function taskState(task: Pick<BotOwed, 'status' | 'moving' | 'blocked' | 'stalled' | 'threads'>): TaskState {
+  if (task.status === 'completed') return ['Done', 'Done']
+  if (task.status === 'cancelled') return ['Dropped', 'Stopped', true]
+  if (task.status === 'stopped') return ['Stopped', 'Stopped']
+  if (task.status === 'waiting_for_user') return ['Waiting for you', 'Waiting for you']
+  if (task.blocked) return ['Waiting on another task', 'Queued', true]
+  if (task.moving) return ['Working', 'In progress']
+  if (task.threads?.some((thread) => thread.state === 'finished' || thread.state === 'failed')) return ['Not delivered yet', 'In progress', true]
+  if (task.stalled) return ['Needs follow-up', 'In progress', true]
+  return task.status === 'pending' ? ['Not started', 'Queued'] : ['In progress', 'In progress']
 }
 
 export function taskName(task: Pick<BotOwed, 'name' | 'request'>): string {
-  return task.name || task.request.split(/;\s*done when\b/i, 1)[0] || task.request
+  const named = task.name?.trim()
+  if (named) return named
+  const firstLine = task.request
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) ?? task.request
+  const concise = firstLine.split(/;\s*done when\b/i, 1)[0]?.replace(/\s+/g, ' ').trim()
+  return concise || firstLine.replace(/\s+/g, ' ').trim() || task.request
+}
+
+// A task's text in a couple of lines: its whole sentences while they fit,
+// else its whole words.
+export function taskBrief(text: string): string {
+  const line = text.replace(/\s+/g, ' ').trim()
+  if (line.length <= 180) return line
+  const cut = line.slice(0, 181)
+  return cut.match(/^.{60,}[.!?](?= )/)?.[0] ?? `${cut.replace(/\s+\S*$/, '')}…`
+}
+
+export type ConnectedTaskThread = {
+  id: string
+  depth: number
+  thread?: BotOwedThread
+  activity?: BotThreadActivity
+}
+
+type ConnectedEdge = Omit<ConnectedTaskThread, 'depth'>
+
+// Every thread connected to a task in display order: directly linked threads
+// plus any descendant threads spawned under them (from parent_id and
+// activity.started), deduplicated and cycle-safe so each thread appears once.
+export function connectedTaskThreads(
+  task: Pick<BotOwed, 'threads'>,
+  started: Record<string, BotThreadActivity[]> = {},
+): ConnectedTaskThread[] {
+  const directById = new Map<string, BotOwedThread>()
+  const uniqueDirect: BotOwedThread[] = []
+  for (const raw of task.threads ?? []) {
+    const id = raw.id.trim()
+    if (!id || directById.has(id)) continue
+    const normalized = id === raw.id ? raw : { ...raw, id }
+    directById.set(id, normalized)
+    uniqueDirect.push(normalized)
+  }
+  if (!uniqueDirect.length) return []
+
+  const childrenByParent = new Map<string, Map<string, ConnectedEdge>>()
+  const record = (parentId: string, edge: ConnectedEdge) => {
+    if (!parentId || edge.id === parentId) return
+    let children = childrenByParent.get(parentId)
+    if (!children) {
+      children = new Map()
+      childrenByParent.set(parentId, children)
+    }
+    if (!children.has(edge.id)) children.set(edge.id, edge)
+  }
+
+  for (const [rawParentId, items] of Object.entries(started)) {
+    const parentId = rawParentId.trim()
+    for (const item of items ?? []) {
+      const childId = item.thread_id?.trim()
+      if (!childId) continue
+      record(parentId, { id: childId, thread: directById.get(childId), activity: item })
+    }
+  }
+  for (const thread of uniqueDirect) {
+    const parentId = thread.parent_id?.trim()
+    if (parentId) record(parentId, { id: thread.id, thread })
+  }
+
+  const nestedChildIds = new Set<string>()
+  const scannedParents = new Set<string>()
+  const queue = uniqueDirect.map((thread) => thread.id)
+  for (let i = 0; i < queue.length; i++) {
+    const parentId = queue[i]
+    if (scannedParents.has(parentId)) continue
+    scannedParents.add(parentId)
+    for (const childId of childrenByParent.get(parentId)?.keys() ?? []) {
+      nestedChildIds.add(childId)
+      queue.push(childId)
+    }
+  }
+
+  const rows: ConnectedTaskThread[] = []
+  const visited = new Set<string>()
+  const append = (entry: ConnectedEdge, depth: number) => {
+    if (visited.has(entry.id)) return
+    visited.add(entry.id)
+    rows.push({ ...entry, depth })
+    for (const child of childrenByParent.get(entry.id)?.values() ?? []) {
+      append(child, depth + 1)
+    }
+  }
+
+  for (const thread of uniqueDirect) {
+    if (!nestedChildIds.has(thread.id)) append({ id: thread.id, thread }, 0)
+  }
+  for (const thread of uniqueDirect) {
+    if (!visited.has(thread.id)) append({ id: thread.id, thread }, 0)
+  }
+  return rows
 }
 
 // What a bot's identity files are called on screen.
@@ -74,10 +181,14 @@ export function randomAvatar(): BotAvatar {
 }
 
 const LAST_BOT_KEY = 'jaz.lastBot'
+const lastBotStorageKey = (workspaceId?: string) =>
+  workspaceId && workspaceId !== 'local' ? `${LAST_BOT_KEY}:${workspaceId}` : LAST_BOT_KEY
 
 // The Bots tab returns to the chat the user left, as Chat returns to its thread.
-export const lastBotId = () => localStorage.getItem(LAST_BOT_KEY) ?? undefined
-export const rememberBot = (id: string) => localStorage.setItem(LAST_BOT_KEY, id)
+export const lastBotId = (workspaceId?: string) =>
+  localStorage.getItem(lastBotStorageKey(workspaceId)) ?? undefined
+export const rememberBot = (id: string, workspaceId?: string) =>
+  localStorage.setItem(lastBotStorageKey(workspaceId), id)
 
 const TARGET_PREFIX = 'bot:'
 
@@ -132,7 +243,7 @@ export function botAvatars(bot: Bot, bots: Bot[]): BotAvatar[] {
 }
 
 export type ChatEntry = { seq?: number } & (
-  | { kind: 'user'; key: string; at: string; text: string; attachments?: Attachment[]; attachmentSessionId?: string }
+  | { kind: 'user'; key: string; at: string; text: string; attachments?: Attachment[]; attachmentSessionId?: string; delivery?: MessageDelivery }
   | { kind: 'bot'; key: string; at: string; botId?: string; name: string; text: string }
   | { kind: 'activity'; key: string; at: string; event: SessionEvent }
   | { kind: 'app'; key: string; at: string; app: MCPAppEvent }
@@ -189,6 +300,7 @@ export function botChat(
         kind: 'user', key: `message:${repeat}:${text}`, at, text,
         attachments: message.blocks?.filter((block) => block.type === 'attachment'),
         attachmentSessionId: self.id,
+        delivery: message.delivery,
       })
       turn = { at, user: true }
       continue

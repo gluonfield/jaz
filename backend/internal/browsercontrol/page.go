@@ -10,10 +10,11 @@ import (
 const defaultScrollAmount = 800
 
 type browserPage struct {
-	ax        axState
-	conn      *desktopbridge.Conn
-	opMu      sync.Mutex
-	contextID int64
+	ax            axState
+	conn          *desktopbridge.Conn
+	opMu          sync.Mutex
+	contextID     int64
+	redactedNodes map[string]map[int64]bool
 }
 
 func (page *browserPage) call(ctx context.Context, input ActionInput) (ActionOutput, error) {

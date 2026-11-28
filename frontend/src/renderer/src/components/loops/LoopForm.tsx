@@ -3,8 +3,11 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
 import { ModelSelect } from '@/components/session/ModelSelect'
 import { boardsQuery } from '@/lib/api/boards'
+import { resolveCloudModelSelection } from '@/lib/api/cloudThreads'
+import { useCloudModelProfilesQuery } from '@/lib/hooks/useCloudCatalogQueries'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
+import { useCloudSession, useIsCloudOnly } from '@/lib/cloudSession'
 import { useModelReasoningState } from '@/lib/modelReasoning'
 import { pickerEffortOptions } from '@/lib/modelPicker'
 import { BoardAssignmentPicker } from './BoardAssignmentPicker'
@@ -125,7 +128,7 @@ export function ScheduleStep({
   )
 }
 
-// Step 3 — which boards carry the loop's live widget.
+// Step 3 — which boards carry the loop's live app.
 export function BoardsStep({
   draft,
   disabled,
@@ -144,7 +147,7 @@ export function BoardsStep({
       <span className="text-[12px] text-ink-3">Loading boards…</span>
     ) : boards.isError || (boards.data ?? []).length === 0 ? (
       <p className="text-[12px] text-ink-3">
-        No boards yet — create one on the Boards page to give this loop a live widget.
+        No boards yet. Create one in Apps to give this loop a live app.
       </p>
     ) : (
       <BoardAssignmentPicker
@@ -185,47 +188,85 @@ function LoopPromptCard({
     onValueChange: (prompt) => set({ prompt }),
   })
 
-  // Resolve the Settings > Agents defaults so the picker always shows the
-  // model and effort a run will actually use — never an opaque "Default".
-  const settingsQuery = useQuery(agentSettingsQuery)
-  const agentSettings = settingsQuery.data
-  const agents = useMemo(() => enabledACPAgents(agentSettings), [agentSettings])
-  const runtimeReady = settingsQuery.isSuccess
+  // Resolve the Settings > Agents defaults (or Cloud model profiles in Cloud
+  // mode) so the picker always shows the model and effort a run will use.
+  const cloud = useCloudSession()
+  const cloudOnly = useIsCloudOnly()
+  const usingCloudProfiles = cloudOnly || cloud.active
+  const settingsQuery = useQuery({ ...agentSettingsQuery, enabled: !usingCloudProfiles })
+  const cloudProfilesQuery = useQuery({ ...useCloudModelProfilesQuery(), enabled: usingCloudProfiles && cloud.active })
+  const agentSettings = usingCloudProfiles ? undefined : settingsQuery.data
+  const cloudProfiles = useMemo(
+    () => (usingCloudProfiles ? (cloudProfilesQuery.data ?? []) : []),
+    [cloudProfilesQuery.data, usingCloudProfiles],
+  )
+  const cloudSelection = useMemo(
+    () =>
+      usingCloudProfiles
+        ? resolveCloudModelSelection(cloudProfiles, {
+            profileId: draft.provider || draft.runtime,
+            agent: draft.runtime,
+            model: draft.model,
+            effort: draft.reasoningEffort,
+          })
+        : null,
+    [cloudProfiles, draft.model, draft.provider, draft.reasoningEffort, draft.runtime, usingCloudProfiles],
+  )
+  const localAgents = useMemo(() => enabledACPAgents(agentSettings), [agentSettings])
+  const agents = usingCloudProfiles ? (cloudSelection?.agents ?? []) : localAgents
+  const agentItems = usingCloudProfiles ? cloudSelection?.agentItems : undefined
+  const runtimeReady = usingCloudProfiles ? (!cloud.active || cloudProfilesQuery.isSuccess) : settingsQuery.isSuccess
   const runtimeAvailable = runtimeReady && agents.length > 0
 
   useEffect(() => {
     if (!runtimeReady) return
-    if (agents.includes(draft.runtime)) return
-    const runtime = agents[0] ?? ''
+    if (usingCloudProfiles) {
+      const profileId = cloudSelection?.profileId ?? ''
+      if (!profileId || draft.runtime === profileId) return
+      set({
+        runtime: profileId,
+        provider: profileId,
+        model: cloudSelection?.model ?? '',
+        reasoningEffort: cloudSelection?.effort ?? '',
+      })
+      return
+    }
+    if (localAgents.includes(draft.runtime)) return
+    const runtime = localAgents[0] ?? ''
     if (runtime === draft.runtime) return
     set({ runtime, provider: '', model: '', reasoningEffort: '' })
-  }, [agents, draft.runtime, runtimeReady, set])
+  }, [cloudSelection?.effort, cloudSelection?.model, cloudSelection?.profileId, draft.runtime, localAgents, runtimeReady, set, usingCloudProfiles])
 
   const runtimeModel = runtimeModelState(agentSettings, draft.runtime, draft.provider)
   const { provider } = runtimeModel
   const defaultModel = runtimeModel.defaultModel
-  const model = draft.model || defaultModel
-  const requestedEffort = draft.reasoningEffort || runtimeModel.defaultEffort
+  const localModel = draft.model || defaultModel
+  const localRequestedEffort = draft.reasoningEffort || runtimeModel.defaultEffort
 
-  const {
-    modelSuggestions,
-    modelsLoading,
-    reasoningOptions: effortOptions,
-    effectiveReasoningEffort: reasoningEffort,
-  } = useModelReasoningState({
-    settings: agentSettings,
-    agent: draft.runtime,
-    model,
-    reasoningEffort: requestedEffort,
+  const localReasoning = useModelReasoningState({
+    settings: usingCloudProfiles ? undefined : agentSettings,
+    agent: usingCloudProfiles ? '' : draft.runtime,
+    model: localModel,
+    reasoningEffort: localRequestedEffort,
     provider,
   })
-  const reasoningEffortOverride =
-    reasoningEffort === requestedEffort ? draft.reasoningEffort : reasoningEffort
+  const model = usingCloudProfiles ? (cloudSelection?.model ?? '') : localModel
+  const modelSuggestions = usingCloudProfiles ? (cloudSelection?.modelSuggestions ?? []) : localReasoning.modelSuggestions
+  const modelsLoading = usingCloudProfiles ? cloudProfilesQuery.isPending : localReasoning.modelsLoading
+  const effortOptions = usingCloudProfiles ? (cloudSelection?.effortOptions ?? []) : localReasoning.reasoningOptions
+  const reasoningEffort = usingCloudProfiles ? (cloudSelection?.effort ?? '') : localReasoning.effectiveReasoningEffort
+  const reasoningEffortOverride = usingCloudProfiles
+    ? reasoningEffort
+    : reasoningEffort === localRequestedEffort
+      ? draft.reasoningEffort
+      : reasoningEffort
   useEffect(() => {
+    if (!runtimeReady) return
+    if (usingCloudProfiles && !cloudSelection?.profile) return
     if (draft.reasoningEffort !== reasoningEffortOverride) {
       set({ reasoningEffort: reasoningEffortOverride })
     }
-  }, [draft.reasoningEffort, reasoningEffortOverride, set])
+  }, [cloudSelection?.profile, draft.reasoningEffort, reasoningEffortOverride, runtimeReady, set, usingCloudProfiles])
 
   return (
     <div>
@@ -247,14 +288,24 @@ function LoopPromptCard({
           />
           <div className="flex flex-wrap items-center gap-1.5">
             {runtimeReady && !runtimeAvailable ? (
-              <span className="px-1.5 text-[13px] text-ink-3">Connect an agent in Settings</span>
+              <span className="px-1.5 text-[13px] text-ink-3">
+                {usingCloudProfiles ? 'No cloud models configured' : 'Connect an agent in Settings'}
+              </span>
             ) : null}
             {runtimeAvailable ? (
               <ModelSelect
                 agent={{
-                  value: draft.runtime,
+                  value: usingCloudProfiles ? (cloudSelection?.profileId ?? draft.runtime) : draft.runtime,
                   options: agents,
-                  onChange: (runtime) => set({ runtime, provider: '', model: '', reasoningEffort: '' }),
+                  items: agentItems,
+                  onChange: (runtime) => {
+                    if (usingCloudProfiles) {
+                      const next = resolveCloudModelSelection(cloudProfiles, { profileId: runtime })
+                      set({ runtime, provider: runtime, model: next.model, reasoningEffort: next.effort })
+                      return
+                    }
+                    set({ runtime, provider: '', model: '', reasoningEffort: '' })
+                  },
                 }}
                 value={model}
                 suggestions={modelSuggestions}

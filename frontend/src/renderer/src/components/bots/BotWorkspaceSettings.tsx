@@ -5,10 +5,12 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import { Modal } from '@/components/ui/Modal'
 import { projectsQuery } from '@/lib/api/sessions'
 import type { Bot } from '@/lib/api/types'
+import { useCloudSession, useIsCloudOnly, useIsCloudViewer } from '@/lib/cloudSession'
 import { useUpdateBot } from './useUpdateBot'
 
 export function BotWorkspacePicker({ value, onChange }: { value: string[]; onChange: (paths: string[]) => void }) {
-  const projects = useQuery(projectsQuery)
+  const cloudOnly = useIsCloudOnly()
+  const projects = useQuery({ ...projectsQuery, enabled: !cloudOnly })
   const choices = [
     ...(projects.data ?? []),
     ...value.filter((path) => !projects.data?.some((project) => project.path === path)).map((path) => ({ path, name: path })),
@@ -35,9 +37,13 @@ export function BotWorkspacePicker({ value, onChange }: { value: string[]; onCha
 }
 
 export function BotWorkspaceSettings({ bot }: { bot: Bot }) {
+  const cloud = useCloudSession()
+  const cloudOnly = useIsCloudOnly()
+  const isViewer = useIsCloudViewer()
   const [open, setOpen] = useState(false)
   const [paths, setPaths] = useState<string[]>([])
   const update = useUpdateBot(bot.id)
+  if (cloudOnly || cloud.active || isViewer) return null
   return (
     <>
       <button type="button" className="max-w-full truncate text-[11px] text-ink-3 underline decoration-dotted underline-offset-4 hover:text-ink" title={bot.workspaces?.join('\n')} onClick={() => { setPaths(bot.workspaces ?? []); setOpen(true) }}>

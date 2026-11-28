@@ -14,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/instructions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -22,13 +23,15 @@ import (
 type Service struct {
 	store Store
 	// homes is where each bot's own directory lives, named after its id.
-	homes       string
-	threads     Threads
-	queue       TurnQueue
-	attachments Attachments
-	routines    Routines
-	events      Publisher
-	log         *log.Logger
+	homes        string
+	instructions instructions.Store
+	threads      Threads
+	queue        TurnQueue
+	attachments  Attachments
+	routines     Routines
+	events       Publisher
+	workspace    func() string
+	log          *log.Logger
 
 	mu        sync.Mutex
 	followUps map[string]int
@@ -37,27 +40,91 @@ type Service struct {
 	delivering map[string]*sync.Mutex
 }
 
-func NewService(store Store, homes string, threads Threads, queue TurnQueue, attachments Attachments, routines Routines, events Publisher, logger *log.Logger) *Service {
+func NewService(store Store, homes string, inst instructions.Store, threads Threads, queue TurnQueue, attachments Attachments, routines Routines, events Publisher, logger *log.Logger) *Service {
 	return &Service{
-		store:       store,
-		homes:       homes,
-		threads:     threads,
-		queue:       queue,
-		attachments: attachments,
-		routines:    routines,
-		events:      events,
-		log:         logger.WithPrefix("bots"),
-		followUps:   map[string]int{},
-		delivering:  map[string]*sync.Mutex{},
+		store:        store,
+		homes:        homes,
+		instructions: inst,
+		threads:      threads,
+		queue:        queue,
+		attachments:  attachments,
+		routines:     routines,
+		events:       events,
+		log:          logger.WithPrefix("bots"),
+		followUps:    map[string]int{},
+		delivering:   map[string]*sync.Mutex{},
 	}
 }
 
-func (s *Service) List() ([]Bot, error) {
+func (s *Service) WithWorkspace(fn func() string) *Service {
+	s.workspace = fn
+	return s
+}
+
+func (s *Service) ActiveWorkspaceID() string {
+	if s.workspace != nil {
+		if ws := s.workspace(); ws != "" {
+			return ws
+		}
+	}
+	return storage.LocalWorkspaceID
+}
+
+func normalizeWorkspaceID(workspaceID string) string {
+	if workspaceID == "" {
+		return storage.LocalWorkspaceID
+	}
+	return workspaceID
+}
+
+func (s *Service) listBotRecords(workspaceID string) ([]storage.BotRecord, error) {
+	if wsStore, ok := s.store.(interface {
+		ListBotsForWorkspace(string) ([]storage.BotRecord, error)
+	}); ok {
+		return wsStore.ListBotsForWorkspace(workspaceID)
+	}
 	records, err := s.store.ListBots()
+	if err != nil || workspaceID == "" {
+		return records, err
+	}
+	out := make([]storage.BotRecord, 0, len(records))
+	for _, record := range records {
+		if normalizeWorkspaceID(record.WorkspaceID) == workspaceID {
+			out = append(out, record)
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) pinBotsForWorkspace(workspaceID string, ids []string) error {
+	if wsStore, ok := s.store.(interface {
+		PinBotsForWorkspace(string, []string) error
+	}); ok {
+		return wsStore.PinBotsForWorkspace(workspaceID, ids)
+	}
+	return s.store.PinBots(ids)
+}
+
+func (s *Service) allRoutines() ([]loops.Loop, error) {
+	if all, ok := s.routines.(interface {
+		ListAll() ([]loops.Loop, error)
+	}); ok {
+		return all.ListAll()
+	}
+	return s.routines.List()
+}
+
+func (s *Service) List() ([]Bot, error) {
+	return s.ListForWorkspace(s.ActiveWorkspaceID())
+}
+
+func (s *Service) ListForWorkspace(workspaceID string) ([]Bot, error) {
+	ws := normalizeWorkspaceID(workspaceID)
+	records, err := s.listBotRecords(ws)
 	if err != nil {
 		return nil, err
 	}
-	sessions, err := s.store.ListSessions(storage.SessionFilter{SourceType: storage.SourceBot, IncludeSourced: true})
+	sessions, err := s.store.ListSessions(storage.SessionFilter{SourceType: storage.SourceBot, IncludeSourced: true, WorkspaceID: ws})
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +157,17 @@ func (s *Service) Load(id string) (Bot, error) {
 	return s.view(record, session, held), nil
 }
 
+func (s *Service) LoadForActiveWorkspace(id string) (Bot, error) {
+	bot, err := s.Load(id)
+	if err != nil {
+		return Bot{}, err
+	}
+	if normalizeWorkspaceID(bot.WorkspaceID) != s.ActiveWorkspaceID() {
+		return Bot{}, storage.ErrBotNotFound
+	}
+	return bot, nil
+}
+
 func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -106,6 +184,10 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 	if err != nil {
 		return Bot{}, err
 	}
+	workspaceID := input.WorkspaceID
+	if workspaceID == "" {
+		workspaceID = s.ActiveWorkspaceID()
+	}
 	session, err := s.threads.CreateSession(ctx, acp.SpawnRequest{
 		ACPAgent:    strings.TrimSpace(input.Agent),
 		Slug:        "bot " + name,
@@ -115,6 +197,7 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 		Model:       strings.TrimSpace(input.Model),
 		StoredModel: input.StoredModel,
 		SourceType:  storage.SourceBot,
+		WorkspaceID: workspaceID,
 	})
 	if err != nil {
 		return Bot{}, err
@@ -122,7 +205,7 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 	if err := s.store.UpdateSessionTitle(session.ID, name); err != nil {
 		return Bot{}, err
 	}
-	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: KindBot, Prompt: strings.TrimSpace(input.Prompt), Workspaces: workspaces, Plugins: normalizeBotPlugins(input.Plugins), Shape: avatar.Shape, Color: avatar.Color, Main: input.Main}); err != nil {
+	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, WorkspaceID: workspaceID, Kind: KindBot, Prompt: strings.TrimSpace(input.Prompt), Workspaces: workspaces, Plugins: normalizeBotPlugins(input.Plugins), Shape: avatar.Shape, Color: avatar.Color, Main: input.Main}); err != nil {
 		return Bot{}, err
 	}
 	s.events.Publish(sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeSession})
@@ -133,7 +216,7 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 // bot named Prime, or else a new Prime on the agent and model Settings choose for a
 // new chat.
 func (s *Service) EnsureMain(ctx context.Context) error {
-	records, err := s.store.ListBots()
+	records, err := s.listBotRecords(storage.LocalWorkspaceID)
 	if err != nil || slices.ContainsFunc(records, func(record storage.BotRecord) bool { return record.Main }) {
 		return err
 	}
@@ -147,19 +230,19 @@ func (s *Service) EnsureMain(ctx context.Context) error {
 	for _, record := range records {
 		pins = append(pins, record.ThreadID)
 	}
-	return s.store.PinBots(pins)
+	return s.pinBotsForWorkspace(storage.LocalWorkspaceID, pins)
 }
 
 // newMain makes the bot named Prime, as one configured by that name, the main
 // bot, or creates it.
 func (s *Service) newMain(ctx context.Context) (string, error) {
-	if id, err := s.resolve(mainName); err == nil {
+	if id, err := s.resolveInWorkspace(mainName, storage.LocalWorkspaceID); err == nil {
 		if record, _, err := s.load(id); err == nil && record.Kind == KindBot {
 			record.Main = true
 			return id, s.store.SaveBot(record)
 		}
 	}
-	bot, err := s.Create(ctx, CreateBot{Name: mainName, Main: true})
+	bot, err := s.Create(ctx, CreateBot{Name: mainName, Main: true, WorkspaceID: storage.LocalWorkspaceID})
 	return bot.ID, err
 }
 
@@ -168,21 +251,23 @@ func (s *Service) CreateGroup(name string, members []string) (Bot, error) {
 	if name == "" {
 		return Bot{}, errors.New("name is required")
 	}
-	members, err := s.memberBots(members)
+	workspaceID := s.ActiveWorkspaceID()
+	members, err := s.memberBotsInWorkspace(members, workspaceID)
 	if err != nil {
 		return Bot{}, err
 	}
 	session, err := s.store.CreateSession(storage.CreateSession{
-		Slug:       "group " + name,
-		Title:      name,
-		Runtime:    storage.RuntimeACP,
-		SourceType: storage.SourceBot,
+		Slug:        "group " + name,
+		Title:       name,
+		Runtime:     storage.RuntimeACP,
+		SourceType:  storage.SourceBot,
+		WorkspaceID: workspaceID,
 	})
 	if err != nil {
 		return Bot{}, err
 	}
 	avatar := randomAvatar()
-	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: KindGroup, Shape: avatar.Shape, Color: avatar.Color, Members: members}); err != nil {
+	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, WorkspaceID: workspaceID, Kind: KindGroup, Shape: avatar.Shape, Color: avatar.Color, Members: members}); err != nil {
 		return Bot{}, err
 	}
 	s.events.Publish(sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeSession})
@@ -242,7 +327,7 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateBot) (Bot, 
 		record.Shape, record.Color = input.Avatar.Shape, input.Avatar.Color
 	}
 	if input.Members != nil {
-		if record.Members, err = s.memberBots(*input.Members); err != nil {
+		if record.Members, err = s.memberBotsInWorkspace(*input.Members, normalizeWorkspaceID(record.WorkspaceID)); err != nil {
 			return Bot{}, err
 		}
 	}
@@ -303,11 +388,12 @@ func checkedWorkspaces(paths []string) ([]string, error) {
 
 // Pin pins exactly ids, in that order, and unpins every other bot and group.
 func (s *Service) Pin(ids []string) error {
-	records, err := s.store.ListBots()
+	ws := s.ActiveWorkspaceID()
+	records, err := s.listBotRecords(ws)
 	if err != nil {
 		return err
 	}
-	if err := s.store.PinBots(ids); err != nil {
+	if err := s.pinBotsForWorkspace(ws, ids); err != nil {
 		return err
 	}
 	for _, record := range records {
@@ -326,7 +412,7 @@ func (s *Service) Delete(id string) error {
 	if record.Main {
 		return fmt.Errorf("%s is your main bot and cannot be deleted", session.Title)
 	}
-	records, err := s.store.ListBots()
+	records, err := s.listBotRecords(normalizeWorkspaceID(record.WorkspaceID))
 	if err != nil {
 		return err
 	}
@@ -340,7 +426,7 @@ func (s *Service) Delete(id string) error {
 		}
 		s.events.Publish(sessionevents.Event{SessionID: group.ThreadID, Type: sessionevents.TypeSession})
 	}
-	routines, err := s.routines.List()
+	routines, err := s.allRoutines()
 	if err != nil {
 		return err
 	}
@@ -390,8 +476,17 @@ func (s *Service) threadsOf(id string) ([]string, error) {
 // RoutineOwner returns the bot a new routine belongs to: the bot it names, the
 // bot whose thread or subtask created it, or else a new bot of its own.
 func (s *Service) RoutineOwner(threadID string, in loops.CreateLoop) (string, error) {
+	ws := in.WorkspaceID
+	if ws == "" && threadID != "" {
+		if session, err := s.store.LoadSession(threadID); err == nil {
+			ws = normalizeWorkspaceID(session.WorkspaceID)
+		}
+	}
+	if ws == "" {
+		ws = s.ActiveWorkspaceID()
+	}
 	if in.BotID != "" {
-		if !isBot(s.store, in.BotID) {
+		if !isBotInWorkspace(s.store, in.BotID, ws) {
 			return "", fmt.Errorf("%s is not a bot", in.BotID)
 		}
 		return in.BotID, nil
@@ -403,7 +498,7 @@ func (s *Service) RoutineOwner(threadID string, in loops.CreateLoop) (string, er
 	if name == "" {
 		name = "Routine bot"
 	}
-	bot, err := s.Create(context.Background(), CreateBot{Name: name, Agent: in.ACPAgent, Model: in.Model})
+	bot, err := s.Create(context.Background(), CreateBot{Name: name, Agent: in.ACPAgent, Model: in.Model, WorkspaceID: ws})
 	return bot.ID, err
 }
 
@@ -427,7 +522,7 @@ func botOf(store PromptStore, threadID string) string {
 // AdoptLoops gives every loop that has no owner and is not on a board a bot
 // of its own, so every routine lives with a bot or a board.
 func (s *Service) AdoptLoops(ctx context.Context) error {
-	routines, err := s.routines.List()
+	routines, err := s.allRoutines()
 	if err != nil {
 		return err
 	}
@@ -435,7 +530,7 @@ func (s *Service) AdoptLoops(ctx context.Context) error {
 		if routine.BotID != "" || s.routines.OnBoard(routine) {
 			continue
 		}
-		bot, err := s.Create(ctx, CreateBot{Name: routine.Name, Agent: routine.ACPAgent, Model: routine.Model, StoredModel: true})
+		bot, err := s.Create(ctx, CreateBot{Name: routine.Name, Agent: routine.ACPAgent, Model: routine.Model, StoredModel: true, WorkspaceID: normalizeWorkspaceID(routine.WorkspaceID)})
 		if err != nil {
 			return fmt.Errorf("adopt loop %s: %w", routine.ID, err)
 		}
@@ -461,9 +556,29 @@ func (s *Service) load(id string) (storage.BotRecord, storage.Session, error) {
 	return record, session, nil
 }
 
+func (s *Service) loadInWorkspace(id, workspaceID string) (storage.BotRecord, storage.Session, error) {
+	record, session, err := s.load(id)
+	if err != nil {
+		return storage.BotRecord{}, storage.Session{}, err
+	}
+	if normalizeWorkspaceID(record.WorkspaceID) != normalizeWorkspaceID(workspaceID) {
+		return storage.BotRecord{}, storage.Session{}, storage.ErrBotNotFound
+	}
+	return record, session, nil
+}
+
 func isBot(store PromptStore, id string) bool {
 	record, err := store.LoadBot(id)
 	if err != nil || record.Kind != KindBot {
+		return false
+	}
+	session, err := store.LoadSession(id)
+	return err == nil && !session.Archived
+}
+
+func isBotInWorkspace(store PromptStore, id, workspaceID string) bool {
+	record, err := store.LoadBot(id)
+	if err != nil || record.Kind != KindBot || normalizeWorkspaceID(record.WorkspaceID) != normalizeWorkspaceID(workspaceID) {
 		return false
 	}
 	session, err := store.LoadSession(id)
@@ -475,6 +590,7 @@ func isBot(store PromptStore, id string) bool {
 func (s *Service) view(record storage.BotRecord, session storage.Session, held map[string]bool) Bot {
 	bot := Bot{
 		ID:          session.ID,
+		WorkspaceID: normalizeWorkspaceID(record.WorkspaceID),
 		Kind:        record.Kind,
 		Name:        session.Title,
 		Prompt:      record.Prompt,
@@ -558,10 +674,10 @@ func Preview(text string) string {
 	return text
 }
 
-func (s *Service) memberBots(ids []string) ([]string, error) {
+func (s *Service) memberBotsInWorkspace(ids []string, workspaceID string) ([]string, error) {
 	members := make([]string, 0, len(ids))
 	for _, id := range ids {
-		if !isBot(s.store, id) {
+		if !isBotInWorkspace(s.store, id, workspaceID) {
 			return nil, fmt.Errorf("member %s is not a bot", id)
 		}
 		if !slices.Contains(members, id) {

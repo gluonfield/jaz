@@ -56,8 +56,6 @@ export function connectionStatusDisplay(status: ConnectionStatus): { dot: string
       return { dot: 'bg-running animate-pulse', label: 'Reconnecting…' }
     case 'checking':
       return { dot: 'bg-running animate-pulse', label: 'Connecting…' }
-    case 'pending_approval':
-      return { dot: 'bg-running animate-pulse', label: 'Waiting for approval' }
     case 'disconnected':
       return { dot: 'bg-danger', label: 'Disconnected' }
   }

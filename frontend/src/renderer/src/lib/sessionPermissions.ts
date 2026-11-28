@@ -22,6 +22,7 @@ export function isPlanApprovalPermission(
   permission: ACPPermission | undefined,
 ): permission is PlanApprovalPermission {
   if (!permission?.id?.trim() || !permission.content?.trim()) return false
+  if (permission.vault_approval || permission.vault_request) return false
   const options = permission.options ?? []
   return options.some((option) => isAllowOption(option.kind, option.id)) &&
     options.some((option) => isRejectOption(option.kind, option.id))
@@ -30,7 +31,9 @@ export function isPlanApprovalPermission(
 export function hasPermissionSurface(permission: ACPPermission | undefined): boolean {
   if (!permission?.id?.trim()) return false
   return Boolean(
-    permission.questions?.length ||
+    permission.vault_approval ||
+      permission.vault_request ||
+      permission.questions?.length ||
       permission.options?.length ||
       permission.locations?.length,
   )

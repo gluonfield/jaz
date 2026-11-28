@@ -7,6 +7,7 @@ import { AgentTabs, agentTabsWidth, useAgentSwipe, type AgentChoice } from '@/co
 import { Pop, Roll, SWAP, Tick, useDirection, useWidthTransition } from '@/components/session/pickerMotion'
 import { Button } from '@/components/ui/Button'
 import { Popover } from '@/components/ui/Popover'
+import { SwitchTrack } from '@/components/ui/Switch'
 import { agentLabel } from '@/lib/agentLabel'
 import type { ReasoningEffortOption } from '@/lib/api/types'
 import type { FastModeControl } from '@/lib/agentConfig'
@@ -119,6 +120,9 @@ export function ModelSelect({
   onChange: (selection: ModelSelection) => void
 }) {
   const tabs = agent && agent.options.length > 1 ? agent : undefined
+  const activeAgentItem = agent?.items?.find((item) => item.id === agent.value)
+  const activeAgentLogo = activeAgentItem?.logoAgent || agent?.value || ''
+  const activeAgentLabel = activeAgentItem?.label || (agent ? agentLabel(agent.value) : '')
   disabled ||= (!tabs && suggestions.length === 0 && effortOptions.length === 0 && !fastMode)
   const [open, setOpen] = useState(false)
   useEffect(() => {
@@ -127,7 +131,7 @@ export function ModelSelect({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const selected = modelSuggestionFor(suggestions, value)
   const effortValue = effort || selected?.reasoning?.default_effort || ''
-  const label = value ? modelSuggestionLabel(suggestions, value) : agent ? agentLabel(agent.value) : 'Model'
+  const label = value ? modelSuggestionLabel(suggestions, value) : activeAgentLabel || 'Model'
   const automatic = selected?.reasoning?.automatic && effortOptions.length === 0
   const effortLabel = automatic
     ? 'Thinking'
@@ -165,12 +169,12 @@ export function ModelSelect({
             style={{ justifyContent: 'flex-start' }}
             aria-haspopup="dialog"
             aria-expanded={open && !disabled}
-            aria-label={`Model: ${label}${effortLabel ? `, reasoning effort: ${effortLabel}` : ''}${agent ? `, agent: ${agentLabel(agent.value)}` : ''}${fast ? ', Fast Mode' : ''}`}
+            aria-label={`Model: ${label}${effortLabel ? `, reasoning effort: ${effortLabel}` : ''}${activeAgentLabel ? `, agent: ${activeAgentLabel}` : ''}${fast ? ', Fast Mode' : ''}`}
             title={[label, effortLabel].filter(Boolean).join(' ') + (fast ? ' · Fast Mode' : '')}
             disabled={disabled}
             onClick={() => setOpen(!open)}
           >
-            {agent && hasAgentLogo(agent.value) ? <Pop id={agent.value}><AgentLogo agent={agent.value} size={14} /></Pop> : null}
+            {activeAgentLogo && hasAgentLogo(activeAgentLogo) ? <Pop id={activeAgentLogo}><AgentLogo agent={activeAgentLogo} size={14} /></Pop> : null}
             <Roll value={label} direction={agentDirection} className="max-w-28" />
             {effortLabel ? <Roll value={effortLabel} direction={effortDirection} className={effortClass || 'text-ink-3'} /> : null}
             {fast ? <Zap size={12} fill="currentColor" className="shrink-0 text-primary" /> : null}
@@ -213,12 +217,11 @@ export function ModelSelect({
                     aria-checked={fast}
                     disabled={fastMode.disabled}
                     onClick={() => fastMode.onChange(!fast)}
-                    className={`relative ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 transition-[background-color,color,scale] active:scale-[0.94] disabled:opacity-50 ${fast
-                      ? 'bg-primary text-on-primary'
-                      : 'text-ink-3 enabled:hover:bg-surface-2 enabled:hover:text-ink'}`}
+                    className={`ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-full pr-1 pl-2 transition-colors enabled:hover:bg-surface-2 enabled:hover:text-ink focus-visible:bg-surface-2 disabled:opacity-50 ${fast ? 'text-ink' : 'text-ink-3'}`}
                   >
-                    <Pop id={String(fast)}><Zap size={12} fill={fast ? 'currentColor' : 'none'} /></Pop>
+                    <Zap size={12} />
                     Fast
+                    <SwitchTrack checked={fast} compact />
                   </button>
                 ) : null}
               </div>

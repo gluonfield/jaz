@@ -10,11 +10,19 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 )
 
-type catalogRevision struct{ atomic.Uint64 }
+type catalogRevision struct {
+	atomic.Uint64
+	listed atomic.Uint64
+	unread atomic.Bool
+}
 
 func (r *catalogRevision) Revision() uint64 { return r.Load() }
 
-func TestChangedCatalogRelaunchesOnlyAnIdleCodexProcess(t *testing.T) {
+func (r *catalogRevision) ListedRevision(string) (uint64, bool) {
+	return r.listed.Load(), !r.unread.Load()
+}
+
+func TestChangedCatalogRelaunchesOnlyAnIdleProcessThatMissedIt(t *testing.T) {
 	type thread struct {
 		revision       *catalogRevision
 		send           func(string)
@@ -86,9 +94,25 @@ func TestChangedCatalogRelaunchesOnlyAnIdleCodexProcess(t *testing.T) {
 	t.Run("other agent", func(t *testing.T) {
 		other := start(t, "fake")
 		other.revision.Add(1)
+		other.revision.listed.Store(1)
+		other.send("catalog its MCP client reread")
+		if starts, _ := other.launches(); starts != 1 {
+			t.Fatalf("process starts = %d, want the process kept once it read the changed catalog", starts)
+		}
+		other.revision.Add(1)
+		other.send("catalog change it missed")
+		if starts, resumed := other.launches(); starts != 2 || resumed != 1 {
+			t.Fatalf("process starts = %d, session/resume = %d; want the thread resumed to read the missed catalog", starts, resumed)
+		}
+	})
+
+	t.Run("agent that never read the catalog", func(t *testing.T) {
+		other := start(t, "fake")
+		other.revision.unread.Store(true)
+		other.revision.Add(1)
 		other.send("changed catalog")
 		if starts, _ := other.launches(); starts != 1 {
-			t.Fatalf("process starts = %d, want an agent without the Codex limitation left running", starts)
+			t.Fatalf("process starts = %d, want an agent that does not use the catalog left running", starts)
 		}
 	})
 }

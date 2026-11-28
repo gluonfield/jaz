@@ -413,7 +413,7 @@ func (fakeThreads) Thinking(string) bool {
 }
 
 func newTestService(world *fakeWorld) *Service {
-	world.service = NewService(world, "/bots", fakeThreads{world: world}, fakeThreads{world: world}, world, world, world, log.New(nil))
+	world.service = NewService(world, "/bots", nil, fakeThreads{world: world}, fakeThreads{world: world}, world, world, world, log.New(nil))
 	return world.service
 }
 
@@ -981,7 +981,7 @@ func TestGroupTurnsRunInTheBotsGroupThreadAndPostAsTheBot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if modules, err := Prompt(world, thread); err != nil || len(modules) == 0 {
+	if modules, err := Prompt(world, service.instructions, thread); err != nil || len(modules) == 0 {
 		t.Fatalf("group thread identity = %v, %v", modules, err)
 	}
 	world.mu.Lock()

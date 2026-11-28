@@ -1,101 +1,87 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
-import { apiFetch, del, get, patch, post } from './client'
+import { appsQuery, type JazApp } from './apps'
+import { del, get, patch, post } from './client'
 import { activeRunStatus } from './loops'
-import type { Board, BoardItem } from './types'
+import type { Loop, LoopRunStatus } from './types'
 
-export const boardsQuery = queryOptions({
-  queryKey: keys.boards,
-  queryFn: async () => {
-    const data = await get<{ boards: Board[] | null }>('/v1/boards')
-    return data.boards ?? []
-  },
-})
+// A board is an app of kind board: it is listed, renamed, shared and deleted
+// as an app, and holds other apps as tiles.
+export const boardsQuery = appsQuery({ kind: 'board' })
 
-export interface BoardDetail {
-  board: Board
-  items: BoardItem[]
+export interface BoardTile {
+  app: JazApp
+  x: number
+  y: number
+  w: number
+  h: number
+  // The loop that republishes the app on every run; absent on a pinned app.
+  loop?: {
+    id: string
+    name: string
+    status: Loop['status']
+    last_run_status?: LoopRunStatus
+    last_run_at?: string
+  }
+  last_error?: string
 }
 
-export const boardDetailQuery = (id: string) =>
+export interface BoardView {
+  // Zooms every tile's document.
+  font_scale: number
+  grid_cols: number
+  row_height: number
+  tiles: BoardTile[]
+}
+
+const boardPath = (id: string) => `/v1/apps/${encodeURIComponent(id)}/board`
+
+export const boardViewQuery = (id: string) =>
   queryOptions({
-    queryKey: keys.boardDetail(id),
-    queryFn: async () => {
-      const data = await get<{ board: Board; items: BoardItem[] | null }>(`/v1/boards/${id}`)
-      return { board: data.board, items: data.items ?? [] } satisfies BoardDetail
-    },
-    // Tiles refresh when a publish bumps current_version; poll tighter while
-    // any backing loop is mid-run.
+    queryKey: keys.appBoard(id),
+    queryFn: () => get<BoardView>(boardPath(id)),
+    // A publish shows up as a tile app's new version; poll tighter while any
+    // tile's loop is mid-run.
     refetchInterval: (query) =>
-      query.state.data?.items.some((item) => activeRunStatus(item.loop_last_run_status))
-        ? 3_000
-        : 15_000,
+      query.state.data?.tiles.some((tile) => activeRunStatus(tile.loop?.last_run_status)) ? 3_000 : 15_000,
   })
 
-export function createBoard(name: string): Promise<Board> {
-  return post<Board>('/v1/boards', { name })
+export async function createBoard(title: string): Promise<JazApp> {
+  return (await post<{ app: JazApp }>('/v1/apps', { kind: 'board', title })).app
 }
 
 export interface BoardLayoutEntry {
-  widget_id: string
+  app_id: string
   x: number
   y: number
   w: number
   h: number
 }
 
-export function patchBoard(
-  id: string,
-  input: { name?: string; font_scale?: number; layout?: BoardLayoutEntry[] },
-): Promise<Board> {
-  return patch<Board>(`/v1/boards/${id}`, input)
+export function patchBoard(id: string, input: { font_scale?: number; layout?: BoardLayoutEntry[] }): Promise<{ ok: boolean }> {
+  return patch<{ ok: boolean }>(boardPath(id), input)
 }
 
-export function deleteBoard(id: string): Promise<{ ok: boolean }> {
-  return del<{ ok: boolean }>(`/v1/boards/${id}`)
+// Pins apps as they are, and puts loops on the board so each run republishes
+// the loop's app there. Loops keep the other boards they are on.
+export function addBoardTiles(id: string, input: { app_ids?: string[]; loop_ids?: string[] }): Promise<{ ok: boolean }> {
+  return post<{ ok: boolean }>(`${boardPath(id)}/tiles`, input)
 }
 
-export function removeWidgetFromBoard(boardId: string, widgetId: string): Promise<{ ok: boolean }> {
-  return del<{ ok: boolean }>(`/v1/boards/${boardId}/widgets/${widgetId}`)
+export function removeBoardTile(id: string, appId: string): Promise<{ ok: boolean }> {
+  return del<{ ok: boolean }>(`${boardPath(id)}/tiles/${encodeURIComponent(appId)}`)
 }
 
-// Additive: assigns loops to this board without touching their other boards.
-export function assignLoopsToBoard(boardId: string, loopIds: string[]): Promise<{ ok: boolean }> {
-  return post<{ ok: boolean }>(`/v1/boards/${boardId}/loops`, { loop_ids: loopIds })
-}
-
-export function reportWidgetError(widgetId: string, message: string): Promise<{ ok: boolean }> {
-  return post<{ ok: boolean }>(`/v1/widgets/${widgetId}/errors`, { message })
-}
-
-// Bridge-measured layout telemetry (dead space, overflow, clipped elements,
-// broken images); the backend surfaces problems in the loop's next-run prompt.
-export interface WidgetLayoutReport {
+// What a tile measured while showing a loop's app: dead space, overflow,
+// clipped elements and broken images.
+export interface TileLayoutReport {
   dead_space_pct: number
   overflow_px: number
   clipped: number
   img_errors: number
 }
 
-export function reportWidgetLayout(
-  widgetId: string,
-  layout: WidgetLayoutReport,
-): Promise<{ ok: boolean }> {
-  return post<{ ok: boolean }>(`/v1/widgets/${widgetId}/layout`, layout)
-}
-
-// The endpoint serves the raw widget fragment; the board wraps it in the shared
-// artifact document client-side, so theme and zoom are applied by the host.
-export function widgetContentPath(widgetId: string, version: number): string {
-  return `/v1/widgets/${encodeURIComponent(widgetId)}/content?version=${version}`
-}
-
-export async function fetchWidgetContent(
-  widgetId: string,
-  version: number,
-  signal?: AbortSignal,
-): Promise<string> {
-  const res = await apiFetch(widgetContentPath(widgetId, version), { signal })
-  if (!res.ok) throw new Error(`Widget content failed with ${res.status}`)
-  return res.text()
+// The loop reads this feedback in its next run's prompt.
+export function reportTile(appId: string, feedback: { error: string } | { layout: TileLayoutReport }): Promise<{ ok: boolean }> {
+  return post<{ ok: boolean }>(`/v1/apps/${encodeURIComponent(appId)}/tile-feedback`, feedback)
 }

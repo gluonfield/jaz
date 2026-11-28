@@ -171,7 +171,7 @@ func TestMCPUpdateEmptyBoardsClearsAssignments(t *testing.T) {
 }
 
 func TestMCPBoardsListsAvailableBoards(t *testing.T) {
-	want := []BoardSummary{{ID: "board-1", Name: "Home", IsDefault: true}}
+	want := []BoardSummary{{ID: "board-1", Name: "Home"}}
 	tools := NewMCPTools(&fakeMCPService{}, WithBoards(&fakeBoardService{boards: want}))
 
 	_, out, err := tools.Boards(context.Background(), nil, MCPListInput{})

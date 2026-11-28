@@ -24,7 +24,7 @@ import { remarkMathDelimiters } from '@/lib/markdownMath'
 import { remarkHeadingAnchors, remarkMarkdownDocuments } from '@/lib/markdownDocuments'
 import { MarkdownDocumentCard } from '@/components/session/MarkdownDocumentCard'
 import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
-import { findFileReferences, isMarkdownPath, parseFileReference, resolveFileLink } from '@shared/fileReader'
+import { findFileReferences, parseFileReference, resolveFileLink } from '@shared/fileReader'
 import { FileReaderLinkProvider, useFileLinks } from '@/lib/fileLinks'
 export { FileReaderLinkProvider } from '@/lib/fileLinks'
 import { CodeBlock } from './CodeBlock'
@@ -216,7 +216,7 @@ type AnchorComponent = ComponentType<ComponentProps<'a'> & ExtraProps>
 // keeps the table inside its own horizontal scroll without stretching the chat,
 // on the same card as a code block.
 const MarkdownTable: ComponentType<ComponentProps<'table'> & ExtraProps> = ({ node: _node, ...props }) => (
-  <div className="markdown-table my-3 max-w-full overflow-x-auto rounded-card bg-surface px-3.5 py-1 ring-1 ring-border/60">
+  <div className="prose-card markdown-table">
     <table {...props} />
   </div>
 )
@@ -228,7 +228,7 @@ const USER_REMARK_PLUGINS = [...CHAT_REMARK_PLUGINS, remarkLineBreaks]
 const MarkdownFileImage: NonNullable<Components['img']> = ({ src, ...props }) => {
   const files = useFileLinks()
   const imageId = useId()
-  return <MarkdownImage {...props} src={markdownImageSource(src ?? '', imageId, files?.sessionId, files?.documentPath)} />
+  return <MarkdownImage {...props} src={markdownImageSource(src ?? '', imageId, files?.sessionId, files?.documentPath, files?.cloudRunId)} />
 }
 
 function BaseMarkdown({
@@ -273,9 +273,9 @@ function BaseMarkdown({
 function MarkdownDocument({ path, label }: { path: string; label: string }) {
   const files = useFileLinks()!
   const openFile = files.onOpen
-  return <MarkdownDocumentCard sessionId={files.sessionId} file={{ path }} label={label} onOpen={openFile}
+  return <MarkdownDocumentCard sessionId={files.sessionId} cloudRunId={files.cloudRunId} file={{ path }} label={label} onOpen={openFile}
     renderContent={(content, documentPath) => (
-      <FileReaderLinkProvider sessionId={files.sessionId} documentPath={documentPath} onOpen={openFile}>
+      <FileReaderLinkProvider sessionId={files.sessionId} cloudRunId={files.cloudRunId} documentPath={documentPath} onOpen={openFile}>
         <RenderedMarkdown text={content} className="file-prose" artifactPreview />
       </FileReaderLinkProvider>
     )} />
@@ -354,6 +354,8 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
   }
 }
 
+// A Markdown document, wherever it is read: a file, a document card or a
+// published app. Its jaz-artifact fences run, or stand as titles in a preview.
 export const RenderedMarkdown = memo(function RenderedMarkdown({
   text,
   className = 'chat-prose',
@@ -363,12 +365,11 @@ export const RenderedMarkdown = memo(function RenderedMarkdown({
   className?: string
   artifactPreview?: boolean
 }) {
-  const files = useFileLinks()
   const artifacts = useContext(MarkdownArtifactContext)
   const scope = useMemo(() => ({
-    mode: files?.documentPath && isMarkdownPath(files.documentPath) ? artifactPreview ? 'preview' as const : 'live' as const : 'source' as const,
+    mode: artifactPreview ? 'preview' as const : 'live' as const,
     onSendPrompt: artifacts.onSendPrompt,
-  }), [artifactPreview, artifacts.onSendPrompt, files?.documentPath])
+  }), [artifactPreview, artifacts.onSendPrompt])
   return <MarkdownArtifactContext value={scope}><BaseMarkdown text={text} className={className} Link={PlainMarkdownLink} /></MarkdownArtifactContext>
 })
 

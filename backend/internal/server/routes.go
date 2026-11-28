@@ -10,9 +10,12 @@ import (
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /.well-known/jaz-server", s.handleServerDiscovery)
 	mux.HandleFunc("GET /v1/auth/check", s.handleAuthCheck)
 	mux.HandleFunc("GET /v1/sessions/", s.handleGetSession)
+	mux.HandleFunc("GET /v1/sessions/{session}/assets/{rel...}", s.handleSessionAssetUnauthorized)
 	mux.HandleFunc("POST /v1/sessions", s.handleCreateSession)
+	mux.HandleFunc("POST /v1/sessions/{session}/assets/grant", s.handleGrantSessionAsset)
 	mux.HandleFunc("POST /v1/sessions/{session}/side-chat", s.handleSessionSideChat)
 	mux.HandleFunc("PUT /v1/sessions/{session}/file", s.handleWriteSessionFile)
 	mux.HandleFunc("POST /v1/sessions/", s.handleSessionAction)
@@ -22,19 +25,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/loops", s.handleListLoops)
 	mux.HandleFunc("POST /v1/loops", s.handleCreateLoop)
 	mux.HandleFunc("/v1/loops/", s.handleLoopAction)
-	mux.HandleFunc("GET /v1/boards", s.handleListBoards)
-	mux.HandleFunc("POST /v1/boards", s.handleCreateBoard)
-	mux.HandleFunc("/v1/boards/", s.handleBoardAction)
-	mux.HandleFunc("GET /v1/widgets", s.handleListWidgets)
-	mux.HandleFunc("/v1/widgets/", s.handleWidgetAction)
 	mux.HandleFunc("GET /v1/onboarding/state", s.handleOnboardingState)
 	mux.HandleFunc("/v1/onboarding", s.handleOnboarding)
 	mux.HandleFunc("/v1/settings/agents", s.handleAgentSettings)
 	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/prepare", s.handlePrepareACPAgent)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/auth/login", s.handleStartACPAuthLogin)
-	mux.HandleFunc("GET /v1/acp/agents/antigravity/auth/methods", s.handleAntigravityAuthMethods)
-	mux.HandleFunc("GET /v1/acp/agents/antigravity/auth/cloud-terminal", s.handleAntigravityCloudLogin)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/auth/disconnect", s.handleDisconnectACPAuth)
 	mux.HandleFunc("GET /v1/acp/auth-logins/", s.handleGetACPAuthLogin)
 	mux.HandleFunc("POST /v1/acp/auth-logins/{id}/input", s.handleACPAuthLoginInput)
@@ -80,6 +76,10 @@ func (s *Server) Handler() http.Handler {
 				return
 			}
 		}
+		if sessionRef, rel, ok := parseSessionAssetRequest(r); ok {
+			s.handleGrantedSessionAsset(w, r, sessionRef, rel)
+			return
+		}
 		authed.ServeHTTP(w, r)
 	})
 }
@@ -94,9 +94,32 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleServerDiscovery(w http.ResponseWriter, r *http.Request) {
+	auth := "none"
+	if s.AuthKey != "" {
+		auth = "bearer"
+	}
+	writeJSON(w, http.StatusOK, serverDiscoveryResponse{
+		OK:   true,
+		Mode: "local",
+		Auth: auth,
+		Capabilities: healthCapabilities{
+			SessionFileRead: true,
+		},
+	})
+}
+
 type healthResponse struct {
 	OK           bool               `json:"ok"`
 	AuthRequired bool               `json:"auth_required"`
+	Capabilities healthCapabilities `json:"capabilities"`
+}
+
+type serverDiscoveryResponse struct {
+	OK           bool               `json:"ok"`
+	Mode         string             `json:"mode"`
+	Auth         string             `json:"auth"`
+	OIDCLoginURL string             `json:"oidc_login_url,omitempty"`
 	Capabilities healthCapabilities `json:"capabilities"`
 }
 

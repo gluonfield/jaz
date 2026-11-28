@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '@/lib/query/keys'
 import { del, get, patch, post, put } from './client'
-import type { Bot, BotActivity, BotAvatar, BotFile, BotFileName, BotOwed } from './types'
+import type { Bot, BotActivity, BotAvatar, BotFile, BotFileName, BotOwed, BotThreadActivity } from './types'
 
 export type BotListEntry = Bot & { celebrate?: string }
 
@@ -11,7 +11,15 @@ export const botsQuery = queryOptions<BotListEntry[]>({
   staleTime: 10_000,
 })
 
-export function createBot(input: { name: string; avatar: BotAvatar; workspaces: string[]; prompt?: string }): Promise<Bot> {
+export function createBot(input: {
+  name: string
+  avatar: BotAvatar
+  workspaces: string[]
+  prompt?: string
+  agent?: string
+  model?: string
+  reasoning_effort?: string
+}): Promise<Bot> {
   return post<Bot>('/v1/bots', input)
 }
 
@@ -20,7 +28,7 @@ export function createGroup(input: { name: string; members: string[] }): Promise
 }
 
 export type BotPatch = Partial<
-  Pick<Bot, 'name' | 'avatar' | 'members' | 'agent' | 'model' | 'reasoning_effort' | 'workspaces' | 'prompt' | 'plugins'>
+  Pick<Bot, 'name' | 'avatar' | 'members' | 'agent' | 'model' | 'reasoning_effort' | 'workspaces' | 'plugins'>
 > & { inherit_plugins?: boolean }
 
 export function updateBot(id: string, input: BotPatch): Promise<Bot> {
@@ -40,6 +48,9 @@ export function sendGroupMessage(id: string, text: string, attachmentIds: string
   return post<void>(`/v1/bots/${id}/messages`, { text, attachment_ids: attachmentIds })
 }
 
+const isThreadActivity = (item: { kind: string; thread_id?: string }): item is BotThreadActivity =>
+  (item.kind === 'side_chat' || item.kind === 'routine') && Boolean(item.thread_id)
+
 // What a bot owes, and the tasks it closed and threads it started, newest
 // first; polled closely while anything runs. Rows of other kinds, which other
 // server versions send, are not shown.
@@ -47,12 +58,31 @@ export const botActivityQuery = (botId: string) =>
   queryOptions({
     queryKey: keys.botActivity(botId),
     queryFn: async () => {
-      const activity = await get<{ items: { kind: string; thread_id?: string; task?: BotOwed }[] | null; owed: BotOwed[] | null }>(`/v1/bots/${botId}/activity`)
-      return { items: (activity.items ?? []).filter((item): item is BotActivity => item.kind === 'task' ? Boolean(item.task) : (item.kind === 'side_chat' || item.kind === 'routine') && Boolean(item.thread_id)), owed: activity.owed ?? [] }
+      const activity = await get<{
+        items: { kind: string; thread_id?: string; task?: BotOwed }[] | null
+        owed: BotOwed[] | null
+        started?: Record<string, { kind: string; thread_id?: string }[] | null> | null
+      }>(`/v1/bots/${botId}/activity`)
+      const started: Record<string, BotThreadActivity[]> = {}
+      for (const [parentId, children] of Object.entries(activity.started ?? {})) {
+        const valid = (children ?? []).filter(isThreadActivity)
+        if (valid.length) started[parentId] = valid
+      }
+      return {
+        items: (activity.items ?? []).filter((item): item is BotActivity =>
+          item.kind === 'task' ? Boolean(item.task) : isThreadActivity(item),
+        ),
+        owed: activity.owed ?? [],
+        started,
+      }
     },
     refetchInterval: (query) => {
       const data = query.state.data
-      return data?.items.some((item) => item.kind !== 'task' && item.running) || data?.owed.some((owed) => owed.moving || owed.threads?.some((thread) => thread.state === 'working' || thread.state === 'background')) ? 3_000 : 15_000
+      return data?.items.some((item) => item.kind !== 'task' && item.running) ||
+        data?.owed.some((owed) => owed.moving || owed.threads?.some((thread) => thread.state === 'working' || thread.state === 'background')) ||
+        Object.values(data?.started ?? {}).some((children) => children.some((child) => child.running))
+        ? 3_000
+        : 15_000
     },
   })
 

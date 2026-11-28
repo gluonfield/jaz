@@ -1,6 +1,14 @@
 import type { ReasoningEffortOption } from '@/lib/api/types'
 import type { ModelSuggestion } from '@/lib/modelSuggestion'
 
+export interface PickerAgentOption {
+  id: string
+  label?: string
+  logoAgent?: string
+  provider?: string
+  source?: 'local' | 'cloud'
+}
+
 export type ModelPickerOption = Pick<ModelSuggestion, 'value' | 'label' | 'aliases'> & { reasoning?: ModelSuggestion['reasoning'] }
 
 export interface ModelSelection {

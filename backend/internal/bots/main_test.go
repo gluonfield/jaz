@@ -34,7 +34,7 @@ func TestTheMainBotIsCreatedOnceAndOutlivesRenamesAndRestarts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		modules, err := Prompt(store, session)
+		modules, err := Prompt(store, service.instructions, session)
 		if err != nil {
 			t.Fatal(err)
 		}

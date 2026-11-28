@@ -26,19 +26,35 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 		return nil, fmt.Errorf("active acp session not found: %s", ref)
 	}
 	defer m.resumeLocks.Lock(session.ID)()
-	return m.resumeLocked(ctx, session.ID)
+	return m.resumeLocked(ctx, session.ID, nil)
 }
 
 func (m *Manager) restart(ctx context.Context, stale *jobState) (*jobState, error) {
 	defer m.resumeLocks.Lock(stale.ID)()
-	if current := m.jobByID(stale.ID); current != nil && current != stale {
+	m.mu.RLock()
+	current, process := m.jobsByID[stale.ID], m.processes[stale.ID]
+	m.mu.RUnlock()
+	if current != nil && current != stale {
 		return current, nil
 	}
+	var auth *cloudLaunchAuth
+	if process != nil && process.cloudOAuth.version > 0 {
+		oauth := process.cloudOAuth
+		var rejectedVersion int64
+		if stale.claudeAuthFailed() {
+			rejectedVersion = oauth.version
+		}
+		var err error
+		auth, err = m.cloudLaunchAuth(sessioncontext.WithWorkspaceID(ctx, oauth.workspaceID), oauth.profileID, rejectedVersion)
+		if err != nil {
+			return nil, err
+		}
+	}
 	m.teardown(stale.ID)
-	return m.resumeLocked(ctx, stale.ID)
+	return m.resumeLocked(ctx, stale.ID, auth)
 }
 
-func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, err error) {
+func (m *Manager) resumeLocked(ctx context.Context, ref string, auth *cloudLaunchAuth) (_ *jobState, err error) {
 	ctx, finish, err := m.beginLaunch(ctx)
 	if err != nil {
 		return nil, err
@@ -64,6 +80,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 	}
 	ctx = mcpsession.With(ctx, session.ID)
 	ctx = sessioncontext.WithSourceType(ctx, session.SourceType)
+	ctx = sessioncontext.WithWorkspaceID(ctx, session.WorkspaceID)
 	mcpServerPolicy := effectiveMCPServerPolicy(session)
 	agentName := CanonicalAgentName(session.RuntimeRef.Agent)
 	sessionChanged := false
@@ -78,12 +95,9 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 		session.RuntimeRef.MCPServerPolicy = mcpServerPolicy
 		sessionChanged = true
 	}
-	cfg, ok, err := m.configuredAgent(agentName)
+	cfg, err := m.sessionAgentConfig(agentName, session.RuntimeRef.CloudCredentialProfileID)
 	if err != nil {
 		return nil, err
-	}
-	if !ok {
-		return nil, fmt.Errorf("acp agent %q is not configured", agentName)
 	}
 	overview, err := m.store.LoadSessionOverviewEvents(session.ID)
 	if err != nil {
@@ -92,7 +106,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 	cfg.Model = strings.TrimSpace(session.Model)
 	cfg.ReasoningEffort = strings.TrimSpace(session.ReasoningEffort)
 	restoreConfiguredChoices(&cfg, overview)
-	if cfg.UsesModelProvider() {
+	if cfg.UsesModelProvider() && cfg.cloudCredentialProfileID == "" {
 		cfg.ModelProvider = strings.TrimSpace(session.ModelProvider)
 		cfg = cfg.NormalizeProviderModel(cfg.ModelProvider)
 		if err := m.validateAgentModelProvider(agentName, cfg); err != nil {
@@ -126,7 +140,13 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 	if err != nil {
 		return nil, err
 	}
-	ac, err := m.connect(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
+	if auth == nil || auth.initial.ID != cfg.cloudCredentialProfileID || auth.workspaceID != session.WorkspaceID {
+		auth, err = m.cloudLaunchAuth(ctx, cfg.cloudCredentialProfileID, 0)
+		if err != nil {
+			return nil, err
+		}
+	}
+	ac, err := m.connect(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions, auth)
 	if err != nil {
 		return nil, err
 	}
@@ -140,15 +160,6 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 		ac.close()
 		return nil, err
 	}
-	storedACP := session.RuntimeRef.SessionID
-	materializesOnPrompt := !loaded && sessionMaterializesOnPrompt(agentName, cfg)
-	if materializesOnPrompt && storedACP != "" {
-		session.RuntimeRef.SessionID = ""
-		sessionChanged = true
-	} else if !loaded && !materializesOnPrompt {
-		session.RuntimeRef.SessionID = acpSessionID
-		sessionChanged = true
-	}
 	if session.ModelProvider == "" {
 		session.ModelProvider = session.RuntimeRef.Agent
 		sessionChanged = true
@@ -157,6 +168,16 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 		if err := m.store.SaveSession(session); err != nil {
 			ac.close()
 			return nil, err
+		}
+	}
+	providerID := acpSessionID
+	if !loaded && sessionMaterializesOnPrompt(agentName, cfg) {
+		providerID = ""
+	}
+	if storedID := session.RuntimeRef.SessionID; storedID != providerID {
+		if updated, err := m.store.ReplaceRuntimeSessionID(session.ID, storedID, providerID); !updated {
+			ac.close()
+			return nil, errors.Join(err, fmt.Errorf("replace provider session %s of %s", storedID, session.ID))
 		}
 	}
 	job := newIdleJob(session, agentName, acpSessionID, cwd, modes)
@@ -232,14 +253,17 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 			}), cfg)
 			return storedID, modes, true, err
 		}
-		replaceable, inspectErr := m.replaceableUnmaterializedSession(session, agentName, cfg, err)
+		replaceable, inspectErr := m.replaceableMissingSession(session, agentName, cfg, err)
 		if inspectErr != nil {
 			return "", ModeState{}, false, inspectErr
 		}
 		if !replaceable {
+			if isMissingACPSession(err) {
+				return "", ModeState{}, false, fmt.Errorf("cannot resume ACP session %s: the agent no longer has its conversation history", storedID)
+			}
 			return "", ModeState{}, false, withSignInHint(fmt.Errorf("resume ACP session %s: %w", storedID, err))
 		}
-		m.log.Warn("replacing unmaterialized agent session", "agent", agentName, "session", session.ID, "acp_session", storedID)
+		m.log.Warn("replacing missing agent session without transcript", "agent", agentName, "session", session.ID, "acp_session", storedID)
 	}
 	acpSession, err := m.newACPSession(ctx, ac, agentName, cfg, cwd, session, systemPromptExtensions)
 	if err != nil {
@@ -249,10 +273,9 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	return string(acpSession.response.SessionID), modes, false, err
 }
 
-func (m *Manager) replaceableUnmaterializedSession(session storage.Session, agentName string, cfg AgentConfig, loadErr error) (bool, error) {
-	var rpcErr *jsonrpc.Error
-	if !sessionMaterializesOnPrompt(agentName, cfg) ||
-		!errors.As(loadErr, &rpcErr) || rpcErr.Code != int(acpschema.ErrorCode32002) {
+func (m *Manager) replaceableMissingSession(session storage.Session, agentName string, cfg AgentConfig, loadErr error) (bool, error) {
+	rpcErr, ok := errors.AsType[*jsonrpc.Error](loadErr)
+	if !isMissingACPSession(loadErr) && (!ok || rpcErr.Code != int(acpschema.ErrorCode32002) || !sessionMaterializesOnPrompt(agentName, cfg)) {
 		return false, nil
 	}
 	hasTranscript, err := m.store.HasAgentTranscript(session.ID)
@@ -260,4 +283,13 @@ func (m *Manager) replaceableUnmaterializedSession(session storage.Session, agen
 		return false, fmt.Errorf("inspect ACP session transcript: %w", err)
 	}
 	return !hasTranscript, nil
+}
+
+func isMissingACPSession(err error) bool {
+	rpcErr, ok := errors.AsType[*jsonrpc.Error](err)
+	if !ok || rpcErr.Code != int(acpschema.ErrorCode32602) {
+		return false
+	}
+	message, _, _ := strings.Cut(rpcErr.Message, ":")
+	return strings.EqualFold(message, "Session not found")
 }

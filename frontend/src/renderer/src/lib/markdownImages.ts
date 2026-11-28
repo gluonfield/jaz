@@ -1,7 +1,18 @@
 import { sessionFileRawUrl } from '@/lib/api/sessions'
 import { isAbsoluteFilePath } from '@shared/fileReader'
 
-export function markdownImageSource(src: string, imageId: string, sessionId?: string, documentPath?: string): string {
+function withImageParam(url: string, imageId: string): string {
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}image=${encodeURIComponent(imageId)}`
+}
+
+export function markdownImageSource(
+  src: string,
+  imageId: string,
+  sessionId?: string,
+  documentPath?: string,
+  cloudRunId?: string,
+): string {
   if (src.startsWith('//')) {
     return 'https:' + src
   }
@@ -12,7 +23,7 @@ export function markdownImageSource(src: string, imageId: string, sessionId?: st
     return ''
   }
   if (/^file:/i.test(src)) {
-    return sessionFileRawUrl(sessionId, src) + '&image=' + encodeURIComponent(imageId)
+    return withImageParam(sessionFileRawUrl(sessionId, src, cloudRunId), imageId)
   }
   let path: string
   try {
@@ -27,5 +38,5 @@ export function markdownImageSource(src: string, imageId: string, sessionId?: st
     const directory = documentPath.slice(0, Math.max(documentPath.lastIndexOf('/'), documentPath.lastIndexOf('\\')) + 1)
     path = directory + path
   }
-  return sessionFileRawUrl(sessionId, path) + '&image=' + encodeURIComponent(imageId)
+  return withImageParam(sessionFileRawUrl(sessionId, path, cloudRunId), imageId)
 }

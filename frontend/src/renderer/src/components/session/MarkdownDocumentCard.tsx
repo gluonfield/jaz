@@ -4,14 +4,15 @@ import { sessionFileQuery } from '@/lib/api/sessions'
 import { markdownDocumentTitle } from '@/lib/markdownDocuments'
 import type { FileReference } from '@shared/fileReader'
 
-export function MarkdownDocumentCard({ sessionId, file, label, onOpen, renderContent }: {
+export function MarkdownDocumentCard({ sessionId, cloudRunId, file, label, onOpen, renderContent }: {
   sessionId: string
+  cloudRunId?: string
   file: FileReference
   label: string
   onOpen: (file: FileReference) => void
   renderContent: (content: string, path: string) => ReactNode
 }) {
-  const query = useQuery(sessionFileQuery(sessionId, file.path))
+  const query = useQuery(sessionFileQuery(sessionId, file.path, cloudRunId))
   const content = query.data?.binary ? '' : query.data?.content ?? ''
   const title = markdownDocumentTitle(content, file.path, label)
   return (

@@ -19,7 +19,9 @@ const result = await build({
       builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
         contents: `export { installBrowserPasswords } from ${JSON.stringify(new URL('./browserPasswords.ts', import.meta.url).pathname)}
 export { BrowserPasswordStore, getBrowserPasswordStore } from ${JSON.stringify(new URL('./browserPasswordStore.ts', import.meta.url).pathname)}
-export { BrowserProfileImporter } from ${JSON.stringify(new URL('./browserProfileImport.ts', import.meta.url).pathname)}`,
+export { DesktopSecretStore, ENC_V2_PREFIX } from ${JSON.stringify(new URL('./secretStore.ts', import.meta.url).pathname)}
+export { BrowserProfileImporter } from ${JSON.stringify(new URL('./browserProfileImport.ts', import.meta.url).pathname)}
+export { setTrustedRendererPath } from ${JSON.stringify(new URL('./permissions.ts', import.meta.url).pathname)}`,
         loader: 'js',
       }))
     },
@@ -49,7 +51,7 @@ afterEach(() => {
   }
 })
 
-function fixture() {
+function fixture({ platform = 'linux', isPackaged = false, startNow = 1_700_000_000_000 } = {}) {
   mkdirSync(resolve('../runs/safe-storage-dialog'), { recursive: true })
   const directory = mkdtempSync(resolve('../runs/safe-storage-dialog/password-test-'))
   directories.push(directory)
@@ -58,6 +60,8 @@ function fixture() {
   const calls = []
   let available = true
   let failWrite = false
+  let clock = startNow
+  let dpKey = null
   const encrypt = (value) => {
     const nonce = randomBytes(12)
     const cipher = createCipheriv('aes-256-gcm', key, nonce)
@@ -83,11 +87,24 @@ function fixture() {
       return Buffer.concat([cipher.update(value.subarray(12, -16)), cipher.final()]).toString()
     },
   }
+  const keychainHelper = (command, _group, input) => {
+    if (command === 'get') {
+      return dpKey ? { status: 'ok', key: dpKey } : { status: 'not_found' }
+    }
+    dpKey = input
+    return { status: 'ok', key: dpKey }
+  }
   const handlers = new Map()
   const host = { id: 1, getType: () => 'window', getURL: () => 'file:///fixture/renderer/index.html', isDestroyed: () => false, send: () => {} }
   host.mainFrame = { url: host.getURL() }
   const partition = {}
   const sent = []
+  const makeFrame = (url) => {
+    const frame = { url, send: (...args) => sent.push({ frame, args }) }
+    return frame
+  }
+  const mainFrame = makeFrame('https://login.test/form')
+  mainFrame.framesInSubtree = [mainFrame]
   const target = Object.assign(new EventEmitter(), {
     id: 2,
     getType: () => 'webview',
@@ -95,10 +112,10 @@ function fixture() {
     isDestroyed: () => false,
     hostWebContents: host,
     session: partition,
-    mainFrame: { url: 'https://login.test/form', send: (...args) => sent.push(args) },
+    mainFrame,
   })
   const electron = {
-    app: { getPath: () => directory },
+    app: { isPackaged, getPath: () => directory },
     safeStorage: provider,
     session: { fromPartition: () => partition },
     webContents: { fromId: (id) => id === target.id ? target : undefined, getAllWebContents: () => [target] },
@@ -109,58 +126,235 @@ function fixture() {
   }
   const module = { exports: {} }
   evaluate((name) => name === 'electron' ? electron : name === 'node:sqlite' ? { DatabaseSync } : require(name), module, module.exports)
-  const { installBrowserPasswords, BrowserPasswordStore, getBrowserPasswordStore, BrowserProfileImporter } = module.exports
-  installBrowserPasswords()
-  const store = getBrowserPasswordStore()
+  const { installBrowserPasswords, BrowserPasswordStore, DesktopSecretStore, ENC_V2_PREFIX, BrowserProfileImporter, setTrustedRendererPath } = module.exports
+  setTrustedRendererPath('/fixture/renderer/index.html')
+  const makeSecrets = () => new DesktopSecretStore({
+    platform,
+    isPackaged,
+    userDataDir: directory,
+    keychainHelper,
+    safeStorage: provider,
+  })
+  const store = new BrowserPasswordStore(file, makeSecrets())
+  installBrowserPasswords(store, { now: () => clock })
   const origin = 'https://login.test'
   const credential = { origin, username: 'fixture-user', password: 'fixture-password' }
   const event = { sender: host, senderFrame: host.mainFrame }
   return {
-    directory, file, calls, sent, target, credential, store, BrowserProfileImporter,
-    seed: (records = [credential]) => writeFileSync(file, encrypt(JSON.stringify(records))),
+    directory, file, calls, sent, target, credential, store, BrowserProfileImporter, ENC_V2_PREFIX,
+    makeFrame,
+    advance: (ms) => { clock += ms },
+    seedLegacy: (records = [credential]) => writeFileSync(file, encrypt(JSON.stringify(records))),
     available: (value) => { available = value },
     failWrite: (value) => { failWrite = value },
     state: (action, request = event) => handlers.get('jaz:browser-passwords')(request, target.id, action),
-    capture: (value = credential) => handlers.get('jaz:browser-passwords:capture')({ sender: target, senderFrame: target.mainFrame }, value),
-    reopen: () => new BrowserPasswordStore(file),
+    capture: (value = credential, frame = target.mainFrame) => handlers.get('jaz:browser-passwords:capture')({ sender: target, senderFrame: frame }, value),
+    username: (value, frame = target.mainFrame) => handlers.get('jaz:browser-passwords:username')({ sender: target, senderFrame: frame }, value),
+    result: (payload, frame = target.mainFrame) => handlers.get('jaz:browser-passwords:result')({ sender: target, senderFrame: frame }, payload),
+    reopen: () => new BrowserPasswordStore(file, makeSecrets()),
   }
 }
 
-test('passive browser state, navigation, capture and dismissal never unlock a saved vault', () => {
-  const f = fixture()
-  f.seed()
+test('passive browser state, navigation, capture and dismissal never unlock a legacy vault', () => {
+  const f = fixture({ platform: 'linux' })
+  f.seedLegacy()
   const before = readFileSync(f.file)
   f.available(false)
   expect(f.state()).toMatchObject({ locked: true, usernames: [] })
   f.target.emit('did-navigate', {}, 'https://login.test/other')
   f.capture()
   const state = f.state()
-  expect(state.pending).toMatchObject({ username: f.credential.username, update: false })
+  expect(state.pending).toMatchObject({ origin: f.credential.origin, username: f.credential.username, update: false })
   expect(JSON.stringify(state)).not.toContain(f.credential.password)
   expect(f.state({ kind: 'dismiss', id: state.pending.id }).pending).toBeUndefined()
   expect(f.calls).toEqual([])
   expect(readFileSync(f.file)).toEqual(before)
 })
 
+test('macOS enc:v2 vault auto-unlocks silently and packaged builds migrate legacy v1 only on explicit unlock', () => {
+  const f = fixture({ platform: 'darwin', isPackaged: true })
+  f.seedLegacy()
+  expect(f.state()).toMatchObject({ locked: true, usernames: [] })
+  expect(f.calls).toEqual([])
+
+  expect(f.state({ kind: 'unlock' })).toMatchObject({ locked: false, usernames: [f.credential.username] })
+  expect(f.calls).toEqual(['available', 'decrypt'])
+  expect(readFileSync(f.file, 'utf8').startsWith(f.ENC_V2_PREFIX)).toBe(true)
+
+  f.calls.length = 0
+  const reopened = f.reopen()
+  expect(reopened.tryAutoUnlock()).toBe(true)
+  expect(reopened.cached).toEqual([f.credential])
+  expect(f.calls).toEqual([])
+})
+
+test('macOS dev mode saves and auto-unlocks enc:v2 without ever calling safeStorage', () => {
+  const f = fixture({ platform: 'darwin', isPackaged: false })
+  f.available(false)
+  expect(f.state()).toMatchObject({ locked: false, usernames: [] })
+  f.capture()
+  const id = f.state().pending.id
+  expect(f.state({ kind: 'save', id })).toMatchObject({ locked: false, usernames: [f.credential.username] })
+  expect(readFileSync(f.file, 'utf8').startsWith(f.ENC_V2_PREFIX)).toBe(true)
+  expect(f.calls).toEqual([])
+  const reopened = f.reopen()
+  expect(reopened.tryAutoUnlock()).toBe(true)
+  expect(reopened.cached).toEqual([f.credential])
+  expect(f.calls).toEqual([])
+})
+
 test('explicit unlock is one read; passive updates and filling reuse it without another unlock', () => {
-  const f = fixture()
-  f.seed()
+  const f = fixture({ platform: 'linux' })
+  f.seedLegacy()
   expect(f.state({ kind: 'unlock' })).toMatchObject({ locked: false, usernames: [f.credential.username] })
   expect(f.calls).toEqual(['available', 'decrypt'])
   f.calls.length = 0
   f.capture()
   expect(f.state().pending).toBeUndefined()
   f.state({ kind: 'fill', origin: f.credential.origin, username: f.credential.username })
-  expect(f.sent.at(-1)).toEqual(['jaz:browser-passwords:fill', f.credential])
+  expect(f.sent.at(-1).args[0]).toBe('jaz:browser-passwords:fill')
+  expect(f.sent.at(-1).args[1]).toMatchObject(f.credential)
   expect(f.calls).toEqual([])
   expect(f.state({ kind: 'fill', origin: 'https://another.test', username: f.credential.username }).error).toBeDefined()
   f.target.mainFrame.url = 'https://another.test/'
   expect(f.state().usernames).toEqual([])
 })
 
+test('pending credentials survive cross-origin redirects for 60s and save under the login origin', () => {
+  const f = fixture({ platform: 'darwin', isPackaged: false })
+  f.target.mainFrame.url = 'https://accounts.example.test/login'
+  f.capture({ origin: 'https://accounts.example.test', username: 'alice@example.test', password: 'secret-password' })
+  const pendingId = f.state().pending.id
+
+  f.target.mainFrame.url = 'https://app.example.test/dashboard'
+  f.target.emit('did-navigate', {}, 'https://app.example.test/dashboard')
+  const redirected = f.state()
+  expect(redirected.pending).toMatchObject({
+    id: pendingId,
+    origin: 'https://accounts.example.test',
+    username: 'alice@example.test',
+    update: false,
+  })
+
+  f.advance(59_000)
+  const saved = f.state({ kind: 'save', id: pendingId })
+  expect(saved.error).toBeUndefined()
+  expect(saved.pending).toBeUndefined()
+  expect(f.reopen().read()).toEqual([
+    { origin: 'https://accounts.example.test', username: 'alice@example.test', password: 'secret-password' },
+  ])
+
+  f.target.mainFrame.url = 'https://accounts.example.test/login'
+  f.capture({ origin: 'https://accounts.example.test', username: 'bob@example.test', password: 'second-password' })
+  const expiredId = f.state().pending.id
+  f.advance(60_001)
+  expect(f.state().pending).toBeUndefined()
+  expect(f.state({ kind: 'save', id: expiredId }).error).toContain('expired')
+})
+
+test('loopback localhost origins support capture, save, and fill while non-loopback HTTP is rejected', () => {
+  const f = fixture({ platform: 'darwin', isPackaged: false })
+  f.target.mainFrame.url = 'http://localhost:3000/login'
+  f.capture({ origin: 'http://localhost:3000', username: 'dev@local', password: 'dev-password' })
+  const id = f.state().pending.id
+  expect(f.state({ kind: 'save', id }).usernames).toEqual(['dev@local'])
+  expect(f.reopen().read()).toEqual([{ origin: 'http://localhost:3000', username: 'dev@local', password: 'dev-password' }])
+
+  f.target.mainFrame.url = 'http://127.0.0.1:8080/signin'
+  f.capture({ origin: 'http://127.0.0.1:8080', username: 'loop@local', password: 'loop-password' })
+  expect(f.state().pending).toMatchObject({ origin: 'http://127.0.0.1:8080', username: 'loop@local' })
+
+  f.target.mainFrame.url = 'http://insecure.example.test/login'
+  expect(f.state({ kind: 'unlock' }).error).toContain('HTTPS')
+})
+
+test('embedded login iframe captures, fills only its matching frame, and aggregates frame results', () => {
+  const f = fixture({ platform: 'darwin', isPackaged: false })
+  f.target.mainFrame.url = 'https://app.example.test/'
+  const iframe = f.makeFrame('https://auth.example.test/embed')
+  f.target.mainFrame.framesInSubtree = [f.target.mainFrame, iframe]
+
+  f.capture({ origin: 'https://auth.example.test', username: 'iframe-user', password: 'iframe-password' }, iframe)
+  const pending = f.state().pending
+  expect(pending).toMatchObject({ origin: 'https://auth.example.test', username: 'iframe-user' })
+  f.state({ kind: 'save', id: pending.id })
+  expect(f.state().entries).toEqual([{ origin: 'https://auth.example.test', username: 'iframe-user' }])
+
+  f.sent.length = 0
+  f.state({ kind: 'fill', origin: 'https://auth.example.test', username: 'iframe-user' })
+  expect(f.sent.length).toBe(1)
+  expect(f.sent[0].frame).toBe(iframe)
+  expect(f.sent[0].args[1]).toMatchObject({ origin: 'https://auth.example.test', username: 'iframe-user', password: 'iframe-password' })
+
+  f.sent.length = 0
+  f.state({ kind: 'capture' })
+  expect(f.sent.length).toBe(2)
+  const requestId = f.sent[0].args[1].requestId
+  f.result({ requestId, found: false }, f.target.mainFrame)
+  expect(f.state().error).toBeUndefined()
+  f.result({ requestId, found: true }, iframe)
+  expect(f.state().error).toBeUndefined()
+})
+
+test('two-step login preserves username across same-origin navigation', () => {
+  const f = fixture({ platform: 'darwin', isPackaged: false })
+  f.target.mainFrame.url = 'https://sso.example.test/step1'
+  f.username({ origin: 'https://sso.example.test', username: 'step1@example.test' })
+  f.target.mainFrame.url = 'https://sso.example.test/step2'
+  f.target.emit('did-navigate', {}, 'https://sso.example.test/step2')
+  f.capture({ origin: 'https://sso.example.test', username: '', password: 'step2-password' })
+  expect(f.state().pending).toMatchObject({ origin: 'https://sso.example.test', username: 'step1@example.test' })
+})
+
+test('cross-origin iframe cannot spoof credentials or hijack frame results, username buffer is bounded, and logout clears pending', () => {
+  const f = fixture({ platform: 'darwin', isPackaged: false })
+  f.target.mainFrame.url = 'https://bank.example.test/login'
+  const evilFrame = f.makeFrame('https://evil.example.test/widget')
+  f.target.mainFrame.framesInSubtree = [f.target.mainFrame, evilFrame]
+
+  // Cross-origin iframe attempting to spoof capture or username for main frame origin is ignored.
+  f.username({ origin: 'https://bank.example.test', username: 'spoof@evil.test' }, evilFrame)
+  f.capture({ origin: 'https://bank.example.test', username: 'spoof@evil.test', password: 'evil-password' }, evilFrame)
+  expect(f.state().pending).toBeUndefined()
+
+  // Legitimate login on bank.example.test is saved, then evil iframe cannot answer bank's fill request.
+  f.capture({ origin: 'https://bank.example.test', username: 'alice@bank.test', password: 'bank-password' })
+  f.state({ kind: 'save', id: f.state().pending.id })
+  f.sent.length = 0
+  f.state({ kind: 'fill', origin: 'https://bank.example.test', username: 'alice@bank.test' })
+  expect(f.sent.length).toBe(1)
+  expect(f.sent[0].frame).toBe(f.target.mainFrame)
+  const fillRequestId = f.sent[0].args[1].requestId
+  f.result({ requestId: fillRequestId, found: false }, evilFrame)
+  expect(f.state().error).toBeUndefined()
+  f.result({ requestId: fillRequestId, found: false }, f.target.mainFrame)
+  expect(f.state().error).toContain('No suitable login form')
+
+  // Remembered username buffer is strictly origin-scoped and bounded to 16 origins (evicting oldest).
+  for (let i = 0; i < 18; i += 1) {
+    const origin = `https://site-${i}.example.test`
+    f.target.mainFrame.url = `${origin}/step1`
+    f.username({ origin, username: `user-${i}@example.test` })
+  }
+  f.target.mainFrame.url = 'https://site-0.example.test/step2'
+  f.capture({ origin: 'https://site-0.example.test', username: '', password: 'pw-0' })
+  expect(f.state().pending.username).toBe('')
+  f.target.mainFrame.url = 'https://site-17.example.test/step2'
+  f.capture({ origin: 'https://site-17.example.test', username: '', password: 'pw-17' })
+  expect(f.state().pending.username).toBe('user-17@example.test')
+
+  // Logout navigation clears pending grace window and remembered username for that origin.
+  f.target.mainFrame.url = 'https://site-17.example.test/logout'
+  f.target.emit('did-navigate', {}, 'https://site-17.example.test/logout')
+  expect(f.state().pending).toBeUndefined()
+  f.target.mainFrame.url = 'https://site-17.example.test/login'
+  f.capture({ origin: 'https://site-17.example.test', username: '', password: 'pw-after-logout' })
+  expect(f.state().pending.username).toBe('')
+})
+
 test('denied unlock and save preserve ciphertext and pending capture without retrying on refresh', () => {
-  const f = fixture()
-  f.seed()
+  const f = fixture({ platform: 'linux' })
+  f.seedLegacy()
   const before = readFileSync(f.file)
   f.available(false)
   f.capture()
@@ -180,8 +374,8 @@ test('denied unlock and save preserve ciphertext and pending capture without ret
 })
 
 test('save, import and remove publish cached changes only after encrypted persistence succeeds', () => {
-  const f = fixture()
-  f.seed()
+  const f = fixture({ platform: 'linux' })
+  f.seedLegacy()
   f.state({ kind: 'unlock' })
   const before = readFileSync(f.file)
   f.failWrite(true)
@@ -200,27 +394,21 @@ test('save, import and remove publish cached changes only after encrypted persis
   expect(f.reopen().read().map((entry) => entry.username)).toEqual([f.credential.username])
 })
 
-test('untrusted frames and expired site actions cannot unlock or modify passwords', () => {
-  const f = fixture()
-  f.seed()
+test('untrusted frames cannot unlock or modify passwords', () => {
+  const f = fixture({ platform: 'linux' })
+  f.seedLegacy()
   for (const request of [
     { sender: f.target, senderFrame: f.target.mainFrame },
     { sender: f.target.hostWebContents, senderFrame: { url: 'file:///fixture/renderer/index.html' } },
   ]) {
     expect(() => f.state({ kind: 'unlock' }, request)).toThrow('owning Jaz')
   }
-  f.capture()
-  const id = f.state().pending.id
-  f.target.mainFrame.url = 'https://another.test/'
-  expect(f.state({ kind: 'save', id }).error).toContain('expired')
-  f.target.mainFrame.url = 'http://login.test/'
-  expect(f.state({ kind: 'unlock' }).error).toContain('HTTPS')
   expect(f.calls).toEqual([])
 })
 
 test('browser import updates the same unlocked vault used by password management', async () => {
-  const f = fixture()
-  f.seed()
+  const f = fixture({ platform: 'linux' })
+  f.seedLegacy()
   f.state({ kind: 'unlock' })
   f.calls.length = 0
   const database = join(f.directory, 'Login Data')
@@ -234,7 +422,7 @@ test('browser import updates the same unlocked vault used by password management
     db.close()
   }
   const profile = { id: 'fixture-profile', passwordDatabases: [database], keychainService: 'Fixture Safe Storage' }
-  const importer = new f.BrowserProfileImporter(async () => [profile], async () => 'fixture-browser-key')
+  const importer = new f.BrowserProfileImporter(async () => [profile], async () => 'fixture-browser-key', f.store)
   expect(await importer.import(profile.id, { cookies: false, passwords: true })).toEqual({ passwords: { imported: 1, failed: 0, skipped: 0 } })
   expect(f.state().usernames).toEqual([f.credential.username, 'imported'])
   expect(f.calls).toEqual(['available', 'encrypt'])

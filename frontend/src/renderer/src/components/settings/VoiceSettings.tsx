@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { HeyJazSettings } from '@/components/settings/HeyJazSettings'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Button } from '@/components/ui/Button'
@@ -14,68 +15,72 @@ export function VoiceSettings() {
     onSuccess: (settings) => client.setQueryData(voiceSettingsQuery.queryKey, settings),
   })
 
-  if (query.isPending) {
-    return <Skeleton className="mt-4 h-48" />
-  }
-  if (query.isError) {
-    return <EmptyState title="Couldn't load voice settings">{query.error.message}</EmptyState>
-  }
-
   return (
     <section className="py-4">
       <h1 className="text-lg font-semibold text-ink">Voice</h1>
       <p className="mt-0.5 text-[13px] text-ink-2">
         Talk with Jaz while your thread’s selected agent works in the background.
       </p>
-      <SettingsCard className="mt-4 divide-y divide-border px-4">
-        <div className="flex min-h-16 items-center justify-between gap-4 py-3">
-          <div>
-            <p className="text-[13px] font-medium text-ink">Provider</p>
-            <p className="mt-0.5 text-[12px] text-ink-2">Handles listening and speaking.</p>
-          </div>
-          <Select
-            aria-label="Voice provider"
-            value={query.data.provider}
-            disabled={save.isPending}
-            options={query.data.providers.filter((provider) => provider.available || provider.id === 'claude' || provider.id === query.data.provider).map((provider) => ({
-              value: provider.id,
-              label: provider.label,
-              description: provider.reason,
-            }))}
-            onChange={(id) => {
-              const provider = query.data.providers.find((provider) => provider.id === id)
-              if (provider) {
-                save.mutate({ provider: provider.id, voice: '' })
-              }
-            }}
-          />
+
+      {query.isPending ? (
+        <Skeleton className="mt-4 h-48" />
+      ) : query.isError ? (
+        <div className="mt-4">
+          <EmptyState title="Couldn't load voice settings">{query.error.message}</EmptyState>
         </div>
-        {query.data.provider === 'claude' && !query.data.providers.find((provider) => provider.id === 'claude')?.available ? (
-          <div className="flex items-center justify-between gap-4 py-3 text-[12px] text-ink-2">
-            <p>{query.data.providers.find((provider) => provider.id === 'claude')?.reason}</p>
-            {window.jaz?.claudeVoice ? (
-              <div className="flex shrink-0 items-center gap-2">
-                <a href="https://claude.ai/login" target="_blank" rel="noreferrer" className="text-ink underline">Sign in</a>
-                <Button size="sm" disabled={query.isFetching} onClick={() => void query.refetch()}>Refresh</Button>
-              </div>
-            ) : null}
+      ) : (
+        <SettingsCard className="mt-4 divide-y divide-border px-4">
+          <div className="flex min-h-16 items-center justify-between gap-4 py-3">
+            <div>
+              <p className="text-[13px] font-medium text-ink">Provider</p>
+              <p className="mt-0.5 text-[12px] text-ink-2">Handles listening and speaking.</p>
+            </div>
+            <Select
+              aria-label="Voice provider"
+              value={query.data.provider}
+              disabled={save.isPending}
+              options={query.data.providers.filter((provider) => provider.available || provider.id === 'claude' || provider.id === query.data.provider).map((provider) => ({
+                value: provider.id,
+                label: provider.label,
+                description: provider.reason,
+              }))}
+              onChange={(id) => {
+                const provider = query.data.providers.find((provider) => provider.id === id)
+                if (provider) {
+                  save.mutate({ provider: provider.id, voice: '' })
+                }
+              }}
+            />
           </div>
-        ) : null}
-        <div className="flex min-h-16 items-center justify-between gap-4 py-3">
-          <div>
-            <p className="text-[13px] font-medium text-ink">Voice</p>
-            <p className="mt-0.5 text-[12px] text-ink-2">Applies to your next voice conversation.</p>
+          {query.data.provider === 'claude' && !query.data.providers.find((provider) => provider.id === 'claude')?.available ? (
+            <div className="flex items-center justify-between gap-4 py-3 text-[12px] text-ink-2">
+              <p>{query.data.providers.find((provider) => provider.id === 'claude')?.reason}</p>
+              {window.jaz?.claudeVoice ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  <a href="https://claude.ai/login" target="_blank" rel="noreferrer" className="text-ink underline">Sign in</a>
+                  <Button size="sm" disabled={query.isFetching} onClick={() => void query.refetch()}>Refresh</Button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="flex min-h-16 items-center justify-between gap-4 py-3">
+            <div>
+              <p className="text-[13px] font-medium text-ink">Voice</p>
+              <p className="mt-0.5 text-[12px] text-ink-2">Applies to your next voice conversation.</p>
+            </div>
+            <Select
+              aria-label="Speaking voice"
+              value={query.data.voice}
+              options={query.data.voices.map((voice) => ({ value: voice, label: voice.charAt(0).toUpperCase() + voice.slice(1) }))}
+              disabled={save.isPending}
+              onChange={(voice) => save.mutate({ provider: query.data.provider, voice })}
+            />
           </div>
-          <Select
-            aria-label="Speaking voice"
-            value={query.data.voice}
-            options={query.data.voices.map((voice) => ({ value: voice, label: voice.charAt(0).toUpperCase() + voice.slice(1) }))}
-            disabled={save.isPending}
-            onChange={(voice) => save.mutate({ provider: query.data.provider, voice })}
-          />
-        </div>
-        {save.isError ? <p role="alert" className="py-3 text-[12px] text-danger">{save.error.message}</p> : null}
-      </SettingsCard>
+          {save.isError ? <p role="alert" className="py-3 text-[12px] text-danger">{save.error.message}</p> : null}
+        </SettingsCard>
+      )}
+
+      <HeyJazSettings />
     </section>
   )
 }

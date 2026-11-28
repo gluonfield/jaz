@@ -1,12 +1,21 @@
 import { queryOptions } from '@tanstack/react-query'
+import { hasCheckingACPAgent } from '@/lib/agentRuntimes'
 import { inputFromSettings, normalizeAgentSettings } from '@/lib/agentSettings'
 import { keys } from '../query/keys'
 import { get, post, put } from './client'
-import type { ACPAgentAuth, ACPAuthLogin, ACPDisconnectResult, AgentSettings, BrowserStatus } from './types'
+import type {
+  ACPAgentAuth,
+  ACPAuthLogin,
+  ACPDisconnectResult,
+  ACPGoogleCloudLogin,
+  AgentSettings,
+  BrowserStatus,
+} from './types'
 
 export const agentSettingsQuery = queryOptions({
   queryKey: keys.agentSettings,
   queryFn: async ({ signal }) => normalizeAgentSettings(await get<AgentSettings>('/v1/settings/agents', { signal })),
+  refetchInterval: (query) => (hasCheckingACPAgent(query.state.data) ? 500 : false),
 })
 
 export const computerSettingsQuery = queryOptions({
@@ -39,8 +48,15 @@ export function updateBrowserSettings(enabled: boolean): Promise<BrowserStatus> 
   return put<BrowserStatus>('/v1/browser', { enabled })
 }
 
-export function startACPAuthLogin(agent: string, auth?: ACPAgentAuth): Promise<ACPAuthLogin> {
-  return post<ACPAuthLogin>(`/v1/acp/agents/${encodeURIComponent(agent)}/auth/login`, { auth })
+export function startACPAuthLogin(
+  agent: string,
+  auth?: ACPAgentAuth,
+  googleCloud?: ACPGoogleCloudLogin,
+): Promise<ACPAuthLogin> {
+  return post<ACPAuthLogin>(`/v1/acp/agents/${encodeURIComponent(agent)}/auth/login`, {
+    auth,
+    google_cloud: googleCloud,
+  })
 }
 
 export function prepareACPAgent(agent: string): Promise<{ ok: boolean }> {

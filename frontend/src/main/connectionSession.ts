@@ -1,28 +1,29 @@
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { ipcMain, type BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from 'electron'
-import { trustedWindow } from '@main/permissions'
+import { setTrustedRendererPath, trustedWindow } from '@main/permissions'
 import {
   CONNECTION_SESSION_CHANNEL,
   LOCAL_SESSION_CHANNEL,
-  deviceAccess,
+  verifiedAccess,
   validBackendOrigin,
   type LocalSession,
   type SessionDocument,
   type SessionMutation,
   type SessionSnapshot,
 } from '@shared/connectionSession'
-import type { DeviceIdentity, DeviceMetadata } from '@main/deviceIdentity'
 import { LOCAL_BACKEND_URL as LOCAL_URL } from '@shared/localBackend'
 
 type WindowDocument = { window: BrowserWindow; document: number; frame?: WebFrameMain; active: boolean }
 type Dependencies = {
   rendererPath: string
+  localEnabled?: boolean
   startLocal: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
-  profile: () => DeviceIdentity & DeviceMetadata
   stopConsumers: () => void
 }
 
 export function createConnectionSession(deps: Dependencies) {
+  setTrustedRendererPath(deps.rendererPath)
   const windows = new Map<number, WindowDocument>()
   let owner: BrowserWindow | null = null
   let nextDocument = 0
@@ -117,7 +118,10 @@ export function createConnectionSession(deps: Dependencies) {
     })
   }
 
-  function read(event: IpcMainEvent): SessionDocument {
+  // Only windows this process attached share the session; others, such as overlays, have none.
+  function read(event: IpcMainEvent): SessionDocument | null {
+    trustedWindow(event)
+    if (!windows.has(event.sender.id)) return null
     const record = authorize(event)
     record.frame = event.senderFrame ?? undefined
     return { document: record.document, owner: record.window === owner, snapshot }
@@ -127,7 +131,7 @@ export function createConnectionSession(deps: Dependencies) {
     if (request.operation === 'reject') {
       authorize(event, request.document)
       if (request.revision === snapshot.revision && snapshot.phase === 'connected') {
-        clear('Backend device access was rejected')
+        clear('Backend authentication was rejected')
       }
       return snapshot
     }
@@ -139,6 +143,9 @@ export function createConnectionSession(deps: Dependencies) {
       if (!validBackendOrigin(request.url)) {
         throw new Error('Invalid backend origin')
       }
+      if (deps.localEnabled === false && request.url === LOCAL_URL) {
+        throw new Error('Local backend is disabled for this build')
+      }
       if (!(snapshot.localPending && request.url === LOCAL_URL)) {
         localGeneration += 1
       }
@@ -146,16 +153,51 @@ export function createConnectionSession(deps: Dependencies) {
     }
     const session = request.session
     if (request.revision !== snapshot.revision || (snapshot.phase !== 'pending' && snapshot.phase !== 'connected') ||
-      session.url !== snapshot.url || !validBackendOrigin(session.url) || typeof session.token !== 'string' || typeof session.deviceId !== 'string' || typeof session.remembered !== 'boolean' ||
-      (session.token && (!session.token.startsWith('jaz_') || !session.deviceId))) {
+      session.url !== snapshot.url || !validBackendOrigin(session.url) || typeof session.token !== 'string' || typeof session.remembered !== 'boolean') {
       throw new Error('Connection session was replaced')
     }
     if (localFlight?.settled) {
       localFlight = null
     }
     return change({ phase: 'connected', url: session.url,
-      session: { url: session.url, token: session.token, deviceId: session.deviceId, remembered: session.remembered },
+      session: { url: session.url, token: session.token, remembered: session.remembered },
       error: null, localPending: false }, record.window)
+  }
+
+  async function issueLegacyLocalDevice(generation: number, rootKey: string): Promise<LocalSession> {
+    const rawKey = createHash('sha256').update('jaz-local-compat-v1:').update(rootKey).digest()
+    const register = await fetch(LOCAL_URL + '/v1/devices/register', {
+      method: 'POST',
+      redirect: 'error',
+      headers: { Authorization: `Bearer ${rootKey}`, 'Content-Type': 'application/json', 'X-Jaz-Client-Platform': 'desktop' },
+      body: JSON.stringify({
+        device_id: createHash('sha256').update(rawKey).digest('hex'),
+        public_key: rawKey.toString('base64url'),
+        kind: 'desktop',
+        name: 'Jaz desktop',
+      }),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (generation !== localGeneration) {
+      throw new Error('Local startup was cancelled')
+    }
+    const registered = await register.json().catch(() => null) as { token?: unknown; error?: unknown } | null
+    if (!register.ok || typeof registered?.token !== 'string' || !registered.token.startsWith('jaz_')) {
+      throw new Error(typeof registered?.error === 'string' && registered.error ? registered.error : 'Local authentication verification failed')
+    }
+    const check = await fetch(LOCAL_URL + '/v1/auth/check', {
+      redirect: 'error',
+      headers: { Authorization: `Bearer ${registered.token}`, 'X-Jaz-Client-Platform': 'desktop' },
+      signal: AbortSignal.timeout(3000),
+    })
+    if (generation !== localGeneration) {
+      throw new Error('Local startup was cancelled')
+    }
+    if (!check.ok) {
+      throw new Error('Local authentication verification failed')
+    }
+    const access = verifiedAccess(await check.json())
+    return { url: LOCAL_URL, token: registered.token, ticket: access.ticket, remembered: false }
   }
 
   async function issueLocal(generation: number): Promise<LocalSession> {
@@ -178,33 +220,35 @@ export function createConnectionSession(deps: Dependencies) {
       throw new Error('Local backend is not healthy')
     }
     if (!healthBody.auth_required) {
-      return { url: LOCAL_URL, token: '', deviceId: '', remembered: false }
+      return { url: LOCAL_URL, token: '', remembered: false }
     }
     if (!local.key) {
       throw new Error('Local bootstrap credential is unavailable')
     }
-    const profile = deps.profile()
-    const response = await fetch(LOCAL_URL + '/v1/devices/register', {
-      method: 'POST', redirect: 'error',
-      headers: { Authorization: `Bearer ${local.key}`, 'Content-Type': 'application/json', 'X-Jaz-Client-Platform': 'desktop' },
-      body: JSON.stringify({ ...profile, kind: 'desktop' }), signal: AbortSignal.timeout(5000),
-    })
-    const body = await response.json() as { token?: string; error?: string }
-    if (!response.ok || !body.token?.startsWith('jaz_')) {
-      throw new Error(body.error || 'Local device registration failed')
-    }
     const check = await fetch(LOCAL_URL + '/v1/auth/check', {
-      redirect: 'error', headers: { Authorization: `Bearer ${body.token}`, 'X-Jaz-Client-Platform': 'desktop' }, signal: AbortSignal.timeout(3000),
+      redirect: 'error', headers: { Authorization: `Bearer ${local.key}`, 'X-Jaz-Client-Platform': 'desktop' }, signal: AbortSignal.timeout(3000),
     })
-    if (!check.ok) {
-      throw new Error('Local device verification failed')
+    if (generation !== localGeneration) {
+      throw new Error('Local startup was cancelled')
     }
-    const access = deviceAccess(await check.json(), profile.device_id)
-    return { url: LOCAL_URL, token: body.token, deviceId: access.deviceId, ticket: access.ticket, remembered: false }
+    if (check.ok) {
+      const access = verifiedAccess(await check.json())
+      return { url: LOCAL_URL, token: local.key, ticket: access.ticket, remembered: false }
+    }
+    if (check.status === 403) {
+      const body = await check.json().catch(() => null) as { code?: unknown } | null
+      if (body?.code === 'device_approval_required') {
+        return issueLegacyLocalDevice(generation, local.key)
+      }
+    }
+    throw new Error('Local authentication verification failed')
   }
 
   async function local(event: IpcMainInvokeEvent, document: number, revision: number): Promise<LocalSession> {
     authorizeOwner(event, document)
+    if (deps.localEnabled === false) {
+      throw new Error('Local backend is disabled for this build')
+    }
     if (snapshot.url !== LOCAL_URL || snapshot.revision !== revision || snapshot.phase !== 'pending') {
       throw new Error('Local startup was cancelled')
     }

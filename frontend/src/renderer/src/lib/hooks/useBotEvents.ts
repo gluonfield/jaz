@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { openEventStream } from '@/lib/api/eventStream'
 import type { Bot } from '@/lib/api/types'
 import type { BotListEntry } from '@/lib/api/bots'
+import { useCloudSession } from '@/lib/cloudSession'
 import { useConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
 
@@ -44,11 +45,12 @@ function openBotEvents(client: QueryClient): () => void {
 
 export function useBotEvents() {
   const client = useQueryClient()
-  const { url, status } = useConnection()
-  const connected = status === 'connected' || status === 'reconnecting'
+  const { url, status, mode } = useConnection()
+  const { activeWorkspaceId } = useCloudSession()
+  const connected = (status === 'connected' || status === 'reconnecting') && mode !== 'cloud'
   useEffect(() => {
     if (connected) {
       return openBotEvents(client)
     }
-  }, [client, url, connected])
+  }, [client, url, connected, activeWorkspaceId])
 }

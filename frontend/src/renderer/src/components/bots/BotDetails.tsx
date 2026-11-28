@@ -1,4 +1,4 @@
-import { Fingerprint, List, Pencil, Repeat, SlidersHorizontal } from 'lucide-react'
+import { Fingerprint, List, Pencil, Repeat } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useId, useState } from 'react'
 import { SidePanelShell } from '@/components/session/SidePanelShell'
@@ -6,18 +6,19 @@ import type { ThreadDetailsView } from '@/components/session/ThreadView'
 import { Popover } from '@/components/ui/Popover'
 import type { Bot, BotColor, BotFileName } from '@/lib/api/types'
 import { BOT_COLORS, BOT_SHAPES, botMood } from '@/lib/bots'
+import { useIsCloudViewer } from '@/lib/cloudSession'
 import { BotActivity } from '@/components/bots/BotActivity'
 import { BotAgentSettings } from './BotAgentSettings'
 import { BotWorkspaceSettings } from './BotWorkspaceSettings'
 import { BotAvatar } from './BotAvatar'
 import { BotFileEditor } from './BotFileEditor'
-import { BotIdentity } from './BotIdentity'
+import { BotFiles } from './BotFiles'
 import { BotNameInput } from './BotNameInput'
 import { BotRoutineModal } from './BotRoutineModal'
 import { BotRoutines } from './BotRoutines'
 import { useUpdateBot } from './useUpdateBot'
 
-const TABS = { Activity: List, Routines: Repeat, Identity: Fingerprint, Agent: SlidersHorizontal }
+const TABS = { Activity: List, Routines: Repeat, Identity: Fingerprint }
 const NAMES = Object.keys(TABS) as (keyof typeof TABS)[]
 
 export function BotDetails({ bot, focusName, agentSession, working }: { bot: Bot; focusName: boolean } & ThreadDetailsView) {
@@ -84,10 +85,11 @@ export function BotDetails({ bot, focusName, agentSession, working }: { bot: Bot
           <BotActivity bot={bot} />
         ) : tab === 'Routines' ? (
           <BotRoutines bot={bot} onOpen={setRoutine} />
-        ) : tab === 'Identity' ? (
-          <BotIdentity bot={bot} onOpen={setFile} />
         ) : (
-          <BotAgentSettings bot={bot} agentSession={agentSession} working={working} />
+          <div className="flex flex-col gap-4">
+            <BotFiles bot={bot} onOpen={setFile} />
+            <BotAgentSettings bot={bot} agentSession={agentSession} working={working} />
+          </div>
         )}
       </div>
       {routine ? <BotRoutineModal bot={bot} loopId={routine} onClose={() => setRoutine(null)} /> : null}
@@ -99,9 +101,17 @@ export function BotDetails({ bot, focusName, agentSession, working }: { bot: Bot
 // Shapes wear the current color and colors the current shape, so every pick
 // previews exactly what it sets.
 function AvatarEditor({ bot }: { bot: Bot }) {
+  const isViewer = useIsCloudViewer()
   const [open, setOpen] = useState(false)
   const update = useUpdateBot(bot.id)
   const { avatar } = bot
+  if (isViewer) {
+    return (
+      <div className="grid size-[72px] place-items-center rounded-full">
+        <BotAvatar avatar={avatar} size={64} mood={botMood(bot)} live />
+      </div>
+    )
+  }
   return (
     <Popover
       open={open}

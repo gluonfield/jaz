@@ -13,10 +13,14 @@ import { ACPAgentsSettings } from './ACPAgentsSettings'
 import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
+import { CloudACPSettings } from './CloudACPSettings'
 import { ComputerSettings } from '@/components/settings/ComputerSettings'
+import { ConnectedMachinesSettings } from '@/components/settings/ConnectedMachinesSettings'
 import { NotificationsSettings } from '@/components/settings/NotificationsSettings'
+import { useHasCloud, useIsCloudAdmin, useIsCloudOnly } from '@/lib/cloudSession'
+import { AdminSettings } from './admin/AdminSettings'
 import { BrowserSettings } from './BrowserSettings'
-import { DevicesSettings } from './DevicesSettings'
+import { CloudSettings } from './CloudSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
 import { MCPSettings } from './MCPSettings'
@@ -30,6 +34,7 @@ import {
   visibleSettingsSections,
 } from './sections'
 import { UsageSettings } from './UsageSettings'
+import { VaultSettings } from './VaultSettings'
 import { VoiceSettings } from '@/components/settings/VoiceSettings'
 
 type SectionNavigationOptions = { replace?: boolean }
@@ -37,18 +42,23 @@ type SectionNavigationOptions = { replace?: boolean }
 export function SettingsOverlay({
   open,
   section,
+  selectedPlugin,
+  onSelectPlugin,
   onSectionChange,
   onClose,
-  onOpenConnect,
 }: {
   open: boolean
   section?: SettingsSection
+  selectedPlugin?: string
+  onSelectPlugin?: (pluginID: string | null) => void
   onSectionChange: (section: SettingsSection, options?: SectionNavigationOptions) => void
   onClose: () => void
-  onOpenConnect: () => void
 }) {
   const reduce = useReducedMotion()
   const isMobile = useIsMobile()
+  const hasCloud = useHasCloud()
+  const cloudOnly = useIsCloudOnly()
+  const cloudAdmin = useIsCloudAdmin()
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const escapeLayerID = useRef<string | null>(null)
   if (!escapeLayerID.current) escapeLayerID.current = createEscapeLayerID('settings')
@@ -81,7 +91,7 @@ export function SettingsOverlay({
     }
   }, [open, onClose])
 
-  const visibleSections = visibleSettingsSections(experimentalEnabled)
+  const visibleSections = visibleSettingsSections(experimentalEnabled, hasCloud, !cloudOnly, cloudAdmin)
   const current = visibleSections.find((item) => item.id === section) ?? visibleSections[0]
 
   useEffect(() => {
@@ -119,7 +129,6 @@ export function SettingsOverlay({
                   setNavOpen(false)
                 }}
                 onClose={onClose}
-                onOpenConnect={onOpenConnect}
               />
             </aside>
           ) : null}
@@ -149,11 +158,21 @@ export function SettingsOverlay({
                   transition={{ duration: 0.14, ease: 'easeOut' }}
                 >
                   {current.fullHeight ? (
-                    <SectionContent section={current.id} onNavigate={onSectionChange} />
+                    <SectionContent
+                      section={current.id}
+                      selectedPlugin={selectedPlugin}
+                      onSelectPlugin={onSelectPlugin}
+                      onNavigate={onSectionChange}
+                    />
                   ) : (
                     <div className="h-full overflow-y-auto">
                       <div className={`mx-auto px-10 pb-8 max-sm:px-4 ${current.wide ? 'max-w-[920px]' : 'max-w-[760px]'}`}>
-                        <SectionContent section={current.id} onNavigate={onSectionChange} />
+                        <SectionContent
+                          section={current.id}
+                          selectedPlugin={selectedPlugin}
+                          onSelectPlugin={onSelectPlugin}
+                          onNavigate={onSectionChange}
+                        />
                       </div>
                     </div>
                   )}
@@ -169,11 +188,16 @@ export function SettingsOverlay({
 
 function SectionContent({
   section,
+  selectedPlugin,
+  onSelectPlugin,
   onNavigate,
 }: {
   section: SettingsSection
+  selectedPlugin?: string
+  onSelectPlugin?: (pluginID: string | null) => void
   onNavigate: (section: SettingsSection, options?: SectionNavigationOptions) => void
 }) {
+  const hasCloud = useHasCloud()
   switch (section) {
     case 'voice':
       return <VoiceSettings />
@@ -188,24 +212,30 @@ function SectionContent({
     case 'mcp':
       return <MCPSettings />
     case 'plugins':
-      return <PluginsSettings />
+      return <PluginsSettings selectedPlugin={selectedPlugin} onSelectPlugin={onSelectPlugin} />
     case 'providers':
       return <AgentProvidersSettings />
     case 'agents':
-      return <ACPAgentsSettings onOpenProviders={() => onNavigate('providers')} />
+      return hasCloud ? <CloudACPSettings /> : <ACPAgentsSettings onOpenProviders={() => onNavigate('providers')} />
     case 'archived':
       return <ArchivedThreadsSettings />
     case 'personalization':
       return <PersonalizationSettings />
     case 'memory':
       return <MemorySettings />
+    case 'vault':
+      return <VaultSettings />
     case 'computer':
       return <ComputerSettings />
+    case 'machines':
+      return <ConnectedMachinesSettings />
+    case 'cloud':
+      return <CloudSettings />
+    case 'admin':
+      return <AdminSettings />
     case 'browser':
       return <BrowserSettings />
     case 'usage':
       return <UsageSettings />
-    case 'devices':
-      return <DevicesSettings />
   }
 }

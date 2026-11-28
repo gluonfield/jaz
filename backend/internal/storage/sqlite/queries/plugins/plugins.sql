@@ -1,17 +1,20 @@
 -- name: ListPluginSources :many
-SELECT id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms
+SELECT workspace_id, id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms
 FROM plugin_sources
+WHERE workspace_id = sqlc.arg(workspace_id)
 ORDER BY id ASC;
 
 -- name: GetPluginSource :one
-SELECT id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms
+SELECT workspace_id, id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms
 FROM plugin_sources
-WHERE id = sqlc.arg(id)
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND id = sqlc.arg(id)
 LIMIT 1;
 
 -- name: UpsertPluginSource :exec
-INSERT INTO plugin_sources (id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms)
+INSERT INTO plugin_sources (workspace_id, id, repository, url, ref, paths, commit_sha, auto_update, is_marketplace, catalog_json, checked_at_ms, updated_at_ms)
 VALUES (
+  sqlc.arg(workspace_id),
   sqlc.arg(id),
   sqlc.arg(repository),
   sqlc.arg(url),
@@ -24,7 +27,7 @@ VALUES (
   sqlc.arg(checked_at_ms),
   sqlc.arg(updated_at_ms)
 )
-ON CONFLICT(id) DO UPDATE SET
+ON CONFLICT(workspace_id, id) DO UPDATE SET
   repository = excluded.repository,
   url = excluded.url,
   ref = excluded.ref,
@@ -38,22 +41,26 @@ ON CONFLICT(id) DO UPDATE SET
 
 -- name: DeletePluginSource :execrows
 DELETE FROM plugin_sources
-WHERE id = sqlc.arg(id);
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND id = sqlc.arg(id);
 
 -- name: ListPluginStates :many
-SELECT plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms
+SELECT workspace_id, plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms
 FROM plugin_state
+WHERE workspace_id = sqlc.arg(workspace_id)
 ORDER BY plugin_id ASC;
 
 -- name: GetPluginState :one
-SELECT plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms
+SELECT workspace_id, plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms
 FROM plugin_state
-WHERE plugin_id = sqlc.arg(plugin_id)
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND plugin_id = sqlc.arg(plugin_id)
 LIMIT 1;
 
 -- name: UpsertPluginState :exec
-INSERT INTO plugin_state (plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms)
+INSERT INTO plugin_state (workspace_id, plugin_id, enabled, source_id, source_repository, source_ref, source_path, commit_sha, remote_sha, config_json, updated_at_ms)
 VALUES (
+  sqlc.arg(workspace_id),
   sqlc.arg(plugin_id),
   sqlc.arg(enabled),
   sqlc.arg(source_id),
@@ -65,7 +72,7 @@ VALUES (
   sqlc.arg(config_json),
   sqlc.arg(updated_at_ms)
 )
-ON CONFLICT(plugin_id) DO UPDATE SET
+ON CONFLICT(workspace_id, plugin_id) DO UPDATE SET
   enabled = excluded.enabled,
   source_id = excluded.source_id,
   source_repository = excluded.source_repository,
@@ -78,7 +85,8 @@ ON CONFLICT(plugin_id) DO UPDATE SET
 
 -- name: DeletePluginState :exec
 DELETE FROM plugin_state
-WHERE plugin_id = sqlc.arg(plugin_id);
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND plugin_id = sqlc.arg(plugin_id);
 
 -- name: GetThreadPluginState :one
 SELECT thread_id, plugin_id, view, state_key, data_json, ui_state_json, revision, updated_at_ms
@@ -106,6 +114,7 @@ SELECT
 FROM thread_plugin_state s
 JOIN threads t ON t.id = s.thread_id
 WHERE s.plugin_id = sqlc.arg(plugin_id)
+  AND (CAST(sqlc.arg(workspace_id) AS TEXT) = '' OR t.workspace_id = sqlc.arg(workspace_id))
 ORDER BY t.updated_at_ms DESC, s.thread_id ASC;
 
 -- name: UpsertThreadPluginData :exec

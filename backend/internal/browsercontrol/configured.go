@@ -18,12 +18,33 @@ func NewConfiguredBackend(store storage.SettingsStorage) *ConfiguredBackend {
 }
 
 func (b *ConfiguredBackend) Call(ctx context.Context, input ActionInput) (ActionOutput, error) {
-	config, err := settings.LoadBrowserSettings(b.store)
-	if err != nil {
+	if err := b.requireEnabled(); err != nil {
 		return ActionOutput{}, err
 	}
-	if !config.Enabled {
-		return ActionOutput{}, errors.New("browser tools are disabled in Browser settings")
-	}
 	return b.DesktopBackend.Call(ctx, input)
+}
+
+func (b *ConfiguredBackend) ActivePageOrigin(ctx context.Context, sessionID string) (string, error) {
+	if err := b.requireEnabled(); err != nil {
+		return "", err
+	}
+	return b.DesktopBackend.ActivePageOrigin(ctx, sessionID)
+}
+
+func (b *ConfiguredBackend) BlindFill(ctx context.Context, sessionID string, req VaultFillRequest) (VaultFillResult, error) {
+	if err := b.requireEnabled(); err != nil {
+		return VaultFillResult{}, err
+	}
+	return b.DesktopBackend.BlindFill(ctx, sessionID, req)
+}
+
+func (b *ConfiguredBackend) requireEnabled() error {
+	config, err := settings.LoadBrowserSettings(b.store)
+	if err != nil {
+		return err
+	}
+	if !config.Enabled {
+		return errors.New("browser tools are disabled in Browser settings")
+	}
+	return nil
 }
