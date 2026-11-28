@@ -1303,6 +1303,13 @@ export interface ACPAuthLoginChallenge {
   auth_url?: string
   auth_code?: string
   error?: string
+  opens_browser?: boolean
+}
+
+export interface ACPGoogleCloudLogin {
+  project: string
+  location: string
+  pay_as_you_go: boolean
 }
 
 export interface ACPAuthLogin extends ACPAuthLoginChallenge {

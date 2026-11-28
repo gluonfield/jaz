@@ -56,7 +56,7 @@ export function AuthLoginStatus({
     ? 'Sign-in failed'
     : succeeded
       ? 'Sign-in finished'
-      : details.url || details.code
+      : details.url || details.code || job?.opens_browser
         ? 'Finish sign-in in your browser'
         : 'Starting sign-in...'
   const text = failed
@@ -67,7 +67,9 @@ export function AuthLoginStatus({
         ? 'Enter the one-time code on the auth page.'
         : details.url
           ? 'Approve the browser prompt to continue.'
-          : 'Requesting a browser sign-in link…'
+          : job?.opens_browser
+            ? 'Sign in on the page that opened in your browser.'
+            : 'Requesting a browser sign-in link…'
 
   return (
     <div

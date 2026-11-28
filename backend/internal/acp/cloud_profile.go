@@ -127,20 +127,7 @@ func (a *cloudLaunchAuth) prepare(ctx context.Context, agent, root string, env m
 		delete(env, "GOOGLE_GENAI_USE_VERTEXAI")
 		delete(env, "GOOGLE_GEMINI_BASE_URL")
 		geminiDir := filepath.Join(profileRoot, "gemini")
-		settings := filepath.Join(geminiDir, "antigravity-cli")
-		if err := os.MkdirAll(settings, 0o700); err != nil {
-			return nil, err
-		}
-		file, err := os.CreateTemp(settings, ".settings-*.json")
-		if err != nil {
-			return nil, err
-		}
-		defer os.Remove(file.Name())
-		_, writeErr := file.WriteString(`{"modelProvider":"gemini"}`)
-		if err := errors.Join(writeErr, file.Close()); err != nil {
-			return nil, err
-		}
-		if err := os.Rename(file.Name(), filepath.Join(settings, "settings.json")); err != nil {
+		if err := writeAntigravitySettings(filepath.Join(geminiDir, "antigravity-cli"), []byte(`{"modelProvider":"gemini"}`)); err != nil {
 			return nil, err
 		}
 		cfg.Args = append(slices.Clone(cfg.Args), "--gemini-dir", geminiDir)

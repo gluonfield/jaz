@@ -1,7 +1,6 @@
 package acp
 
 import (
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -179,7 +178,7 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 		}
 		invocation := loginInvocation(nil, true, "", executable, "acp", "--login")
 		invocation.UsePTY = runtime.GOOS != "windows"
-		invocation.Cwd = filepath.Join(root, "acp", "agy-login-workspace")
+		invocation.Cwd = antigravityLoginWorkspace(root)
 		return invocation
 	default:
 		return AgentLoginInvocation{}

@@ -50,7 +50,8 @@ func (s *Server) claimACPAuth(ctx context.Context, agent string) (context.Contex
 }
 
 type acpAuthLoginRequest struct {
-	Auth acp.AgentAuthConfig `json:"auth,omitempty"`
+	Auth        acp.AgentAuthConfig        `json:"auth,omitempty"`
+	GoogleCloud *acp.AntigravityCloudLogin `json:"google_cloud,omitempty"`
 }
 
 type acpAuthLoginResponse struct {
@@ -63,19 +64,23 @@ type acpAuthLoginResponse struct {
 	Error      string `json:"error,omitempty"`
 	StartedAt  string `json:"started_at"`
 	FinishedAt string `json:"finished_at,omitempty"`
+	// Set when the agent opens the sign-in page itself, so there is no link or
+	// code to hand to the user.
+	OpensBrowser bool `json:"opens_browser,omitempty"`
 }
 
 type acpAuthLoginJob struct {
-	mu         sync.Mutex
-	ID         string
-	Agent      string
-	Status     string
-	Output     string
-	Error      string
-	StartedAt  time.Time
-	FinishedAt time.Time
-	authURL    string
-	onInput    func(string) error
+	mu           sync.Mutex
+	ID           string
+	Agent        string
+	Status       string
+	Output       string
+	Error        string
+	StartedAt    time.Time
+	FinishedAt   time.Time
+	authURL      string
+	onInput      func(string) error
+	opensBrowser bool
 	// Open while the login process runs, so the user can hand back a code the
 	// browser printed (the remote/headless flow, where the CLI can't capture an
 	// OAuth redirect on the user's machine).
@@ -129,6 +134,17 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	cfg = s.attachACPRuntimeConfig(agent, cfg)
+	if agent == acp.AgentAntigravity && input.GoogleCloud != nil {
+		login := *input.GoogleCloud
+		login.Project, login.Location = strings.TrimSpace(login.Project), strings.TrimSpace(login.Location)
+		job, err := s.runAntigravityCloudLogin(r.Context(), cfg, auth, login)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, job.response())
+		return
+	}
 	probeCfg := cfg
 	probeCfg.Auth = auth
 	auth = acp.ProbeAgentAuth(agent, probeCfg, s.runtimeRoot(), nil).RecommendedAuth
@@ -209,15 +225,9 @@ func (s *Server) handleACPAuthLoginInput(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.AgentAuthConfig, invocation acp.AgentLoginInvocation) (*acpAuthLoginJob, error) {
-	id, err := newACPAuthLoginID()
+	job, err := newACPAuthLoginJob(agent)
 	if err != nil {
 		return nil, err
-	}
-	job := &acpAuthLoginJob{
-		ID:        id,
-		Agent:     agent,
-		Status:    "running",
-		StartedAt: time.Now().UTC(),
 	}
 	if err := acp.PrepareAgentLoginInvocation(agent, auth, s.runtimeRoot(), invocation); err != nil {
 		return nil, err
@@ -261,19 +271,47 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 	return job, nil
 }
 
-func (s *Server) startACPOAuthLogin(agent string, auth acp.AgentAuthConfig, authURL string, done <-chan error, onInput func(string) error, onTimeout func()) (*acpAuthLoginJob, error) {
-	id, err := newACPAuthLoginID()
+func (s *Server) runAntigravityCloudLogin(ctx context.Context, cfg acp.AgentConfig, auth acp.AgentAuthConfig, login acp.AntigravityCloudLogin) (*acpAuthLoginJob, error) {
+	job, err := newACPAuthLoginJob(acp.AgentAntigravity)
 	if err != nil {
 		return nil, err
 	}
-	job := &acpAuthLoginJob{
-		ID:        id,
-		Agent:     agent,
-		Status:    "running",
-		StartedAt: time.Now().UTC(),
-		authURL:   authURL,
-		onInput:   onInput,
+	job.opensBrowser = true
+	codes := make(chan string, 1)
+	job.onInput = func(code string) error {
+		select {
+		case codes <- strings.TrimSpace(code):
+			return nil
+		default:
+			return errors.New("sign-in is still reading the last code")
+		}
 	}
+	browser := acp.AntigravityBrowser{Codes: codes, Page: func(url string) {
+		job.mu.Lock()
+		job.authURL = url
+		job.mu.Unlock()
+	}}
+	claimCtx, release := s.claimACPAuth(context.WithoutCancel(ctx), acp.AgentAntigravity)
+	loginCtx, cancel := context.WithTimeout(claimCtx, acpAuthLoginTimeout)
+	s.acpAuthLoginJobs.Store(job.ID, job)
+	go func() {
+		defer release()
+		defer cancel()
+		err := acp.LoginAntigravityCloud(loginCtx, cfg, s.runtimeRoot(), login, browser)
+		if err == nil {
+			err = s.verifyACPAuthLogin(acp.AgentAntigravity, auth)
+		}
+		job.finish(err, loginCtx.Err())
+	}()
+	return job, nil
+}
+
+func (s *Server) startACPOAuthLogin(agent string, auth acp.AgentAuthConfig, authURL string, done <-chan error, onInput func(string) error, onTimeout func()) (*acpAuthLoginJob, error) {
+	job, err := newACPAuthLoginJob(agent)
+	if err != nil {
+		return nil, err
+	}
+	job.authURL, job.onInput = authURL, onInput
 	s.acpAuthLoginJobs.Store(job.ID, job)
 	go func() {
 		timer := time.NewTimer(acpAuthLoginTimeout)
@@ -347,12 +385,17 @@ func (s *Server) verifyACPAuthLogin(agent string, auth acp.AgentAuthConfig) erro
 	return fmt.Errorf("sign-in finished but %s credentials were not saved", agent)
 }
 
-func newACPAuthLoginID() (string, error) {
+func newACPAuthLoginJob(agent string) (*acpAuthLoginJob, error) {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
+		return nil, err
 	}
-	return "login_" + hex.EncodeToString(b[:]), nil
+	return &acpAuthLoginJob{
+		ID:        "login_" + hex.EncodeToString(b[:]),
+		Agent:     agent,
+		Status:    "running",
+		StartedAt: time.Now().UTC(),
+	}, nil
 }
 
 func acpAuthLoginEnv(invocation acp.AgentLoginInvocation) []string {
@@ -472,14 +515,15 @@ func (j *acpAuthLoginJob) response() acpAuthLoginResponse {
 		authURL = j.authURL
 	}
 	res := acpAuthLoginResponse{
-		ID:        j.ID,
-		Agent:     j.Agent,
-		Status:    j.Status,
-		Output:    j.Output,
-		AuthURL:   authURL,
-		AuthCode:  authCode,
-		Error:     j.Error,
-		StartedAt: j.StartedAt.Format(time.RFC3339),
+		ID:           j.ID,
+		Agent:        j.Agent,
+		Status:       j.Status,
+		Output:       j.Output,
+		AuthURL:      authURL,
+		AuthCode:     authCode,
+		Error:        j.Error,
+		StartedAt:    j.StartedAt.Format(time.RFC3339),
+		OpensBrowser: j.opensBrowser,
 	}
 	if !j.FinishedAt.IsZero() {
 		res.FinishedAt = j.FinishedAt.Format(time.RFC3339)

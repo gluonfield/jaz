@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
+import { AntigravitySignIn } from '@/components/settings/AntigravitySignIn'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsSection, useAgentSettingsDraft } from '@/components/settings/agentSettingsShell'
 import { Button } from '@/components/ui/Button'
@@ -34,6 +35,7 @@ import { disconnectACPAuth, prepareACPAgent, startACPAuthLogin } from '@/lib/api
 import type {
   ACPAgentAuthStatus,
   ACPAuthLogin,
+  ACPGoogleCloudLogin,
   AgentSettings as AgentSettingsData,
   ModelProviderOption,
 } from '@/lib/api/types'
@@ -112,8 +114,11 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
   })
 
   const login = useMutation({
-    mutationFn: ({ agent, auth }: { agent: string; auth?: ACPAuthDraft }) =>
-      startACPAuthLogin(agent, auth),
+    mutationFn: ({ agent, auth, googleCloud }: {
+      agent: string
+      auth?: ACPAuthDraft
+      googleCloud?: ACPGoogleCloudLogin
+    }) => startACPAuthLogin(agent, auth, googleCloud),
     onSuccess: (job) => {
       trackLoginJob(job)
       toast(`Started ${authProviderLabel(job.agent)} sign-in`)
@@ -186,8 +191,8 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
               disconnecting={disconnect.isPending && disconnect.variables === agent}
               installing={prepare.isPending && prepare.variables === agent}
               onInstall={() => prepare.mutate(agent)}
-              onStartLogin={(auth) =>
-                login.mutate({ agent, auth: loginAuth(agent, auth) })
+              onStartLogin={(auth, googleCloud) =>
+                login.mutate({ agent, auth: loginAuth(agent, auth), googleCloud })
               }
               onDisconnect={() => disconnect.mutate(agent)}
               onOpenProviders={onOpenProviders}
@@ -224,7 +229,7 @@ function ACPAgentRow({
   disconnecting: boolean
   installing: boolean
   onInstall: () => void
-  onStartLogin: (auth: ACPAuthDraft) => void
+  onStartLogin: (auth: ACPAuthDraft, googleCloud?: ACPGoogleCloudLogin) => void
   onDisconnect: () => void
   onOpenProviders: () => void
   onChange: (settings: AgentSettingsData) => void
@@ -361,7 +366,7 @@ function ACPAgentRow({
               loginJob={loginJob}
               loginPending={loginPending}
               disconnecting={disconnecting}
-              onStartLogin={() => onStartLogin(current.auth)}
+              onStartLogin={(googleCloud) => onStartLogin(current.auth, googleCloud)}
               onDisconnect={onDisconnect}
               onAPIKeyChange={(value) =>
                 onChange({
@@ -469,7 +474,7 @@ function AgentAuthPanel({
   loginJob?: ACPAuthLogin
   loginPending: boolean
   disconnecting: boolean
-  onStartLogin: () => void
+  onStartLogin: (googleCloud?: ACPGoogleCloudLogin) => void
   onDisconnect: () => void
   onAPIKeyChange: (value: string) => void
 }) {
@@ -500,7 +505,7 @@ function AgentAuthPanel({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canLogin && !running ? (
-            <Button variant="primary" size="md" disabled={disabled} onClick={onStartLogin}>
+            <Button variant="primary" size="md" disabled={disabled} onClick={() => onStartLogin()}>
               <LogIn size={14} />
               Sign in again
             </Button>
@@ -532,7 +537,7 @@ function AgentAuthPanel({
               : `Connected with your ${authProviderLabel(agent)} account`}
         </span>
         {status.manual_disconnect && canLogin && !running ? (
-          <Button variant="ghost" size="sm" disabled={disabled} onClick={onStartLogin}>
+          <Button variant="ghost" size="sm" disabled={disabled} onClick={() => onStartLogin()}>
             Sign in again
           </Button>
         ) : null}
@@ -571,8 +576,10 @@ function AgentAuthPanel({
 
       {(method === 'login' && canLogin) || !canKey ? (
         <div className="flex flex-col items-start gap-2">
-          {running ? null : (
-            <Button variant="primary" size="md" disabled={disabled || !canLogin} onClick={onStartLogin}>
+          {agent === 'antigravity' && (!running || loginJob?.opens_browser) ? (
+            <AntigravitySignIn disabled={disabled || !canLogin || loginPending} onStartLogin={onStartLogin} />
+          ) : running ? null : (
+            <Button variant="primary" size="md" disabled={disabled || !canLogin} onClick={() => onStartLogin()}>
               <LogIn size={14} />
               {`Sign in with ${authProviderLabel(agent)}`}
             </Button>
