@@ -199,7 +199,8 @@ test('taskBrief keeps short text whole and cuts long text at a sentence, else at
   expect(taskBrief('  Waiting on\n the staging  deploy ')).toBe('Waiting on the staging deploy')
   const sentences = 'The diff review is checking that results survive a restart. The design review already passed. After both land, the bot rechecks the sidebar counts and the follow-up conversation links, then reports back.'
   expect(taskBrief(sentences)).toBe('The diff review is checking that results survive a restart. The design review already passed.')
-  expect(taskBrief('Continue the existing thread to redesign the task modal so opening a task shows a clean view of its title and state', 60)).toBe('Continue the existing thread to redesign the task modal so…')
+  const words = 'Continue the existing thread to redesign the task modal so opening a task shows a clean and calm view of its title and state, a short summary of the latest note, and clear links that jump straight into each connected thread'
+  expect(taskBrief(words)).toBe('Continue the existing thread to redesign the task modal so opening a task shows a clean and calm view of its title and state, a short summary of the latest note, and clear links…')
 })
 
 test('connectedTaskThreads lists direct links and nested descendants in display order without duplicates', () => {

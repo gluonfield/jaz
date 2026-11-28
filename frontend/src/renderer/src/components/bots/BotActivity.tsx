@@ -41,9 +41,7 @@ export function BotActivity({ bot }: { bot: Bot }) {
         const list = tasks.filter((row) => taskState(row.task)[1] === group)
         return list.length ? (
           <section key={group} aria-label={group} className="flex flex-col">
-            <h3 className={`${HEADING} ${group === 'Waiting for you' ? 'text-accent-strong' : 'text-ink-3'}`}>
-              {group} <span className="ml-0.5 font-normal tabular-nums opacity-70">{list.length}</span>
-            </h3>
+            <Heading count={list.length} accent={group === 'Waiting for you'}>{group}</Heading>
             <ul className="flex flex-col">
               {list.map((row) => (
                 <li key={row.task.id} className="flex flex-col">
@@ -56,7 +54,7 @@ export function BotActivity({ bot }: { bot: Bot }) {
       })}
       {days.map(([day, list]) => (
         <section key={day} aria-label={day} className="flex flex-col">
-          <h3 className={`${HEADING} text-ink-3`}>{day}</h3>
+          <Heading>{day}</Heading>
           <ul className="flex flex-col">
             {list.map((item) => <li key={item.thread_id}><ThreadLink line={activityLine(item, now)} /></li>)}
           </ul>
@@ -75,7 +73,15 @@ export function BotActivity({ bot }: { bot: Bot }) {
   )
 }
 
-const HEADING = 'mb-1 text-[12px] font-medium'
+function Heading({ count, accent, children }: { count?: number; accent?: boolean; children: string }) {
+  return (
+    <h3 className={`mb-1 text-[12px] font-medium ${accent ? 'text-accent-strong' : 'text-ink-3'}`}>
+      {children}
+      {count ? <span className="ml-0.5 font-normal tabular-nums opacity-70"> {count}</span> : null}
+    </h3>
+  )
+}
+
 const ROW = '-mx-2 flex min-w-0 rounded-lg px-2 text-left text-[13px] transition-colors duration-150 hover:bg-list-hover'
 
 // A task and, once it has closed, when.
@@ -138,9 +144,7 @@ function TaskModal({
         ) : null}
         {threads.length ? (
           <section aria-label="Threads" className="flex flex-col">
-            <h3 className={`${HEADING} text-ink-3`}>
-              Threads <span className="ml-0.5 font-normal tabular-nums opacity-70">{threads.length}</span>
-            </h3>
+            <Heading count={threads.length}>Threads</Heading>
             <ul className="flex flex-col">
               {threads.map((entry) => (
                 <li key={entry.id}>
@@ -159,8 +163,8 @@ function TaskModal({
               Full details
             </button>
             {full ? details.map(([heading, text]) => (
-              <section key={heading} aria-label={heading} className="flex flex-col gap-1">
-                <h3 className="text-[12px] font-medium text-ink-3">{heading}</h3>
+              <section key={heading} aria-label={heading} className="flex flex-col">
+                <Heading>{heading}</Heading>
                 <p className="whitespace-pre-wrap wrap-break-word text-ink-2">{text}</p>
               </section>
             )) : null}
