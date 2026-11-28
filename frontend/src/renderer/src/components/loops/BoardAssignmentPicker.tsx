@@ -1,5 +1,5 @@
 import { Check } from 'lucide-react'
-import type { Board } from '@/lib/api/types'
+import type { JazApp } from '@/lib/api/apps'
 
 export function BoardAssignmentPicker({
   boards,
@@ -8,7 +8,7 @@ export function BoardAssignmentPicker({
   onChange,
   hint,
 }: {
-  boards: Board[]
+  boards: JazApp[]
   selected: string[]
   disabled?: boolean
   onChange: (boardIds: string[]) => void
@@ -45,7 +45,7 @@ export function BoardAssignmentPicker({
               >
                 <Check size={12} className="min-w-0" />
               </span>
-              <span className="truncate">{board.name}</span>
+              <span className="truncate">{board.title}</span>
             </button>
           )
         })}

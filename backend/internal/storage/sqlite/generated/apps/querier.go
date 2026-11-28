@@ -28,13 +28,11 @@ type Querier interface {
 	ListApps(ctx context.Context, arg ListAppsParams) ([]ListAppsRow, error)
 	MarkAppDeleting(ctx context.Context, arg MarkAppDeletingParams) (int64, error)
 	MaxAppVersionRow(ctx context.Context, appID string) (int64, error)
-	MaxBoardY(ctx context.Context, boardID string) (int64, error)
 	SetAppCurrentVersion(ctx context.Context, arg SetAppCurrentVersionParams) error
 	SumAppKVBytes(ctx context.Context, appID string) (int64, error)
 	UpdateAppMeta(ctx context.Context, arg UpdateAppMetaParams) error
 	UpdateAppPublished(ctx context.Context, arg UpdateAppPublishedParams) error
 	UpsertAppKV(ctx context.Context, arg UpsertAppKVParams) error
-	UpsertBoardAppWidget(ctx context.Context, arg UpsertBoardAppWidgetParams) error
 }
 
 var _ Querier = (*Queries)(nil)

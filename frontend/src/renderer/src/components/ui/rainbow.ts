@@ -14,7 +14,7 @@ export function beam(colors: string[]): string {
   return `conic-gradient(from var(--ring-angle, 0deg), transparent 0deg 250deg, ${stops.join(', ')}, transparent 352deg 360deg)`
 }
 
-// The fresh-data scanline: a vertical rainbow band swept across a widget,
+// The fresh-data scanline: a vertical rainbow band swept across a board tile,
 // comet-tailed by the mask so only the leading edge glows.
 export const SCANLINE_BACKGROUND =
   'linear-gradient(180deg, var(--color-rainbow-1), var(--color-rainbow-2), var(--color-rainbow-3), var(--color-rainbow-4), var(--color-rainbow-5))'

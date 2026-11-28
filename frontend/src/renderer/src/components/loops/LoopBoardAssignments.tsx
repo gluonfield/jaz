@@ -21,7 +21,7 @@ export function LoopBoardAssignments({ loop, boardIds }: { loop: Loop; boardIds:
       )
       queryClient.invalidateQueries({ queryKey: keys.loopDetail(loop.id) })
       queryClient.invalidateQueries({ queryKey: keys.loops })
-      queryClient.invalidateQueries({ queryKey: keys.boards })
+      queryClient.invalidateQueries({ queryKey: keys.appBoards })
     },
     onError: (error) => toast(`Couldn't update boards: ${error.message}`, 'danger'),
   })

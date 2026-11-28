@@ -93,17 +93,6 @@ func TestAuthMiddlewareRejectsQueryKeyForSessionFileJSON(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareRejectsQueryKeyForWidgetContent(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/v1/widgets/widget-id/content?key=secret", nil)
-	res := httptest.NewRecorder()
-	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})).ServeHTTP(res, req)
-	if res.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-}
-
 func TestAuthMiddlewareRejectsQueryKeyOnMutations(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/onboarding?key=secret", nil)
 	res := httptest.NewRecorder()

@@ -12,6 +12,7 @@ import (
 
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/integrationingest"
@@ -26,7 +27,6 @@ import (
 	"github.com/wins/jaz/backend/internal/sourcequeue"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/visualize"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 type fakeMemoryScheduler struct {
@@ -52,8 +52,8 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 	memorySourceQueue := sourcequeue.New(t.TempDir())
 	scheduler := &fakeMemoryScheduler{running: true}
 	svc := memoryservice.New(memory, store, scheduler, "http://127.0.0.1:5299/mcp/jazmem")
-	widgetService := widgets.NewService(store, nil)
-	publisher := &widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store}
+	boardService, _ := newBoardServiceForTest(store)
+	publisher := &boards.SessionPublisher{Service: boardService, Sessions: store, Loops: store}
 	events := sessionevents.New()
 	tools := jaztools.New(
 		svc,

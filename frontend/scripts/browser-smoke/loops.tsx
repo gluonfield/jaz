@@ -24,8 +24,8 @@ export async function exerciseLoops(): Promise<void> {
     if (path === '/v1/loops/inbox') {
       return Response.json({ loop: routine, runs: [], board_ids: [] })
     }
-    if (path === '/v1/boards') {
-      return Response.json({ boards: [] })
+    if (path === '/v1/apps') {
+      return Response.json({ apps: [] })
     }
     return originalFetch(input, init)
   }

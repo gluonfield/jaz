@@ -3,8 +3,8 @@ package jazagent
 import (
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/visualize"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 func TestIncludeToolForArtifactSurface(t *testing.T) {
@@ -15,12 +15,12 @@ func TestIncludeToolForArtifactSurface(t *testing.T) {
 	}{
 		{visualize.GuideMCPToolName, "", true},
 		{visualize.ShowArtifactMCPToolName, "", true},
-		{widgets.PublishMCPToolName, "", false},
+		{boards.PublishMCPToolName, "", false},
 		{"mcp_jaztools_show_artifact", "", true},
 		{"mcp_jaztools_publish_app", "", true},
 		{visualize.GuideMCPToolName, string(visualize.SurfaceWidget), true},
 		{visualize.ShowArtifactMCPToolName, string(visualize.SurfaceWidget), false},
-		{widgets.PublishMCPToolName, string(visualize.SurfaceWidget), true},
+		{boards.PublishMCPToolName, string(visualize.SurfaceWidget), true},
 		{"mcp_jaztools_show_artifact", string(visualize.SurfaceWidget), false},
 		{"mcp_jaztools_publish_app", string(visualize.SurfaceWidget), false},
 	}

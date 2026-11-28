@@ -10,7 +10,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/storage"
 	appsdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/apps"
-	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/widgetdb"
+	boardsdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/boards"
 )
 
 func marshalJSONString(v any, fallback string) string {
@@ -134,6 +134,38 @@ func appDraftFromRow(row appsdb.AppDraft) storage.AppDraft {
 		ConsumedAt:     consumed,
 		CreatedAt:      msToTime(row.CreatedAtMs),
 	}
+}
+
+func (s *Store) CreateApp(ctx context.Context, app storage.App) (storage.App, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return storage.App{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	nowMs := timeToMs(time.Now().UTC())
+	if err := appsdb.New(tx).InsertApp(ctx, appsdb.InsertAppParams{
+		ID:          app.ID,
+		WorkspaceID: firstNonEmpty(app.WorkspaceID, storage.LocalWorkspaceID),
+		Title:       app.Title,
+		IconJson:    "{}",
+		Kind:        app.Kind,
+		Visibility:  storage.AppVisibilityPrivate,
+		CreatedAtMs: nowMs,
+		UpdatedAtMs: nowMs,
+	}); err != nil {
+		return storage.App{}, err
+	}
+	if app.LoopID != "" {
+		if err := boardsdb.New(tx).InsertLoopApp(ctx, boardsdb.InsertLoopAppParams{LoopID: app.LoopID, AppID: app.ID}); err != nil {
+			return storage.App{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return storage.App{}, err
+	}
+	return s.GetApp(ctx, app.ID)
 }
 
 func (s *Store) CreateAppDraft(ctx context.Context, draft storage.AppDraft) (storage.AppDraft, error) {
@@ -278,7 +310,6 @@ func (s *Store) PublishAppFromDraft(ctx context.Context, params storage.PublishA
 			CurrentVersion: int64(params.Version),
 			CreatedAtMs:    nowMs,
 			UpdatedAtMs:    nowMs,
-			LoopID:         params.LoopID,
 		}); err != nil {
 			return storage.App{}, storage.AppVersion{}, err
 		}
@@ -289,6 +320,9 @@ func (s *Store) PublishAppFromDraft(ctx context.Context, params storage.PublishA
 		}
 		if err != nil {
 			return storage.App{}, storage.AppVersion{}, err
+		}
+		if existing.Kind == storage.AppKindBoard {
+			return storage.App{}, storage.AppVersion{}, storage.ErrAppConflict
 		}
 		if params.Visibility == "" {
 			vis = existing.Visibility
@@ -693,57 +727,4 @@ func (s *Store) DeleteAppKV(ctx context.Context, appID, scopeType, scopeOwnerID,
 		return 0, err
 	}
 	return existing.Revision, tx.Commit()
-}
-
-func (s *Store) AssignAppsToBoard(ctx context.Context, boardID string, appIDs []string) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := widgetdb.New(tx).GetBoard(ctx, boardID); errors.Is(err, sql.ErrNoRows) {
-		return storage.ErrAppNotFound
-	} else if err != nil {
-		return err
-	}
-
-	q := appsdb.New(tx)
-	maxY, err := q.MaxBoardY(ctx, boardID)
-	if err != nil {
-		return err
-	}
-	nowMs := timeToMs(time.Now().UTC())
-	seen := make(map[string]bool, len(appIDs))
-	for _, rawID := range appIDs {
-		appID := strings.TrimSpace(rawID)
-		if appID == "" || seen[appID] {
-			continue
-		}
-		seen[appID] = true
-		if _, err := q.GetApp(ctx, appID); errors.Is(err, sql.ErrNoRows) {
-			return storage.ErrAppNotFound
-		} else if err != nil {
-			return err
-		}
-		widgetID := "app_" + appID
-		if err := q.UpsertBoardAppWidget(ctx, appsdb.UpsertBoardAppWidgetParams{
-			BoardID:     boardID,
-			WidgetID:    widgetID,
-			AppID:       sql.NullString{String: appID, Valid: true},
-			X:           0,
-			Y:           maxY,
-			W:           3,
-			H:           3,
-			PlacedBy:    "user",
-			CreatedAtMs: nowMs,
-			UpdatedAtMs: nowMs,
-		}); err != nil {
-			return err
-		}
-		maxY += 3
-	}
-	return tx.Commit()
 }

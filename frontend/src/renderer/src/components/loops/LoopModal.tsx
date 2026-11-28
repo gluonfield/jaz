@@ -78,7 +78,7 @@ export function LoopModal({
     onSuccess: (saved, { run }) => {
       if (!isEdit && run) void runLoopNow(saved.id).catch(() => {})
       queryClient.invalidateQueries({ queryKey: keys.loops })
-      queryClient.invalidateQueries({ queryKey: keys.boards })
+      queryClient.invalidateQueries({ queryKey: keys.appBoards })
       if (isEdit) queryClient.invalidateQueries({ queryKey: keys.loopDetail(loop.id) })
       close()
       if (!isEdit) {

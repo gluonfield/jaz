@@ -3,7 +3,7 @@ import { X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { orgAppPolicyQuery, type JazApp } from '@/lib/api/apps'
+import { orgAppPolicyQuery, type BundledApp } from '@/lib/api/apps'
 import { desktopApps, installDesktopApp } from '@/lib/desktopApps'
 import { declaredDesktopPermissions, isMachineAccess, type DesktopAppPermission, type InstalledDesktopApp } from '@shared/desktopApps'
 
@@ -24,7 +24,7 @@ export function DesktopAppDialog({
   onClose,
   onSaved,
 }: {
-  app: JazApp
+  app: BundledApp
   installed: InstalledDesktopApp | null
   onClose: () => void
   onSaved: () => void

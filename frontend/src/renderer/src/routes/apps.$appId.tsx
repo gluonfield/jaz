@@ -1,27 +1,54 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Pin } from 'lucide-react'
+import { Pin } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { AppPageHeader } from '@/components/apps/AppPageHeader'
 import { AppRenderer } from '@/components/apps/AppRenderer'
 import { AppShareModal } from '@/components/apps/AppShareModal'
 import { DesktopAppButton, useDesktopApps } from '@/components/apps/useDesktopApps'
+import { BoardPage } from '@/components/boards/BoardPage'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconButton } from '@/components/ui/IconButton'
 import { ActionMenu, type MenuAction } from '@/components/ui/ActionMenu'
 import { useToast } from '@/components/ui/toast'
-import { appDetailQuery, deleteApp, detailApp, remixApp } from '@/lib/api/apps'
+import { appDetailQuery, deleteApp, detailApp, hasBundle, remixApp, type BundledApp } from '@/lib/api/apps'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 import { desktopApps } from '@/lib/desktopApps'
 import { keys } from '@/lib/query/keys'
 
 export const Route = createFileRoute('/apps/$appId')({
+  // ?add=1 opens a new board's tile picker on arrival.
+  validateSearch: (search): { add?: boolean } => (search.add ? { add: true } : {}),
   component: AppDetailPage,
 })
 
 function AppDetailPage() {
   const { appId } = Route.useParams()
+  const navigate = useNavigate()
+  const detail = useQuery(appDetailQuery(appId))
+  const app = useMemo(() => detail.data && detailApp(detail.data), [detail.data])
+
+  if (detail.isPending) return null
+
+  if (!app) {
+    return (
+      <EmptyState title="App unavailable">
+        <p>It may have been deleted, or you no longer have access.</p>
+        {clientRuntime.windowKind === 'main' ? (
+          <Button className="mt-4" variant="primary" onClick={() => void navigate({ to: '/apps' })}>
+            Back to Apps
+          </Button>
+        ) : null}
+      </EmptyState>
+    )
+  }
+
+  return hasBundle(app) ? <PublishedAppPage app={app} /> : <BoardPage board={app} />
+}
+
+function PublishedAppPage({ app }: { app: BundledApp }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -30,16 +57,13 @@ function AppDetailPage() {
   const isStandaloneWindow = clientRuntime.windowKind === 'app'
   const desktop = useDesktopApps()
 
-  const detail = useQuery(appDetailQuery(appId))
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
-
-  const app = useMemo(() => detail.data && detailApp(detail.data), [detail.data])
-  const installed = desktop.records.get(appId)
+  const installed = desktop.records.get(app.id)
 
   // An installed app's permissions pause when the app changed since they were allowed.
   useEffect(() => {
-    if (!desktopApps || !app) return
+    if (!desktopApps) return
     void desktopApps
       .syncVersion(app.id, app.current_version, app.bundle_sha256 ?? '', app.capabilities ?? [])
       .then((synced) => synced && queryClient.invalidateQueries({ queryKey: keys.desktopApps }))
@@ -47,13 +71,11 @@ function AppDetailPage() {
   }, [app, queryClient])
 
   useEffect(() => {
-    if (isStandaloneWindow && app?.title) {
-      document.title = app.title
-    }
-  }, [isStandaloneWindow, app?.title])
+    if (isStandaloneWindow) document.title = app.title
+  }, [isStandaloneWindow, app.title])
 
   const remixMutation = useMutation({
-    mutationFn: () => remixApp(appId),
+    mutationFn: () => remixApp(app.id),
     onSuccess: (res) => {
       toast('Remixed into a new thread')
       if (res.thread?.id) {
@@ -68,28 +90,13 @@ function AppDetailPage() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteApp(appId),
+    mutationFn: () => deleteApp(app.id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.appsRoot })
       toast('Deleted app')
       void navigate({ to: '/apps' })
     },
   })
-
-  if (detail.isPending) return null
-
-  if (detail.isError || !app) {
-    return (
-      <EmptyState title="App unavailable">
-        <p>It may have been deleted, or you no longer have access.</p>
-        {!isStandaloneWindow ? (
-          <Button className="mt-4" variant="primary" onClick={() => void navigate({ to: '/apps' })}>
-            Back to Apps
-          </Button>
-        ) : null}
-      </EmptyState>
-    )
-  }
 
   const canToggleTop = isStandaloneWindow && installed && !installed.permissionsPaused && installed.permissions.includes('always_on_top')
 
@@ -113,13 +120,7 @@ function AppDetailPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg">
-      <header className="flex h-11 shrink-0 items-center gap-1 border-b border-border/70 px-2">
-        {!isStandaloneWindow ? (
-          <IconButton size="sm" aria-label="Back to Apps" title="Back to Apps" onClick={() => void navigate({ to: '/apps' })}>
-            <ArrowLeft size={15} />
-          </IconButton>
-        ) : null}
-        <h1 className="min-w-0 flex-1 truncate px-1.5 text-[13.5px] font-medium text-ink">{app.title}</h1>
+      <AppPageHeader title={<h1 className="truncate">{app.title}</h1>}>
         {paused ? (
           <Button size="sm" onClick={() => desktop.review(app)}>
             <span className="size-1.5 rounded-full bg-running" aria-hidden />
@@ -134,7 +135,7 @@ function AppDetailPage() {
         {isStandaloneWindow ? null : <DesktopAppButton desktop={desktop} app={app} />}
         <Button size="sm" onClick={() => setShareOpen(true)}>{cloud.active ? 'Share' : 'Manage'}</Button>
         {actions.length ? <ActionMenu label="More actions" actions={actions} /> : null}
-      </header>
+      </AppPageHeader>
 
       <div className="flex min-h-0 flex-1 flex-col">
         <AppRenderer

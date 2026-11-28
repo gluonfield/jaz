@@ -345,9 +345,9 @@ function openBoardWindow(boardId: string): void {
   win.on('close', () => saveBoardBounds(boardId, win.getBounds()))
   win.on('closed', () => boardWindows.delete(boardId))
   if (process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/boards/${boardId}`)
+    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/apps/${boardId}`)
   } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: `/boards/${boardId}` })
+    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: `/apps/${boardId}` })
   }
 }
 

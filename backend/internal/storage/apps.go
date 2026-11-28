@@ -15,6 +15,8 @@ const (
 
 	AppKindArtifact = "artifact"
 	AppKindDocument = "document"
+	// AppKindBoard is an app that holds other apps as tiles and has no bundle.
+	AppKindBoard = "board"
 
 	AppStatusActive   = "active"
 	AppStatusDeleting = "deleting"
@@ -199,10 +201,12 @@ type PublishAppDraftParams struct {
 	Visibility     string
 	Version        int
 	StorageDir     string
-	LoopID         string
 }
 
 type AppStore interface {
+	// CreateApp adds an app with no published version: a board, or the app of
+	// app.LoopID before the loop's first run.
+	CreateApp(ctx context.Context, app App) (App, error)
 	CreateAppDraft(ctx context.Context, draft AppDraft) (AppDraft, error)
 	GetAppDraft(ctx context.Context, draftID string) (AppDraft, error)
 	ReserveNextAppVersion(ctx context.Context, appID string) (exists bool, nextVersion int, err error)
@@ -220,5 +224,4 @@ type AppStore interface {
 	GetAppKV(ctx context.Context, appID, scopeType, scopeOwnerID, key string) (AppKVEntry, error)
 	PutAppKV(ctx context.Context, appID, scopeType, scopeOwnerID, key, value, updatedBy string, expectedRevision *int64, quotaBytes int64) (AppKVEntry, int64, error)
 	DeleteAppKV(ctx context.Context, appID, scopeType, scopeOwnerID, key string, expectedRevision *int64) (int64, error)
-	AssignAppsToBoard(ctx context.Context, boardID string, appIDs []string) error
 }

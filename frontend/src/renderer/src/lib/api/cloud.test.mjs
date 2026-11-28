@@ -778,7 +778,7 @@ test('Desktop unified single-origin mode: all session, turn, pin, and sidebar ca
   expect(calls.every((c) => c.origin === 'http://127.0.0.1:5299' && c.auth === 'Bearer local-token')).toBe(true)
 })
 
-test('Org members API, typeahead filtering, email detection, and Cloud board visibility payloads', async () => {
+test('Org members API, typeahead filtering, email detection, and board requests under Apps', async () => {
   const { api } = fixture()
   const requests = []
   replace('fetch', async (url, init) => {
@@ -804,11 +804,14 @@ test('Org members API, typeahead filtering, email detection, and Cloud board vis
     if (parsed.pathname === '/v1/members/u_4' && method === 'DELETE') {
       return Response.json({ ok: true })
     }
-    if (parsed.pathname === '/v1/boards' && method === 'POST') {
-      return Response.json({ id: 'b_1', name: body.name, visibility: body.visibility, grid_cols: 12, row_height: 90, font_scale: 1, is_default: false, created_at: '2026-11-23T00:00:00Z', updated_at: '2026-11-23T00:00:00Z' })
+    if (parsed.pathname === '/v1/apps' && method === 'POST') {
+      return Response.json({ app: { id: 'b_1', title: body.title, kind: body.kind, visibility: 'private', current_version: 0 } })
     }
-    if (parsed.pathname === '/v1/boards/b_1' && method === 'PATCH') {
-      return Response.json({ id: 'b_1', name: 'Ops', visibility: body.visibility, grid_cols: 12, row_height: 90, font_scale: 1, is_default: false, created_at: '2026-11-23T00:00:00Z', updated_at: '2026-11-23T00:00:00Z' })
+    if (parsed.pathname === '/v1/apps/b_1/board' && method === 'GET') {
+      return Response.json({ font_scale: 1, grid_cols: 6, row_height: 120, tiles: [] })
+    }
+    if (parsed.pathname.startsWith('/v1/apps/') && method !== 'GET') {
+      return Response.json({ ok: true })
     }
     if (parsed.pathname === '/v1/spaces' && method === 'POST') {
       return Response.json({ id: 'sp_1', name: body.name, visibility: body.visibility || 'selected', can_edit: true })
@@ -835,20 +838,25 @@ test('Org members API, typeahead filtering, email detection, and Cloud board vis
   expect(await api.updateOrgMember('u_4', { role: 'admin' })).toMatchObject({ id: 'u_4', role: 'admin' })
   expect(await api.deleteOrgMember('u_4')).toEqual({ ok: true })
 
-  const createdBoard = await api.createBoard({ name: 'Ops', visibility: 'selected', member_user_ids: ['u_2'] })
-  expect(createdBoard.visibility).toBe('selected')
-  expect(requests.at(-1)).toEqual({
-    method: 'POST',
-    path: '/v1/boards',
-    body: { name: 'Ops', visibility: 'selected', member_user_ids: ['u_2'] },
-  })
+  // A board is created as an app, and its layout lives under that app.
+  expect(await api.createBoard('Ops')).toMatchObject({ id: 'b_1', title: 'Ops', kind: 'board' })
+  expect(requests.at(-1)).toEqual({ method: 'POST', path: '/v1/apps', body: { kind: 'board', title: 'Ops' } })
 
-  await api.patchBoard('b_1', { visibility: 'team', member_user_ids: [] })
-  expect(requests.at(-1)).toEqual({
-    method: 'PATCH',
-    path: '/v1/boards/b_1',
-    body: { visibility: 'team', member_user_ids: [] },
-  })
+  expect(await api.boardViewQuery('b_1').queryFn()).toEqual({ font_scale: 1, grid_cols: 6, row_height: 120, tiles: [] })
+  expect(requests.at(-1)).toMatchObject({ method: 'GET', path: '/v1/apps/b_1/board' })
+
+  const layout = [{ app_id: 'app_1', x: 0, y: 0, w: 3, h: 2 }]
+  await api.patchBoard('b_1', { layout })
+  expect(requests.at(-1)).toEqual({ method: 'PATCH', path: '/v1/apps/b_1/board', body: { layout } })
+
+  await api.addBoardTiles('b_1', { loop_ids: ['lp_1'] })
+  expect(requests.at(-1)).toEqual({ method: 'POST', path: '/v1/apps/b_1/board/tiles', body: { loop_ids: ['lp_1'] } })
+
+  await api.removeBoardTile('b_1', 'app_1')
+  expect(requests.at(-1)).toMatchObject({ method: 'DELETE', path: '/v1/apps/b_1/board/tiles/app_1' })
+
+  await api.reportTile('app_1', { error: 'chart is not defined' })
+  expect(requests.at(-1)).toEqual({ method: 'POST', path: '/v1/apps/app_1/tile-feedback', body: { error: 'chart is not defined' } })
 
   const createdSpace = await api.createSpace({ name: 'Eng', visibility: 'selected', member_user_ids: ['u_2'] })
   expect(createdSpace.visibility).toBe('selected')

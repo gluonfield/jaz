@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/filepathx"
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/promptmodule"
@@ -16,7 +17,6 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/tools"
 	"github.com/wins/jaz/backend/internal/visualize"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 const VoiceModeNote = "Voice mode: the user spoke this message aloud and your final reply will be read out by text-to-speech. Keep the final response to a few short conversational sentences of plain prose — no markdown, lists, headings, or code blocks. Using tools is fine."
@@ -166,11 +166,11 @@ func ToolDefinitionsForSurface(registry *tools.Registry, surface string) []tools
 // publish_app, which stands in for the inline renderer and for the library
 // publish_app that jaztools serves under a prefixed name.
 func includeToolForArtifactSurface(name, surface string) bool {
-	boardPublish := name == widgets.PublishMCPToolName
+	boardPublish := name == boards.PublishMCPToolName
 	if visualize.NormalizeSurface(surface) != visualize.SurfaceWidget {
 		return !boardPublish
 	}
-	return boardPublish || !matchesToolName(name, visualize.ShowArtifactMCPToolName) && !matchesToolName(name, widgets.PublishMCPToolName)
+	return boardPublish || !matchesToolName(name, visualize.ShowArtifactMCPToolName) && !matchesToolName(name, boards.PublishMCPToolName)
 }
 
 func matchesToolName(name, candidate string) bool {

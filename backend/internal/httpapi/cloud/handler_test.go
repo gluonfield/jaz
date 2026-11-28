@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,8 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/app"
+	"github.com/wins/jaz/backend/internal/apps"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/cloudsync"
+	appsapi "github.com/wins/jaz/backend/internal/httpapi/apps"
+	boardsapi "github.com/wins/jaz/backend/internal/httpapi/boards"
 	botsapi "github.com/wins/jaz/backend/internal/httpapi/bots"
 	cloudapi "github.com/wins/jaz/backend/internal/httpapi/cloud"
 	pluginsapi "github.com/wins/jaz/backend/internal/httpapi/plugins"
@@ -27,7 +33,6 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/transcript"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 func TestCloudHTTPRoutesAndWorkspaceIsolation(t *testing.T) {
@@ -369,32 +374,34 @@ func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "u_carol", "org_id": "org_1", "email": "carol@acme.test", "display_name": "Carol", "role": "admin", "status": "invited"})
 		case r.URL.Path == "/v1/members/u_carol" && r.Method == http.MethodDelete:
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-		case r.URL.Path == "/v1/boards" && r.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode(map[string]any{"boards": []map[string]any{
-				{"id": "cb_1", "name": "Cloud Team Board", "visibility": "team", "is_owner": true, "can_edit": true},
+		case r.URL.Path == "/v1/apps" && r.Method == http.MethodGet:
+			seenQuery = r.URL.RawQuery
+			_ = json.NewEncoder(w).Encode(map[string]any{"apps": []map[string]any{
+				{"id": "cb_1", "title": "Cloud Team Board", "kind": "board", "visibility": "team", "is_owner": true, "can_edit": true},
 			}})
-		case r.URL.Path == "/v1/boards" && r.Method == http.MethodPost:
+		case r.URL.Path == "/v1/apps" && r.Method == http.MethodPost:
 			var body struct {
-				Name       string `json:"name"`
+				Title      string `json:"title"`
+				Kind       string `json:"kind"`
 				Visibility string `json:"visibility"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			createdVisibility = body.Visibility
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "cb_2", "name": body.Name, "visibility": body.Visibility, "is_owner": true, "can_edit": true})
-		case r.URL.Path == "/v1/boards/cb_2" && r.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode(map[string]any{"board": map[string]any{"id": "cb_2", "name": "Ops", "visibility": "selected", "can_edit": true}, "items": []any{}})
-		case r.URL.Path == "/v1/boards/cb_2" && r.Method == http.MethodPatch:
+			_ = json.NewEncoder(w).Encode(map[string]any{"app": map[string]any{"id": "cb_2", "title": body.Title, "kind": body.Kind, "visibility": body.Visibility, "is_owner": true, "can_edit": true}})
+		case r.URL.Path == "/v1/apps/cb_2/board" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"font_scale": 1, "grid_cols": 12, "row_height": 90, "tiles": []any{}})
+		case r.URL.Path == "/v1/apps/cb_2/acl" && r.Method == http.MethodPut:
 			var body struct {
 				Visibility    string   `json:"visibility"`
 				MemberUserIDs []string `json:"member_user_ids"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			patchedMembers = body.MemberUserIDs
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "cb_2", "name": "Ops", "visibility": body.Visibility, "can_edit": true})
-		case r.URL.Path == "/v1/boards/cb_2/widgets/w_1" && r.Method == http.MethodDelete:
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "cb_2", "title": "Ops", "kind": "board", "visibility": body.Visibility, "can_edit": true})
+		case r.URL.Path == "/v1/apps/cb_2/board/tiles/app_1" && r.Method == http.MethodDelete:
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-		case r.URL.Path == "/v1/boards/cb_2" && r.Method == http.MethodDelete:
+		case r.URL.Path == "/v1/apps/cb_2" && r.Method == http.MethodDelete:
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 		default:
 			http.NotFound(w, r)
@@ -410,12 +417,19 @@ func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
 
 	cloudSvc := cloudsync.New(store, nil)
 	cloudHandler := cloudapi.NewHandler(cloudSvc)
-	widgetSvc := widgets.NewService(store, nil).WithWorkspace(cloudSvc.ActiveWorkspaceID)
+	appSvc := apps.NewService(store, store, nil, nil, store.RootDir(), store.RootDir())
+	appsHandler := appsapi.NewHandler(appSvc, "").WithCloud(cloudSvc)
+	boardSvc := boards.NewService(store, cloudSvc.ActiveWorkspaceID, log.New(io.Discard)).WithApps(appSvc)
+	boardRoutes := app.BoardRoutes(boardsapi.NewHandler(boardSvc, loops.NewService(store, nil, nil), cloudSvc))
 	srv := &server.Server{
-		Store:   store,
-		Cloud:   cloudSvc,
-		Widgets: widgetSvc,
-		Routes: server.Routes{
+		Store:  store,
+		Cloud:  cloudSvc,
+		Boards: boardSvc,
+		Routes: append(boardRoutes, server.Routes{
+			{Pattern: "GET /v1/apps", Handler: http.HandlerFunc(appsHandler.List)},
+			{Pattern: "POST /v1/apps", Handler: http.HandlerFunc(appsHandler.Create)},
+			{Pattern: "PUT /v1/apps/{id}/acl", Handler: http.HandlerFunc(appsHandler.Patch)},
+			{Pattern: "DELETE /v1/apps/{id}", Handler: http.HandlerFunc(appsHandler.Delete)},
 			{Pattern: "POST /v1/cloud/connect", Handler: http.HandlerFunc(cloudHandler.Connect)},
 			{Pattern: "POST /v1/cloud/switch", Handler: http.HandlerFunc(cloudHandler.Switch)},
 			{Pattern: "GET /v1/members", Handler: http.HandlerFunc(cloudHandler.ListMembers)},
@@ -425,14 +439,14 @@ func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
 			{Pattern: "GET /v1/spaces", Handler: http.HandlerFunc(cloudHandler.ListSpaces)},
 			{Pattern: "POST /v1/spaces", Handler: http.HandlerFunc(cloudHandler.CreateSpace)},
 			{Pattern: "PATCH /v1/spaces/{id}", Handler: http.HandlerFunc(cloudHandler.PatchSpace)},
-		},
+		}...),
 	}
 	h := srv.Handler()
 
 	// Create a local board before connecting Cloud.
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/boards", bytes.NewBufferString(`{"name":"Local Only Board"}`)))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Local Only Board") {
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/apps", bytes.NewBufferString(`{"kind":"board","title":"Local Only Board"}`)))
+	if rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), "Local Only Board") {
 		t.Fatalf("create local board status=%d body=%s", rec.Code, rec.Body.String())
 	}
 
@@ -468,42 +482,43 @@ func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
 		t.Fatalf("expected ErrInvalidPath for member traversal, got %v", err)
 	}
 
-	// Boards proxy in Cloud workspace: never leaks Local Only Board.
+	// Boards are apps of kind board; in a Cloud workspace they come from Jaz
+	// Cloud and never leak Local Only Board.
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/boards", nil))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Cloud Team Board") || strings.Contains(rec.Body.String(), "Local Only Board") {
-		t.Fatalf("cloud list boards status=%d body=%s", rec.Code, rec.Body.String())
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/apps?kind=board", nil))
+	if rec.Code != http.StatusOK || seenQuery != "kind=board" || !strings.Contains(rec.Body.String(), "Cloud Team Board") || strings.Contains(rec.Body.String(), "Local Only Board") {
+		t.Fatalf("cloud list boards status=%d query=%q body=%s", rec.Code, seenQuery, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/boards", bytes.NewBufferString(`{"name":"Ops","visibility":"team"}`)))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/apps", bytes.NewBufferString(`{"kind":"board","title":"Ops","visibility":"team"}`)))
 	if rec.Code != http.StatusCreated || createdVisibility != "team" {
 		t.Fatalf("cloud create board status=%d vis=%q body=%s", rec.Code, createdVisibility, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/boards/cb_2", nil))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"cb_2"`) {
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/apps/cb_2/board", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"grid_cols":12`) {
 		t.Fatalf("cloud get board status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPatch, "/v1/boards/cb_2", bytes.NewBufferString(`{"visibility":"selected","member_user_ids":["u_bob"]}`)))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/v1/apps/cb_2/acl", bytes.NewBufferString(`{"visibility":"selected","member_user_ids":["u_bob"]}`)))
 	if rec.Code != http.StatusOK || len(patchedMembers) != 1 || patchedMembers[0] != "u_bob" {
-		t.Fatalf("cloud patch board status=%d members=%v body=%s", rec.Code, patchedMembers, rec.Body.String())
+		t.Fatalf("cloud share board status=%d members=%v body=%s", rec.Code, patchedMembers, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/v1/boards/cb_2/widgets/w_1", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/v1/apps/cb_2/board/tiles/app_1", nil))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("cloud delete board widget status=%d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("cloud remove board tile status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/v1/boards/cb_2", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/v1/apps/cb_2", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("cloud delete board status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	badBoardReq := httptest.NewRequest(http.MethodDelete, "/v1/boards/cb_2/widgets/escape", nil)
-	badBoardReq.URL.Path = "/v1/boards/cb_2/widgets/../escape"
+	badBoardReq := httptest.NewRequest(http.MethodDelete, "/v1/apps/cb_2/board/tiles/escape", nil)
+	badBoardReq.URL.Path = "/v1/apps/cb_2/board/tiles/../escape"
 	rec = httptest.NewRecorder()
 	if !cloudSvc.ProxyActiveWorkspace(rec, badBoardReq) || rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for board widget traversal, got %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("expected 400 for board tile traversal, got %d %s", rec.Code, rec.Body.String())
 	}
 
 	// Spaces proxy: live visibility list, create with visibility + members, patch visibility, traversal guard.
@@ -526,14 +541,14 @@ func TestCloudMembersAndBoardsProxyAndLocalFallback(t *testing.T) {
 		t.Fatalf("expected ErrInvalidPath for space traversal, got %v", err)
 	}
 
-	// Switch back to Local -> /v1/boards serves local SQLite boards cleanly again.
+	// Switch back to Local -> the library serves local SQLite boards again.
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/cloud/switch", bytes.NewBufferString(`{"workspace_id":"local"}`)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("switch local status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/boards", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/apps?kind=board", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Local Only Board") || strings.Contains(rec.Body.String(), "Cloud Team Board") {
 		t.Fatalf("local list boards status=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -563,11 +578,8 @@ func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
 			fmt.Fprint(w, "event: snapshot\ndata: {\"bots\":[{\"id\":\"bot_cloud_1\"}]}\n\n")
 		case r.URL.Path == "/v1/loops" && r.Method == http.MethodGet:
 			_ = json.NewEncoder(w).Encode(map[string]any{"loops": []map[string]any{{"id": "loop_c1", "name": "Cloud KPI"}}})
-		case r.URL.Path == "/v1/boards/b_1/loops" && r.Method == http.MethodPost:
+		case r.URL.Path == "/v1/apps/b_1/board/tiles" && r.Method == http.MethodPost:
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-		case r.URL.Path == "/v1/widgets/w_c1/content" && r.Method == http.MethodGet:
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte("<div>Cloud Live Widget</div>"))
 		case r.URL.Path == "/v1/plugins" && r.Method == http.MethodGet:
 			_ = json.NewEncoder(w).Encode(map[string]any{"plugins": []map[string]any{{"id": "sales-kit", "display_name": "Sales Kit"}}, "sources": []any{}})
 		case r.URL.Path == "/v1/skills" && r.Method == http.MethodGet:
@@ -596,15 +608,15 @@ func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
 	botsHandler := botsapi.NewHandler(nil, nil).WithCloud(cloudSvc)
 	pluginsHandler := pluginsapi.NewHandler(nil, nil, nil, "").WithCloud(cloudSvc)
 	loopSvc := loops.NewService(store, nil, nil, loops.WithWorkspace(cloudSvc.ActiveWorkspaceID))
-	widgetSvc := widgets.NewService(store, nil).WithWorkspace(cloudSvc.ActiveWorkspaceID)
+	boardSvc := boards.NewService(store, cloudSvc.ActiveWorkspaceID, log.New(io.Discard))
 
 	srv := &server.Server{
-		Root:    root,
-		Store:   store,
-		Cloud:   cloudSvc,
-		Loops:   loopSvc,
-		Widgets: widgetSvc,
-		Routes: server.Routes{
+		Root:   root,
+		Store:  store,
+		Cloud:  cloudSvc,
+		Loops:  loopSvc,
+		Boards: boardSvc,
+		Routes: append(app.BoardRoutes(boardsapi.NewHandler(boardSvc, loopSvc, cloudSvc)), server.Routes{
 			{Pattern: "POST /v1/cloud/connect", Handler: http.HandlerFunc(cloudHandler.Connect)},
 			{Pattern: "POST /v1/cloud/switch", Handler: http.HandlerFunc(cloudHandler.Switch)},
 			{Pattern: "GET /v1/bots", Handler: http.HandlerFunc(botsHandler.List)},
@@ -612,7 +624,7 @@ func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
 			{Pattern: "GET /v1/plugins", Handler: http.HandlerFunc(pluginsHandler.List)},
 			{Pattern: "GET /v1/connectors", Handler: http.HandlerFunc(cloudHandler.Proxy)},
 			{Pattern: "GET /v1/user-skills", Handler: http.HandlerFunc(cloudHandler.Proxy)},
-		},
+		}...),
 	}
 	h := srv.Handler()
 
@@ -633,7 +645,7 @@ func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
 		{http.MethodGet, "/v1/bots", "", "bot_cloud_1"},
 		{http.MethodGet, "/v1/bots/events?once=1&ticket=local-secret", "", "bot_cloud_1"},
 		{http.MethodGet, "/v1/loops", "", "loop_c1"},
-		{http.MethodPost, "/v1/boards/b_1/loops", `{"loop_ids":["loop_c1"]}`, `"ok":true`},
+		{http.MethodPost, "/v1/apps/b_1/board/tiles", `{"loop_ids":["loop_c1"]}`, `"ok":true`},
 		{http.MethodGet, "/v1/plugins", "", "Sales Kit"},
 		{http.MethodGet, "/v1/skills", "", "deal-review"},
 		{http.MethodGet, "/v1/mcp/servers", "", "Cloud CRM"},
@@ -657,21 +669,9 @@ func TestCloudHighPriorityProxiesAndLocalFallback(t *testing.T) {
 		t.Fatalf("expected proxy to strip local ticket query param, upstream got %q", lastSSEQuery)
 	}
 
-	// Widget HTML content proxy MUST enforce sandbox CSP & XSS defense headers.
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/widgets/w_c1/content", nil))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Cloud Live Widget") ||
-		rec.Header().Get("Content-Security-Policy") != "default-src 'none'; sandbox" ||
-		rec.Header().Get("X-Content-Type-Options") != "nosniff" ||
-		rec.Header().Get("X-Frame-Options") != "DENY" ||
-		rec.Header().Get("Referrer-Policy") != "no-referrer" ||
-		rec.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("widget content proxy failed security headers: code=%d hdr=%+v body=%s", rec.Code, rec.Header(), rec.Body.String())
-	}
-
 	// Proxy path traversal rejection (400).
-	badReq := httptest.NewRequest(http.MethodGet, "/v1/widgets/..%2Fsecret/content", nil)
-	badReq.URL.Path = "/v1/widgets/../secret/content"
+	badReq := httptest.NewRequest(http.MethodGet, "/v1/apps/..%2Fsecret/board", nil)
+	badReq.URL.Path = "/v1/apps/../secret/board"
 	rec = httptest.NewRecorder()
 	if !cloudSvc.ProxyActiveWorkspace(rec, badReq) || rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 rejecting traversal path, got %d %s", rec.Code, rec.Body.String())

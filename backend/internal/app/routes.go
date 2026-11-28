@@ -11,6 +11,7 @@ import (
 	feedcore "github.com/wins/jaz/backend/internal/feed"
 	agentsessionsapi "github.com/wins/jaz/backend/internal/httpapi/agentsessions"
 	appsapi "github.com/wins/jaz/backend/internal/httpapi/apps"
+	boardsapi "github.com/wins/jaz/backend/internal/httpapi/boards"
 	botsapi "github.com/wins/jaz/backend/internal/httpapi/bots"
 	browserapi "github.com/wins/jaz/backend/internal/httpapi/browser"
 	canvasapi "github.com/wins/jaz/backend/internal/httpapi/canvas"
@@ -278,7 +279,6 @@ func appendAppsRoutes(routes server.Routes, h *appsapi.Handler) server.Routes {
 		server.Route{Pattern: "DELETE /v1/apps/{id}/kv/{key}", Handler: httpHandlerFunc(h.DeleteKV)},
 		server.Route{Pattern: "POST /v1/apps/{id}/ai/complete", Handler: httpHandlerFunc(h.AIComplete)},
 		server.Route{Pattern: "POST /v1/apps/{id}/tools/call", Handler: httpHandlerFunc(h.CallTool)},
-		server.Route{Pattern: "POST /v1/boards/{id}/apps", Handler: httpHandlerFunc(h.AssignToBoard)},
 	)
 }
 
@@ -362,6 +362,16 @@ func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler,
 		)
 	}
 	return routes
+}
+
+func BoardRoutes(handler *boardsapi.Handler) server.Routes {
+	return server.Routes{
+		{Pattern: "GET /v1/apps/{id}/board", Handler: httpHandlerFunc(handler.Get)},
+		{Pattern: "PATCH /v1/apps/{id}/board", Handler: httpHandlerFunc(handler.Patch)},
+		{Pattern: "POST /v1/apps/{id}/board/tiles", Handler: httpHandlerFunc(handler.AddTiles)},
+		{Pattern: "DELETE /v1/apps/{id}/board/tiles/{app}", Handler: httpHandlerFunc(handler.RemoveTile)},
+		{Pattern: "POST /v1/apps/{id}/tile-feedback", Handler: httpHandlerFunc(handler.TileFeedback)},
+	}
 }
 
 func BotRoutes(handler *botsapi.Handler) server.Routes {

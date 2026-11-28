@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, linkOptions, useRouterState } from '@tanstack/react-router'
-import { AppWindow, LayoutDashboard, MessageSquare, Settings } from 'lucide-react'
+import { AppWindow, MessageSquare, Settings } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { PluginIcon } from '@/components/plugins/PluginIcon'
@@ -20,7 +20,6 @@ export const RAIL_WIDTH = 48
 // the rest take the whole content card.
 export const SECTIONS = [
   { to: '/bots', label: 'Bots', Icon: BotsGlyph },
-  { to: '/boards', label: 'Boards', Icon: LayoutDashboard },
   { to: '/apps', label: 'Apps', Icon: AppWindow },
 ] as const
 

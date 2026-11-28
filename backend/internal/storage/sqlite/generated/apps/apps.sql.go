@@ -88,13 +88,15 @@ const getApp = `-- name: GetApp :one
 SELECT
   a.id, a.workspace_id, a.source_thread_id, a.title, a.description,
   a.icon_json, a.kind, a.visibility, a.current_version, a.status,
-  a.created_at_ms, a.updated_at_ms, a.loop_id,
+  a.created_at_ms, a.updated_at_ms,
+  CAST(COALESCE(la.loop_id, '') AS TEXT) AS loop_id,
   COALESCE(v.bundle_sha256, '') AS bundle_sha256,
   COALESCE(v.entry_path, '') AS entry_path,
   COALESCE(v.capabilities_json, '[]') AS capabilities_json,
   COALESCE(v.allowed_tools_json, '[]') AS allowed_tools_json
 FROM apps a
 LEFT JOIN app_versions v ON v.app_id = a.id AND v.version = a.current_version
+LEFT JOIN loop_apps la ON la.app_id = a.id
 WHERE a.id = ?1
   AND a.status = 'active'
 LIMIT 1
@@ -188,18 +190,17 @@ func (q *Queries) GetAppDraft(ctx context.Context, id string) (AppDraft, error) 
 }
 
 const getAppIDByLoop = `-- name: GetAppIDByLoop :one
-SELECT id
-FROM apps
-WHERE loop_id = ?1
-  AND status = 'active'
-LIMIT 1
+SELECT la.app_id
+FROM loop_apps la
+JOIN apps a ON a.id = la.app_id AND a.status = 'active'
+WHERE la.loop_id = ?1
 `
 
 func (q *Queries) GetAppIDByLoop(ctx context.Context, loopID string) (string, error) {
 	row := q.db.QueryRowContext(ctx, getAppIDByLoop, loopID)
-	var id string
-	err := row.Scan(&id)
-	return id, err
+	var app_id string
+	err := row.Scan(&app_id)
+	return app_id, err
 }
 
 const getAppKV = `-- name: GetAppKV :one
@@ -300,12 +301,12 @@ func (q *Queries) GetAppVersionMax(ctx context.Context, id string) (GetAppVersio
 const insertApp = `-- name: InsertApp :exec
 INSERT INTO apps (
   id, workspace_id, source_thread_id, title, description, icon_json,
-  kind, visibility, current_version, status, created_at_ms, updated_at_ms, loop_id
+  kind, visibility, current_version, status, created_at_ms, updated_at_ms
 ) VALUES (
   ?1, ?2, ?3,
   ?4, ?5, ?6,
   ?7, ?8, ?9,
-  'active', ?10, ?11, ?12
+  'active', ?10, ?11
 )
 `
 
@@ -321,7 +322,6 @@ type InsertAppParams struct {
 	CurrentVersion int64  `json:"current_version"`
 	CreatedAtMs    int64  `json:"created_at_ms"`
 	UpdatedAtMs    int64  `json:"updated_at_ms"`
-	LoopID         string `json:"loop_id"`
 }
 
 func (q *Queries) InsertApp(ctx context.Context, arg InsertAppParams) error {
@@ -337,7 +337,6 @@ func (q *Queries) InsertApp(ctx context.Context, arg InsertAppParams) error {
 		arg.CurrentVersion,
 		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
-		arg.LoopID,
 	)
 	return err
 }
@@ -625,14 +624,17 @@ const listApps = `-- name: ListApps :many
 SELECT
   a.id, a.workspace_id, a.source_thread_id, a.title, a.description,
   a.icon_json, a.kind, a.visibility, a.current_version, a.status,
-  a.created_at_ms, a.updated_at_ms, a.loop_id,
+  a.created_at_ms, a.updated_at_ms,
+  CAST(COALESCE(la.loop_id, '') AS TEXT) AS loop_id,
   COALESCE(v.bundle_sha256, '') AS bundle_sha256,
   COALESCE(v.entry_path, '') AS entry_path,
   COALESCE(v.capabilities_json, '[]') AS capabilities_json,
   COALESCE(v.allowed_tools_json, '[]') AS allowed_tools_json
 FROM apps a
 LEFT JOIN app_versions v ON v.app_id = a.id AND v.version = a.current_version
+LEFT JOIN loop_apps la ON la.app_id = a.id
 WHERE a.status = 'active'
+  AND (a.current_version > 0 OR a.kind = 'board')
   AND (CAST(?1 AS TEXT) = '' OR a.workspace_id = ?1)
   AND (CAST(?2 AS TEXT) = '' OR a.source_thread_id = ?2)
   AND (CAST(?3 AS TEXT) = '' OR a.kind = ?3)
@@ -745,19 +747,6 @@ func (q *Queries) MaxAppVersionRow(ctx context.Context, appID string) (int64, er
 	var max_version int64
 	err := row.Scan(&max_version)
 	return max_version, err
-}
-
-const maxBoardY = `-- name: MaxBoardY :one
-SELECT CAST(COALESCE(MAX(y + h), 0) AS INTEGER) AS max_y
-FROM board_widgets
-WHERE board_id = ?1
-`
-
-func (q *Queries) MaxBoardY(ctx context.Context, boardID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, maxBoardY, boardID)
-	var max_y int64
-	err := row.Scan(&max_y)
-	return max_y, err
 }
 
 const setAppCurrentVersion = `-- name: SetAppCurrentVersion :exec
@@ -900,48 +889,6 @@ func (q *Queries) UpsertAppKV(ctx context.Context, arg UpsertAppKVParams) error 
 		arg.Revision,
 		arg.SizeBytes,
 		arg.UpdatedBy,
-		arg.UpdatedAtMs,
-	)
-	return err
-}
-
-const upsertBoardAppWidget = `-- name: UpsertBoardAppWidget :exec
-INSERT INTO board_widgets (
-  board_id, widget_id, app_id, x, y, w, h, placed_by, created_at_ms, updated_at_ms
-) VALUES (
-  ?1, ?2, ?3,
-  ?4, ?5, ?6, ?7,
-  ?8, ?9, ?10
-)
-ON CONFLICT (board_id, widget_id) DO UPDATE SET
-  app_id = excluded.app_id,
-  updated_at_ms = excluded.updated_at_ms
-`
-
-type UpsertBoardAppWidgetParams struct {
-	BoardID     string         `json:"board_id"`
-	WidgetID    string         `json:"widget_id"`
-	AppID       sql.NullString `json:"app_id"`
-	X           int64          `json:"x"`
-	Y           int64          `json:"y"`
-	W           int64          `json:"w"`
-	H           int64          `json:"h"`
-	PlacedBy    string         `json:"placed_by"`
-	CreatedAtMs int64          `json:"created_at_ms"`
-	UpdatedAtMs int64          `json:"updated_at_ms"`
-}
-
-func (q *Queries) UpsertBoardAppWidget(ctx context.Context, arg UpsertBoardAppWidgetParams) error {
-	_, err := q.db.ExecContext(ctx, upsertBoardAppWidget,
-		arg.BoardID,
-		arg.WidgetID,
-		arg.AppID,
-		arg.X,
-		arg.Y,
-		arg.W,
-		arg.H,
-		arg.PlacedBy,
-		arg.CreatedAtMs,
 		arg.UpdatedAtMs,
 	)
 	return err

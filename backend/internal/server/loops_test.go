@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,14 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/apps"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 func TestLoopAPIAndManualRun(t *testing.T) {
@@ -352,8 +353,8 @@ func sessionForRun(t *testing.T, store *sqlitestore.Store, runID string) storage
 	return storage.Session{}
 }
 
-func TestTurnEndFailsAWidgetRunThatPublishedNothing(t *testing.T) {
-	srv, widgetService, store, loop, run := newWidgetLoopFinishTest(t, "thread-unpublished")
+func TestTurnEndFailsABoardRunThatPublishedNothing(t *testing.T) {
+	srv, boardService, store, loop, run := newBoardLoopFinishTest(t, "thread-unpublished")
 
 	srv.HandleACPTurnFinished(context.Background(), acp.Job{ID: run.ThreadID, State: acp.StateIdle})
 
@@ -364,18 +365,18 @@ func TestTurnEndFailsAWidgetRunThatPublishedNothing(t *testing.T) {
 	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "publish_app") {
 		t.Fatalf("run = %+v", stored)
 	}
-	widget, _, _, err := widgetService.StateForLoop(loop.ID)
+	loopApp, _, err := boardService.StateForLoop(context.Background(), loop.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(widget.LastError, "publish_app") {
-		t.Fatalf("widget last error = %q", widget.LastError)
+	if !strings.Contains(loopApp.LastError, "publish_app") {
+		t.Fatalf("tile last error = %q", loopApp.LastError)
 	}
 }
 
-func TestTurnEndFailsAWidgetRunThatOnlyWroteTheFile(t *testing.T) {
-	srv, _, store, loop, run := newWidgetLoopFinishTest(t, "thread-file-without-publish")
-	path := widgets.WidgetFilePath(loop)
+func TestTurnEndFailsABoardRunThatOnlyWroteTheFile(t *testing.T) {
+	srv, _, store, loop, run := newBoardLoopFinishTest(t, "thread-file-without-publish")
+	path := boards.AppFilePath(loop)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -392,14 +393,14 @@ func TestTurnEndFailsAWidgetRunThatOnlyWroteTheFile(t *testing.T) {
 	if stored.Status != loops.RunStatusError || !strings.Contains(stored.Error, "publish_app") {
 		t.Fatalf("run = %+v", stored)
 	}
-	if _, err := store.GetAppByLoop(context.Background(), loop.ID); !errors.Is(err, storage.ErrAppNotFound) {
-		t.Fatalf("writing the file alone published an app: %v", err)
+	if app, err := store.GetAppByLoop(context.Background(), loop.ID); err != nil || app.CurrentVersion != 0 {
+		t.Fatalf("writing the file alone published an app: %+v (%v)", app, err)
 	}
 }
 
-func TestTurnEndAcceptsAWidgetRunThatPublished(t *testing.T) {
-	srv, widgetService, store, loop, run := newWidgetLoopFinishTest(t, "thread-published")
-	if _, err := widgetService.Publish(context.Background(), loop, run.ID, run.ThreadID, widgets.PublishInput{HTML: "<p>ok</p>"}); err != nil {
+func TestTurnEndAcceptsABoardRunThatPublished(t *testing.T) {
+	srv, boardService, store, loop, run := newBoardLoopFinishTest(t, "thread-published")
+	if _, err := boardService.Publish(context.Background(), loop, run.ID, run.ThreadID, boards.PublishInput{HTML: "<p>ok</p>"}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 
@@ -414,7 +415,7 @@ func TestTurnEndAcceptsAWidgetRunThatPublished(t *testing.T) {
 	}
 }
 
-func newWidgetLoopFinishTest(t *testing.T, threadID string) (*Server, *widgets.Service, *sqlitestore.Store, loops.Loop, loops.Run) {
+func newBoardLoopFinishTest(t *testing.T, threadID string) (*Server, *boards.Service, *sqlitestore.Store, loops.Loop, loops.Run) {
 	t.Helper()
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -424,12 +425,12 @@ func newWidgetLoopFinishTest(t *testing.T, threadID string) (*Server, *widgets.S
 	now := time.Now().UTC()
 	loop := loops.Loop{
 		ID:         store.NewLoopID(),
-		Name:       "Widget loop",
+		Name:       "Board loop",
 		Prompt:     "update",
 		Schedule:   loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"},
 		Status:     loops.StatusActive,
 		Runtime:    loops.RuntimeACP,
-		MemoryPath: filepath.Join(t.TempDir(), "widget-loop", "memory.md"),
+		MemoryPath: filepath.Join(t.TempDir(), "board-loop", "memory.md"),
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
@@ -460,14 +461,78 @@ func newWidgetLoopFinishTest(t *testing.T, threadID string) (*Server, *widgets.S
 	if err := store.StartSessionTurn(session.ID, storage.Turn{Output: &storage.TurnOutput{Run: run.ID}}); err != nil {
 		t.Fatal(err)
 	}
-	widgetService := widgets.NewService(store, nil).WithApps(apps.NewService(store, store, nil, nil, store.RootDir(), store.RootDir()))
-	board, err := widgetService.CreateBoard("Desk")
+	boardService, appService := newBoardServiceForTest(store)
+	board, err := appService.CreateBoard(context.Background(), "Desk")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := widgetService.AssignLoopBoards(loop, []string{board.ID}); err != nil {
+	if err := boardService.AssignLoopBoards(context.Background(), loop, []string{board.ID}); err != nil {
 		t.Fatal(err)
 	}
-	loopService := loops.NewService(store, nil, nil, loops.WithRunCheck(widgetService.RequireRunPublished))
-	return &Server{Store: store, Loops: loopService, Locks: sessionlock.New(), Events: sessionevents.New()}, widgetService, store, loop, run
+	loopService := loops.NewService(store, nil, nil, loops.WithRunCheck(boardService.RequireRunPublished))
+	return &Server{Store: store, Loops: loopService, Locks: sessionlock.New(), Events: sessionevents.New()}, boardService, store, loop, run
+}
+
+func newBoardServiceForTest(store *sqlitestore.Store) (*boards.Service, *apps.Service) {
+	appService := apps.NewService(store, store, nil, nil, store.RootDir(), store.RootDir())
+	local := func() string { return storage.LocalWorkspaceID }
+	return boards.NewService(store, local, log.New(io.Discard)).WithApps(appService), appService
+}
+
+func TestLoopAPIPutsTheLoopOnBoardsAndTakesItOff(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	boardService, appService := newBoardServiceForTest(store)
+	srv := &Server{Store: store, Boards: boardService, Loops: newLoopServiceForTest(store, &fakeLoopExecutor{started: make(chan loops.Run, 1)})}
+	ctx := context.Background()
+	board, err := appService.CreateBoard(ctx, "Desk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		res := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(res, httptest.NewRequest(method, path, strings.NewReader(body)))
+		if res.Code != http.StatusOK {
+			t.Fatalf("%s %s = %d: %s", method, path, res.Code, res.Body.String())
+		}
+		return res
+	}
+
+	var loop loops.Loop
+	created := call(http.MethodPost, "/v1/loops", `{"name":"Inbox","prompt":"p","schedule":{"kind":"cron","expr":"0 9 * * *","timezone":"UTC"},"runtime":"acp","board_ids":["`+board.ID+`"]}`)
+	if err := json.Unmarshal(created.Body.Bytes(), &loop); err != nil {
+		t.Fatal(err)
+	}
+	var detail struct {
+		BoardIDs []string `json:"board_ids"`
+	}
+	if err := json.Unmarshal(call(http.MethodGet, "/v1/loops/"+loop.ID, "").Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.BoardIDs) != 1 || detail.BoardIDs[0] != board.ID {
+		t.Fatalf("loop board_ids = %v", detail.BoardIDs)
+	}
+	view, err := boardService.View(ctx, board.ID)
+	if err != nil || len(view.Tiles) != 1 || view.Tiles[0].Loop == nil || view.Tiles[0].Loop.ID != loop.ID {
+		t.Fatalf("board after create = %+v (%v)", view, err)
+	}
+
+	call(http.MethodPatch, "/v1/loops/"+loop.ID, `{"board_ids":[]}`)
+	if view, err := boardService.View(ctx, board.ID); err != nil || len(view.Tiles) != 0 {
+		t.Fatalf("board after unassign = %+v (%v)", view, err)
+	}
+	if res := call(http.MethodGet, "/v1/loops/"+loop.ID, ""); !strings.Contains(res.Body.String(), `"board_ids":[]`) {
+		t.Fatalf("an unassigned loop must report an empty board list: %s", res.Body.String())
+	}
+
+	// Deleting the loop takes its tile off the board.
+	call(http.MethodPatch, "/v1/loops/"+loop.ID, `{"board_ids":["`+board.ID+`"]}`)
+	call(http.MethodDelete, "/v1/loops/"+loop.ID, "")
+	if view, err := boardService.View(ctx, board.ID); err != nil || len(view.Tiles) != 0 {
+		t.Fatalf("board after loop delete = %+v (%v)", view, err)
+	}
 }

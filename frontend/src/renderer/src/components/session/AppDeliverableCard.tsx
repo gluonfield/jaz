@@ -6,7 +6,7 @@ import { AppApprovalModal } from '@/components/apps/AppApprovalModal'
 import { DesktopAppButton, useDesktopApps } from '@/components/apps/useDesktopApps'
 import { ActionMenu } from '@/components/ui/ActionMenu'
 import { Button } from '@/components/ui/Button'
-import { elevatedCapabilities, saveAppDraft, type AppKind, type PendingAppDraft } from '@/lib/api/apps'
+import { elevatedCapabilities, saveAppDraft, type BundleKind, type PendingAppDraft } from '@/lib/api/apps'
 import type { ACPToolCall } from '@/lib/api/types'
 import { ArtifactPanelContext } from '@/lib/artifactPanel'
 import { installFolder } from '@/lib/desktopApps'
@@ -27,10 +27,10 @@ function Card({ icon, title, note, noteTitle, children }: { icon: ReactNode; tit
   )
 }
 
-const kindIcon = (kind: AppKind) =>
+const kindIcon = (kind: BundleKind) =>
   kind === 'document' ? <FileText size={16} aria-hidden /> : <AppWindow size={16} aria-hidden />
 
-function SavedApp({ app }: { app: PublishedAppRef & { kind: AppKind } }) {
+function SavedApp({ app }: { app: PublishedAppRef & { kind: BundleKind } }) {
   const panel = use(ArtifactPanelContext)
   const desktop = useDesktopApps()
   const launcher = desktop.records.get(app.id)?.launcherPath

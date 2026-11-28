@@ -285,12 +285,12 @@ function dataScript(data: unknown, agentState: AgentState = 'idle'): string {
 
 const canvasCSS = 'html,body{overflow:hidden!important}body{transform-origin:top left}*{scrollbar-width:none}'
 
-// Tile-only extension: the widget author designs blind, so the host measures
+// Tile-only extension: a tile's author designs blind, so the host measures
 // what actually rendered — dead space below the content, overflow past the
 // tile, clipped elements, broken images — and reports it as jaz:artifact-layout.
 // The loop sees the problems in its next-run prompt. Inline artifacts auto-size
 // to content, so they never load this.
-const widgetBridgeScript = `
+const tileBridgeScript = `
 (() => {
   const post = (data) => parent.postMessage(Object.assign({ type: 'jaz:artifact-layout' }, data), '*');
   const doc = document.documentElement;
@@ -385,7 +385,7 @@ export function buildArtifactThemeCSS(darkOverride?: boolean): string {
   return themeCSS(values, darkOverride ?? root.classList.contains('dark'))
 }
 
-// Inline artifacts, board widgets and canvas HTML share the theme and CSP.
+// Inline artifacts, board tiles and canvas HTML share the theme and CSP.
 // Each surface adds its own layout and interaction bridge.
 export function buildArtifactDocument(
   input: ArtifactInput,
@@ -405,7 +405,7 @@ export function buildArtifactDocument(
   const data = opts.canvas || opts.data !== undefined ? dataScript(opts.data, opts.agentState) : ''
   const viewState = opts.viewState !== undefined ? viewStateScript(opts.viewState) : ''
   const assets = opts.resolveAsset ? assetBridgeScript : ''
-  const bridge = bridgeScript + (opts.measureLayout ? widgetBridgeScript : '') + (opts.canvas ? canvasBridgeScript : '') + data + viewState + assets
+  const bridge = bridgeScript + (opts.measureLayout ? tileBridgeScript : '') + (opts.canvas ? canvasBridgeScript : '') + data + viewState + assets
   if (opts.canvas) {
     theme += canvasCSS
   }

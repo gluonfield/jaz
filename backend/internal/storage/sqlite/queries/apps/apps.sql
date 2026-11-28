@@ -68,23 +68,24 @@ WHERE id = sqlc.arg(id)
 SELECT
   a.id, a.workspace_id, a.source_thread_id, a.title, a.description,
   a.icon_json, a.kind, a.visibility, a.current_version, a.status,
-  a.created_at_ms, a.updated_at_ms, a.loop_id,
+  a.created_at_ms, a.updated_at_ms,
+  CAST(COALESCE(la.loop_id, '') AS TEXT) AS loop_id,
   COALESCE(v.bundle_sha256, '') AS bundle_sha256,
   COALESCE(v.entry_path, '') AS entry_path,
   COALESCE(v.capabilities_json, '[]') AS capabilities_json,
   COALESCE(v.allowed_tools_json, '[]') AS allowed_tools_json
 FROM apps a
 LEFT JOIN app_versions v ON v.app_id = a.id AND v.version = a.current_version
+LEFT JOIN loop_apps la ON la.app_id = a.id
 WHERE a.id = sqlc.arg(id)
   AND a.status = 'active'
 LIMIT 1;
 
 -- name: GetAppIDByLoop :one
-SELECT id
-FROM apps
-WHERE loop_id = sqlc.arg(loop_id)
-  AND status = 'active'
-LIMIT 1;
+SELECT la.app_id
+FROM loop_apps la
+JOIN apps a ON a.id = la.app_id AND a.status = 'active'
+WHERE la.loop_id = sqlc.arg(loop_id);
 
 -- name: GetAppVersionMax :one
 SELECT current_version, status
@@ -101,14 +102,17 @@ WHERE app_id = sqlc.arg(app_id);
 SELECT
   a.id, a.workspace_id, a.source_thread_id, a.title, a.description,
   a.icon_json, a.kind, a.visibility, a.current_version, a.status,
-  a.created_at_ms, a.updated_at_ms, a.loop_id,
+  a.created_at_ms, a.updated_at_ms,
+  CAST(COALESCE(la.loop_id, '') AS TEXT) AS loop_id,
   COALESCE(v.bundle_sha256, '') AS bundle_sha256,
   COALESCE(v.entry_path, '') AS entry_path,
   COALESCE(v.capabilities_json, '[]') AS capabilities_json,
   COALESCE(v.allowed_tools_json, '[]') AS allowed_tools_json
 FROM apps a
 LEFT JOIN app_versions v ON v.app_id = a.id AND v.version = a.current_version
+LEFT JOIN loop_apps la ON la.app_id = a.id
 WHERE a.status = 'active'
+  AND (a.current_version > 0 OR a.kind = 'board')
   AND (CAST(sqlc.arg(filter_workspace_id) AS TEXT) = '' OR a.workspace_id = sqlc.arg(filter_workspace_id))
   AND (CAST(sqlc.arg(filter_source_thread_id) AS TEXT) = '' OR a.source_thread_id = sqlc.arg(filter_source_thread_id))
   AND (CAST(sqlc.arg(filter_kind) AS TEXT) = '' OR a.kind = sqlc.arg(filter_kind))
@@ -118,12 +122,12 @@ ORDER BY a.updated_at_ms DESC, a.id ASC;
 -- name: InsertApp :exec
 INSERT INTO apps (
   id, workspace_id, source_thread_id, title, description, icon_json,
-  kind, visibility, current_version, status, created_at_ms, updated_at_ms, loop_id
+  kind, visibility, current_version, status, created_at_ms, updated_at_ms
 ) VALUES (
   sqlc.arg(id), sqlc.arg(workspace_id), sqlc.arg(source_thread_id),
   sqlc.arg(title), sqlc.arg(description), sqlc.arg(icon_json),
   sqlc.arg(kind), sqlc.arg(visibility), sqlc.arg(current_version),
-  'active', sqlc.arg(created_at_ms), sqlc.arg(updated_at_ms), sqlc.arg(loop_id)
+  'active', sqlc.arg(created_at_ms), sqlc.arg(updated_at_ms)
 );
 
 -- name: UpdateAppPublished :exec
@@ -251,20 +255,3 @@ WHERE app_id = sqlc.arg(app_id)
   AND scope_type = sqlc.arg(scope_type)
   AND scope_owner_id = sqlc.arg(scope_owner_id)
   AND key = sqlc.arg(key);
-
--- name: MaxBoardY :one
-SELECT CAST(COALESCE(MAX(y + h), 0) AS INTEGER) AS max_y
-FROM board_widgets
-WHERE board_id = sqlc.arg(board_id);
-
--- name: UpsertBoardAppWidget :exec
-INSERT INTO board_widgets (
-  board_id, widget_id, app_id, x, y, w, h, placed_by, created_at_ms, updated_at_ms
-) VALUES (
-  sqlc.arg(board_id), sqlc.arg(widget_id), sqlc.arg(app_id),
-  sqlc.arg(x), sqlc.arg(y), sqlc.arg(w), sqlc.arg(h),
-  sqlc.arg(placed_by), sqlc.arg(created_at_ms), sqlc.arg(updated_at_ms)
-)
-ON CONFLICT (board_id, widget_id) DO UPDATE SET
-  app_id = excluded.app_id,
-  updated_at_ms = excluded.updated_at_ms;

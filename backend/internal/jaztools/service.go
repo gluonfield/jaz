@@ -9,6 +9,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/apps"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/computercontrol"
@@ -28,7 +29,6 @@ import (
 	"github.com/wins/jaz/backend/internal/threads"
 	"github.com/wins/jaz/backend/internal/vault"
 	"github.com/wins/jaz/backend/internal/visualize"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 const (
@@ -70,24 +70,24 @@ type Service struct {
 	computerSettings storage.SettingsStorage
 	computerBackend  computercontrol.Backend
 
-	loopTools       *loops.MCPTools
-	botTools        *bots.MCPTools
-	agentTools      *acp.MCPTools
-	threadTools     *threads.Service
-	titleTools      *threads.TitleTools
-	goalTools       *sessiongoal.MCPTools
-	calendarTools   *connections.CalendarMCPTools
-	gmailTools      *connections.GmailMCPTools
-	whatsAppTools   *connections.WhatsAppMCPTools
-	telegramTools   *connections.TelegramMCPTools
-	connections     *connections.Service
-	pluginStore     *plugins.Store
-	visualizeTools  *visualize.Service
-	pluginTools     *plugins.MCPTools
-	mapTools        *places.MCPTools
-	widgetPublisher *widgets.SessionPublisher
-	appsService     *apps.Service
-	sessions        sessionSource
+	loopTools      *loops.MCPTools
+	botTools       *bots.MCPTools
+	agentTools     *acp.MCPTools
+	threadTools    *threads.Service
+	titleTools     *threads.TitleTools
+	goalTools      *sessiongoal.MCPTools
+	calendarTools  *connections.CalendarMCPTools
+	gmailTools     *connections.GmailMCPTools
+	whatsAppTools  *connections.WhatsAppMCPTools
+	telegramTools  *connections.TelegramMCPTools
+	connections    *connections.Service
+	pluginStore    *plugins.Store
+	visualizeTools *visualize.Service
+	pluginTools    *plugins.MCPTools
+	mapTools       *places.MCPTools
+	boardPublisher *boards.SessionPublisher
+	appsService    *apps.Service
+	sessions       sessionSource
 
 	url string
 
@@ -149,7 +149,7 @@ func New(
 	events *sessionevents.Bus,
 	sessions storage.SessionStore,
 	usage storage.UsageEventStore,
-	widgetPublisher *widgets.SessionPublisher,
+	boardPublisher *boards.SessionPublisher,
 	calendarTools *connections.CalendarMCPTools,
 	gmailTools *connections.GmailMCPTools,
 	whatsAppTools *connections.WhatsAppMCPTools,
@@ -159,21 +159,21 @@ func New(
 	visualizeTools *visualize.Service,
 ) *Service {
 	return &Service{
-		Memory:          memory,
-		calendarTools:   calendarTools,
-		gmailTools:      gmailTools,
-		whatsAppTools:   whatsAppTools,
-		telegramTools:   telegramTools,
-		connections:     connectionService,
-		pluginStore:     installed,
-		visualizeTools:  visualizeTools,
-		pluginTools:     &plugins.MCPTools{Plugins: installed, Presenter: visualizeTools},
-		mapTools:        &places.MCPTools{Presenter: visualizeTools, Geocoder: places.NewPhoton()},
-		goalTools:       newGoalTools(events, sessions, usage),
-		titleTools:      &threads.TitleTools{Store: sessions, Events: events},
-		widgetPublisher: widgetPublisher,
-		sessions:        sessions,
-		url:             strings.TrimSpace(urls.JazToolsMCP),
+		Memory:         memory,
+		calendarTools:  calendarTools,
+		gmailTools:     gmailTools,
+		whatsAppTools:  whatsAppTools,
+		telegramTools:  telegramTools,
+		connections:    connectionService,
+		pluginStore:    installed,
+		visualizeTools: visualizeTools,
+		pluginTools:    &plugins.MCPTools{Plugins: installed, Presenter: visualizeTools},
+		mapTools:       &places.MCPTools{Presenter: visualizeTools, Geocoder: places.NewPhoton()},
+		goalTools:      newGoalTools(events, sessions, usage),
+		titleTools:     &threads.TitleTools{Store: sessions, Events: events},
+		boardPublisher: boardPublisher,
+		sessions:       sessions,
+		url:            strings.TrimSpace(urls.JazToolsMCP),
 	}
 }
 
@@ -335,7 +335,7 @@ func (s *Service) newServer(surface toolSurface) *mcp.Server {
 	switch surface {
 	case widgetSurface:
 		s.visualizeTools.AddGuideTo(server)
-		widgets.AddMCPTools(server, s.widgetPublisher)
+		boards.AddMCPTools(server, s.boardPublisher)
 	case canvasSurface:
 		// A canvas thread's visuals belong on its board, not in the narrow chat
 		// beside it.
@@ -430,8 +430,8 @@ var surfaceBySourceType = map[string]toolSurface{
 func (s *Service) widgetSession(r *http.Request) bool {
 	session, ok := s.sessionFromRequest(r)
 	return ok &&
-		s.widgetPublisher != nil &&
-		s.widgetPublisher.WidgetSurfaceForSession(session.ID)
+		s.boardPublisher != nil &&
+		s.boardPublisher.WidgetSurfaceForSession(session.ID)
 }
 
 func (s *Service) sessionFromRequest(r *http.Request) (storage.Session, bool) {

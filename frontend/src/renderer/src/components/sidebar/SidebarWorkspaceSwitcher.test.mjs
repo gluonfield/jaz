@@ -350,7 +350,7 @@ test('workspaceSwitchNavigation leaves workspace-specific routes cleanly and pre
     { pathname: '/sessions/thr_123', search: {}, expected: { to: '/new' } },
     { pathname: '/spaces/sp_123', search: {}, expected: { to: '/new' } },
     { pathname: '/bots/bot_42', search: {}, expected: { to: '/bots' } },
-    { pathname: '/boards/brd_9', search: {}, expected: { to: '/boards' } },
+    { pathname: '/apps/app_9', search: {}, expected: { to: '/apps' } },
     { pathname: '/loops/lp_3', search: {}, expected: { to: '/loops' } },
     { pathname: '/plugins/tenders', search: {}, expected: { to: '/new' } },
     { pathname: '/apps/crm/show_crm', search: {}, expected: { to: '/apps' } },
@@ -361,11 +361,11 @@ test('workspaceSwitchNavigation leaves workspace-specific routes cleanly and pre
       expected: { to: '/bots', search: { settings: 'plugins' }, replace: true },
     },
     {
-      pathname: '/boards/brd_9',
+      pathname: '/apps/app_9',
       search: { settings: 'cloud' },
-      expected: { to: '/boards', search: { settings: 'cloud' }, replace: true },
+      expected: { to: '/apps', search: { settings: 'cloud' }, replace: true },
     },
-    { pathname: '/boards', search: {}, expected: null },
+    { pathname: '/apps', search: {}, expected: null },
     { pathname: '/bots', search: {}, expected: null },
   ]
 

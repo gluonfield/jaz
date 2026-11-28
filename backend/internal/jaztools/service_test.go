@@ -3,6 +3,7 @@ package jaztools
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,9 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/canvas"
@@ -33,7 +36,6 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/threads"
 	"github.com/wins/jaz/backend/internal/visualize"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 type fakeScheduler struct{}
@@ -117,7 +119,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	widgetService := widgets.NewService(store, nil)
+	boardService := newTestBoards(store)
 	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
@@ -125,7 +127,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		events,
 		store,
 		store,
-		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+		&boards.SessionPublisher{Service: boardService, Sessions: store, Loops: store},
 		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, fakeWhatsAppProvider{}, fakeWhatsAppProvider{}),
@@ -335,7 +337,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = memory.Close() })
 
-	widgetService := widgets.NewService(store, nil)
+	boardService := newTestBoards(store)
 	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
@@ -343,7 +345,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 		events,
 		store,
 		store,
-		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+		&boards.SessionPublisher{Service: boardService, Sessions: store, Loops: store},
 		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -399,15 +401,8 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	if service.widgetSession(sessionRequest(plainLoopRun.ID)) {
 		t.Fatal("loop run without board widget enabled widget publishing")
 	}
-	board, err := widgetService.CreateBoard("Desk")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := widgetService.AssignLoopBoards(widgetLoop, []string{board.ID}); err != nil {
-		t.Fatal(err)
-	}
 	if !service.widgetSession(sessionRequest(loopRun.ID)) {
-		t.Fatal("assigned widget loop-run session did not enable widget publishing")
+		t.Fatal("a loop run on the widget surface did not enable board app publishing")
 	}
 	widgetQueryReq, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1/mcp/jaztools?jaztools_surface=widget", nil)
 	if service.surface(widgetQueryReq) != widgetSurface {
@@ -430,7 +425,7 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	if !hasTool(t, widget, "create_thread") {
 		t.Fatal("widget server did not advertise create_thread")
 	}
-	if !hasTool(t, widget, widgets.PublishMCPToolName) {
+	if !hasTool(t, widget, boards.PublishMCPToolName) {
 		t.Fatal("widget server did not advertise publish_app")
 	}
 }
@@ -453,7 +448,7 @@ func TestCanvasThreadsGetThreadToolsWithoutInlineArtifacts(t *testing.T) {
 		events,
 		store,
 		store,
-		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		&boards.SessionPublisher{Service: newTestBoards(store), Sessions: store, Loops: store},
 		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -504,7 +499,7 @@ func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
 		events,
 		store,
 		store,
-		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		&boards.SessionPublisher{Service: newTestBoards(store), Sessions: store, Loops: store},
 		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -572,7 +567,7 @@ func TestBotOnlyToolsStayOnTheBotSurface(t *testing.T) {
 		events,
 		store,
 		store,
-		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		&boards.SessionPublisher{Service: newTestBoards(store), Sessions: store, Loops: store},
 		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -657,7 +652,7 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 		events,
 		store,
 		store,
-		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		&boards.SessionPublisher{Service: newTestBoards(store), Sessions: store, Loops: store},
 		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -691,7 +686,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = memory.Close() })
 
-	widgetService := widgets.NewService(store, nil)
+	boardService := newTestBoards(store)
 	events := sessionevents.New()
 	service := New(
 		memoryservice.New(memory, store, fakeScheduler{}, "http://127.0.0.1:5299/mcp/jaztools"),
@@ -699,7 +694,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 		events,
 		store,
 		store,
-		&widgets.SessionPublisher{Service: widgetService, Sessions: store, Loops: store},
+		&boards.SessionPublisher{Service: boardService, Sessions: store, Loops: store},
 		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -763,7 +758,7 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 		events,
 		store,
 		store,
-		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		&boards.SessionPublisher{Service: newTestBoards(store), Sessions: store, Loops: store},
 		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -833,7 +828,7 @@ func TestBrowserToolsUseDirectThreadSurface(t *testing.T) {
 		events,
 		store,
 		store,
-		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		&boards.SessionPublisher{Service: newTestBoards(store), Sessions: store, Loops: store},
 		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, nil, nil),
@@ -976,4 +971,9 @@ func textContent(t *testing.T, res *mcp.CallToolResult) string {
 		}
 	}
 	return out
+}
+
+func newTestBoards(store *sqlitestore.Store) *boards.Service {
+	local := func() string { return storage.LocalWorkspaceID }
+	return boards.NewService(store, local, log.New(io.Discard))
 }

@@ -31,7 +31,7 @@ import './lib/appearance'
 installFileDropGuard()
 installKeyboardFocus()
 
-// One open event per launch from the main window — board/widget popouts are
+// One open event per launch from the main window — board and app windows are
 // secondary surfaces and would inflate the count. PostHog derives new vs.
 // returning users from the per-install distinct id.
 if (clientRuntime.windowKind === 'main') telemetry.appOpened()

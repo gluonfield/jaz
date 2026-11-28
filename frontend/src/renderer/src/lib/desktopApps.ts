@@ -1,4 +1,4 @@
-import type { JazApp } from '@/lib/api/apps'
+import type { BundledApp, JazApp } from '@/lib/api/apps'
 import { clientRuntime } from '@/lib/clientRuntime'
 import type { DesktopAppPermission, InstalledDesktopApp } from '@shared/desktopApps'
 
@@ -6,7 +6,7 @@ export const desktopApps = clientRuntime.kind === 'electron' ? clientRuntime.des
 
 // Installs an app as a program of its own and opens it.
 export async function installDesktopApp(
-  app: JazApp,
+  app: BundledApp,
   permissions: DesktopAppPermission[] = [],
   scopedFolders: string[] = [],
   allowDesktopFullAccess = false,

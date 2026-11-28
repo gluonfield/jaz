@@ -1,10 +1,10 @@
-import type { AppKind, PendingAppDraft } from '@/lib/api/apps'
+import type { BundleKind, PendingAppDraft } from '@/lib/api/apps'
 import type { ACPToolCall } from '@/lib/api/types'
 import type { PublishedAppRef } from '@/lib/sidePanelTabs'
 
 // What publish_app returned: the saved app, or a draft held until the user
 // approves its capabilities.
-export type AppToolResult = { app: PublishedAppRef & { kind: AppKind } } | { draft: PendingAppDraft }
+export type AppToolResult = { app: PublishedAppRef & { kind: BundleKind } } | { draft: PendingAppDraft }
 
 const MAX_EXTRACT_DEPTH = 6
 
@@ -102,7 +102,7 @@ export function parseAppToolOutput(rawOutput: unknown): AppToolResult | null {
   const c = extractCandidate(rawOutput)
   if (!c) return null
   const title = typeof c.title === 'string' && c.title.trim() ? c.title.trim() : 'Untitled App'
-  const kind: AppKind = c.kind === 'document' ? 'document' : 'artifact'
+  const kind: BundleKind = c.kind === 'document' ? 'document' : 'artifact'
   if (typeof c.app_id === 'string') {
     return c.app_id ? { app: { id: c.app_id, title, kind } } : null
   }

@@ -10,6 +10,7 @@ import (
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/apps"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/canvas"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/loops"
@@ -22,7 +23,6 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/visualize"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 func TestPublishAppSavesDirectlyHoldsElevatedAppsAndIsDiscoverable(t *testing.T) {
@@ -45,7 +45,7 @@ func TestPublishAppSavesDirectlyHoldsElevatedAppsAndIsDiscoverable(t *testing.T)
 		events,
 		store,
 		store,
-		&widgets.SessionPublisher{Service: widgets.NewService(store, nil), Sessions: store, Loops: store},
+		&boards.SessionPublisher{Service: newTestBoards(store), Sessions: store, Loops: store},
 		testCalendarTools(t, store),
 		testGmailTools(t, store),
 		connections.NewWhatsAppMCPTools(store, fakeWhatsAppProvider{}, fakeWhatsAppProvider{}),
@@ -92,7 +92,7 @@ func TestPublishAppSavesDirectlyHoldsElevatedAppsAndIsDiscoverable(t *testing.T)
 	if failed || held["draft_id"] == "" || held["bundle_sha256"] == "" || held["app_id"] != nil {
 		t.Fatalf("an app that spends viewer AI credits must wait for approval: %#v", held)
 	}
-	all, err := appsSvc.ListApps(context.Background(), storage.AppListFilter{})
+	all, err := appsSvc.ListApps(context.Background(), storage.AppListFilter{Kind: storage.AppKindArtifact})
 	if err != nil || len(all) != 1 {
 		t.Fatalf("only the approval-free app is saved, got %d (err %v)", len(all), err)
 	}

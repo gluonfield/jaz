@@ -122,11 +122,11 @@ sql:
         omit_unused_structs: true
   - engine: "sqlite"
     schema: "internal/storage/sqlite/migrations"
-    queries: "internal/storage/sqlite/queries/widgetdb"
+    queries: "internal/storage/sqlite/queries/boards"
     gen:
       go:
-        package: "widgetdb"
-        out: "internal/storage/sqlite/generated/widgetdb"
+        package: "boards"
+        out: "internal/storage/sqlite/generated/boards"
         sql_package: "database/sql"
         emit_json_tags: true
         emit_interface: true

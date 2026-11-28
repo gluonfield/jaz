@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/acpcredentials"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/connections"
@@ -49,14 +50,13 @@ import (
 	"github.com/wins/jaz/backend/internal/tools"
 	agentspawn "github.com/wins/jaz/backend/internal/tools/agent/spawn"
 	applypatch "github.com/wins/jaz/backend/internal/tools/applypatch"
+	"github.com/wins/jaz/backend/internal/tools/boardapp"
 	exectool "github.com/wins/jaz/backend/internal/tools/exec"
 	viewimagetool "github.com/wins/jaz/backend/internal/tools/viewimage"
 	visualizetool "github.com/wins/jaz/backend/internal/tools/visualize"
-	widgettool "github.com/wins/jaz/backend/internal/tools/widget"
 	"github.com/wins/jaz/backend/internal/visualize"
 	"github.com/wins/jaz/backend/internal/voice"
 	mistralvoice "github.com/wins/jaz/backend/internal/voice/mistral"
-	"github.com/wins/jaz/backend/internal/widgets"
 	"go.uber.org/fx"
 )
 
@@ -422,7 +422,7 @@ func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, log
 	})
 }
 
-func NewACPConfig(cfg Config, store *sqlitestore.Store, inst instructions.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers acp.SessionMCPServers, providerSource provider.Source, modelCatalog *modelcatalog.Service, widgetService *widgets.Service, installed *plugins.Store, msCopilot *m365copilot.AuthService, resolveCloudProfile acpcredentials.Resolver) (acp.Config, error) {
+func NewACPConfig(cfg Config, store *sqlitestore.Store, inst instructions.Store, workspace Workspace, prompts *coordinator.Builder, catalog acp.AgentCatalog, source acp.AgentConfigSource, adapters *acpadapter.Manager, mcpServers acp.SessionMCPServers, providerSource provider.Source, modelCatalog *modelcatalog.Service, boardService *boards.Service, installed *plugins.Store, msCopilot *m365copilot.AuthService, resolveCloudProfile acpcredentials.Resolver) (acp.Config, error) {
 	if err := bots.MigrateHomes(store); err != nil {
 		return acp.Config{}, err
 	}
@@ -440,8 +440,8 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, inst instructions.Store,
 	cfg.ACP.MicrosoftCopilot = msCopilot
 	cfg.ACP.ResolveCloudProfile = resolveCloudProfile
 	promptBuilder := loops.RuntimePromptBuilder{Repo: store, PromptExtras: []func(loops.Loop, loops.Run) string{bots.RoutineInstructions(store)}}
-	if widgetService != nil {
-		promptBuilder.PromptExtras = append(promptBuilder.PromptExtras, widgetService.LoopPromptExtra)
+	if boardService != nil {
+		promptBuilder.PromptExtras = append(promptBuilder.PromptExtras, boardService.LoopPromptExtra)
 	}
 	cfg.ACP.TurnNote = bots.TurnNote(store, inst)
 	cfg.ACP.SteerNote = bots.SteerNote(store)
@@ -467,19 +467,19 @@ func agentDefaultsSeed(catalog acp.AgentCatalog) agentsettings.AgentDefaults {
 	return agentsettings.AgentDefaultsFromCatalog(catalog)
 }
 
-func NewWidgetService(store *sqlitestore.Store, cloud *cloudsync.Service, logger *log.Logger) *widgets.Service {
-	return widgets.NewService(store, logger).WithWorkspace(cloud.ActiveWorkspaceID)
+func NewBoardService(store *sqlitestore.Store, cloud *cloudsync.Service, logger *log.Logger) *boards.Service {
+	return boards.NewService(store, cloud.ActiveWorkspaceID, logger)
 }
 
-func NewWidgetSessionPublisher(service *widgets.Service, store *sqlitestore.Store) *widgets.SessionPublisher {
-	return &widgets.SessionPublisher{Service: service, Sessions: store, Loops: store}
+func NewBoardSessionPublisher(service *boards.Service, store *sqlitestore.Store) *boards.SessionPublisher {
+	return &boards.SessionPublisher{Service: service, Sessions: store, Loops: store}
 }
 
 func NewThreadService(store *sqlitestore.Store, cloud *cloudsync.Service) *threads.Service {
 	return threads.NewService(sqlitestore.NewSearchQueries(store), store).WithWorkspace(cloud.ActiveWorkspaceID)
 }
 
-func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, widgetPublisher *widgets.SessionPublisher, visualizations *visualize.Service) *tools.Registry {
+func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspace, manager *acp.Manager, store *sqlitestore.Store, events *sessionevents.Bus, boardPublisher *boards.SessionPublisher, visualizations *visualize.Service) *tools.Registry {
 	return tools.NewRegistry(
 		&exectool.ExecCommandTool{Manager: commandManager, Workspace: string(workspace)},
 		&exectool.WriteStdinTool{Manager: commandManager},
@@ -491,7 +491,7 @@ func NewToolRegistry(commandManager *exectool.CommandManager, workspace Workspac
 		&visualizetool.GuideTool{Visualize: visualizations},
 		&visualizetool.ShowCanvasTool{Visualize: visualizations},
 		&visualizetool.ShowArtifactTool{},
-		&widgettool.PublishTool{Publisher: widgetPublisher},
+		&boardapp.PublishTool{Publisher: boardPublisher},
 		&viewimagetool.Tool{Workspace: string(workspace)},
 		&agentspawn.Tool{Service: manager},
 	)

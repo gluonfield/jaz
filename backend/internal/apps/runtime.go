@@ -287,10 +287,6 @@ func (s *Service) CallTool(ctx context.Context, appID, toolName string, argument
 	return s.toolBridge.CallAppBridgeTool(ctx, toolName, arguments)
 }
 
-func (s *Service) AssignToBoard(ctx context.Context, boardID string, appIDs []string) error {
-	return s.store.AssignAppsToBoard(ctx, boardID, appIDs)
-}
-
 func (s *Service) Policy() storage.OrgAppPolicy {
 	return storage.DefaultLocalAppPolicy()
 }

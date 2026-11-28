@@ -412,8 +412,8 @@ test('Multi-workspace status, switchWorkspace, and per-workspace signOutCloudAcc
     queryClient.setQueryData(keys.projects, [{ path: '/repo' }])
     queryClient.setQueryData(keys.bots, [{ id: 'bot_1' }])
     queryClient.setQueryData(keys.botActivity('bot_1'), { items: [], owed: [] })
-    queryClient.setQueryData(keys.boards, [{ id: 'brd_1' }])
-    queryClient.setQueryData(keys.boardDetail('brd_1'), { board: { id: 'brd_1' }, items: [] })
+    queryClient.setQueryData(keys.apps({ kind: 'board' }), [{ id: 'brd_1' }])
+    queryClient.setQueryData(keys.appBoard('brd_1'), { tiles: [] })
     queryClient.setQueryData(keys.loops, [{ id: 'lp_1' }])
     queryClient.setQueryData(keys.loopDetail('lp_1'), { loop: { id: 'lp_1' }, runs: [], boardIds: [] })
     queryClient.setQueryData(keys.botRoutines('bot_1'), [])
@@ -469,7 +469,7 @@ test('Multi-workspace status, switchWorkspace, and per-workspace signOutCloudAcc
     keys.agentFiles,
     keys.projects,
     keys.bots,
-    keys.boards,
+    keys.appsRoot,
     keys.loops,
     keys.plugins,
     keys.mcp,
@@ -484,8 +484,8 @@ test('Multi-workspace status, switchWorkspace, and per-workspace signOutCloudAcc
   expect(queryClient.getQueryData(keys.session('thr_1'))).toBeUndefined()
   expect(queryClient.getQueryData(keys.bots)).toBeUndefined()
   expect(queryClient.getQueryData(keys.botActivity('bot_1'))).toBeUndefined()
-  expect(queryClient.getQueryData(keys.boards)).toBeUndefined()
-  expect(queryClient.getQueryData(keys.boardDetail('brd_1'))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.apps({ kind: 'board' }))).toBeUndefined()
+  expect(queryClient.getQueryData(keys.appBoard('brd_1'))).toBeUndefined()
   expect(queryClient.getQueryData(keys.loops)).toBeUndefined()
   expect(queryClient.getQueryData(keys.loopDetail('lp_1'))).toBeUndefined()
   expect(queryClient.getQueryData(keys.botRoutines('bot_1'))).toBeUndefined()
@@ -519,12 +519,12 @@ test('Multi-workspace status, switchWorkspace, and per-workspace signOutCloudAcc
   expect(f.mod.useHasCloud()).toBe(true)
   expect(invalidated).toContainEqual(keys.cloud)
   expect(invalidated).toContainEqual(keys.bots)
-  expect(invalidated).toContainEqual(keys.boards)
+  expect(invalidated).toContainEqual(keys.appsRoot)
   expect(invalidated).toContainEqual(keys.loops)
   expect(invalidated).toContainEqual(keys.plugins)
   expect(invalidated).toContainEqual(keys.mcp)
   expect(queryClient.getQueryData(keys.bots)).toBeUndefined()
-  expect(queryClient.getQueryData(keys.boards)).toBeUndefined()
+  expect(queryClient.getQueryData(keys.apps({ kind: 'board' }))).toBeUndefined()
 
   // Sign out inactive ws_acme: keeps ws_personal active and leaves its cached data intact.
   queryClient.setQueryData(keys.bots, [{ id: 'bot_personal' }])

@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/gitinfo"
@@ -40,7 +41,6 @@ import (
 	"github.com/wins/jaz/backend/internal/terminal"
 	"github.com/wins/jaz/backend/internal/threads"
 	"github.com/wins/jaz/backend/internal/voice"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 type ACPManager interface {
@@ -115,7 +115,7 @@ type Server struct {
 	Loops                *loops.Service
 	RoutineOwner         loops.OwnerFunc
 	Threads              *threads.Service
-	Widgets              *widgets.Service
+	Boards               *boards.Service
 	STT                  voice.STT
 	TTS                  voice.TTS
 	ModelProviderRuntime provider.ReloadableProvider

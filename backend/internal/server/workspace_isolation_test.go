@@ -14,6 +14,8 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/apps"
+	"github.com/wins/jaz/backend/internal/boards"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/cloudsync"
 	"github.com/wins/jaz/backend/internal/feed"
@@ -27,7 +29,6 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/threads"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 type switchableCloudBridge struct {
@@ -130,7 +131,8 @@ func TestWorkspaceHTTPHandlerIsolation(t *testing.T) {
 	events := sessionevents.New()
 	homes := filepath.Join(root, "bots")
 
-	widgetSvc := widgets.NewService(store, logger).WithWorkspace(cloud.ActiveWorkspaceID)
+	appSvc := apps.NewService(store, store, nil, nil, root, root)
+	boardSvc := boards.NewService(store, cloud.ActiveWorkspaceID, logger).WithApps(appSvc)
 	loopSvc := loops.NewService(store, nil, logger, loops.WithWorkspace(cloud.ActiveWorkspaceID))
 	inst := instructions.NewLocalFSStore(root, instructions.WithBotsRoot(homes))
 	srv := &Server{
@@ -138,7 +140,7 @@ func TestWorkspaceHTTPHandlerIsolation(t *testing.T) {
 		Cloud:   cloud,
 		Events:  events,
 		Loops:   loopSvc,
-		Widgets: widgetSvc,
+		Boards:  boardSvc,
 		Threads: threads.NewService(sqlitestore.NewSearchQueries(store), store).WithWorkspace(cloud.ActiveWorkspaceID),
 		MCP:     workspaceMCPRuntime{store: store, workspace: cloud.ActiveWorkspaceID},
 		Root:    root,
@@ -225,15 +227,12 @@ func TestWorkspaceHTTPHandlerIsolation(t *testing.T) {
 		t.Fatalf("cloudB leaked bots: %+v", botList.Bots)
 	}
 
-	// --- 2. Boards, Widgets, and Loops isolation ---
+	// --- 2. Boards and Loops isolation ---
 	cloud.active = storage.LocalWorkspaceID
-	rec = doJSON(http.MethodPost, "/v1/boards", map[string]any{"name": "Local Board"})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("create local board status=%d body=%s", rec.Code, rec.Body.String())
+	localBoard, err := appSvc.CreateBoard(t.Context(), "Local Board")
+	if err != nil {
+		t.Fatal(err)
 	}
-	var localBoard widgets.Board
-	_ = json.Unmarshal(rec.Body.Bytes(), &localBoard)
-
 	rec = doJSON(http.MethodPost, "/v1/loops", map[string]any{
 		"name":      "Local Loop",
 		"prompt":    "check local",
@@ -247,21 +246,6 @@ func TestWorkspaceHTTPHandlerIsolation(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &localLoop)
 
 	cloud.active = "cloudA"
-	var boardList struct {
-		Boards []widgets.Board `json:"boards"`
-	}
-	rec = doJSON(http.MethodGet, "/v1/boards", nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &boardList)
-	if len(boardList.Boards) != 0 {
-		t.Fatalf("cloudA leaked local boards: %+v", boardList.Boards)
-	}
-	if cross := doJSON(http.MethodGet, "/v1/boards/"+localBoard.ID, nil); cross.Code != http.StatusNotFound {
-		t.Fatalf("cross-workspace GET board status=%d, want 404", cross.Code)
-	}
-	if cross := doJSON(http.MethodDelete, "/v1/boards/"+localBoard.ID, nil); cross.Code != http.StatusNotFound {
-		t.Fatalf("cross-workspace DELETE board status=%d, want 404", cross.Code)
-	}
-
 	var loopList struct {
 		Loops []loops.Loop `json:"loops"`
 	}
@@ -276,20 +260,17 @@ func TestWorkspaceHTTPHandlerIsolation(t *testing.T) {
 	if cross := doJSON(http.MethodDelete, "/v1/loops/"+localLoop.ID, nil); cross.Code != http.StatusNotFound {
 		t.Fatalf("cross-workspace DELETE loop status=%d, want 404", cross.Code)
 	}
-
-	rec = doJSON(http.MethodPost, "/v1/boards", map[string]any{"name": "CloudA Board"})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("create cloudA board status=%d body=%s", rec.Code, rec.Body.String())
-	}
-	var cloudABoard widgets.Board
-	_ = json.Unmarshal(rec.Body.Bytes(), &cloudABoard)
-
-	rec = doJSON(http.MethodPost, "/v1/loops", map[string]any{
+	cloudALoopBody := map[string]any{
 		"name":      "CloudA Loop",
 		"prompt":    "check cloudA",
 		"schedule":  map[string]any{"kind": "cron", "expr": "0 * * * *", "timezone": "UTC"},
-		"board_ids": []string{cloudABoard.ID},
-	})
+		"board_ids": []string{localBoard.ID},
+	}
+	if cross := doJSON(http.MethodPost, "/v1/loops", cloudALoopBody); cross.Code != http.StatusBadRequest {
+		t.Fatalf("cloudA loop on a local board status=%d, want 400", cross.Code)
+	}
+	delete(cloudALoopBody, "board_ids")
+	rec = doJSON(http.MethodPost, "/v1/loops", cloudALoopBody)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create cloudA loop status=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -297,20 +278,6 @@ func TestWorkspaceHTTPHandlerIsolation(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &cloudALoop)
 	if spawn := loopRunSpawn(cloudALoop); spawn.WorkspaceID != "cloudA" {
 		t.Fatalf("loopRunSpawn workspace_id = %q, want cloudA", spawn.WorkspaceID)
-	}
-
-	var cloudABoardDetail struct {
-		Items []widgets.BoardItem `json:"items"`
-	}
-	rec = doJSON(http.MethodGet, "/v1/boards/"+cloudABoard.ID, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &cloudABoardDetail)
-	if len(cloudABoardDetail.Items) != 1 || cloudABoardDetail.Items[0].LoopID != cloudALoop.ID {
-		t.Fatalf("cloudA board items = %+v", cloudABoardDetail.Items)
-	}
-
-	cloud.active = "cloudB"
-	if cross := doJSON(http.MethodGet, "/v1/boards/"+cloudABoard.ID, nil); cross.Code != http.StatusNotFound {
-		t.Fatalf("cloudB GET cloudA board status=%d, want 404", cross.Code)
 	}
 
 	// --- 3. Custom MCP Servers isolation ---

@@ -211,9 +211,6 @@ function RootLayout() {
   // Desktop Settings keeps its menu in the column whatever the list toggle says.
   const settingsMenu = settingsOpen && !isMobile
   const columnOpen = settingsMenu || sidebarOpen
-  // A specific board paints itself on bg-surface so its tiles blend; match main
-  // to surface there too so no bg-bg seam shows around the board.
-  const onBoard = /^\/boards\/.+/.test(pathname)
   useEffect(() => {
     if (isMobile) setSidebarOpen(false)
   }, [isMobile, pathname])
@@ -410,13 +407,13 @@ function RootLayout() {
                 {!isMobile && (
                   <div
                     // Settings sits below the row, so nothing should show through it there.
-                    className={`titlebar-drag absolute inset-x-0 top-0 z-shell flex h-10 items-center pr-3 pl-2 ${settingsOpen ? 'bg-bg' : `bg-gradient-to-b to-transparent from-60% ${onBoard ? 'from-surface' : 'from-bg'}`}`}
+                    className={`titlebar-drag absolute inset-x-0 top-0 z-shell flex h-10 items-center pr-3 pl-2 ${settingsOpen ? 'bg-bg' : 'bg-gradient-to-b from-bg from-60% to-transparent'}`}
                   >
                     {navigation}
                     {titleRow}
                   </div>
                 )}
-                <main className={`scrollbar-quiet min-w-0 flex-1 overflow-y-auto pt-[var(--titlebar-height,0px)] ${onBoard ? 'bg-surface' : 'bg-bg'}`}>
+                <main className="scrollbar-quiet min-w-0 flex-1 overflow-y-auto bg-bg pt-[var(--titlebar-height,0px)]">
                   <SidebarVisibility.Provider value={setSidebarOpen}>
                     <SidePanelSlot.Provider value={sidePanelSlot}>
                       <Outlet />

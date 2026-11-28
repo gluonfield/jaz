@@ -182,5 +182,5 @@ export function popOutBoard(boardId: string): void {
     clientRuntime.openBoardWindow(boardId)
     return
   }
-  window.open(`/boards/${boardId}`, '_blank', 'noopener,noreferrer')
+  window.open(`/apps/${boardId}`, '_blank', 'noopener,noreferrer')
 }

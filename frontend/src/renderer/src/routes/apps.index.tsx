@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ListFilter, Users } from 'lucide-react'
+import { ListFilter, Plus, Users } from 'lucide-react'
 import { useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import { AppCard } from '@/components/apps/AppCard'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { AppShareModal } from '@/components/apps/AppShareModal'
 import { AppThumbnail, ThumbnailSheet } from '@/components/apps/AppThumbnail'
 import { useDesktopApps } from '@/components/apps/useDesktopApps'
+import { BoardModal } from '@/components/boards/BoardModal'
+import { deleteBoardWarning } from '@/components/boards/BoardPage'
+import { BoardThumbnail } from '@/components/boards/BoardThumbnail'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconButton } from '@/components/ui/IconButton'
@@ -16,8 +19,17 @@ import { Segmented } from '@/components/ui/Segmented'
 import { Skeleton } from '@/components/ui/Skeleton'
 import type { MenuAction } from '@/components/ui/ActionMenu'
 import { useToast } from '@/components/ui/toast'
-import { appsQuery, deleteApp, remixApp, type AppKind, type JazApp } from '@/lib/api/apps'
+import {
+  appsQuery,
+  deleteApp,
+  hasBundle,
+  remixApp,
+  type AppKind,
+  type BundledApp,
+  type JazApp,
+} from '@/lib/api/apps'
 import { mcpEntrypointsQuery } from '@/lib/api/mcp'
+import { popOutBoard } from '@/lib/clientRuntime'
 import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 import { installFolder } from '@/lib/desktopApps'
 import { shortDate } from '@/lib/format/time'
@@ -35,10 +47,13 @@ const KINDS: { value: KindFilter; label: string }[] = [
   { value: 'all', label: 'All kinds' },
   { value: 'artifact', label: 'Interactive' },
   { value: 'document', label: 'Documents' },
+  { value: 'board', label: 'Boards' },
 ]
 
+const KIND_LABEL: Record<AppKind, string> = { artifact: 'Interactive', document: 'Document', board: 'Board' }
+
 const EMPTY: Record<AppsTab, { title: string; text: string }> = {
-  mine: { title: 'No apps yet', text: 'Publish an artifact or document from a chat and it lives here.' },
+  mine: { title: 'No apps yet', text: 'Publish an artifact or document from a chat, or gather apps on a board.' },
   team: { title: 'Nothing shared yet', text: 'Apps shared with your team or a space appear here.' },
   desktop: { title: 'No installed apps', text: 'Install an app to give it its own window and icon.' },
   connected: { title: 'No connected apps', text: 'Apps from your connected MCP servers appear here.' },
@@ -46,7 +61,7 @@ const EMPTY: Record<AppsTab, { title: string; text: string }> = {
 
 // An installed app whose published record is gone still shows, from what the
 // desktop kept at install time.
-function installedAsApp(installed: InstalledDesktopApp): JazApp {
+function installedAsApp(installed: InstalledDesktopApp): BundledApp {
   return {
     id: installed.appId,
     owner_user_id: 'local',
@@ -80,6 +95,7 @@ function AppsLibraryPage() {
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
   const [kindMenuOpen, setKindMenuOpen] = useState(false)
   const [shareApp, setShareApp] = useState<JazApp | null>(null)
+  const [creatingBoard, setCreatingBoard] = useState(false)
 
   const allApps = useQuery(appsQuery({ scope: 'all' }))
   const mcpApps = useQuery(mcpEntrypointsQuery)
@@ -88,9 +104,9 @@ function AppsLibraryPage() {
     mutationFn: (id: string) => deleteApp(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.appsRoot })
-      toast('Deleted app')
+      toast('Deleted')
     },
-    onError: (err) => toast(err instanceof Error ? err.message : 'Could not delete app', 'danger'),
+    onError: (err) => toast(err instanceof Error ? err.message : 'Could not delete', 'danger'),
   })
 
   const remixMutation = useMutation({
@@ -123,19 +139,26 @@ function AppsLibraryPage() {
     { value: 'connected' as const, label: 'Connected' },
   ]
 
-  const appActions = (app: JazApp): MenuAction[] => [
+  const deleteAction = (app: JazApp, warning: string): MenuAction[] => !isViewer && app.can_edit !== false ? [{
+    label: 'Delete',
+    onSelect: () => {
+      if (window.confirm(warning)) deleteMutation.mutate(app.id)
+    },
+  }] : []
+
+  // A board has a window of its own and nothing to install, remix or permit.
+  const boardActions = (board: JazApp): MenuAction[] => [
+    { label: 'Open in window', onSelect: () => popOutBoard(board.id) },
+    { label: cloud.active ? 'Share' : 'Manage', onSelect: () => setShareApp(board) },
+    ...deleteAction(board, deleteBoardWarning(board.title)),
+  ]
+
+  const appActions = (app: BundledApp): MenuAction[] => [
     ...[desktop.primary(app)].filter((action) => action !== null),
     { label: cloud.active ? 'Share' : 'Manage', onSelect: () => setShareApp(app) },
     ...(isViewer ? [] : [{ label: 'Remix in a new chat', onSelect: () => remixMutation.mutate(app.id) }]),
     ...desktop.actions(app),
-    ...(!isViewer && app.can_edit !== false ? [{
-      label: 'Delete',
-      onSelect: () => {
-        if (window.confirm(`Delete "${app.title}" and all its stored data?`)) {
-          deleteMutation.mutate(app.id)
-        }
-      },
-    }] : []),
+    ...deleteAction(app, `Delete "${app.title}" and all its stored data?`),
   ]
 
   const cards: (ComponentProps<typeof AppCard> & { key: string })[] = tab === 'connected'
@@ -159,7 +182,7 @@ function AppsLibraryPage() {
         title: app.title,
         detail: tab === 'desktop' && installed?.launcherPath
           ? `Installed in ${installFolder(installed.launcherPath)}`
-          : `${app.kind === 'document' ? 'Document' : 'Interactive'} · ${shortDate(app.updated_at)}`,
+          : `${KIND_LABEL[app.kind]} · ${shortDate(app.updated_at)}`,
         mark: installed?.permissionsPaused ? (
           <span title="Changed since you allowed its permissions" className="size-2 shrink-0 rounded-full bg-running" />
         ) : app.visibility !== 'private' ? (
@@ -167,8 +190,8 @@ function AppsLibraryPage() {
             <Users size={15} aria-hidden />
           </span>
         ) : null,
-        preview: <AppThumbnail app={app} />,
-        actions: appActions(app),
+        preview: hasBundle(app) ? <AppThumbnail app={app} /> : <BoardThumbnail boardId={app.id} />,
+        actions: hasBundle(app) ? appActions(app) : boardActions(app),
         onOpen: () => void navigate({ to: '/apps/$appId', params: { appId: app.id } }),
       }
     })
@@ -178,7 +201,15 @@ function AppsLibraryPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1120px] flex-col px-8 pb-12 pt-10 max-sm:px-4 max-sm:pt-6">
-      <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-ink">Apps</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-ink">Apps</h1>
+        {isViewer ? null : (
+          <Button variant="primary" onClick={() => setCreatingBoard(true)}>
+            <Plus size={14} />
+            New board
+          </Button>
+        )}
+      </div>
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <Segmented value={tab} options={tabs} onChange={setTab} layoutId="apps-library-tab" />
@@ -240,6 +271,7 @@ function AppsLibraryPage() {
         )}
       </div>
 
+      {creatingBoard ? <BoardModal open onClose={() => setCreatingBoard(false)} /> : null}
       {shareApp ? <AppShareModal open onClose={() => setShareApp(null)} app={shareApp} /> : null}
       {desktop.dialog}
     </div>

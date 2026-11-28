@@ -383,60 +383,6 @@ export interface LoopRun {
   created_at: string
 }
 
-export type BoardVisibility = 'private' | 'team' | 'selected'
-
-export interface BoardMember {
-  user_id: string
-  email: string
-  display_name: string
-  role: string
-}
-
-export interface Board {
-  id: string
-  name: string
-  grid_cols: number
-  row_height: number
-  // Zooms every widget document on the board (big-screen comfort).
-  font_scale: number
-  window_bounds?: string
-  is_default: boolean
-  created_at: string
-  updated_at: string
-  // Cloud workspace fields (absent on local boards).
-  org_id?: string
-  owner_user_id?: string
-  owner_display_name?: string
-  owner_email?: string
-  visibility?: BoardVisibility
-  is_owner?: boolean
-  can_edit?: boolean
-  members?: BoardMember[]
-}
-
-// board_widgets joined with the widget and its loop (backend/internal/widgets).
-export interface BoardItem {
-  board_id: string
-  widget_id: string
-  x: number
-  y: number
-  w: number
-  h: number
-  placed_by: 'llm' | 'user'
-  loop_id: string
-  loop_name: string
-  loop_status: Loop['status']
-  loop_last_run_status?: LoopRunStatus
-  loop_last_run_at?: string
-  app_id?: string
-  app_kind?: 'artifact' | 'document'
-  title: string
-  current_version: number
-  size_hint?: string
-  last_error?: string
-  widget_updated_at: string
-}
-
 export interface ToolCallJSON {
   id: string
   type: 'function'

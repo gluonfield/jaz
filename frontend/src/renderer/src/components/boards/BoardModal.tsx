@@ -2,58 +2,27 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { BoardIllustration } from '@/components/boards/BoardIllustration'
-import { BoardVisibilityFields } from '@/components/boards/BoardVisibilityFields'
-import type { PickedMember } from '@/components/cloud/MemberPicker'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { createBoard } from '@/lib/api/boards'
-import type { BoardVisibility } from '@/lib/api/types'
-import { useCloudSession } from '@/lib/cloudSession'
 import { keys } from '@/lib/query/keys'
 
-// Create a board, then land on it with the widget picker already open for local
-// boards — AddWidgetModal (via ?add=1) owns everything about getting loops onto boards.
-export function BoardModal({
-  open,
-  onClose,
-  initialVisibility = 'private',
-}: {
-  open: boolean
-  onClose: () => void
-  initialVisibility?: BoardVisibility
-}) {
+// Creates a board, then opens it with the tile picker up. A new board is
+// private; sharing it is the same as sharing any app.
+export function BoardModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const cloud = useCloudSession()
   const [name, setName] = useState('')
-  const [visibility, setVisibility] = useState<BoardVisibility>(initialVisibility)
-  const [selectedMembers, setSelectedMembers] = useState<PickedMember[]>([])
 
   const create = useMutation({
-    mutationFn: () => {
-      const boardName = name.trim() || 'Board'
-      if (!cloud.active) return createBoard(boardName)
-      return createBoard({
-        name: boardName,
-        visibility,
-        ...(visibility === 'selected'
-          ? { member_user_ids: selectedMembers.map((m) => m.user_id) }
-          : {}),
-      })
-    },
-    onSuccess: (created) => {
-      void queryClient.invalidateQueries({ queryKey: keys.boards })
+    mutationFn: () => createBoard(name.trim() || 'Board'),
+    onSuccess: (board) => {
+      void queryClient.invalidateQueries({ queryKey: keys.appsRoot })
       onClose()
-      void navigate({
-        to: '/boards/$boardId',
-        params: { boardId: created.id },
-        search: { add: true },
-      })
+      void navigate({ to: '/apps/$appId', params: { appId: board.id }, search: { add: true } })
     },
   })
-
-  const excludeUserIds = cloud.user?.id ? [cloud.user.id] : []
 
   return (
     <Modal
@@ -61,22 +30,17 @@ export function BoardModal({
       onClose={onClose}
       size="lg"
       title="New board"
-      description="A tiled board your loops keep up to date."
+      description="An app that holds other apps as tiles."
       footer={
         <>
           <p className="text-[12px] text-danger" role="alert">
-            {create.isError ? (create.error as Error).message : ''}
+            {create.isError ? create.error.message : ''}
           </p>
           <div className="flex shrink-0 items-center gap-1">
             <Button variant="ghost" size="md" onClick={onClose}>
               Cancel
             </Button>
-            <Button
-              variant="primary"
-              size="md"
-              disabled={create.isPending}
-              onClick={() => create.mutate()}
-            >
+            <Button variant="primary" size="md" disabled={create.isPending} onClick={() => create.mutate()}>
               {create.isPending ? 'Creating…' : 'Create board'}
             </Button>
           </div>
@@ -86,8 +50,8 @@ export function BoardModal({
       <div className="space-y-5">
         <BoardIllustration />
         <p className="text-[13px] leading-relaxed text-ink-2">
-          Assign a loop to a board and every run rewrites its widget — counts, lists, charts —
-          using data it just gathered. Drag and resize tiles; your layout always wins.
+          Put a loop on a board and every run republishes its app there with what it just gathered.
+          Pin any other app beside it. Drag and resize tiles; your layout always wins.
         </p>
         <label className="block">
           <span className="mb-1.5 block text-[12px] font-medium text-ink-2">Name</span>
@@ -102,16 +66,6 @@ export function BoardModal({
             placeholder="Mission control"
           />
         </label>
-        {cloud.active ? (
-          <BoardVisibilityFields
-            visibility={visibility}
-            onVisibilityChange={setVisibility}
-            selectedMembers={selectedMembers}
-            onMembersChange={setSelectedMembers}
-            excludeUserIds={excludeUserIds}
-            canAddTeamMember={cloud.user?.role === 'admin'}
-          />
-        ) : null}
       </div>
     </Modal>
   )

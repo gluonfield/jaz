@@ -25,12 +25,12 @@ type Service struct {
 	Now         func() time.Time
 	MemoryPaths *MemoryPaths
 	workspace   func() string
-	// PromptExtras append sections, such as widget instructions or the
+	// PromptExtras append sections, such as board app instructions or the
 	// owning bot's saved prompt, to the metadata prompt of each run.
 	PromptExtras    []func(Loop, Run) string
 	ArtifactSurface func(Loop, Run) string
 	// RunCheck can fail a run whose turn ended well but left its work undone,
-	// as a widget run that published nothing.
+	// as a board run that published nothing.
 	RunCheck func(Loop, Run) error
 	// Notice posts a bot's message in its own chat.
 	Notice func(botID, text string) error
@@ -368,7 +368,7 @@ func (s *Service) StartDueAll(ctx context.Context) (int, error) {
 	}
 }
 
-// OnBoard reports whether loop publishes a widget to a board.
+// OnBoard reports whether loop publishes an app to a board.
 func (s *Service) OnBoard(loop Loop) bool {
 	return s.artifactSurface(loop, Run{}) != ""
 }

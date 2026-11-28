@@ -10,7 +10,6 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/threads"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
 
 func TestWorkspaceEntityIsolationInSQLite(t *testing.T) {
@@ -64,27 +63,25 @@ func TestWorkspaceEntityIsolationInSQLite(t *testing.T) {
 		t.Fatalf("cloudB bots = %+v, %v", cloudBBots, err)
 	}
 
-	// 2. Boards & Widgets (default Personal board stays strictly in local).
-	if _, found, err := store.DefaultBoardForWorkspace(storage.LocalWorkspaceID); err != nil || !found {
-		t.Fatalf("local default board found=%v, err=%v", found, err)
+	// 2. Boards (the default Personal board stays strictly in local).
+	boardFilter := storage.AppListFilter{Kind: storage.AppKindBoard}
+	if boards, err := store.ListApps(ctx, storage.LocalWorkspaceID, boardFilter); err != nil || len(boards) != 1 || boards[0].Title != "Personal" {
+		t.Fatalf("local boards = %+v, %v; want the default board", boards, err)
 	}
-	if _, found, err := store.DefaultBoardForWorkspace("cloudA"); err != nil || found {
-		t.Fatalf("cloudA unexpectedly inherited default board: found=%v, err=%v", found, err)
-	}
-	if boards, err := store.ListBoardsForWorkspace("cloudA"); err != nil || len(boards) != 0 {
+	if boards, err := store.ListApps(ctx, "cloudA", boardFilter); err != nil || len(boards) != 0 {
 		t.Fatalf("cloudA initial boards = %+v, %v; want empty", boards, err)
 	}
-	if err := store.SaveBoard(widgets.Board{ID: "board-a", WorkspaceID: "cloudA", Name: "Ops", GridCols: 6, RowHeight: 120, FontScale: 1, CreatedAt: now, UpdatedAt: now}); err != nil {
+	if _, err := store.CreateApp(ctx, storage.App{ID: "board-a", WorkspaceID: "cloudA", Title: "Ops", Kind: storage.AppKindBoard}); err != nil {
 		t.Fatal(err)
 	}
-	if boards, err := store.ListBoardsForWorkspace("cloudA"); err != nil || len(boards) != 1 || boards[0].ID != "board-a" {
+	if boards, err := store.ListApps(ctx, "cloudA", boardFilter); err != nil || len(boards) != 1 || boards[0].ID != "board-a" {
 		t.Fatalf("cloudA boards = %+v, %v", boards, err)
 	}
-	if boards, err := store.ListBoardsForWorkspace("cloudB"); err != nil || len(boards) != 0 {
+	if boards, err := store.ListApps(ctx, "cloudB", boardFilter); err != nil || len(boards) != 0 {
 		t.Fatalf("cloudB boards = %+v, %v; want empty", boards, err)
 	}
 
-	// 3. Loops & Widgets.
+	// 3. Loops.
 	for _, l := range []loops.Loop{
 		{ID: "loop-local", WorkspaceID: storage.LocalWorkspaceID, Name: "L", Prompt: "p", Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 * * * *", Timezone: "UTC"}, Status: loops.StatusActive, Runtime: loops.RuntimeACP, CreatedAt: now, UpdatedAt: now},
 		{ID: "loop-a", WorkspaceID: "cloudA", Name: "A", Prompt: "p", Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 * * * *", Timezone: "UTC"}, Status: loops.StatusActive, Runtime: loops.RuntimeACP, CreatedAt: now, UpdatedAt: now},
@@ -93,20 +90,11 @@ func TestWorkspaceEntityIsolationInSQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := store.SaveWidget(widgets.Widget{ID: "w-local", WorkspaceID: storage.LocalWorkspaceID, LoopID: "loop-local", Title: "WL", CreatedAt: now, UpdatedAt: now}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.SaveWidget(widgets.Widget{ID: "w-a", WorkspaceID: "cloudA", LoopID: "loop-a", Title: "WA", CreatedAt: now, UpdatedAt: now}); err != nil {
-		t.Fatal(err)
-	}
 	if got, err := store.ListLoopsForWorkspace("cloudA"); err != nil || len(got) != 1 || got[0].ID != "loop-a" {
 		t.Fatalf("cloudA loops = %+v, %v", got, err)
 	}
 	if got, err := store.ListLoopsForWorkspace("cloudB"); err != nil || len(got) != 0 {
 		t.Fatalf("cloudB loops = %+v, %v", got, err)
-	}
-	if got, err := store.LoadWidget("w-a"); err != nil || got.WorkspaceID != "cloudA" {
-		t.Fatalf("cloudA widget = %+v, %v", got, err)
 	}
 
 	// 4. Custom MCP servers.

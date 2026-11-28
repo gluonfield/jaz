@@ -61,10 +61,6 @@ func sanitizeProxyQuery(rawQuery string) string {
 	return vals.Encode()
 }
 
-func isWidgetContentPath(path string) bool {
-	return strings.HasPrefix(path, "/v1/widgets/") && strings.HasSuffix(path, "/content")
-}
-
 func writeProxyJSONError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -187,13 +183,6 @@ func (s *Service) ProxyActiveWorkspace(w http.ResponseWriter, r *http.Request) b
 		if v := resp.Header.Get(hdr); v != "" {
 			w.Header().Set(hdr, v)
 		}
-	}
-	if isWidgetContentPath(prepared.cleanPath) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	}
 	w.WriteHeader(resp.StatusCode)
 	if resp.StatusCode != http.StatusNoContent {

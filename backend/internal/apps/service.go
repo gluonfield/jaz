@@ -244,10 +244,6 @@ func (s *Service) PublishBundle(ctx context.Context, bundle appbundle.Bundle, ta
 	if appbundle.RequiresPublishApproval(bundle.Manifest.Capabilities) {
 		return storage.App{}, storage.AppVersion{}, false, storage.ErrAppApprovalRequired
 	}
-	return s.publishStaged(ctx, bundle, targetAppID, sourceThreadID, "")
-}
-
-func (s *Service) publishStaged(ctx context.Context, bundle appbundle.Bundle, targetAppID, sourceThreadID, loopID string) (storage.App, storage.AppVersion, bool, error) {
 	draft, err := s.StageDraft(ctx, bundle, targetAppID, sourceThreadID)
 	if err != nil {
 		return storage.App{}, storage.AppVersion{}, false, err
@@ -256,13 +252,43 @@ func (s *Service) publishStaged(ctx context.Context, bundle appbundle.Bundle, ta
 		RequestedID:  draft.TargetAppID,
 		DraftID:      draft.ID,
 		BundleSHA256: draft.BundleSHA256,
-		LoopID:       loopID,
 	})
 }
 
-// PublishLoopApp saves html as the next version of the app a routine keeps on
-// its boards. The first publish creates the app.
-func (s *Service) PublishLoopApp(ctx context.Context, loopID, title, html, sourceThreadID string) (storage.App, error) {
+// CreateBoard adds a board: an app that holds other apps as tiles.
+func (s *Service) CreateBoard(ctx context.Context, title string) (storage.App, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return storage.App{}, errors.New("board title is required")
+	}
+	if utf8.RuneCountInString(title) > appbundle.MaxTitleRunes {
+		return storage.App{}, errors.New("title exceeds maximum length")
+	}
+	return s.createApp(ctx, storage.App{Title: title, Kind: storage.AppKindBoard})
+}
+
+// EnsureLoopApp returns the app a loop keeps on its boards, adding an
+// unpublished one for a loop that has none.
+func (s *Service) EnsureLoopApp(ctx context.Context, loopID, title string) (storage.App, error) {
+	app, err := s.store.GetAppByLoop(ctx, loopID)
+	if !errors.Is(err, storage.ErrAppNotFound) {
+		return app, err
+	}
+	return s.createApp(ctx, storage.App{Title: title, Kind: storage.AppKindArtifact, LoopID: loopID})
+}
+
+func (s *Service) createApp(ctx context.Context, app storage.App) (storage.App, error) {
+	id, err := generateAppID()
+	if err != nil {
+		return storage.App{}, err
+	}
+	app.ID = id
+	return s.store.CreateApp(ctx, app)
+}
+
+// PublishLoopApp saves html as the next version of the app a loop keeps on its
+// boards.
+func (s *Service) PublishLoopApp(ctx context.Context, appID, title, html, sourceThreadID string) (storage.App, error) {
 	bundle, err := appbundle.PackFiles(appbundle.Manifest{
 		Format: appbundle.Format,
 		Title:  title,
@@ -272,16 +298,8 @@ func (s *Service) PublishLoopApp(ctx context.Context, loopID, title, html, sourc
 	if err != nil {
 		return storage.App{}, err
 	}
-	current, err := s.store.GetAppByLoop(ctx, loopID)
-	if err != nil && !errors.Is(err, storage.ErrAppNotFound) {
-		return storage.App{}, err
-	}
-	app, _, _, err := s.publishStaged(ctx, bundle, current.ID, sourceThreadID, loopID)
+	app, _, _, err := s.PublishBundle(ctx, bundle, appID, sourceThreadID)
 	return app, err
-}
-
-func (s *Service) LoopApp(ctx context.Context, loopID string) (storage.App, error) {
-	return s.store.GetAppByLoop(ctx, loopID)
 }
 
 type PublishInput struct {
@@ -291,8 +309,6 @@ type PublishInput struct {
 	Title        string
 	Description  string
 	Visibility   string
-	// LoopID makes a newly created app the one its routine keeps on its boards.
-	LoopID string
 }
 
 func (s *Service) PublishFromDraft(ctx context.Context, input PublishInput) (storage.App, storage.AppVersion, bool, error) {
@@ -377,7 +393,6 @@ func (s *Service) PublishFromDraft(ctx context.Context, input PublishInput) (sto
 		Visibility:     vis,
 		Version:        nextVersion,
 		StorageDir:     dstDir,
-		LoopID:         input.LoopID,
 	})
 	if err != nil {
 		_ = os.RemoveAll(dstDir)

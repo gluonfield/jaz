@@ -14,19 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite"
-	"github.com/wins/jaz/backend/internal/widgets"
 )
-
-func testBoard(id string) widgets.Board {
-	return widgets.Board{
-		ID:          id,
-		WorkspaceID: storage.LocalWorkspaceID,
-		Name:        "Test Board",
-		GridCols:    6,
-		RowHeight:   120,
-		FontScale:   1,
-	}
-}
 
 type fakeProvider struct {
 	reply string
@@ -52,7 +40,7 @@ func (f *fakeTools) CallAppBridgeTool(_ context.Context, name string, _ json.Raw
 	return &mcpsdk.CallToolResult{Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "ok"}}}, nil
 }
 
-func TestLocalAppsLifecycleKVTicketsAIAndBoards(t *testing.T) {
+func TestLocalAppsLifecycleKVTicketsAndAI(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
@@ -160,25 +148,49 @@ func TestLocalAppsLifecycleKVTicketsAIAndBoards(t *testing.T) {
 		t.Fatalf("expected hydrated index.html: %v", err)
 	}
 
-	// Pin onto board & verify ListBoardItems returns it as a tile.
-	board, err := store.LoadBoard("missing")
-	_ = board
-	if err := store.SaveBoard(testBoard("board-1")); err != nil {
-		t.Fatalf("SaveBoard: %v", err)
-	}
-	if err := svc.AssignToBoard(ctx, "board-1", []string{app.ID}); err != nil {
-		t.Fatalf("AssignToBoard: %v", err)
-	}
-	items, err := store.ListBoardItems("board-1")
-	if err != nil || len(items) != 1 || items[0].AppID != app.ID || items[0].LoopID != "" || items[0].Title != app.Title {
-		t.Fatalf("ListBoardItems: %+v err=%v", items, err)
-	}
-
 	// Delete immediately invalidates ticket reads.
 	if err := svc.DeleteApp(ctx, app.ID); err != nil {
 		t.Fatalf("DeleteApp: %v", err)
 	}
 	if _, err := svc.ReadBundleFile(ctx, claims, "index.html"); !errors.Is(err, storage.ErrAppNotFound) {
 		t.Fatalf("expected deleted app read to fail closed, got %v", err)
+	}
+}
+
+func TestBoardIsAnAppThatHoldsNoBundle(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store, err := sqlite.New(root)
+	if err != nil {
+		t.Fatalf("sqlite.New: %v", err)
+	}
+	defer store.Close()
+	svc := apps.NewService(store, store, nil, nil, root, root)
+
+	if _, err := svc.CreateBoard(ctx, "  "); err == nil {
+		t.Fatal("a board without a title was created")
+	}
+	board, err := svc.CreateBoard(ctx, "  Desk  ")
+	if err != nil || board.Kind != storage.AppKindBoard || board.Title != "Desk" || board.CurrentVersion != 0 {
+		t.Fatalf("CreateBoard: %+v err=%v", board, err)
+	}
+	listed, err := svc.ListApps(ctx, storage.AppListFilter{Query: "Desk"})
+	if err != nil || len(listed) != 1 || listed[0].ID != board.ID {
+		t.Fatalf("a board must list in the library before it holds anything: %+v err=%v", listed, err)
+	}
+	if _, err := svc.PublishLoopApp(ctx, board.ID, "Desk", "<p>hi</p>", ""); !errors.Is(err, storage.ErrAppConflict) {
+		t.Fatalf("publishing a bundle into a board: %v", err)
+	}
+
+	title := "Ops"
+	renamed, err := svc.UpdateApp(ctx, board.ID, storage.AppPatch{Title: &title})
+	if err != nil || renamed.Title != "Ops" {
+		t.Fatalf("rename: %+v err=%v", renamed, err)
+	}
+	if err := svc.DeleteApp(ctx, board.ID); err != nil {
+		t.Fatalf("DeleteApp: %v", err)
+	}
+	if _, _, err := svc.GetApp(ctx, board.ID); !errors.Is(err, storage.ErrAppNotFound) {
+		t.Fatalf("deleted board: %v", err)
 	}
 }

@@ -4,13 +4,14 @@ import { DesktopAppDialog } from '@/components/apps/DesktopAppDialog'
 import { Button } from '@/components/ui/Button'
 import type { MenuAction } from '@/components/ui/ActionMenu'
 import { useToast } from '@/components/ui/toast'
-import { appDetailQuery, detailApp, type JazApp } from '@/lib/api/apps'
+import { appDetailQuery, detailApp, hasBundle, type BundledApp } from '@/lib/api/apps'
 import { revealInFolderLabel } from '@/lib/deviceLabel'
 import { desktopApps, installDesktopApp, installFolder } from '@/lib/desktopApps'
 import { keys } from '@/lib/query/keys'
 import { declaredDesktopPermissions } from '@shared/desktopApps'
 
-type AppRef = JazApp | string
+// Only an app with a bundle installs; a board opens in a window of its own.
+type AppRef = BundledApp | string
 
 const refId = (app: AppRef): string => (typeof app === 'string' ? app : app.id)
 
@@ -21,12 +22,16 @@ export function useDesktopApps() {
   const toast = useToast()
   const list = useQuery({ queryKey: keys.desktopApps, queryFn: () => desktopApps!.list(), enabled: Boolean(desktopApps) })
   const records = useMemo(() => new Map((list.data ?? []).map((record) => [record.appId, record])), [list.data])
-  const [dialog, setDialog] = useState<JazApp | null>(null)
+  const [dialog, setDialog] = useState<BundledApp | null>(null)
   const [installing, setInstalling] = useState<string | null>(null)
   const refresh = () => void queryClient.invalidateQueries({ queryKey: keys.desktopApps })
   const fail = (error: unknown) => toast(error instanceof Error ? error.message : 'Something went wrong', 'danger')
-  const resolve = async (app: AppRef): Promise<JazApp> =>
-    typeof app === 'string' ? detailApp(await queryClient.fetchQuery(appDetailQuery(app))) : app
+  const resolve = async (app: AppRef): Promise<BundledApp> => {
+    if (typeof app !== 'string') return app
+    const fetched = detailApp(await queryClient.fetchQuery(appDetailQuery(app)))
+    if (!hasBundle(fetched)) throw new Error('A board cannot be installed as an app')
+    return fetched
+  }
 
   const install = async (app: AppRef) => {
     setInstalling(refId(app))

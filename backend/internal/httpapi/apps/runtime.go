@@ -268,31 +268,3 @@ func (h *Handler) CallTool(w http.ResponseWriter, r *http.Request) {
 		"result": res,
 	})
 }
-
-func (h *Handler) AssignToBoard(w http.ResponseWriter, r *http.Request) {
-	if h.proxyCloud(w, r) {
-		return
-	}
-	boardID := strings.TrimSpace(r.PathValue("id"))
-	var body struct {
-		AppIDs []string `json:"app_ids"`
-		AppID  string   `json:"app_id"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil {
-		httpapi.WriteError(w, http.StatusBadRequest, errors.New("invalid json"))
-		return
-	}
-	ids := body.AppIDs
-	if len(ids) == 0 && strings.TrimSpace(body.AppID) != "" {
-		ids = []string{strings.TrimSpace(body.AppID)}
-	}
-	if len(ids) == 0 || len(ids) > 50 {
-		httpapi.WriteError(w, http.StatusBadRequest, errors.New("app_ids must contain between 1 and 50 items"))
-		return
-	}
-	if err := h.service.AssignToBoard(r.Context(), boardID, ids); err != nil {
-		writeAppError(w, err)
-		return
-	}
-	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
-}

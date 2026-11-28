@@ -105,8 +105,8 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind := strings.ToLower(strings.TrimSpace(q.Get("kind")))
-	if kind != "" && kind != storage.AppKindArtifact && kind != storage.AppKindDocument {
-		httpapi.WriteError(w, http.StatusBadRequest, errors.New("kind must be artifact or document"))
+	if kind != "" && kind != storage.AppKindArtifact && kind != storage.AppKindDocument && kind != storage.AppKindBoard {
+		httpapi.WriteError(w, http.StatusBadRequest, errors.New("kind must be artifact, document or board"))
 		return
 	}
 	items, err := h.service.ListApps(r.Context(), storage.AppListFilter{
@@ -310,6 +310,15 @@ func (h *Handler) publish(w http.ResponseWriter, r *http.Request, requestedID st
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxDraftBodyBytes)).Decode(&body); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, errors.New("invalid json"))
+		return
+	}
+	if requestedID == "new" && body.Kind == storage.AppKindBoard {
+		board, err := h.service.CreateBoard(r.Context(), body.Title)
+		if err != nil {
+			httpapi.WriteError(w, http.StatusBadRequest, err)
+			return
+		}
+		httpapi.WriteJSON(w, http.StatusCreated, map[string]any{"app": board})
 		return
 	}
 	var (

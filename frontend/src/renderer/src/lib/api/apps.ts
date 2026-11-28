@@ -4,7 +4,9 @@ import { apiFetch, apiUrl, del, get, patch, post, put } from './client'
 import { backendFetch } from '../clientRuntime'
 
 export type AppVisibility = 'private' | 'selected' | 'space' | 'team'
-export type AppKind = 'artifact' | 'document'
+// The kinds published as a bundle. A board has none: it holds other apps as tiles.
+export type BundleKind = 'artifact' | 'document'
+export type AppKind = BundleKind | 'board'
 
 export interface AppIconSpec {
   kind?: string
@@ -67,6 +69,10 @@ export interface JazApp {
   updated_at: string
 }
 
+export type BundledApp = JazApp & { kind: BundleKind }
+
+export const hasBundle = (app: JazApp): app is BundledApp => app.kind !== 'board'
+
 export interface AppVersion {
   app_id: string
   version: number
@@ -89,7 +95,7 @@ export interface PendingAppDraft {
   bundle_sha256: string
   target_app_id?: string
   title: string
-  kind: AppKind
+  kind: BundleKind
   capabilities: string[]
   allowed_tools: string[]
   expires_at: string
@@ -243,7 +249,7 @@ export interface AppBundleInput {
   loop_id?: string
   title: string
   description?: string
-  kind?: AppKind
+  kind?: BundleKind
   entry?: string
   html?: string
   markdown?: string
@@ -251,18 +257,18 @@ export interface AppBundleInput {
 
 // Saves a staged draft the user approved, as a private app or as the next
 // version of its target, which keeps the sharing it already has.
-export async function saveAppDraft(draft: PendingAppDraft): Promise<JazApp> {
+export async function saveAppDraft(draft: PendingAppDraft): Promise<BundledApp> {
   const body = { draft_id: draft.draft_id, bundle_sha256: draft.bundle_sha256 }
   const saved = draft.target_app_id
-    ? put<{ app: JazApp }>(`/v1/apps/${encodeURIComponent(draft.target_app_id)}`, body)
-    : post<{ app: JazApp }>('/v1/apps', body)
+    ? put<{ app: BundledApp }>(`/v1/apps/${encodeURIComponent(draft.target_app_id)}`, body)
+    : post<{ app: BundledApp }>('/v1/apps', body)
   return (await saved).app
 }
 
 // Saves an artifact or document as a private app in one request, with its own
 // sandboxed storage and nothing that needs approval.
-export async function saveApp(input: AppBundleInput): Promise<JazApp> {
-  return (await post<{ app: JazApp }>('/v1/apps', { ...input, capabilities: ['storage:personal'] })).app
+export async function saveApp(input: AppBundleInput): Promise<BundledApp> {
+  return (await post<{ app: BundledApp }>('/v1/apps', { ...input, capabilities: ['storage:personal'] })).app
 }
 
 export function patchApp(
