@@ -110,6 +110,7 @@ FROM apps a
 LEFT JOIN app_versions v ON v.app_id = a.id AND v.version = a.current_version
 WHERE a.status = 'active'
   AND (CAST(sqlc.arg(filter_workspace_id) AS TEXT) = '' OR a.workspace_id = sqlc.arg(filter_workspace_id))
+  AND (CAST(sqlc.arg(filter_source_thread_id) AS TEXT) = '' OR a.source_thread_id = sqlc.arg(filter_source_thread_id))
   AND (CAST(sqlc.arg(filter_kind) AS TEXT) = '' OR a.kind = sqlc.arg(filter_kind))
   AND (CAST(sqlc.arg(filter_query) AS TEXT) = '' OR LOWER(a.title) LIKE '%' || LOWER(sqlc.arg(filter_query)) || '%' OR LOWER(a.description) LIKE '%' || LOWER(sqlc.arg(filter_query)) || '%')
 ORDER BY a.updated_at_ms DESC, a.id ASC;

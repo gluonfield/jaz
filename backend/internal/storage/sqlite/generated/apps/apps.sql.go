@@ -634,15 +634,17 @@ FROM apps a
 LEFT JOIN app_versions v ON v.app_id = a.id AND v.version = a.current_version
 WHERE a.status = 'active'
   AND (CAST(?1 AS TEXT) = '' OR a.workspace_id = ?1)
-  AND (CAST(?2 AS TEXT) = '' OR a.kind = ?2)
-  AND (CAST(?3 AS TEXT) = '' OR LOWER(a.title) LIKE '%' || LOWER(?3) || '%' OR LOWER(a.description) LIKE '%' || LOWER(?3) || '%')
+  AND (CAST(?2 AS TEXT) = '' OR a.source_thread_id = ?2)
+  AND (CAST(?3 AS TEXT) = '' OR a.kind = ?3)
+  AND (CAST(?4 AS TEXT) = '' OR LOWER(a.title) LIKE '%' || LOWER(?4) || '%' OR LOWER(a.description) LIKE '%' || LOWER(?4) || '%')
 ORDER BY a.updated_at_ms DESC, a.id ASC
 `
 
 type ListAppsParams struct {
-	FilterWorkspaceID string `json:"filter_workspace_id"`
-	FilterKind        string `json:"filter_kind"`
-	FilterQuery       string `json:"filter_query"`
+	FilterWorkspaceID    string `json:"filter_workspace_id"`
+	FilterSourceThreadID string `json:"filter_source_thread_id"`
+	FilterKind           string `json:"filter_kind"`
+	FilterQuery          string `json:"filter_query"`
 }
 
 type ListAppsRow struct {
@@ -666,7 +668,12 @@ type ListAppsRow struct {
 }
 
 func (q *Queries) ListApps(ctx context.Context, arg ListAppsParams) ([]ListAppsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listApps, arg.FilterWorkspaceID, arg.FilterKind, arg.FilterQuery)
+	rows, err := q.db.QueryContext(ctx, listApps,
+		arg.FilterWorkspaceID,
+		arg.FilterSourceThreadID,
+		arg.FilterKind,
+		arg.FilterQuery,
+	)
 	if err != nil {
 		return nil, err
 	}

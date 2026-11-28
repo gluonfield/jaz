@@ -7,8 +7,11 @@ export type PanelView = PluginView
 export type PanelPresentation = Extract<PresentationEvent, { kind: 'plugin-view' | 'canvas' }>
 export const isPanelPresentation = (view?: PresentationEvent): view is PanelPresentation => view?.kind === 'plugin-view' || view?.kind === 'canvas'
 
+export type CanvasTarget = { page: string; item?: string; navigationKey?: string }
+
 export type SidePanelTab =
-  | { id: string; kind: 'preview' | 'terminal' | 'side-chat' | 'canvas' }
+  | { id: string; kind: 'preview' | 'terminal' | 'side-chat' }
+  | { id: string; kind: 'canvas'; target?: CanvasTarget }
   | { id: string; kind: 'diff'; repo?: string }
   | { id: string; kind: 'file'; file: FileReference | null }
   // An app tab shows a thread app, a file's viewer, or the call an inline view opened larger.
@@ -20,8 +23,8 @@ export type SidePanelTab =
   | { id: string; kind: 'published-app'; app: PublishedAppRef }
 export type PublishedAppRef = { id: string; title: string }
 type PublishedAppTab = Extract<SidePanelTab, { kind: 'published-app' }>
-// NewSidePanelTab is what the new-tab menu opens: a built-in kind, a thread app or a published app's tab.
-export type NewSidePanelTab = Exclude<SidePanelTab['kind'], 'app' | 'view' | 'canvas' | 'artifact' | 'published-app'> | MCPEntrypoint | PublishedAppTab
+export type ThreadContentTab = Extract<SidePanelTab, { kind: 'artifact' | 'canvas' | 'published-app' }>
+export type NewSidePanelTab = 'file' | 'side-chat' | 'preview' | 'terminal' | 'diff' | MCPEntrypoint | ThreadContentTab
 export type SidePanelMode = 'tabs' | 'overview'
 export const OVERVIEW_PANEL_WIDTH = 300
 

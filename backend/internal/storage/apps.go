@@ -138,10 +138,11 @@ type App struct {
 }
 
 type AppListFilter struct {
-	Scope   string
-	SpaceID string
-	Kind    string
-	Query   string
+	Scope          string
+	SpaceID        string
+	SourceThreadID string
+	Kind           string
+	Query          string
 }
 
 type AppPatch struct {

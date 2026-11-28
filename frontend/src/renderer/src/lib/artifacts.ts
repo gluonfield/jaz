@@ -342,16 +342,22 @@ const widgetBridgeScript = `
 })();
 `
 
-export function parseArtifactToolArgs(raw?: string): ArtifactInput | null {
-  if (!raw) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return null
+function toolRecord(raw: unknown): Record<string, unknown> | undefined {
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw) } catch { return undefined }
   }
-  if (!parsed || typeof parsed !== 'object') return null
-  const input = parsed as Record<string, unknown>
+  return raw && typeof raw === 'object' ? raw as Record<string, unknown> : undefined
+}
+
+export function artifactToolError(raw: unknown): string {
+  const result = toolRecord(raw)
+  if (result?.status !== 'error' && result?.isError !== true) return ''
+  return typeof result.error === 'string' ? result.error : 'Artifact failed.'
+}
+
+export function parseArtifactToolArgs(raw?: unknown): ArtifactInput | null {
+  const input = toolRecord(raw)
+  if (!input) return null
   const title = typeof input.title === 'string' ? input.title.trim() : ''
   const source = input.html ?? input.widget_code
   const code = typeof source === 'string' ? source : ''

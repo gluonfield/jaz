@@ -1,5 +1,7 @@
+import { queryOptions } from '@tanstack/react-query'
 import { apiFetch, get, patch, put } from '@/lib/api/client'
 import { readAPIResponse } from '@/lib/api/response'
+import { keys } from '@/lib/query/keys'
 
 // A JSON Canvas 1.0 node or edge (jsoncanvas.org). Fields stay open: the agent
 // may write ones Jaz does not render, and patches must not drop them.
@@ -66,6 +68,13 @@ export async function getCanvas(sessionId: string, current?: CanvasDocument): Pr
   const query = current ? `?version=${encodeURIComponent(current.version)}` : ''
   const view = await get<CanvasDocument | undefined>(`${canvasPath(sessionId)}${query}`)
   return view ?? current!
+}
+
+export function sessionCanvasQuery(sessionId: string) {
+  return queryOptions({
+    queryKey: keys.sessionCanvas(sessionId),
+    queryFn: ({ client, queryKey }) => getCanvas(sessionId, client.getQueryData<CanvasDocument>(queryKey)),
+  })
 }
 
 // What the page measured, written beside the canvas for the agent to read.

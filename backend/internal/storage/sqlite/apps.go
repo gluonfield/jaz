@@ -349,9 +349,10 @@ func (s *Store) PublishAppFromDraft(ctx context.Context, params storage.PublishA
 
 func (s *Store) ListApps(ctx context.Context, workspaceID string, filter storage.AppListFilter) ([]storage.App, error) {
 	rows, err := appsdb.New(s.db).ListApps(ctx, appsdb.ListAppsParams{
-		FilterWorkspaceID: workspaceID,
-		FilterKind:        filter.Kind,
-		FilterQuery:       filter.Query,
+		FilterWorkspaceID:    workspaceID,
+		FilterSourceThreadID: filter.SourceThreadID,
+		FilterKind:           filter.Kind,
+		FilterQuery:          filter.Query,
 	})
 	if err != nil {
 		return nil, err

@@ -170,6 +170,7 @@ export interface AppRemixResult {
 export interface AppListFilter {
   scope?: 'all' | 'mine' | 'space' | 'team'
   spaceId?: string
+  sourceThreadId?: string
   kind?: AppKind
   q?: string
 }
@@ -177,15 +178,18 @@ export interface AppListFilter {
 export function appsQuery(filter?: AppListFilter) {
   return queryOptions({
     queryKey: keys.apps(filter),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams()
       if (filter?.scope) params.set('scope', filter.scope)
       if (filter?.spaceId) params.set('space_id', filter.spaceId)
+      if (filter?.sourceThreadId) params.set('source_thread_id', filter.sourceThreadId)
       if (filter?.kind) params.set('kind', filter.kind)
       if (filter?.q?.trim()) params.set('q', filter.q.trim())
       const qs = params.toString()
-      const data = await get<{ apps: JazApp[] | null }>(`/v1/apps${qs ? `?${qs}` : ''}`)
-      return data.apps ?? []
+      const data = await get<{ apps: JazApp[] | null }>(`/v1/apps${qs ? `?${qs}` : ''}`, { signal })
+      const apps = data.apps ?? []
+      // Older app servers may return the owner's full list for a thread filter.
+      return filter?.sourceThreadId ? apps.filter((app) => app.status === 'active' && app.source_thread_id === filter.sourceThreadId) : apps
     },
   })
 }

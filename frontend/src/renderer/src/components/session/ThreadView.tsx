@@ -26,6 +26,7 @@ import { CloudSpendBanner } from '@/components/session/CloudSpendBanner'
 import { PendingSteerBubble } from '@/components/session/PendingSteerBubble'
 import { PendingSessionHistory } from '@/components/session/PendingSessionHistory'
 import { SidePanel } from '@/components/session/SidePanel'
+import { SidePanelLauncher } from '@/components/session/SidePanelTabs'
 import { SessionTitlebar } from '@/components/session/SessionTitlebar'
 import { SidePanelDrawer } from '@/components/session/SidePanelDrawer'
 import { useSidePanelState } from '@/components/session/SidePanelState'
@@ -67,7 +68,7 @@ import { useIsCloudViewer } from '@/lib/cloudSession'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { MCPAppThreadContext, type MCPAppThread } from '@/lib/mcpAppThread'
 import { SidePanelSlot } from '@/lib/sidePanelSlot'
-import { isPanelPresentation } from '@/lib/sidePanelTabs'
+import { isPanelPresentation, type CanvasTarget } from '@/lib/sidePanelTabs'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { type HistoryPaging, useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
@@ -546,11 +547,15 @@ export function ThreadView({
   const cloudRunId = sessionCloudRunId(session)
   // Docked, never overlapping: the chat pane flexes and stays centered
   // between the sidebar and this panel.
-  const canvasBoard = <ThreadCanvas page={page} item={item} navigationKey={navigationKey} onPage={canvasContexts.onPage} sessionId={session.id} cloudRunId={cloudRunId} inset={canvas && canvasChat.shown ? canvasChat.width + 8 : 0} working={sessionRunning} bindSelection={canvasContexts.bindSelection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
+  const canvasBoard = (target?: CanvasTarget) => <ThreadCanvas page={target?.page ?? page} item={target ? target.item : item} navigationKey={target?.navigationKey ?? navigationKey} onPage={canvasContexts.onPage} sessionId={session.id} cloudRunId={cloudRunId} inset={canvas && canvasChat.shown ? canvasChat.width + 8 : 0} working={sessionRunning} bindSelection={canvasContexts.bindSelection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
   const sidePanelDrawer = (
     <SidePanelDrawer panel={sidePanel} isMobile={isMobile}>
       <SidePanel
         canvas={canvasBoard}
+        launcher={<SidePanelLauncher session={session} messages={messages} events={displayEvents} live={live}
+          readCanvas={!canvas && !isCloudThreadView} working={sessionRunning} sideChatAvailable={sideChatAvailable}
+          onAdd={sidePanel.addTab} onOpenFile={sidePanel.openFile}
+        />}
         session={session}
         progress={panelProgress}
         subagents={providerSubagents}
@@ -799,7 +804,7 @@ export function ThreadView({
           <div ref={canvas && !floatPanel ? sidePanel.containerRef : undefined} className={canvas ? 'flex h-full min-w-0 flex-1' : 'contents'}>
             {canvas ? (
               <div ref={canvasChat.containerRef} className={`relative h-full min-w-0 flex-1${canvasChat.resizing ? ' canvas-chat-resizing' : ''}`}>
-                {canvasBoard}
+                {canvasBoard()}
               </div>
             ) : null}
 

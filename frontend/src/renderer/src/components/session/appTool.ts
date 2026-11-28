@@ -34,7 +34,7 @@ export function isAppToolCall(call: Pick<ACPToolCall, 'tool_name' | 'title' | 'r
   if (!isDeferredCallToolName(call.tool_name) && !isDeferredCallToolName(call.title)) {
     return false
   }
-  const input = call.raw_input
+  const input = typeof call.raw_input === 'string' ? parseJsonString(call.raw_input) : call.raw_input
   if (input && typeof input === 'object' && 'name' in input) {
     const wrapped = (input as { name?: unknown }).name
     if (typeof wrapped === 'string' && isAppToolName(wrapped)) {

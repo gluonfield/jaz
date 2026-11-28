@@ -18,7 +18,8 @@ import { OverviewPanel } from '@/components/session/OverviewPanel'
 import { SideChatPanel } from '@/components/session/SideChatPanel'
 import { TerminalPanel } from '@/components/session/TerminalPanel'
 import { SidePanelControl } from '@/components/session/SidePanelControl'
-import { SidePanelTabMenu, SidePanelTabs } from '@/components/session/SidePanelTabs'
+import { SidePanelTabs } from '@/components/session/SidePanelTabs'
+import type { CanvasTarget } from '@/lib/sidePanelTabs'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { SidePanelCloseGuard, type useSidePanelState } from '@/components/session/SidePanelState'
 
@@ -33,10 +34,11 @@ function TabBody({ id, active, visible, children }: { id: string; active: boolea
 export function SidePanel({
   session, panel, progress, subagents, spawnedThreads, working, asking,
   sideChatAvailable, sideChatEvents, onAddBrowserAnnotation, onUploadAttachment,
-  onSend, onQueuePrompt, onQueueAction, onSendSideChat, overview, overviewLabel, canvas,
+  onSend, onQueuePrompt, onQueueAction, onSendSideChat, overview, overviewLabel, canvas, launcher,
 }: {
   session: Session
-  canvas: ReactNode
+  canvas: (target?: CanvasTarget) => ReactNode
+  launcher: ReactNode
   panel: ReturnType<typeof useSidePanelState>
   progress?: TaskSurface
   subagents: ProviderSubagentView[]
@@ -94,7 +96,7 @@ export function SidePanel({
         </div>
       ) : null}
       <div hidden={panel.mode !== 'tabs'} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        {!panel.tabs.length ? <SidePanelTabMenu empty sideChatAvailable={sideChatAvailable} onAdd={panel.addTab} /> : null}
+        {panel.open && panel.mode === 'tabs' && !panel.tabs.length ? launcher : null}
         {panel.tabs.map((tab) => {
           const active = panel.activeTab?.id === tab.id
           const visible = panel.open && panel.mode === 'tabs' && active
@@ -113,7 +115,7 @@ export function SidePanel({
                   onUploadAttachment={onUploadAttachment}
                 />
               ) : tab.kind === 'canvas' ? (
-                <div className="canvas-panel relative h-full">{canvas}</div>
+                <div className="canvas-panel relative h-full">{canvas(tab.target)}</div>
               ) : tab.kind === 'terminal' ? (
                 <TerminalPanel session={session} visible={visible} />
               ) : tab.kind === 'file' ? (

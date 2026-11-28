@@ -71,8 +71,8 @@ export const keys = {
   boards: ['boards'] as const,
   boardDetail: (id: string) => ['boards', id] as const,
   appsRoot: ['apps'] as const,
-  apps: (filter?: { scope?: string; spaceId?: string; kind?: string; q?: string }) =>
-    ['apps', 'list', filter?.scope ?? 'all', filter?.spaceId ?? '', filter?.kind ?? '', filter?.q ?? ''] as const,
+  apps: (filter?: { scope?: string; spaceId?: string; kind?: string; q?: string; sourceThreadId?: string }) =>
+    ['apps', 'list', filter?.scope ?? 'all', filter?.spaceId ?? '', filter?.kind ?? '', filter?.q ?? '', filter?.sourceThreadId ?? ''] as const,
   appDetail: (id: string) => ['apps', 'detail', id] as const,
   appVersions: (id: string) => ['apps', 'versions', id] as const,
   appPreview: (id: string, version: number) => ['apps', 'preview', id, version] as const,

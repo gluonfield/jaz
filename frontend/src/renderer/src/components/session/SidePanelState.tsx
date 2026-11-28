@@ -123,6 +123,9 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
   }, [showTabs])
   const reorderTabs = useCallback((ids: string[]) => dispatch({ type: 'reorder', ids }), [])
   const openTab = useCallback((tab: SidePanelTab, after?: string) => {
+    if (tab.kind === 'canvas' && tab.target) {
+      tab = { ...tab, target: { ...tab.target, navigationKey: crypto.randomUUID() } }
+    }
     dispatch({ type: 'open', tab, after })
     showTabs()
   }, [showTabs])

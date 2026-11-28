@@ -110,10 +110,11 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	items, err := h.service.ListApps(r.Context(), storage.AppListFilter{
-		Scope:   scope,
-		SpaceID: strings.TrimSpace(q.Get("space_id")),
-		Kind:    kind,
-		Query:   strings.TrimSpace(q.Get("q")),
+		Scope:          scope,
+		SpaceID:        strings.TrimSpace(q.Get("space_id")),
+		SourceThreadID: strings.TrimSpace(q.Get("source_thread_id")),
+		Kind:           kind,
+		Query:          strings.TrimSpace(q.Get("q")),
 	})
 	if err != nil {
 		writeAppError(w, err)

@@ -45,6 +45,7 @@ func TestHTTPAppsDraftPublishTicketContentAndKV(t *testing.T) {
 		"kind": "artifact",
 		"entry": "index.html",
 		"html": "<h1>Calc</h1>",
+		"source_thread_id": "calculator-thread",
 		"capabilities": ["storage:personal"]
 	}`))
 	draftRec := httptest.NewRecorder()
@@ -81,7 +82,7 @@ func TestHTTPAppsDraftPublishTicketContentAndKV(t *testing.T) {
 	appID := pubResp.App.ID
 
 	directRec := httptest.NewRecorder()
-	mux.ServeHTTP(directRec, httptest.NewRequest(http.MethodPost, "/v1/apps", strings.NewReader(`{"title":"Notes","markdown":"# Notes"}`)))
+	mux.ServeHTTP(directRec, httptest.NewRequest(http.MethodPost, "/v1/apps", strings.NewReader(`{"title":"Notes","markdown":"# Notes","source_thread_id":"notes-thread"}`)))
 	var direct struct {
 		App struct {
 			Kind       string `json:"kind"`
@@ -91,6 +92,17 @@ func TestHTTPAppsDraftPublishTicketContentAndKV(t *testing.T) {
 	_ = json.Unmarshal(directRec.Body.Bytes(), &direct)
 	if directRec.Code != http.StatusCreated || direct.App.Kind != "document" || direct.App.Visibility != "private" {
 		t.Fatalf("direct publish status=%d body=%s", directRec.Code, directRec.Body.String())
+	}
+	filteredRec := httptest.NewRecorder()
+	mux.ServeHTTP(filteredRec, httptest.NewRequest(http.MethodGet, "/v1/apps?scope=mine&source_thread_id=calculator-thread", nil))
+	var filtered struct {
+		Apps []struct{ ID string } `json:"apps"`
+	}
+	if err := json.Unmarshal(filteredRec.Body.Bytes(), &filtered); err != nil {
+		t.Fatal(err)
+	}
+	if filteredRec.Code != http.StatusOK || len(filtered.Apps) != 1 || filtered.Apps[0].ID != appID {
+		t.Fatalf("filtered list status=%d body=%s", filteredRec.Code, filteredRec.Body.String())
 	}
 	elevatedRec := httptest.NewRecorder()
 	mux.ServeHTTP(elevatedRec, httptest.NewRequest(http.MethodPost, "/v1/apps", strings.NewReader(`{"title":"Bot","html":"<p>hi</p>","capabilities":["tools:call"],"allowed_tools":["crm_search"]}`)))
