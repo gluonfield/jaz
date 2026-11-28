@@ -24,55 +24,40 @@ import {
   appsQuery,
   hasBundle,
   remixApp,
-  type AppKind,
+  type BundleKind,
   type BundledApp,
   type JazApp,
 } from '@/lib/api/apps'
 import { mcpEntrypointsQuery } from '@/lib/api/mcp'
+import { APPS_TABS, libraryApps, type AppsTab } from '@/lib/appsLibrary'
 import { popOutBoard } from '@/lib/clientRuntime'
 import { useCloudSession, useIsCloudViewer } from '@/lib/cloudSession'
 import { installFolder } from '@/lib/desktopApps'
 import { shortDate } from '@/lib/format/time'
-import type { InstalledDesktopApp } from '@shared/desktopApps'
 
 export const Route = createFileRoute('/apps/')({
+  // The tab rides in the URL so the way back from a board lands on Boards.
+  validateSearch: (search): { tab?: AppsTab } => {
+    const tab = APPS_TABS.find((value) => value === search.tab)
+    return tab ? { tab } : {}
+  },
   component: AppsLibraryPage,
 })
 
-type AppsTab = 'mine' | 'team' | 'desktop' | 'connected'
-type KindFilter = 'all' | AppKind
+type KindFilter = 'all' | BundleKind
 
 const KINDS: { value: KindFilter; label: string }[] = [
   { value: 'all', label: 'All kinds' },
   { value: 'artifact', label: 'Interactive' },
   { value: 'document', label: 'Documents' },
-  { value: 'board', label: 'Boards' },
 ]
 
 const EMPTY: Record<AppsTab, { title: string; text: string }> = {
-  mine: { title: 'No apps yet', text: 'Publish an artifact or document from a chat, or gather apps on a board.' },
+  mine: { title: 'No apps yet', text: 'Publish an artifact or document from a chat.' },
   team: { title: 'Nothing shared yet', text: 'Apps shared with your team or a space appear here.' },
   desktop: { title: 'No installed apps', text: 'Install an app to give it its own window and icon.' },
   connected: { title: 'No connected apps', text: 'Apps from your connected MCP servers appear here.' },
-}
-
-// An installed app whose published record is gone still shows, from what the
-// desktop kept at install time.
-function installedAsApp(installed: InstalledDesktopApp): BundledApp {
-  return {
-    id: installed.appId,
-    owner_user_id: 'local',
-    title: installed.title,
-    description: installed.description,
-    kind: installed.kind,
-    visibility: 'private',
-    current_version: installed.installedVersion,
-    status: 'active',
-    bundle_sha256: installed.latestBundleSha256,
-    capabilities: installed.declaredCapabilities,
-    created_at: installed.installedAt,
-    updated_at: installed.updatedAt,
-  }
+  boards: { title: 'No boards yet', text: 'A board holds apps as tiles, and keeps the apps your loops publish up to date.' },
 }
 
 function Grid({ children }: { children: ReactNode }) {
@@ -86,7 +71,16 @@ function AppsLibraryPage() {
   const isViewer = useIsCloudViewer()
   const desktop = useDesktopApps()
 
-  const [tab, setTab] = useState<AppsTab>('mine')
+  const tabs = [
+    { value: 'mine' as const, label: 'Yours' },
+    ...(cloud.active ? [{ value: 'team' as const, label: 'Shared' }] : []),
+    ...(desktop.available ? [{ value: 'desktop' as const, label: 'Installed' }] : []),
+    { value: 'connected' as const, label: 'Connected' },
+    { value: 'boards' as const, label: 'Boards' },
+  ]
+  const requested = Route.useSearch().tab
+  const tab = tabs.find((option) => option.value === requested)?.value ?? 'mine'
+  const boards = tab === 'boards'
   const [search, setSearch] = useState('')
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
   const [kindMenuOpen, setKindMenuOpen] = useState(false)
@@ -110,23 +104,15 @@ function AppsLibraryPage() {
   })
 
   const needle = search.trim().toLowerCase()
-  const apps = useMemo(() => {
-    const published = allApps.data ?? []
-    const list = tab === 'mine' ? published.filter((app) => app.is_owner !== false)
-      : tab === 'team' ? published.filter((app) => app.visibility !== 'private')
-        : tab === 'desktop' ? [...desktop.records.values()].map((installed) => published.find((app) => app.id === installed.appId) ?? installedAsApp(installed))
-          : []
-    return list.filter((app) =>
-      (kindFilter === 'all' || app.kind === kindFilter) &&
-      (!needle || app.title.toLowerCase().includes(needle) || (app.description ?? '').toLowerCase().includes(needle)))
-  }, [allApps.data, desktop.records, kindFilter, needle, tab])
-
-  const tabs = [
-    { value: 'mine' as const, label: 'Yours' },
-    ...(cloud.active ? [{ value: 'team' as const, label: 'Shared' }] : []),
-    ...(desktop.available ? [{ value: 'desktop' as const, label: 'Installed' }] : []),
-    { value: 'connected' as const, label: 'Connected' },
-  ]
+  // Boards are one kind and connected apps have none, so neither is filtered by it.
+  const kinds = !boards && tab !== 'connected'
+  const kind = kinds ? kindFilter : 'all'
+  const apps = useMemo(
+    () => libraryApps(tab, allApps.data ?? [], [...desktop.records.values()]).filter((app) =>
+      (kind === 'all' || app.kind === kind) &&
+      (!needle || app.title.toLowerCase().includes(needle) || (app.description ?? '').toLowerCase().includes(needle))),
+    [allApps.data, desktop.records, kind, needle, tab],
+  )
 
   // A board has a window of its own and nothing to install, remix or permit.
   const boardActions = (board: JazApp): MenuAction[] => [
@@ -164,7 +150,7 @@ function AppsLibraryPage() {
         title: app.title,
         detail: tab === 'desktop' && installed?.launcherPath
           ? `Installed in ${installFolder(installed.launcherPath)}`
-          : `${APP_KIND_LABEL[app.kind]} · ${shortDate(app.updated_at)}`,
+          : hasBundle(app) ? `${APP_KIND_LABEL[app.kind]} · ${shortDate(app.updated_at)}` : shortDate(app.updated_at),
         mark: installed?.permissionsPaused ? (
           <span title="Changed since you allowed its permissions" className="size-2 shrink-0 rounded-full bg-running" />
         ) : app.visibility !== 'private' ? (
@@ -178,26 +164,26 @@ function AppsLibraryPage() {
       }
     })
 
-  const filtered = Boolean(needle) || kindFilter !== 'all'
+  const filtered = Boolean(needle) || kind !== 'all'
   const loading = tab === 'connected' ? mcpApps.isPending : allApps.isPending
 
   return (
     <div className="mx-auto flex w-full max-w-[1120px] flex-col px-8 pb-12 pt-10 max-sm:px-4 max-sm:pt-6">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-ink">Apps</h1>
-        {isViewer ? null : (
+        {boards && !isViewer ? (
           <Button variant="primary" onClick={() => setCreatingBoard(true)}>
             <Plus size={14} />
             New board
           </Button>
-        )}
+        ) : null}
       </div>
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-        <Segmented value={tab} options={tabs} onChange={setTab} layoutId="apps-library-tab" />
+        <Segmented value={tab} options={tabs} onChange={(next) => void navigate({ to: '/apps', search: { tab: next }, replace: true })} layoutId="apps-library-tab" />
         <div className="flex items-center gap-1">
-          <SearchField value={search} onChange={setSearch} placeholder="Search apps…" className="h-8 w-52 max-sm:w-40" />
-          {tab !== 'connected' ? (
+          <SearchField value={search} onChange={setSearch} placeholder={boards ? 'Search boards…' : 'Search apps…'} className="h-8 w-52 max-sm:w-40" />
+          {kinds ? (
             <Popover open={kindMenuOpen} onClose={() => setKindMenuOpen(false)} placement="below" align="end" trigger={
               <IconButton aria-label="Filter by kind" title="Filter by kind" aria-haspopup="menu" aria-expanded={kindMenuOpen} onClick={() => setKindMenuOpen((open) => !open)} className={kindFilter === 'all' ? '' : 'bg-ink/10 text-ink'}>
                 <ListFilter size={15} />

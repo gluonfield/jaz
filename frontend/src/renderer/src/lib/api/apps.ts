@@ -73,7 +73,7 @@ export type BundledApp = JazApp & { kind: BundleKind }
 
 export const hasBundle = (app: JazApp): app is BundledApp => app.kind !== 'board'
 
-export const APP_KIND_LABEL: Record<AppKind, string> = { artifact: 'Interactive', document: 'Document', board: 'Board' }
+export const APP_KIND_LABEL: Record<BundleKind, string> = { artifact: 'Interactive', document: 'Document' }
 
 export interface AppVersion {
   app_id: string

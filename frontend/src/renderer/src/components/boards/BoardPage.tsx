@@ -48,7 +48,7 @@ export function BoardPage({ board }: { board: JazApp }) {
   const pendingLoopId = useRef<string | null>(null)
   const viewKey = keys.appBoard(board.id)
   const refreshView = () => queryClient.invalidateQueries({ queryKey: viewKey })
-  const deleteAction = useDeleteApp(() => void navigate({ to: '/apps' }))
+  const deleteAction = useDeleteApp(() => void navigate({ to: '/apps', search: { tab: 'boards' } }))
 
   const editingLoop = useMutation({
     mutationFn: (loopId: string) => queryClient.fetchQuery({ ...loopDetailQuery(loopId), staleTime: 0 }),
@@ -99,7 +99,7 @@ export function BoardPage({ board }: { board: JazApp }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
-      <AppPageHeader title={<BoardTitle board={board} canEdit={canEdit} />}>
+      <AppPageHeader tab="boards" title={<BoardTitle board={board} canEdit={canEdit} />}>
         <BoardZoom boardId={board.id} scale={view.data?.font_scale ?? 1} save={canEdit} />
         {canEdit ? (
           <Button size="sm" onClick={() => setModal('add')}>
