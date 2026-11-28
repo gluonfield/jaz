@@ -105,14 +105,15 @@ export function SpaceModal({
       })
     },
     onSuccess: (saved) => {
-      void queryClient.invalidateQueries({ queryKey: keys.cloudSpaces })
-      void queryClient.invalidateQueries({ queryKey: keys.cloudSpace(saved.id) })
       if (isEdit) {
         toast(`Updated project ${saved.name}`)
       } else {
+        queryClient.setQueryData<CloudSpace[]>(keys.cloudSpaces, (prev) => [...(prev ?? []), saved])
         onCreated?.(saved)
         toast(`Created project ${saved.name}`)
       }
+      void queryClient.invalidateQueries({ queryKey: keys.cloudSpaces })
+      void queryClient.invalidateQueries({ queryKey: keys.cloudSpace(saved.id) })
       onClose()
     },
   })
@@ -215,7 +216,6 @@ export function SpaceModal({
           <Input
             type="text"
             value={name}
-            autoFocus={!isEdit}
             disabled={!canEdit}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {

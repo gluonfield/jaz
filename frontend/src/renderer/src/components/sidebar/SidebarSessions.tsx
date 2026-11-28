@@ -5,10 +5,11 @@ import { motion, Reorder, type Transition, useDragControls } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { CreateProjectDialog } from '@/components/projects/CreateProjectDialog'
+import { SpaceModal } from '@/components/projects/SpaceModal'
 import { Collapse } from '@/components/ui/Collapse'
 import { HoverCardGroup } from '@/components/ui/HoverCard'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import { spacesQuery, type CloudSpace } from '@/lib/api/cloudSpaces'
+import { spacesQuery } from '@/lib/api/cloudSpaces'
 import {
   projectsQuery,
   reorderProjects,
@@ -21,7 +22,6 @@ import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { keys } from '@/lib/query/keys'
 import { SessionRow } from './SessionRow'
-import { SpaceModal } from './SpaceModal'
 import {
   SidebarOrganizationMenu,
   type SidebarViewState,
@@ -568,13 +568,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
           hasCloud ? (
             <SpaceModal
               onClose={() => setCreateProjectOpen(false)}
-              onCreated={(created) => {
-                queryClient.setQueryData<CloudSpace[]>(keys.cloudSpaces, (prev) => [
-                  ...(prev ?? []),
-                  created,
-                ])
-                void navigate({ to: '/spaces/$spaceId', params: { spaceId: created.id } })
-              }}
+              onCreated={(created) => void navigate({ to: '/spaces/$spaceId', params: { spaceId: created.id } })}
             />
           ) : (
             <CreateProjectDialog
